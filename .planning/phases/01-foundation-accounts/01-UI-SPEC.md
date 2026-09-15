@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-reviewed_at:
+status: approved
+reviewed_at: 2026-09-15
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -243,11 +243,15 @@ This list is a floor, not a ceiling: any other icon-only element introduced duri
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending
-- [ ] Dimension 2 Visuals: pending
-- [ ] Dimension 3 Color: pending
-- [ ] Dimension 4 Typography: pending
-- [ ] Dimension 5 Spacing: pending
-- [ ] Dimension 6 Registry Safety: pending
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (non-blocking recommendation applied — see Focal Points below)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** awaiting gsd-ui-checker review of revision 4. Revision 3's approval (2026-09-15, all 6 dimensions PASS) applied to the forest-green/ochre palette and Plus Jakarta Sans typeface, both fully replaced in this revision, so that prior sign-off no longer covers the current contract.
+**Approval:** approved 2026-09-15 (revision 4, all 6 dimensions PASS)
+
+### Focal Points (per checker recommendation)
+
+Stated explicitly so the executor doesn't have to infer hierarchy from the Elevation/Color sections alone: the primary CTA (`raised` elevation, Ink fill, white label) is the focal point on every onboarding step (choose-method, name, username, photo). On the profile view screen, the avatar + name/username pairing is the focal point, with the empty-bio icon badge as a clearly secondary element beneath it.
