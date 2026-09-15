@@ -1,14 +1,14 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: approved
-reviewed_at: 2026-09-15
+status: draft
+reviewed_at:
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
 revised: 2026-09-15
-revision: 3
-revision_reason: "Revision 3 fixes issues raised by gsd-ui-checker on revision 2: replaced the generic 'Cancel' destructive-confirmation button label (banned by Dimension 1) with 'Stay logged in'; tightened the three onboarding 'Continue' CTAs to step-specific labels; added an explicit accessibilityLabel requirement for icon-only controls. Revision 2's typeface, elevation system, second accent color, and empty-state icon treatment are unchanged."
+revision: 4
+revision_reason: "Revision 4 replaces revision 3's forest-green/ochre palette and Plus Jakarta Sans typeface entirely, per explicit user rejection of the color direction: 'I don't like whatever the colors we have right now... I want the theme to be in cream beige, I mean white, or in black, but nothing too much of like a color pop... use different fonts to look at make it look nice.' New palette is near-monochrome: white, warm cream/beige, and a single warm near-black ink/accent, with destructive and success kept as small muted functional signal colors only (no saturated chromatic brand color). New typeface pairing is Domine (serif display/heading, used with restraint) plus Work Sans (body/UI), replacing Plus Jakarta Sans and deliberately avoiding Inter and Space Grotesk. Because the interactive accent and the default text color are now the same near-black hue (unlike revision 3, where green was exclusively an interactive signal, distinct from an implicit system-default text color), this revision also adds explicit non-hue state differentiators that revision 3 did not need: underline+weight for links, opacity/width steps for focus and progress-indicator states, a declared disabled-CTA fill, and a declared CTA label color. Elevation's 'raised' shadow color is retinted from the old green accent to neutral black, since the CTA fill itself is now near-black and no longer needs shadow-color correction for a mismatched hue. The Visual Personality icon-badge treatment is redesigned without a secondary accent color, adding a real (not decorative) hairline border since the ochre tint that previously separated a badge from its host surface no longer exists. Spacing scale, radius rule, Copywriting Contract, Interaction Contracts, and Registry Safety are unchanged from revision 3 and carried forward verbatim (they reference color/type by role, not by hex/family, so the palette and typeface swap does not touch them)."
 ---
 
 # Phase 1 - UI Design Contract
@@ -24,8 +24,8 @@ revision_reason: "Revision 3 fixes issues raised by gsd-ui-checker on revision 2
 | Tool | none. shadcn is a web/Tailwind registry tool and does not apply here: RESEARCH.md locks this phase to React Native / Expo SDK 57 with expo-router (not React/Next.js/Vite), so the shadcn init gate does not fire. |
 | Preset | not applicable |
 | Component library | none (custom). Plain React Native primitives (View, Text, Pressable, TextInput) styled from a single shared tokens module (e.g. `lib/theme/tokens.ts`), not a third-party RN UI kit (React Native Paper, NativeBase, Tamagui). Default, applied because no library was named in CONTEXT.md/RESEARCH.md: a generic kit's default button/input shapes would fight PROJECT.md's specific constraints (no pill buttons, no gradients, flat/muted) more than they'd help. |
-| Icon library | `@expo/vector-icons` (Ionicons as the default icon set). Bundled with Expo SDK 57, no extra install. Required because PROJECT.md bans emoji-as-icons, so every icon-shaped element (back, close, checkmark, resend, avatar placeholder, and the two icon badges added in this revision — see "Visual Personality" below) must come from this library, never a raw emoji character. |
-| Font | **Plus Jakarta Sans**, two weights loaded: `PlusJakartaSans_400Regular` and `PlusJakartaSans_600SemiBold`, via `@expo-google-fonts/plus-jakarta-sans` (v0.4.2, verified on npm) and `expo-font`, gated with `expo-splash-screen` (v57.0.9). Replaces the v1 system-default-only choice. Chosen over Inter deliberately: Inter is the default look of most AI-generated/template UI right now, which works against the user's explicit "don't want this to look vibe-coded" goal; Plus Jakarta Sans has enough geometric character (distinctive `a`, `g`, rounded terminals) to read as an intentional choice while staying legible and neutral enough for dense form UI. It is free/open (SIL OFL), available pre-hosted through Expo's own Google Fonts package (no manual font-file bundling needed), and both required weights (400, 600) exist as real files, so the app never fakes a weight. See Typography below for the per-role `fontFamily` mapping and "Session-restore and font-load gate" (Interaction Contracts) for the loading-state pattern. Both new packages hit the same "too-new republish" SUS false-positive pattern RESEARCH.md's Package Legitimacy Audit already documented for `expo-router`/`expo-secure-store`/etc — same `checkpoint:human-verify` resolution applies: confirm the repos are `github.com/expo/google-fonts` and `github.com/expo/expo` before installing. |
+| Icon library | `@expo/vector-icons` (Ionicons as the default icon set). Bundled with Expo SDK 57, no extra install. Required because PROJECT.md bans emoji-as-icons, so every icon-shaped element (back, close, checkmark, resend, avatar placeholder, and the two icon badges added in revision 2 — see "Visual Personality" below) must come from this library, never a raw emoji character. |
+| Font | **Domine** (serif, display/heading only) at one weight, `Domine_600SemiBold`, plus **Work Sans** (body/UI) at two weights, `WorkSans_400Regular` and `WorkSans_600SemiBold` — three font files total, loaded via `@expo-google-fonts/domine` and `@expo-google-fonts/work-sans` (both v0.4.2, confirmed against the public npm registry API; both list `homepage: github.com/expo/google-fonts`, the same publishing pattern as every other Expo Google Fonts package, and their package contents were inspected directly via unpkg to confirm the exact exported weight names used below — `Domine_600SemiBold`, `WorkSans_400Regular`, `WorkSans_600SemiBold` all exist as real files) and `expo-font`, gated with `expo-splash-screen` (v57.0.9). Replaces revision 2/3's Plus Jakarta Sans, which the user explicitly rejected alongside the color palette ("use different fonts... make it look nice"). Domine is a serif designed specifically for on-screen headline legibility (sturdy strokes, contained proportions) rather than a digitized book/print face; it is used here only for Heading/Display roles and the wordmark, never for body or UI chrome, which keeps it a considered accent detail rather than a legibility risk in dense form text. Work Sans is a humanist grotesque with enough real character (open apertures, two-story lowercase 'a') to avoid reading as a generic default, while staying clean and legible enough for forms, labels, and buttons. Neither is Inter or Space Grotesk, the two faces explicitly called out as the overused "safe"/default look of AI-generated UI. See "Why This Reads as Intentional, Not Generic" below for the fuller rationale, and Typography below for the per-role mapping. Same `checkpoint:human-verify` pattern as prior revisions applies before installing: confirm both packages resolve to `github.com/expo/google-fonts` before adding them as dependencies. |
 
 **Platform lock:** Phase 1 designs for light mode only (no dark-mode variant specified or requested). Set `"userInterfaceStyle": "light"` in `app.json` to enforce this at the OS level. Without this, system dark mode still partially applies (status bar, keyboard, native text-input chrome) even though the screens themselves are styled light-only, producing a visibly broken mixed state.
 
@@ -45,7 +45,7 @@ Declared values (must be multiples of 4, unitless React Native `dp`, not `px`):
 | 2xl | 48 | Major section breaks |
 | 3xl | 64 | Page-level spacing |
 
-Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase. The 40dp icon-badge diameter added in this revision (Visual Personality section) is a decorative element, not a tap target, so it is exempt from the 44dp minimum.
+Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase. The 40dp icon-badge diameter added in revision 2 (Visual Personality section) is a decorative element, not a tap target, so it is exempt from the 44dp minimum.
 
 ---
 
@@ -57,7 +57,7 @@ Not in the base template; declared here because PROJECT.md's standing "no pill-s
 |-------|-------|-------|
 | sm | 4 | Small chips/status pills (e.g. "Available" / "Taken" inline badges next to the username field) |
 | md | 8 | Buttons, text inputs, cards. This is the maximum radius for any button or input in this phase, enforcing PROJECT.md's "no pill-shaped buttons" rule (a pill is defined here as radius >= half the element's height). |
-| avatar / icon badge | circular (50% of width/height) | Profile photo and avatar-placeholder, PLUS the two icon badges added in this revision (empty-bio icon, verify-email icon — see Visual Personality). Explicit, named exception to the radius cap, extended in this revision to cover small circular icon containers as well as the avatar itself: both are the Instagram-parity / "soft icon chip" convention this phase follows, not a step toward pill-shaped buttons or CTAs, which remain capped at `md` (8) with no exceptions. |
+| avatar / icon badge | circular (50% of width/height) | Profile photo and avatar-placeholder, PLUS the two icon badges added in revision 2 (empty-bio icon, verify-email icon — see Visual Personality). Explicit, named exception to the radius cap, extended in revision 2 to cover small circular icon containers as well as the avatar itself: both are the Instagram-parity / "soft icon chip" convention this phase follows, not a step toward pill-shaped buttons or CTAs, which remain capped at `md` (8) with no exceptions. |
 
 ---
 
@@ -67,28 +67,29 @@ React Native `lineHeight` is an absolute number, not a ratio, so both are declar
 
 | Role | Size | Font Family | Line Height |
 |------|------|-------------|-------------|
-| Body | 16 | `PlusJakartaSans_400Regular` | 24 |
-| Label | 14 | `PlusJakartaSans_400Regular` | 20 |
-| Heading | 20 | `PlusJakartaSans_600SemiBold` | 26 |
-| Display | 28 | `PlusJakartaSans_600SemiBold` | 34 |
+| Body | 16 | `WorkSans_400Regular` | 24 |
+| Label | 14 | `WorkSans_400Regular` | 20 |
+| Button / CTA label | 16 | `WorkSans_600SemiBold` | 24 |
+| Heading | 20 | `Domine_600SemiBold` | 26 |
+| Display | 28 | `Domine_600SemiBold` | 34 |
 
-Exactly two font files are loaded application-wide, preserving the original "exactly two weights" discipline: `PlusJakartaSans_400Regular` (Body, Label) and `PlusJakartaSans_600SemiBold` (Heading, Display).
+Exactly three font files are loaded application-wide: `Domine_600SemiBold` (Heading, Display, and the wordmark only), `WorkSans_400Regular` (Body, Label), and `WorkSans_600SemiBold` (Button/CTA label, and text links — see Color below). The Button/CTA role reuses Body's size and line-height but switches family and weight to Work Sans SemiBold; it is declared as its own row, distinct from revision 3's table, because this revision needs an explicit non-serif emphasis weight for buttons and links now that Domine is restricted to headings only (requirement: the display face is used with restraint, never for body/UI text).
 
-Platform note (replaces v1's system-font Roboto/San Francisco note, which no longer applies): set `fontFamily` directly per role in the tokens module, and do NOT also set a numeric `fontWeight` alongside a custom-loaded `fontFamily` — on Android, React Native's font matcher does not reliably combine a custom family with a separate `fontWeight` override and can silently fall back to that family's default weight, producing a Body-weight Heading with no visible error. Because this revision loads Regular and SemiBold as two distinct named families (`..._400Regular`, `..._600SemiBold`), there is no cross-platform weight-mapping branch to maintain: each role points at one exact font file on both iOS and Android. If the font fails to load (see "Session-restore and font-load gate" in Interaction Contracts), the fallback is the platform system font at the same numeric weight the family name implies (400/600) via `fontWeight`, applied only in that fallback branch, never mixed with a custom family.
+Platform note (replaces v1's system-font Roboto/San Francisco note, which no longer applies): set `fontFamily` directly per role in the tokens module, and do NOT also set a numeric `fontWeight` alongside a custom-loaded `fontFamily` — on Android, React Native's font matcher does not reliably combine a custom family with a separate `fontWeight` override and can silently fall back to that family's default weight, producing a Body-weight Heading with no visible error. Because this revision loads three distinct named font files (`Domine_600SemiBold`, `WorkSans_400Regular`, `WorkSans_600SemiBold`), there is no cross-platform weight-mapping branch to maintain: each role points at one exact font file on both iOS and Android. If a font fails to load (see "Session-restore and font-load gate" in Interaction Contracts), the fallback is the platform system font at the equivalent numeric weight (400/600) via `fontWeight`, applied only in that fallback branch, never mixed with a custom family — in that fallback branch, both the Domine and Work Sans roles collapse onto the same single system font, so the Heading/Display vs. Body/Label distinction is carried by size alone for the remainder of that app session rather than by two different type families. This is an accepted, expected degradation, not a bug to chase at runtime; restoring the two-family look simply requires a successful font load on the next app launch.
 
 ---
 
 ## Elevation (Shadow System)
 
-Not in the base template; added in this revision to give the UI quiet depth instead of the flat, shadow-less baseline that read as unfinished. Deliberately subtle throughout — this is a soft, quiet-depth system, not a skeuomorphic or heavy-shadow one, and it stays well clear of PROJECT.md's "no over-the-top" spirit.
+Not in the base template; added in revision 2 to give the UI quiet depth instead of the flat, shadow-less baseline that read as unfinished. Deliberately subtle throughout — this is a soft, quiet-depth system, not a skeuomorphic or heavy-shadow one, and it stays well clear of PROJECT.md's "no over-the-top" spirit.
 
 | Token | iOS (`shadowColor` / `shadowOffset` / `shadowOpacity` / `shadowRadius`) | Android (`elevation`) | Usage |
 |-------|---|---|---|
 | subtle | `#000000` / `{width:0, height:1}` / `0.04` / `2` | `1` | Secondary-surface cards at rest: profile field rows, the alternate-username suggestion chips |
 | card | `#000000` / `{width:0, height:2}` / `0.08` / `6` | `3` | The profile-view container card, the two icon badges (Visual Personality section), modal/sheet surfaces (the log-out confirmation sheet) |
-| raised | `#2F5D50` / `{width:0, height:4}` / `0.18` / `12` | `6` | The primary CTA button only (Continue / Save changes), in its default/enabled state |
+| raised | `#000000` / `{width:0, height:4}` / `0.18` / `12` | `6` | The primary CTA button only (Continue / Save changes), in its default/enabled state |
 
-`raised` uses the button's own accent-green as the shadow color instead of pure black — a neutral black shadow reads muddy under a saturated fill, so tinting the shadow toward the element's own hue is the one deliberately "designed" choice in this set (the kind of detail a flat black drop-shadow skips). Disabled/loading CTA states use `subtle` instead of `raised`, since a floating shadow under an inert button reads as a bug, not polish.
+This revision removes revision 3's shadow-tint special case: `raised` previously used the button's own accent-green (`#2F5D50`) as its shadow color instead of pure black, because a neutral black shadow read muddy under a saturated green fill. The new primary-CTA fill is itself a near-black ink (`#1C1917`, see Color), so a neutral `#000000` shadow sits coherently beneath it with no hue mismatch left to correct — all three elevation tokens now share the same neutral shadow color, differing only by offset/opacity/radius per intensity tier. Disabled/loading CTA states use `subtle` instead of `raised`, since a floating shadow under an inert button reads as a bug, not polish.
 
 Platform note: Android's `elevation` only renders a visible shadow on a `View` that has an explicit opaque `backgroundColor`. Set the fill color on the exact element carrying the elevation token — do not apply `elevation` to a transparent wrapper and expect a shadow to appear around its (differently-colored) child.
 
@@ -101,45 +102,63 @@ Negative scope, stated explicitly so the executor doesn't over-apply: no elevati
 | Role | Value | Usage |
 |------|-------|-------|
 | Dominant (60%) | #FFFFFF | Screen backgrounds, default surface behind all onboarding and profile screens |
-| Secondary (30%) | #F1EFEA | Cards, input field fill, section backgrounds, bottom tab bar (once it exists in later phases) |
-| Accent (10%) | #2F5D50 (muted forest green) | See "Accent reserved for" below. Default color choice, applied because no brand color is locked in PROJECT.md/CONTEXT.md; chosen for being flat/muted (not neon, not a gradient) and explicitly not purple, consistent with PROJECT.md's "no purple gradients" constraint. |
-| Secondary Accent | #B8863C (muted ochre/sand) | Within the same 10% accent envelope as above, not additive to it. See "Secondary accent reserved for" below. Added in this revision to widen the palette's range beyond a single accent color, per user request for more designer-considered color use. |
-| Destructive | #C0392B | Destructive actions and error states only |
+| Secondary (30%) | #F4ECDD (warm cream/beige) | Cards, input field fill, section backgrounds, bottom tab bar (once it exists in later phases) |
+| Accent / Ink (10% interactive budget, plus default text — see note below) | #1C1917 (warm near-black) | See "Accent/Ink reserved for" below |
+| Destructive | #9A3B32 (muted brick red) | Destructive actions and error states only |
+| Success | #416B4C (muted sage green) | Username-available status only, see Status colors below |
 
-Accent reserved for (explicit list, nothing else may use this color):
-- The single primary-path CTA button fill per screen (Continue on name/username/photo steps, Save changes on profile edit)
-- Selected/active state: the outline on a chosen sign-in method if re-shown, the focused text-input border/underline
-- Text links: "Forgot password?", "Log in instead" / "Sign up instead" toggle links
-- Onboarding step-progress indicator (the active step dot)
+This replaces revision 2/3's forest-green (`#2F5D50`) primary accent and ochre (`#B8863C`) secondary accent entirely, per explicit user rejection: "I want the theme to be in cream beige... or in black, but nothing too much of like a color pop." This revision has no saturated chromatic brand color at all — the warm near-black ink does the job green used to do (primary CTA fill, active states, links, progress indicator), and there is no longer a second accent hue; the "Secondary Accent" role from prior revisions is retired.
 
-Secondary accent reserved for (explicit list, nothing else may use this color):
-- The glyph color inside the two icon badges added in this revision (empty-bio icon on the profile view screen, verify-email waiting-state icon) — see "Visual Personality" below
-- That same icon badge's soft background tint, at 12% opacity of #B8863C over whatever surface it sits on — the only place in this phase a tint/opacity variant of a palette color is used
+**Accent/Ink reserved for** (explicit list; nothing else may use this color at full strength):
+- The single primary-path CTA button fill per screen (Continue on name/username/photo steps, Save changes on profile edit). Label text on this fill is `#FFFFFF` (white), not cream, chosen explicitly for maximum legibility against a near-black fill — this is the one place white is used as text rather than as a surface color.
+- Selected/active state, declared with both a color step and a width step so the state doesn't rely on hue alone: a chosen sign-in method's outline, and a focused text input's border, go from Ink at 15% opacity / 1dp width at rest to Ink at 100% opacity / 1.5dp width when active or focused.
+- Text links ("Forgot password?", "Log in instead" / "Sign up instead"): Ink at 100% **and underlined**, set in `WorkSans_600SemiBold`. The underline and weight are the affordance signal here, not color alone — in revision 3, link color (green) was already visually distinct from body-text color (an unspecified system default); in this revision, link color and default body-text color are the same hue, so without the underline and weight a link would be indistinguishable from a sentence around it.
+- The onboarding step-progress indicator: the active step dot is Ink at 100%; inactive step dots are Ink at 20% opacity, same size. Declared explicitly for both states because revision 3 only needed to name the active dot (green was the only accent-colored element in the row); here both states need a declared value since they're the same hue family.
 
-Color-separation note: #B8863C was chosen over an earlier terracotta/clay candidate specifically for hue distance from the destructive color. #C0392B (destructive) sits at roughly hue 6 degrees (red); #B8863C sits at roughly hue 36 degrees (ochre/gold) — about 30 degrees apart at similar saturation and lightness. A terracotta closer to hue 15-16 degrees would sit only ~10 degrees from destructive and risk reading as "the same color" at small icon sizes (e.g. a 20dp glyph), which would blur the "destructive = alarm" signal this palette otherwise protects carefully. Ochre also pairs conventionally with muted forest green as a warm-cool complement, without either color reading as louder or more saturated than the other.
+**Default text color** (exempt from the reserved-for list above, the same way body-copy color was implicit and unbudgeted in prior revisions): all body copy, headings, and labels default to Accent/Ink `#1C1917`. This dual duty — near-universal text color, and the sole interactive accent — is intentional and does not dilute the accent's signal value, because in this revision CTA/active-state prominence comes from solid-fill inversion (white text on an ink fill, versus ink text on a light surface), the `raised`/`card` elevation tokens, and the underline/weight/opacity/width steps declared above, not from hue exclusivity the way revision 3's green did. Nothing in this phase uses Ink at full strength purely as decoration; every full-strength use is either running text or one of the four bullets above.
 
-Status color (exempt from the 60/30/10 budget as a small inline utility signal, not a surface): success `#3A7D44` for the username-available check icon and label only. This mirrors the conventional exemption for small status icons/text and must not spread beyond that one use.
+**CTA fill states:** default/enabled = Ink `#1C1917` solid, label `#FFFFFF`. Disabled, or awaiting a blocked action (e.g. Continue while a username check is in flight) = Ink at 35% opacity as the fill (`rgba(28,25,23,0.35)`), label `#FFFFFF` at 70% opacity, paired with `subtle` elevation (see Elevation) instead of `raised`. A visibly faded near-black button, not a new hue, is what signals disabled here — declared explicitly because a muted near-black doesn't read as "obviously off" the way revision 3's muted green did without the paired elevation drop as a second signal.
 
-**Coordination with Phase 2 (daily-roll category wheel):** this phase's two identity colors (#2F5D50 forest green, #B8863C ochre/sand) are the app's anchor palette, not the whole story. The wheel is this app's other major color surface and needs its own broader categorical palette (N visually distinct wedge colors) — Phase 2 should not be limited to just these two colors. But PROJECT.md's wheel-specific constraint is explicit and binding here too: "flat/muted, typography-led, restrained-motion treatment — no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart icons on wedges." Read together, that means Phase 2's wedge colors should stay in the same muted, flat saturation-and-lightness family these two anchors establish (not diverge into neon or high-chroma territory), even though they don't have to literally reuse these two hexes. Treat this phase's palette as the tonal calibration reference for Phase 2's wheel-color research, not a hard color lock.
+**Status colors** (exempt from the 60/30/10 budget as small inline utility signals, not surfaces, the same exemption pattern used in prior revisions):
+- Success `#416B4C` for the username-available check icon and label only. Chosen deliberately darker/more saturated than a first-pass mint or sage, for contrast headroom carrying 14dp label text against both backgrounds it can appear on in this phase (`#FFFFFF` and the `#F4ECDD` secondary surface) — a lighter sage reads fine as a flat swatch but loses too much contrast margin at small text sizes.
+- Destructive `#9A3B32` for destructive actions and error states only, also verified with contrast headroom on both `#FFFFFF` and `#F4ECDD` since error text can appear on either background.
+
+Both status colors stay clearly muted/desaturated by design: they exist purely as functional usability signals, not as the "color pop" the user explicitly asked this revision to remove, and red vs. green sit far enough apart in hue that they can't be confused with each other or with the neutral Ink accent, which has no meaningful hue at all.
+
+**Coordination with Phase 2 (daily-roll category wheel):** this phase's anchor palette is now white (`#FFFFFF`), warm cream/beige (`#F4ECDD`), and warm near-black ink (`#1C1917`) — a near-monochrome system, not the two-hue identity pair revision 3's forest-green/ochre combination was. That changes the coordination note materially: Phase 2's wheel needs its own broader categorical palette (N visually distinct wedge colors) to be legible as a wheel at all, and a near-monochrome anchor palette cannot itself supply that variety — Phase 2 should not attempt to force wedges into black/cream/white. What carries forward is the register, not the hues: PROJECT.md's wheel-specific constraint is explicit and binding here too ("flat/muted, typography-led, restrained-motion treatment — no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart icons on wedges"), so Phase 2's wedge colors should land in the same quiet, non-neon, non-gradient saturation-and-lightness range this phase's palette establishes, even though the wedges themselves will need real chromatic variety this phase's palette does not have. Non-wedge wheel chrome (frame, pointer, typography, spin button) should draw directly from this phase's white/cream/ink palette for visual continuity with the rest of the app. Treat this phase's palette as the tonal calibration reference for Phase 2's wheel-color research, not a hard color lock.
+
+---
+
+## Why This Reads as Intentional, Not Generic
+
+Not in the base template; added because this revision's palette and typeface change specifically has to avoid one of the most recognizable "looks like every other AI-built app" patterns: warm cream background + serif display + terracotta/rust accent.
+
+- **No terracotta/rust accent.** This revision has no chromatic accent color at all — that removes the single most identifying piece of the cliché outright, since the cliché depends on that specific accent hue existing.
+- **Cream is not the dominant surface.** The cliché pattern makes the cream/beige tone the primary screen background. This revision inverts that: screens default to a crisp `#FFFFFF`, and the warm `#F4ECDD` cream is reserved for secondary surfaces only (cards, input fills) — the opposite allocation from the recognizable pattern, while still delivering a genuinely warm-neutral palette overall.
+- **`#1C1917` is chosen on its own terms, not as a stand-in for pure black.** Its channel values step down slightly from red to blue (R28 / G25 / B23), giving it a warm brown undertone instead of the cold, flat read of true `#000000` — a small calibration that only shows up in direct comparison, but is the difference between a considered ink and a default black.
+- **Domine is a screen-legibility serif, not a print-nostalgia one.** It was designed specifically for on-screen headline use rather than being a digitized book-typesetting face like the serifs (Playfair Display, Lora, Cormorant) that show up constantly in template and AI-generated marketing sites, and it is used here only for Heading/Display roles at restrained sizes (20/28), never as decorative display type and never as body copy.
+- **Work Sans pairs against Domine on purpose, not as a leftover system default.** A humanist grotesque with a warm, slightly irregular character (open apertures, two-story lowercase 'a') sits comfortably next to a screen-legible serif without either face fighting the other for attention, and it is functionally suited to the dense form UI where Domine is not used.
 
 ---
 
 ## Visual Personality (Empty & Status States)
 
-Not in the base template; added in this revision to close the "plain-text-only empty state" gap flagged after user review. The goal is a small, restrained amount of custom personality, not decoration for its own sake — and never emoji or stock/AI-slop imagery, per PROJECT.md.
+Not in the base template; added in revision 2 to close the "plain-text-only empty state" gap flagged after user review, and redesigned in this revision because its color treatment depended entirely on the now-retired secondary accent color. The goal remains a small, restrained amount of custom personality, not decoration for its own sake — and never emoji or stock/AI-slop imagery, per PROJECT.md.
 
 ### Icon badge component contract
 
-A small reusable pattern: a circular container (`avatar / icon badge` radius token, see Shape) at 40dp diameter, holding one 20dp `@expo/vector-icons` (Ionicons) glyph, with `card` elevation (see Elevation) so it reads as a small raised chip rather than a flat sticker. Used exactly twice in this phase:
+A small reusable pattern: a circular container (`avatar / icon badge` radius token, see Shape) at 40dp diameter, holding one 20dp `@expo/vector-icons` (Ionicons) glyph, with `card` elevation (see Elevation) so it reads as a small raised chip rather than a flat sticker, plus a 1dp solid border in Ink at 20% opacity. The border is a deliberate addition in this revision: without a second accent hue to tint the badge, contrast against its host surface comes from a modest fill-color step alone, and the border is a genuinely visible second signal layered on top rather than relying on that step by itself (a lighter, 12%-opacity hairline here reads as unjustified decoration rather than a real edge; 20% is closer to the minimum that reads as an intentional line on both platforms). Do not use `StyleSheet.hairlineWidth` for this border — on some Android pixel densities it can round down to a sub-pixel, effectively invisible line; use an explicit `1` (dp) instead. Used exactly twice in this phase:
 
-| Location | Icon | Glyph color | Badge fill |
-|----------|------|-------------|------------|
-| Profile view screen, empty-bio state | Ionicons `create-outline` (pencil line) | Secondary Accent #B8863C | Secondary Accent at 12% opacity, over the Secondary-surface (#F1EFEA) card |
-| Verify-email waiting screen | Ionicons `mail-outline` | Secondary Accent #B8863C | Secondary Accent at 12% opacity, over the Dominant (#FFFFFF) background |
+| Location | Icon | Glyph color | Badge fill | Badge border |
+|----------|------|-------------|------------|---------------|
+| Profile view screen, empty-bio state | Ionicons `create-outline` (pencil line) | Ink `#1C1917` | `#FFFFFF` (white), so the badge stands out from the Secondary-surface (`#F4ECDD`) card it sits on | 1dp solid Ink at 20% opacity |
+| Verify-email waiting screen | Ionicons `mail-outline` | Ink `#1C1917` | Secondary surface `#F4ECDD`, so the badge stands out from the Dominant (`#FFFFFF`) background it sits on | 1dp solid Ink at 20% opacity |
+
+Rule stated explicitly for the executor: badge fill is always the *other* neutral surface relative to whatever it's placed on (a white badge on a cream card; a cream badge on a white background) — never the same surface color as its immediate background, and never a low-opacity tint of Ink (a faint near-black wash over a light background reads as a gray smudge, not a chip, which is why this revision uses solid neutral fills plus a real border instead of the tinted-accent approach revision 2 used with ochre).
 
 This is deliberately small in scope: two icons across the whole phase, not an icon on every empty field or every screen. Explicitly NOT used for:
-- The avatar placeholder, which stays a plain person-silhouette icon directly on the Secondary surface with no badge/tint — it represents "no photo yet," a neutral absence, not an empty-state prompt inviting action
-- The username-availability check icon, which stays inline in its existing success-color treatment (see Interaction Contracts), no badge
+- The avatar placeholder, which stays a plain person-silhouette icon directly on the Secondary surface with no badge/border — rendered in Ink at 40% opacity (a soft neutral silhouette, not full-strength ink), since it represents "no photo yet," a neutral absence, not an empty-state prompt inviting action
+- The username-availability check icon, which stays inline in its existing Success-color treatment (see Interaction Contracts), no badge
 - Any decorative/hero illustration — out of scope; this phase uses only these two functional line icons, nothing purely ornamental
 
 ---
@@ -193,9 +212,9 @@ Not part of the base template; added because this phase's screens (onboarding se
 - On submit with unresolved errors, focus jumps to the first invalid field.
 
 ### Session-restore and font-load gate on launch
-- The root layout calls `SplashScreen.preventAutoHideAsync()` immediately, then in parallel: (a) loads `PlusJakartaSans_400Regular` and `PlusJakartaSans_600SemiBold` via `useFonts` from `expo-font`, and (b) reads SecureStore and calls `/auth/refresh`.
+- The root layout calls `SplashScreen.preventAutoHideAsync()` immediately, then in parallel: (a) loads `Domine_600SemiBold`, `WorkSans_400Regular`, and `WorkSans_600SemiBold` via `useFonts` from `expo-font`, and (b) reads SecureStore and calls `/auth/refresh`.
 - Hold the native splash screen (render nothing else, no spinner) until BOTH conditions have settled: the font hook has returned `true` OR its error branch has fired, AND the session-refresh call has resolved (success or failure). One combined gate, not two sequential holds, so there is exactly one splash-to-app transition rather than a double flash.
-- **Font-load failure branch (must be handled, not left to hang):** if `useFonts` returns an error, treat it the same as "loaded" for gating purposes, do not wait indefinitely for a font that will never arrive, fall back to the platform system font (San Francisco / Roboto) for that app session, and log the error for later investigation.
+- **Font-load failure branch (must be handled, not left to hang):** if `useFonts` returns an error, treat it the same as "loaded" for gating purposes, do not wait indefinitely for a font that will never arrive, fall back to the platform system font (San Francisco / Roboto) for that app session for all three roles (see Typography platform note for the collapsed-family behavior this produces), and log the error for later investigation.
 - Once both conditions are settled, call `SplashScreen.hideAsync()` and route directly to `(app)` or `(auth)`. Do not render either route's UI, and do not render text in a system-font fallback state, before this combined gate clears — this is what prevents both the "wrong screen" flash and an "unstyled/system-font" flash of text in one gate rather than requiring two.
 
 ### Photo step (D-06)
@@ -216,7 +235,7 @@ This list is a floor, not a ceiling: any other icon-only element introduced duri
 ## Registry Safety
 
 | Registry | Blocks Used | Safety Gate |
-|----------|-------------|-------------|
+|----------|-------------|--------------|
 | shadcn official | none | not applicable, React Native/Expo target uses no shadcn registry |
 | third-party | none | not applicable |
 
@@ -224,11 +243,11 @@ This list is a floor, not a ceiling: any other icon-only element introduced duri
 
 ## Checker Sign-Off
 
-- [x] Dimension 1 Copywriting: PASS
-- [x] Dimension 2 Visuals: PASS
-- [x] Dimension 3 Color: PASS
-- [x] Dimension 4 Typography: PASS
-- [x] Dimension 5 Spacing: PASS
-- [x] Dimension 6 Registry Safety: PASS
+- [ ] Dimension 1 Copywriting: pending
+- [ ] Dimension 2 Visuals: pending
+- [ ] Dimension 3 Color: pending
+- [ ] Dimension 4 Typography: pending
+- [ ] Dimension 5 Spacing: pending
+- [ ] Dimension 6 Registry Safety: pending
 
-**Approval:** approved 2026-09-15 (revision 3, all 6 dimensions PASS, no outstanding recommendations)
+**Approval:** awaiting gsd-ui-checker review of revision 4. Revision 3's approval (2026-09-15, all 6 dimensions PASS) applied to the forest-green/ochre palette and Plus Jakarta Sans typeface, both fully replaced in this revision, so that prior sign-off no longer covers the current contract.
