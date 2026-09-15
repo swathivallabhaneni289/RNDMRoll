@@ -2,7 +2,7 @@
 phase: 1
 slug: foundation-accounts
 status: draft
-reviewed_at: pending (revision 6; prior approval 2026-09-15 applied to revision 5)
+reviewed_at:
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -45,7 +45,7 @@ Declared values (must be multiples of 4, unitless React Native `dp`, not `px`):
 | 2xl | 48 | Major section breaks |
 | 3xl | 64 | Page-level spacing |
 
-Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase. The 40dp icon-badge diameter added in revision 2 (Visual Personality section) is a decorative element, not a tap target, so it is exempt from the 44dp minimum.
+Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase. The 40dp icon-badge diameter added in revision 2 (Visual Personality section) is a decorative element, not a tap target, so it is exempt from the 44dp minimum. The 2dp background-texture dot diameter added in revision 6 (Background Texture section) is likewise exempt: it is a hairline/sub-element value in the same register as the existing 1dp/1.5dp border widths declared in Color and Elevation, not an element dimension on the 4-multiple scale.
 
 ---
 
@@ -127,7 +127,7 @@ This replaces revision 4's warm near-monochrome palette (white / warm cream `#F4
 - Selected/active state, declared with both a color step and a width step so the state doesn't rely on hue alone: a chosen sign-in method's outline, and a focused text input's border, go from Ink at 15% opacity / 1dp width at rest to Ink at 100% opacity / 1.5dp width when active or focused.
 - Text links ("Forgot password?", "Log in instead" / "Sign up instead"): Ink at 100% **and underlined**, set in `WorkSans_600SemiBold`. The underline and weight are the affordance signal here, not color alone — link color and default body-text color are the same hue, so without the underline and weight a link would be indistinguishable from a sentence around it.
 - The onboarding step-progress indicator: the active step dot is Ink at 100%; inactive step dots are Ink at 20% opacity, same size. Both states need a declared value since they're the same hue family.
-- The Brand Mark's five pips (added revision 6, see "Brand Mark" below): Ink at 100%, no fill/badge/border treatment around them. This is a full-strength decorative-register use, the one exception to "every full-strength use is running text or an interactive-state signal" below — justified because it is the app's one deliberate logo element, used exactly once in this phase, not a recurring decorative motif.
+- The Brand Mark's five pips (added revision 6, see "Brand Mark" below): Ink at 100%, no fill/badge/border treatment around them. This is a full-strength decorative-register use, justified because it is the app's one deliberate logo element, used exactly once in this phase, not a recurring decorative motif.
 
 **Default text color** (exempt from the reserved-for list above, the same way body-copy color was implicit and unbudgeted in prior revisions): all body copy, headings, and labels default to Accent/Ink `#262626`. This dual duty — near-universal text color, and the sole interactive accent — is intentional and does not dilute the accent's signal value, because in this revision CTA/active-state prominence comes from solid-fill inversion (white text on an ink fill, versus ink text on a light surface), the `raised`/`card` elevation tokens, and the underline/weight/opacity/width steps declared above, not from hue exclusivity. Nothing in this phase uses Ink at full strength purely as decoration except the Brand Mark noted above; every other full-strength use is either running text or one of the five bullets above.
 
@@ -162,7 +162,7 @@ Revision 6 answers a third, distinct risk from the two above — and it is not a
 - **The Brand Mark is an ownable asset, not a generic glyph.** A five-pip quincunx built from bare dots, with no enclosing die or square outline, is recognizable as "dice" through composition alone rather than through a literal dice-emoji silhouette or a rounded-square app-icon frame — it ties directly to the product's actual concept (a randomizer literally named "Roll") instead of being interchangeable brand furniture that could belong to any app. Used exactly once in this phase, at a size (`64`) chosen to read with real logo presence rather than icon-badge scale, so it functions as the app's one deliberate identity moment instead of a repeated decorative motif.
 - **The background texture is calibrated to a visibility floor, not just an opacity minimum.** The token is declared with both a lower bound (must disappear in a screenshot thumbnail, so it never reads as "pattern") and an upper bound (must be genuinely perceptible on a real device at normal brightness, so it isn't present in name only) — and it's scoped to exactly one screen, with an explicit list of every surface it does not touch. A texture that's technically declared but invisible would leave the "plain" complaint unanswered; a texture applied everywhere would become the new decoration problem. Landing between those two failure modes, on one screen only, is the actual design decision here.
 - **The Display promotion is selective, which is what makes it read as a decision.** Two screens (the wordmark's identity moment, the verify-email screen's low-density breathing room) get the larger size already declared in the Typography table; every dense, form-carrying screen keeps Heading. Promoting every screen would have been the easier, lazier fix and would have erased the contrast that makes the two chosen moments feel deliberate.
-- **None of the three additions introduces a new color, a new opacity value outside the declared ladder, or a new type size/weight.** They are new *applications* of tokens revision 5 already locked (Ink at its existing or next-lowest opacity step, Display at its existing size), which is what keeps this revision additive rather than a reopening of the palette decision the user twice already confirmed.
+- **None of the three additions introduces a new hue or a new type size/weight.** The one new value this revision adds, the texture's 8% Ink opacity, is declared as an explicit new rung of the existing opacity ladder (see Background Texture) rather than a floating one-off; everything else is a new *application* of a token revision 5 already locked (Ink at an existing opacity step, Display at its existing size). That is what keeps this revision additive rather than a reopening of the palette decision the user twice already confirmed.
 
 ---
 
@@ -227,7 +227,7 @@ Not in the base template; added in revision 6 alongside the Brand Mark, for the 
 - Grid spacing: 16dp between dot centers, both axes (reuses the `md` spacing token for its rhythm rather than an arbitrary new number).
 - Coverage: full-bleed behind all content, lowest z-index layer, static — no parallax, no animation, no scroll-linked movement (an animated background texture would trip PROJECT.md's "no over-the-top scroll animations" constraint).
 
-At 2dp dots, 8% opacity, and a 16dp grid, this reads as a faint but genuine dot-grid field on a real device at normal screen brightness — denser and more visible than a first-draft pass at 1dp/4%/32dp, which tested as isolated, barely-perceptible specks rather than a field. It should still disappear in a quick screenshot thumbnail; that dual bar (visible up close on-device, invisible at a glance) is what keeps it reading as "texture," not "pattern."
+At 2dp dots, 8% opacity, and a 16dp grid, this is specified to read as a faint but genuine dot-grid field on a real device at normal screen brightness — denser and more opaque than a first-draft pass at 1dp/4%/32dp, which would read as isolated, barely-perceptible specks rather than a field, which is why this revision specifies these denser, more opaque values instead. It should still disappear in a quick screenshot thumbnail; that dual bar (visible up close on-device, invisible at a glance) is what keeps it reading as "texture," not "pattern." Executor should spot-check both bounds on a real device before shipping, not rely on the specified values alone.
 
 ### Implementation
 Same vector approach as the Brand Mark, not a raster/PNG tile: a `<BackgroundDotGrid>` component in `components/brand/`, rendering a `react-native-svg` `<Pattern>` of 2dp `<Circle>` elements tiled via a `<Rect fill="url(#dotGrid)">` sized to the screen's full dimensions. Renders once per screen mount, not recalculated on every re-render.
@@ -251,7 +251,7 @@ No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" const
 
 | Element | Copy |
 |---------|------|
-| Wordmark - choose-method screen (Display role, revision 6, paired with Brand Mark) | "RNDMRoll" — per PROJECT.md, this is a working title and the final consumer-facing name is still TBD; bind it to a single string prop on the wordmark component rather than hard-coding it in multiple places, so a future name change is a one-line swap, not a design change |
+| Wordmark - choose-method screen (Display role, revision 6, paired with Brand Mark) | "RNDMRoll". Per PROJECT.md, this is a working title and the final consumer-facing name is still TBD. Bind it to a single string prop on the wordmark component rather than hard-coding it in multiple places, so a future name change is a one-line swap, not a design change. |
 | Heading - verify-email waiting screen (Display role, revision 6) | "Check your email" |
 | Primary CTA - choose-method screen | Three method buttons, no generic "Continue": "Continue with Email", "Continue with Apple" (iOS only), "Continue with Google" |
 | Primary CTA - name step | "Continue to username" |
