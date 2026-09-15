@@ -1,14 +1,14 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: approved
-reviewed_at: 2026-09-15
+status: draft
+reviewed_at: pending (revision 6; prior approval 2026-09-15 applied to revision 5)
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
 revised: 2026-09-15
-revision: 5
-revision_reason: "Revision 5 retires revision 4's warm near-monochrome palette (white / warm cream #F4ECDD / warm near-black #1C1917) in favor of a strictly grayscale structural palette, per explicit user direction after reviewing the revision 4 sample: 'keep it all black and white. Like, you know how Instagram does? With, like, stuff. Just keep it that way.' Every structural color (backgrounds, cards/inputs, buttons, default text, borders) is now a true neutral (R=G=B, zero hue bias): dominant #FFFFFF unchanged, secondary surface changed from warm cream #F4ECDD to true neutral light gray #F0F0F0, and the accent/ink changed from warm near-black #1C1917 to true neutral near-black #262626 (R=G=B, no warm channel skew), used the same way as before (primary CTA fill, links, active states, default text). Two new neutral utility tokens are added, both absent from revision 4: a muted-text gray (#6B6B6B, chosen and contrast-checked to clear 4.5:1 against both #FFFFFF and #F0F0F0) for secondary/helper text, and a divider/border gray (#DBDBDB, a decorative hairline value not held to text-contrast ratios) now also applied as an explicit 1dp border on static secondary-surface cards/chips, since a bare ~6% lightness step between #FFFFFF and #F0F0F0 no longer has cream's hue shift doing extra separation work. Destructive (#9A3B32) and Success (#416B4C) are unchanged and remain the only non-neutral colors in the phase, per explicit requirement to keep them as the same small, muted functional signals Instagram's own black-and-white chrome still carries for equivalent states (e.g. its username-availability checkmark) — contrast re-verified for both against the new #F0F0F0 secondary surface (Success 6.12:1 on white / 5.37:1 on #F0F0F0; Destructive 6.89:1 on white / 6.05:1 on #F0F0F0), both comfortably clearing 4.5:1. Every section that referenced the retired hex values or the warm-cream/warm-black rationale is updated: the Color table and reserved-for lists, the Elevation shadow-color rationale paragraph, the icon-badge fill/border rule in Visual Personality, the 'Why This Reads as Intentional, Not Generic' section (rewritten to defend the new true-grayscale choice by name-checking Instagram's own chrome as the deliberate real-world reference point the user named, rather than reusing revision 4's now-irrelevant cream/terracotta-cliché argument), and the Phase 2 wheel-color coordination note. Typography (Domine + Work Sans), spacing scale, radius rule, Copywriting Contract, Interaction Contracts, and Registry Safety are unchanged from revision 4 and carried forward verbatim — none of them reference a specific hex value, only roles ('Ink', 'destructive color', 'success color'), so the palette swap does not touch them. Checker Sign-Off reset to pending; this is a substantive palette change, not a typo-level fix."
+revision: 6
+revision_reason: "Revision 6 responds to user feedback on the revision 5 visual sample: 'really plain I think we should add some something.' This is explicitly not a color request (the strict grayscale palette from revision 5 is unchanged and remains locked, per the objective framing this revision was scoped against) — it is a craft/personality gap. Three additions close that gap, all built from what the palette already declares (Ink at existing or new declared opacity steps, Domine at its already-declared Display size), with zero new hex values: (1) a new 'Brand Mark' section specifying a custom five-pip dice-face mark (quincunx layout, no enclosing die/square outline, 40dp default viewBox, geometry redrawn to land on multiples of 4 per the locked spacing rule: 8dp pips, centers at (8,8)/(32,8)/(8,32)/(32,32)/(20,20)), implemented as a `react-native-svg` component (not raster, not emoji), used once in this phase on the choose-method screen at a larger 64dp render size paired with the wordmark, plus a version-unpinned dependency note following the same `checkpoint:human-verify` pattern as the font packages; (2) a new 'Background Texture' section specifying a `texture.dotGrid` token (2dp Ink dots at 8% opacity on a 16dp grid, the `md` spacing token) applied to exactly one screen (choose-method background only) with an explicit NOT-applied list covering every other screen and every card/input/button surface, sized denser than the first draft of this revision specifically so it reads as a real field on-device rather than isolated invisible specks; (3) a 'Display Role Application' subsection under Typography (prose only, the Typography table itself is untouched) promoting exactly two moments from Heading to the already-declared Display size — the choose-method wordmark and the verify-email screen heading — while explicitly holding every other screen at Heading, with the reasoning stated that promoting everything would flatten the effect. Three locked-content consistency fixes ride along with these additions, required because the new mark and texture are new full-strength and new low-opacity uses of the same Ink color the Color table already declares: the 'Accent/Ink reserved for' bullet list (below the table, not the table itself) gains a fifth bullet for the brand mark's 100%-opacity pips, its closing sentence updated from 'four bullets' to 'five'; the 8% texture opacity is declared explicitly as the new lowest rung of Ink's existing opacity ladder (8% / 15% / 20% / 35% / 40% / 100%) rather than a floating value; and the Elevation section's negative-scope list is extended to name the brand mark and the texture layer as elevation-exempt, since the icon badge's card-elevation precedent could otherwise mislead the executor into shadowing the mark. The Copywriting Contract gains two rows the Display promotion depends on: the verify-email screen's heading copy ('Check your email'), and the wordmark string itself, flagged as a swappable component prop bound to PROJECT.md's 'RNDMRoll is a working title, final name TBD' note rather than hard-coded copy. The 'Why This Reads as Intentional, Not Generic' section gains a new intro sentence naming this revision's distinct trigger (plainness, not color) plus three new bullets defending each addition against reading as decoration-for-its-own-sake. Focal Points gains one clause confirming the mark/wordmark/texture sit compositionally above the CTA group without outweighing it as the screen's primary focal point (no elevation, no fill/badge treatment on the mark or texture, versus the CTA's raised elevation and solid Ink fill). Color table, Typography table, and Spacing scale are otherwise byte-for-byte unchanged from revision 5. Checker Sign-Off reset to pending."
 ---
 
 # Phase 1 - UI Design Contract
@@ -77,6 +77,15 @@ Exactly three font files are loaded application-wide: `Domine_600SemiBold` (Head
 
 Platform note (replaces v1's system-font Roboto/San Francisco note, which no longer applies): set `fontFamily` directly per role in the tokens module, and do NOT also set a numeric `fontWeight` alongside a custom-loaded `fontFamily` — on Android, React Native's font matcher does not reliably combine a custom family with a separate `fontWeight` override and can silently fall back to that family's default weight, producing a Body-weight Heading with no visible error. Because this revision loads three distinct named font files (`Domine_600SemiBold`, `WorkSans_400Regular`, `WorkSans_600SemiBold`), there is no cross-platform weight-mapping branch to maintain: each role points at one exact font file on both iOS and Android. If a font fails to load (see "Session-restore and font-load gate" in Interaction Contracts), the fallback is the platform system font at the equivalent numeric weight (400/600) via `fontWeight`, applied only in that fallback branch, never mixed with a custom family — in that fallback branch, both the Domine and Work Sans roles collapse onto the same single system font, so the Heading/Display vs. Body/Label distinction is carried by size alone for the remainder of that app session rather than by two different type families. This is an accepted, expected degradation, not a bug to chase at runtime; restoring the two-family look simply requires a successful font load on the next app launch.
 
+### Display Role Application (revision 6)
+
+Revision 5 declared the Display role (28/600 Domine) but every screen in this phase defaulted to Heading (20/600 Domine) in practice, leaving Display effectively unused — a second symptom of the same "really plain" feedback that prompted this revision: a declared-but-unused type step contributes no visual presence. This revision makes exactly two deliberate promotions from Heading to Display, using the sizes already in the table above (no new size or weight is added):
+
+- **Choose-method screen wordmark:** "RNDMRoll" (see Copywriting Contract for the exact string and its working-title status) is set in Display, positioned directly beneath the Brand Mark (see "Brand Mark" below) — together they are this phase's one logo-lockup moment, and the wordmark's role there is identity, not information density.
+- **Verify-email waiting screen heading:** "Check your email" (see Copywriting Contract) promotes from Heading to Display. This screen carries the lowest content density in the phase (one icon badge, one paragraph, one text button, no form fields), so a larger headline has room to breathe without crowding anything else on screen.
+
+Both promoted headings share the same 28/600 Domine values from the table; they are distinguished from each other by role (brand identity vs. screen headline), not by size. Everywhere else stays at Heading (20/600 Domine), unchanged from revision 5: the name/username/photo onboarding step headings, and the profile view/edit screen headings. This exclusion is deliberate, not an oversight — these are dense, form-carrying screens where a larger headline would compete with inputs and validation copy for attention, and promoting every screen's heading to Display would flatten the effect entirely: if every screen has a Display-sized moment, none of them reads as one. Two chosen uses out of roughly seven screens in this phase is what keeps Display feeling like emphasis rather than a uniform size bump.
+
 ---
 
 ## Elevation (Shadow System)
@@ -94,6 +103,8 @@ This revision removes revision 3's shadow-tint special case: `raised` previously
 Platform note: Android's `elevation` only renders a visible shadow on a `View` that has an explicit opaque `backgroundColor`. Set the fill color on the exact element carrying the elevation token — do not apply `elevation` to a transparent wrapper and expect a shadow to appear around its (differently-colored) child.
 
 Negative scope, stated explicitly so the executor doesn't over-apply: no elevation/shadow on avatars, text inputs, or plain-text buttons ("Skip for now", "Resend email", "Forgot password?", the method-toggle links). Three tokens used on a small, named set of surfaces is what keeps this reading as "quiet depth" rather than decoration sprinkled everywhere.
+
+Also no elevation/shadow on the Brand Mark or on the Background Texture layer (both added in revision 6, see those sections below) — stated explicitly because the icon badge's `card`-elevation precedent could otherwise lead the executor to shadow the mark by analogy. The mark is a flat vector glyph directly on its host surface, the same way default text has no shadow; the texture is a background-layer fill, one z-index below everything else on screen, and giving a background layer a shadow is not a meaningful operation regardless.
 
 ---
 
@@ -116,8 +127,9 @@ This replaces revision 4's warm near-monochrome palette (white / warm cream `#F4
 - Selected/active state, declared with both a color step and a width step so the state doesn't rely on hue alone: a chosen sign-in method's outline, and a focused text input's border, go from Ink at 15% opacity / 1dp width at rest to Ink at 100% opacity / 1.5dp width when active or focused.
 - Text links ("Forgot password?", "Log in instead" / "Sign up instead"): Ink at 100% **and underlined**, set in `WorkSans_600SemiBold`. The underline and weight are the affordance signal here, not color alone — link color and default body-text color are the same hue, so without the underline and weight a link would be indistinguishable from a sentence around it.
 - The onboarding step-progress indicator: the active step dot is Ink at 100%; inactive step dots are Ink at 20% opacity, same size. Both states need a declared value since they're the same hue family.
+- The Brand Mark's five pips (added revision 6, see "Brand Mark" below): Ink at 100%, no fill/badge/border treatment around them. This is a full-strength decorative-register use, the one exception to "every full-strength use is running text or an interactive-state signal" below — justified because it is the app's one deliberate logo element, used exactly once in this phase, not a recurring decorative motif.
 
-**Default text color** (exempt from the reserved-for list above, the same way body-copy color was implicit and unbudgeted in prior revisions): all body copy, headings, and labels default to Accent/Ink `#262626`. This dual duty — near-universal text color, and the sole interactive accent — is intentional and does not dilute the accent's signal value, because in this revision CTA/active-state prominence comes from solid-fill inversion (white text on an ink fill, versus ink text on a light surface), the `raised`/`card` elevation tokens, and the underline/weight/opacity/width steps declared above, not from hue exclusivity. Nothing in this phase uses Ink at full strength purely as decoration; every full-strength use is either running text or one of the four bullets above.
+**Default text color** (exempt from the reserved-for list above, the same way body-copy color was implicit and unbudgeted in prior revisions): all body copy, headings, and labels default to Accent/Ink `#262626`. This dual duty — near-universal text color, and the sole interactive accent — is intentional and does not dilute the accent's signal value, because in this revision CTA/active-state prominence comes from solid-fill inversion (white text on an ink fill, versus ink text on a light surface), the `raised`/`card` elevation tokens, and the underline/weight/opacity/width steps declared above, not from hue exclusivity. Nothing in this phase uses Ink at full strength purely as decoration except the Brand Mark noted above; every other full-strength use is either running text or one of the five bullets above.
 
 **Muted text** (new in this revision): `#6B6B6B`, reserved for secondary/helper copy that is deliberately de-emphasized relative to default body text — e.g. timestamps, de-emphasized captions, and any helper text that is not an active validation error (validation errors stay Destructive, per Interaction Contracts). Contrast-checked at 4.5:1+ against both surfaces it can appear on: 5.33:1 on `#FFFFFF`, 4.68:1 on the `#F0F0F0` secondary surface — both clear the standard body-text minimum, unlike Instagram's own literal `#8E8E8E` muted gray (~3.3:1 on white), which this spec deliberately does not copy verbatim for that reason.
 
@@ -145,6 +157,13 @@ Not in the base template; added because this revision faces a different risk tha
 - **Typography now carries more of the identity than color does, on purpose.** With zero brand hue anywhere in the palette, Domine's serif presence at Heading/Display sizes becomes this app's single strongest visual signature rather than one ingredient among several — a stronger position than pairing it with a color accent would have been, since it can't be confused with the far larger set of black-and-white app UIs that skip a deliberate type pairing entirely. Domine remains a screen-legibility serif (designed for on-screen headline use, not a digitized book-typesetting face like Playfair Display, Lora, or Cormorant) used only for Heading/Display at restrained sizes (20/28), never as decorative display type and never as body copy; Work Sans continues to pair against it on purpose, with enough real character (open apertures, two-story lowercase 'a') to avoid reading as a generic default. Neither face changed in this revision.
 - **Destructive and Success are retained, unchanged, as the deliberate exception, not a loophole.** Keeping two small, muted, non-neutral colors reserved for functional status signals mirrors the exact thing Instagram's own black-and-white chrome still does (e.g. a colored checkmark during its own username validation) — proof this palette was never meant to mean "literally zero color," and proof this revision didn't quietly reintroduce a color pop by expanding their scope beyond what revision 4 already had.
 
+Revision 6 answers a third, distinct risk from the two above — and it is not a color risk. The user's feedback on the revision 5 sample was explicitly about flatness ("really plain... add some something"), not a request to reopen the grayscale decision, so the three additions below are deliberately built entirely from what the palette and type system already declare, with zero new hex values:
+
+- **The Brand Mark is an ownable asset, not a generic glyph.** A five-pip quincunx built from bare dots, with no enclosing die or square outline, is recognizable as "dice" through composition alone rather than through a literal dice-emoji silhouette or a rounded-square app-icon frame — it ties directly to the product's actual concept (a randomizer literally named "Roll") instead of being interchangeable brand furniture that could belong to any app. Used exactly once in this phase, at a size (`64`) chosen to read with real logo presence rather than icon-badge scale, so it functions as the app's one deliberate identity moment instead of a repeated decorative motif.
+- **The background texture is calibrated to a visibility floor, not just an opacity minimum.** The token is declared with both a lower bound (must disappear in a screenshot thumbnail, so it never reads as "pattern") and an upper bound (must be genuinely perceptible on a real device at normal brightness, so it isn't present in name only) — and it's scoped to exactly one screen, with an explicit list of every surface it does not touch. A texture that's technically declared but invisible would leave the "plain" complaint unanswered; a texture applied everywhere would become the new decoration problem. Landing between those two failure modes, on one screen only, is the actual design decision here.
+- **The Display promotion is selective, which is what makes it read as a decision.** Two screens (the wordmark's identity moment, the verify-email screen's low-density breathing room) get the larger size already declared in the Typography table; every dense, form-carrying screen keeps Heading. Promoting every screen would have been the easier, lazier fix and would have erased the contrast that makes the two chosen moments feel deliberate.
+- **None of the three additions introduces a new color, a new opacity value outside the declared ladder, or a new type size/weight.** They are new *applications* of tokens revision 5 already locked (Ink at its existing or next-lowest opacity step, Display at its existing size), which is what keeps this revision additive rather than a reopening of the palette decision the user twice already confirmed.
+
 ---
 
 ## Visual Personality (Empty & Status States)
@@ -169,12 +188,71 @@ This is deliberately small in scope: two icons across the whole phase, not an ic
 
 ---
 
+## Brand Mark
+
+Not in the base template; added in revision 6 in direct response to user feedback on the revision 5 visual sample ("really plain I think we should add some something"). The app's own concept — RNDMRoll, a randomizer — has a literal, ownable visual vocabulary (dice pips) that a wordmark-only treatment was leaving unused. This is a small, custom, monochrome mark built entirely from the locked Ink color; it does not touch the grayscale palette and is not a generic app-icon-generator glyph or a dice emoji.
+
+### Composition
+A single geometric mark built from five solid circular pips (dots) arranged in the classic die-face-five quincunx layout (one pip in each corner, one centered) — no enclosing square or die outline. Dropping the outline is deliberate: a full die-face-in-a-square reads as a literal dice emoji or a stock icon-generator glyph, while five bare pips in this specific arrangement is recognizable as "dice" through the dot pattern alone, which is what keeps it reading as a considered mark rather than a stock icon.
+
+### Geometry
+Specified on a 40 x 40 viewBox (all values multiples of 4, per the locked Spacing Scale):
+- Each pip: 8dp diameter solid circle.
+- Corner pip centers: (8,8), (32,8), (8,32), (32,32) — 4dp margin from each pip's outer edge to the viewBox edge.
+- Center pip: centered at (20,20).
+- Color: Ink `#262626` pips at 100% opacity (see the "Accent/Ink reserved for" bullet list in Color, above), fully transparent background — no fill, no border, no badge treatment. It sits directly on whatever surface hosts it, the same "no decoration for its own sake" discipline that governs the icon badges.
+
+This is a fixed, hand-specified layout, not an auto-generated grid, so it stays crisp at the sizes it's used at in this phase.
+
+### Implementation
+A custom vector component, not a raster asset and not an emoji character: `components/brand/BrandMark.tsx`, rendering five `<Circle>` elements inside a single `<Svg viewBox="0 0 40 40">` via `react-native-svg`. Add as a new dependency with `npx expo install react-native-svg` (resolves the SDK-57-compatible version automatically; do not hand-pin a version string). Same `checkpoint:human-verify` pattern as the font packages applies before installing: confirm the resolved package is the official `react-native-svg` (maintained under the `software-mansion` org) before it lands in `package.json`. The component takes a `size` prop (default 40, scales the whole viewBox proportionally) and a `color` prop (default Ink `#262626`), so the same component can theme-shift later without a new asset — relevant if a future dark/cinematic-theme phase (see PROJECT.md's moodboard reference) needs the mark rendered white-on-dark.
+
+### Placement in Phase 1
+Used in exactly one place this phase: the choose-method (entry) screen, centered above the three sign-in method buttons, rendered at `size={64}` (larger than the 40 default, so it reads with real presence rather than icon-badge scale) directly above the wordmark "RNDMRoll" set in Display type (see "Display Role Application" in Typography, above, and the Copywriting Contract entry for the exact string). Together this is the one explicit logo-lockup moment in the app.
+
+Not used anywhere else in Phase 1 — not on the verify-email, name, username, photo, or profile screens. A mark that appeared on every screen would stop reading as a considered brand moment and start reading as a persistent decorative watermark, the same restraint already established for the icon-badge pattern (used exactly twice, not everywhere).
+
+This is consistent with, and sets up, the launch/splash pattern already flagged as a future reference in PROJECT.md's moodboard note ("centered app-mark icon... e.g. dice dots + wordmark") — that splash screen is out of scope for Phase 1, but this component is built so it can be reused there without a redesign.
+
+---
+
+## Background Texture
+
+Not in the base template; added in revision 6 alongside the Brand Mark, for the same user-flagged reason ("really plain... add some something") — a large flat `#FFFFFF` background with nothing above the fold (the choose-method screen, before any card or input breaks it up) was the specific surface that read as sterile. This stays a restrained structural texture, not a decorative pattern, and is deliberately used on exactly one screen.
+
+### Token
+`texture.dotGrid`:
+- Dot diameter: 2dp, solid circle.
+- Dot color: Ink `#262626` at 8% opacity (`rgba(38,38,38,0.08)`). This is the new lowest rung of Ink's existing opacity ladder used elsewhere in this phase (8% here, versus 15% rest-state borders on the chosen-method outline/focused input, 20% badge borders and inactive step dots, 35% disabled-CTA fill, 40% avatar silhouette, 100% text/links/active states/brand mark) — declared explicitly here so this new value sits inside the established opacity system rather than floating outside it.
+- Grid spacing: 16dp between dot centers, both axes (reuses the `md` spacing token for its rhythm rather than an arbitrary new number).
+- Coverage: full-bleed behind all content, lowest z-index layer, static — no parallax, no animation, no scroll-linked movement (an animated background texture would trip PROJECT.md's "no over-the-top scroll animations" constraint).
+
+At 2dp dots, 8% opacity, and a 16dp grid, this reads as a faint but genuine dot-grid field on a real device at normal screen brightness — denser and more visible than a first-draft pass at 1dp/4%/32dp, which tested as isolated, barely-perceptible specks rather than a field. It should still disappear in a quick screenshot thumbnail; that dual bar (visible up close on-device, invisible at a glance) is what keeps it reading as "texture," not "pattern."
+
+### Implementation
+Same vector approach as the Brand Mark, not a raster/PNG tile: a `<BackgroundDotGrid>` component in `components/brand/`, rendering a `react-native-svg` `<Pattern>` of 2dp `<Circle>` elements tiled via a `<Rect fill="url(#dotGrid)">` sized to the screen's full dimensions. Renders once per screen mount, not recalculated on every re-render.
+
+### Where it applies
+Exactly one screen in Phase 1: the choose-method (entry) screen background only.
+
+Explicitly NOT applied to:
+- Any of the onboarding form steps (name, username, photo) — these are dense with text inputs and validation states; a textured background behind form fields competes with legibility rather than adding ambience.
+- The verify-email waiting screen — low-density but text-critical (the user must read and act on the instructions here); kept flat for the same legibility reasoning.
+- The profile view/edit screens — these already carry visual weight from the avatar, elevation-carrying cards, and (on the view screen) the icon badge; layering a background texture under an already-textured composition would start compounding into decoration for its own sake, exactly what PROJECT.md's standing "no over-the-top" constraint warns against.
+- Any card, input, or button surface — the texture is a background-layer-only treatment, never applied on top of or behind interactive/text-bearing components, the same rule the icon-badge border follows for staying structural rather than ornamental.
+
+This keeps the texture rare (one screen out of roughly seven in this phase) by the same discipline already established for the icon-badge pattern (exactly two uses, not applied broadly) — restraint under the "no over-the-top" constraint is the load-bearing design decision here, not the texture itself.
+
+---
+
 ## Copywriting Contract
 
 No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" constraint.
 
 | Element | Copy |
 |---------|------|
+| Wordmark - choose-method screen (Display role, revision 6, paired with Brand Mark) | "RNDMRoll" — per PROJECT.md, this is a working title and the final consumer-facing name is still TBD; bind it to a single string prop on the wordmark component rather than hard-coding it in multiple places, so a future name change is a one-line swap, not a design change |
+| Heading - verify-email waiting screen (Display role, revision 6) | "Check your email" |
 | Primary CTA - choose-method screen | Three method buttons, no generic "Continue": "Continue with Email", "Continue with Apple" (iOS only), "Continue with Google" |
 | Primary CTA - name step | "Continue to username" |
 | Primary CTA - username step | "Continue to photo" |
@@ -249,15 +327,17 @@ This list is a floor, not a ceiling: any other icon-only element introduced duri
 
 ## Checker Sign-Off
 
-- [x] Dimension 1 Copywriting: PASS
-- [x] Dimension 2 Visuals: PASS
-- [x] Dimension 3 Color: PASS
-- [x] Dimension 4 Typography: PASS
-- [x] Dimension 5 Spacing: PASS
-- [x] Dimension 6 Registry Safety: PASS
+- [ ] Dimension 1 Copywriting: pending
+- [ ] Dimension 2 Visuals: pending
+- [ ] Dimension 3 Color: pending
+- [ ] Dimension 4 Typography: pending
+- [ ] Dimension 5 Spacing: pending
+- [ ] Dimension 6 Registry Safety: pending
 
-**Approval:** approved 2026-09-15 (revision 5, strict grayscale palette, all 6 dimensions PASS, no recommendations)
+**Approval:** pending re-verification for revision 6 (adds Brand Mark, Background Texture, and Display Role Application; grayscale palette from revision 5 unchanged). Prior approval (revision 5, 2026-09-15, all 6 dimensions PASS) applied to the pre-revision-6 contract only.
 
 ### Focal Points (carried forward from revision 4 checker recommendation, re-confirm on this revision)
 
 Stated explicitly so the executor doesn't have to infer hierarchy from the Elevation/Color sections alone: the primary CTA (`raised` elevation, Ink fill, white label) is the focal point on every onboarding step (choose-method, name, username, photo). On the profile view screen, the avatar + name/username pairing is the focal point, with the empty-bio icon badge as a clearly secondary element beneath it.
+
+**Revision 6 addition:** on the choose-method screen specifically, the Brand Mark + wordmark lockup and the background texture (both new this revision, see their sections above) sit compositionally above the three method buttons but must not outweigh them as the screen's focal point. This is enforced by the same token choices used throughout the rest of this spec to signal primary vs. secondary weight: the mark and wordmark carry no elevation and no fill/badge container (flat Ink pips and Display text directly on the background), and the texture is a static, lowest-z-index background layer at 8% opacity — versus the CTA group's `raised` elevation and solid 100%-opacity Ink fill. The identity/atmosphere elements are present and give the screen presence; the CTA group remains the heaviest single element on screen and the thing the user is meant to act on.
