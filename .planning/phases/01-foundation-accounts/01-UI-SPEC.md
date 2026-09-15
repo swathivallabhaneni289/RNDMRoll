@@ -6,8 +6,8 @@ shadcn_initialized: false
 preset: none
 created: 2026-09-15
 revised: 2026-09-15
-revision: 2
-revision_reason: Added a custom typeface, an elevation/shadow system, a second accent color, and an empty-state icon treatment after user review flagged the v1 contract as too flat/minimal ("vibe coded"). All PROJECT.md banned-pattern compliance from v1 is preserved unchanged.
+revision: 3
+revision_reason: "Revision 3 fixes issues raised by gsd-ui-checker on revision 2: replaced the generic 'Cancel' destructive-confirmation button label (banned by Dimension 1) with 'Stay logged in'; tightened the three onboarding 'Continue' CTAs to step-specific labels; added an explicit accessibilityLabel requirement for icon-only controls. Revision 2's typeface, elevation system, second accent color, and empty-state icon treatment are unchanged."
 ---
 
 # Phase 1 - UI Design Contract
@@ -150,10 +150,10 @@ No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" const
 | Element | Copy |
 |---------|------|
 | Primary CTA - choose-method screen | Three method buttons, no generic "Continue": "Continue with Email", "Continue with Apple" (iOS only), "Continue with Google" |
-| Primary CTA - name step | "Continue" |
-| Primary CTA - username step | "Continue" |
-| Primary CTA - photo step (required weight) | "Continue" |
-| Secondary CTA - photo step (skippable, D-06) | "Skip for now", rendered as a plain text button (no fill, no border) so it never competes visually with "Continue" |
+| Primary CTA - name step | "Continue to username" |
+| Primary CTA - username step | "Continue to photo" |
+| Primary CTA - photo step (required weight) | "Finish setup" |
+| Secondary CTA - photo step (skippable, D-06) | "Skip for now", rendered as a plain text button (no fill, no border) so it never competes visually with "Finish setup" |
 | Primary CTA - profile edit | "Save changes" |
 | Empty state (profile VIEW screen, bio absent) - heading | "Add a bio" |
 | Empty state (profile VIEW screen, bio absent) - body | "Tell people what you're rolling for." Shown next to the icon-badge treatment described in Visual Personality above; tapping the whole empty-state row navigates to profile edit. |
@@ -161,7 +161,7 @@ No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" const
 | Error state - duplicate email | "That email's already registered. Log in instead." |
 | Error state - username taken (live check or insert-time conflict, see RESEARCH.md Pitfall 4) | "That username's taken. Try one of these:" followed by up to 3 tappable alternates |
 | Error state - network failure | "Couldn't connect. Check your connection and try again." |
-| Destructive confirmation - log out | "Log out of RNDMRoll? You'll need to sign back in to keep your streak going." Buttons: "Log out" / "Cancel" |
+| Destructive confirmation - log out | "Log out of RNDMRoll? You'll need to sign back in to keep your streak going." Buttons: "Log out" / "Stay logged in" |
 
 ---
 
@@ -198,7 +198,17 @@ Not part of the base template; added because this phase's screens (onboarding se
 - Once both conditions are settled, call `SplashScreen.hideAsync()` and route directly to `(app)` or `(auth)`. Do not render either route's UI, and do not render text in a system-font fallback state, before this combined gate clears — this is what prevents both the "wrong screen" flash and an "unstyled/system-font" flash of text in one gate rather than requiring two.
 
 ### Photo step (D-06)
-- "Continue" (accent-filled, primary weight, `raised` elevation) is visually dominant; "Skip for now" (plain text, secondary weight, no elevation) sits below it. Skipping must never read as an error path or a discouraged choice, matching real Instagram behavior.
+- "Finish setup" (accent-filled, primary weight, `raised` elevation) is visually dominant; "Skip for now" (plain text, secondary weight, no elevation) sits below it. Skipping must never read as an error path or a discouraged choice, matching real Instagram behavior.
+
+### Accessibility: icon-only controls
+Every icon-only control (no visible text label) in this phase must carry an explicit `accessibilityLabel` so screen-reader users get a text equivalent the sighted layout doesn't otherwise provide. This applies at minimum to:
+- The back button (wherever `expo-router`'s back navigation is rendered as a bare chevron/arrow icon): `accessibilityLabel="Go back"`
+- The close button (dismissing the log-out confirmation sheet, or any modal/sheet in this phase): `accessibilityLabel="Close"`
+- The "Resend email" tap target on the verify-email screen, since it carries a live countdown state: `accessibilityLabel="Resend verification email"` while enabled, and `accessibilityLabel="Resend available in {n} seconds"` (updated each second) while the cooldown is active, so the disabled/counting state is announced, not just visually shown
+- The username-availability status icon (the success-color check icon in the Username step state machine above), since its meaning is carried entirely by color and shape: `accessibilityLabel="Username available"` / `accessibilityLabel="Username taken"` matching its current state
+- The avatar placeholder / photo-picker control on the photo step, since it is icon-only until a photo is chosen: `accessibilityLabel="Add profile photo"`, updated to `accessibilityLabel="Change profile photo"` once a photo is set
+
+This list is a floor, not a ceiling: any other icon-only element introduced during implementation (with no adjacent visible text) needs the same treatment before it ships.
 
 ---
 
@@ -220,4 +230,4 @@ Not part of the base template; added because this phase's screens (onboarding se
 - [ ] Dimension 5 Spacing: PASS
 - [ ] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending (revision 2 — re-verification required; substantive additions since v1's pass, not a typo fix)
+**Approval:** pending (revision 3 — re-verification required; targeted fixes for checker-flagged Dimension 1 blocker plus two non-blocking recommendations, not a typo fix)
