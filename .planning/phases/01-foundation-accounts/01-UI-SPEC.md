@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-reviewed_at:
+status: approved
+reviewed_at: 2026-09-15
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -327,14 +327,14 @@ This list is a floor, not a ceiling: any other icon-only element introduced duri
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending
-- [ ] Dimension 2 Visuals: pending
-- [ ] Dimension 3 Color: pending
-- [ ] Dimension 4 Typography: pending
-- [ ] Dimension 5 Spacing: pending
-- [ ] Dimension 6 Registry Safety: pending
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending re-verification for revision 6 (adds Brand Mark, Background Texture, and Display Role Application; grayscale palette from revision 5 unchanged). Prior approval (revision 5, 2026-09-15, all 6 dimensions PASS) applied to the pre-revision-6 contract only.
+**Approval:** approved 2026-09-15 (revision 6, adds Brand Mark + Background Texture + Display Role Application on top of revision 5's locked grayscale palette, all 6 dimensions PASS, no recommendations)
 
 ### Focal Points (carried forward from revision 4 checker recommendation, re-confirm on this revision)
 
