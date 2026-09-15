@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-reviewed_at: pending
+status: approved
+reviewed_at: 2026-09-15
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -281,7 +281,7 @@ No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" const
 | Error state - duplicate email | "That email's already registered. Log in instead." |
 | Error state - username taken (live check or insert-time conflict, see RESEARCH.md Pitfall 4) | "That username's taken. Try one of these:" followed by up to 3 tappable alternates |
 | Error state - network failure | "Couldn't connect. Check your connection and try again." |
-| Destructive confirmation - log out | "Log out of RNDMRoll? You'll need to sign back in to keep your streak going." Buttons: "Log out" / "Stay logged in" |
+| Destructive confirmation - log out | "Log out of RNDMRoll? You'll need to sign back in." Buttons: "Log out" / "Stay logged in" (streak reference removed per checker flag — D-07 excludes stats/streak features from Phase 1, since they depend on Phase 2's roll feature which doesn't exist yet) |
 
 ---
 
@@ -345,14 +345,14 @@ Unchanged by this revision.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PENDING
-- [ ] Dimension 2 Visuals: PENDING
-- [ ] Dimension 3 Color: PENDING
-- [ ] Dimension 4 Typography: PENDING
-- [ ] Dimension 5 Spacing: PENDING
-- [ ] Dimension 6 Registry Safety: PENDING
+- [x] Dimension 1 Copywriting: PASS (with non-blocking flag, fixed — log-out copy's stray "streak" reference removed, see Copywriting Contract)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending re-review for revision 7 (light-to-dark theme inversion: Dominant/Secondary/Ink recomputed for a dark palette, Destructive/Success recontrasted against the new dark backgrounds, Elevation reworked from shadow-based to tonal elevation, Brand Mark and Background Texture recolored to the new light Ink, Platform lock flipped to `userInterfaceStyle: dark`; strict grayscale discipline and all other sections unchanged from revision 6).
+**Approval:** approved 2026-09-15 (revision 7, light-to-dark theme inversion, all 6 dimensions PASS after fixing the flagged log-out copy)
 
 ### Focal Points (carried forward from revision 4 checker recommendation, re-confirm on this revision)
 
