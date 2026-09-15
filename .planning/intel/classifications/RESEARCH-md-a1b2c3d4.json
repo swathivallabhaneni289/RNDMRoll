@@ -1,0 +1,13 @@
+{
+  "source_path": "/Users/swathivallabhaneni/code/RNDMRoll/RESEARCH.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Prior-art research",
+  "summary": "Competitive/prior-art research surveying existing apps to assess whitespace and risks for a roll-assigned, photo-diary rating concept.",
+  "scope": ["prior-art research", "competitor analysis", "BeReal", "Letterboxd", "Beli", "Backloggd", "reciprocity gate", "dice/roll category mechanic", "photo diary rating app whitespace"],
+  "cross_refs": ["README.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

@@ -1,0 +1,13 @@
+{
+  "source_path": "/Users/swathivallabhaneni/code/RNDMRoll/README.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "RNDMRoll — daily dice-roll taste log",
+  "summary": "Project overview for a daily habit-loop app combining a category wheel spin with photo/rating logging, plus decisions and open questions.",
+  "scope": ["spin wheel", "daily entry logging", "photo/rating/reaction fields", "friend feed", "personal diary", "feature backlog", "open questions"],
+  "cross_refs": ["./RESEARCH.md", "./docs/original-concept-notes.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

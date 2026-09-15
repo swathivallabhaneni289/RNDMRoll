@@ -1,0 +1,13 @@
+{
+  "source_path": "/Users/swathivallabhaneni/code/RNDMRoll/docs/original-concept-notes.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "[Name TBD] — daily dice-roll taste log",
+  "summary": "Early concept notes combining BeReal's daily prompt, Letterboxd's rating/log mechanic, and a dice-roll category randomizer.",
+  "scope": ["daily category roll", "personal diary log", "friend feed", "user-taken photo requirement", "rating and note entry mechanic"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
