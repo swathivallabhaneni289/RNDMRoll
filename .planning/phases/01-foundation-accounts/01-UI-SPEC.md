@@ -5,6 +5,9 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
+revised: 2026-09-15
+revision: 2
+revision_reason: Added a custom typeface, an elevation/shadow system, a second accent color, and an empty-state icon treatment after user review flagged the v1 contract as too flat/minimal ("vibe coded"). All PROJECT.md banned-pattern compliance from v1 is preserved unchanged.
 ---
 
 # Phase 1 - UI Design Contract
@@ -20,8 +23,8 @@ created: 2026-09-15
 | Tool | none. shadcn is a web/Tailwind registry tool and does not apply here: RESEARCH.md locks this phase to React Native / Expo SDK 57 with expo-router (not React/Next.js/Vite), so the shadcn init gate does not fire. |
 | Preset | not applicable |
 | Component library | none (custom). Plain React Native primitives (View, Text, Pressable, TextInput) styled from a single shared tokens module (e.g. `lib/theme/tokens.ts`), not a third-party RN UI kit (React Native Paper, NativeBase, Tamagui). Default, applied because no library was named in CONTEXT.md/RESEARCH.md: a generic kit's default button/input shapes would fight PROJECT.md's specific constraints (no pill buttons, no gradients, flat/muted) more than they'd help. |
-| Icon library | `@expo/vector-icons` (Ionicons as the default icon set). Bundled with Expo SDK 57, no extra install. Required because PROJECT.md bans emoji-as-icons, so every icon-shaped element (back, close, checkmark, resend, avatar placeholder) must come from this library, never a raw emoji character. |
-| Font | System default (San Francisco on iOS, Roboto on Android) via React Native's platform defaults. No custom font is loaded in Phase 1. Default, applied to keep signup-flow scope minimal; revisit only if a later phase introduces brand typography. |
+| Icon library | `@expo/vector-icons` (Ionicons as the default icon set). Bundled with Expo SDK 57, no extra install. Required because PROJECT.md bans emoji-as-icons, so every icon-shaped element (back, close, checkmark, resend, avatar placeholder, and the two icon badges added in this revision — see "Visual Personality" below) must come from this library, never a raw emoji character. |
+| Font | **Plus Jakarta Sans**, two weights loaded: `PlusJakartaSans_400Regular` and `PlusJakartaSans_600SemiBold`, via `@expo-google-fonts/plus-jakarta-sans` (v0.4.2, verified on npm) and `expo-font`, gated with `expo-splash-screen` (v57.0.9). Replaces the v1 system-default-only choice. Chosen over Inter deliberately: Inter is the default look of most AI-generated/template UI right now, which works against the user's explicit "don't want this to look vibe-coded" goal; Plus Jakarta Sans has enough geometric character (distinctive `a`, `g`, rounded terminals) to read as an intentional choice while staying legible and neutral enough for dense form UI. It is free/open (SIL OFL), available pre-hosted through Expo's own Google Fonts package (no manual font-file bundling needed), and both required weights (400, 600) exist as real files, so the app never fakes a weight. See Typography below for the per-role `fontFamily` mapping and "Session-restore and font-load gate" (Interaction Contracts) for the loading-state pattern. Both new packages hit the same "too-new republish" SUS false-positive pattern RESEARCH.md's Package Legitimacy Audit already documented for `expo-router`/`expo-secure-store`/etc — same `checkpoint:human-verify` resolution applies: confirm the repos are `github.com/expo/google-fonts` and `github.com/expo/expo` before installing. |
 
 **Platform lock:** Phase 1 designs for light mode only (no dark-mode variant specified or requested). Set `"userInterfaceStyle": "light"` in `app.json` to enforce this at the OS level. Without this, system dark mode still partially applies (status bar, keyboard, native text-input chrome) even though the screens themselves are styled light-only, producing a visibly broken mixed state.
 
@@ -41,7 +44,7 @@ Declared values (must be multiples of 4, unitless React Native `dp`, not `px`):
 | 2xl | 48 | Major section breaks |
 | 3xl | 64 | Page-level spacing |
 
-Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase.
+Exceptions: `44` as a minimum touch-target hit-area (via padding or `hitSlop`, not a new spacing token) for icon-only controls and tappable rows: back button, close button, the username-availability status icon, the "resend email" tap target. This follows standard iOS HIG (44pt) / Material (48dp, rounded down to this project's nearest declared scale point) touch-target guidance and applies everywhere an icon-only control appears in this phase. The 40dp icon-badge diameter added in this revision (Visual Personality section) is a decorative element, not a tap target, so it is exempt from the 44dp minimum.
 
 ---
 
@@ -53,24 +56,42 @@ Not in the base template; declared here because PROJECT.md's standing "no pill-s
 |-------|-------|-------|
 | sm | 4 | Small chips/status pills (e.g. "Available" / "Taken" inline badges next to the username field) |
 | md | 8 | Buttons, text inputs, cards. This is the maximum radius for any button or input in this phase, enforcing PROJECT.md's "no pill-shaped buttons" rule (a pill is defined here as radius >= half the element's height). |
-| avatar | circular (50% of width/height) | Profile photo and avatar-placeholder only. Explicit, named exception to the radius cap: circular avatars are the Instagram-parity convention this phase is explicitly following (CONTEXT.md), not a "pill button." |
+| avatar / icon badge | circular (50% of width/height) | Profile photo and avatar-placeholder, PLUS the two icon badges added in this revision (empty-bio icon, verify-email icon — see Visual Personality). Explicit, named exception to the radius cap, extended in this revision to cover small circular icon containers as well as the avatar itself: both are the Instagram-parity / "soft icon chip" convention this phase follows, not a step toward pill-shaped buttons or CTAs, which remain capped at `md` (8) with no exceptions. |
 
 ---
 
 ## Typography
 
-React Native `lineHeight` is an absolute number, not a ratio, so both are declared explicitly.
+React Native `lineHeight` is an absolute number, not a ratio, so both are declared explicitly. Font weight is expressed as a `fontFamily` string, not a numeric `fontWeight` prop — see platform note below.
 
-| Role | Size | Weight | Line Height |
-|------|------|--------|-------------|
-| Body | 16 | 400 | 24 |
-| Label | 14 | 400 | 20 |
-| Heading | 20 | 600 | 26 |
-| Display | 28 | 600 | 34 |
+| Role | Size | Font Family | Line Height |
+|------|------|-------------|-------------|
+| Body | 16 | `PlusJakartaSans_400Regular` | 24 |
+| Label | 14 | `PlusJakartaSans_400Regular` | 20 |
+| Heading | 20 | `PlusJakartaSans_600SemiBold` | 26 |
+| Display | 28 | `PlusJakartaSans_600SemiBold` | 34 |
 
-Exactly two weights: 400 (regular) and 600 (semibold), used for Heading and Display only.
+Exactly two font files are loaded application-wide, preserving the original "exactly two weights" discipline: `PlusJakartaSans_400Regular` (Body, Label) and `PlusJakartaSans_600SemiBold` (Heading, Display).
 
-Platform note: Roboto (Android) has no true 600 weight. On Android, map the "600" role to `fontWeight: '700'` (bold) instead; iOS renders 600 as specified. Declare this as a platform branch in the tokens module, not a silent fallback the executor has to discover.
+Platform note (replaces v1's system-font Roboto/San Francisco note, which no longer applies): set `fontFamily` directly per role in the tokens module, and do NOT also set a numeric `fontWeight` alongside a custom-loaded `fontFamily` — on Android, React Native's font matcher does not reliably combine a custom family with a separate `fontWeight` override and can silently fall back to that family's default weight, producing a Body-weight Heading with no visible error. Because this revision loads Regular and SemiBold as two distinct named families (`..._400Regular`, `..._600SemiBold`), there is no cross-platform weight-mapping branch to maintain: each role points at one exact font file on both iOS and Android. If the font fails to load (see "Session-restore and font-load gate" in Interaction Contracts), the fallback is the platform system font at the same numeric weight the family name implies (400/600) via `fontWeight`, applied only in that fallback branch, never mixed with a custom family.
+
+---
+
+## Elevation (Shadow System)
+
+Not in the base template; added in this revision to give the UI quiet depth instead of the flat, shadow-less baseline that read as unfinished. Deliberately subtle throughout — this is a soft, quiet-depth system, not a skeuomorphic or heavy-shadow one, and it stays well clear of PROJECT.md's "no over-the-top" spirit.
+
+| Token | iOS (`shadowColor` / `shadowOffset` / `shadowOpacity` / `shadowRadius`) | Android (`elevation`) | Usage |
+|-------|---|---|---|
+| subtle | `#000000` / `{width:0, height:1}` / `0.04` / `2` | `1` | Secondary-surface cards at rest: profile field rows, the alternate-username suggestion chips |
+| card | `#000000` / `{width:0, height:2}` / `0.08` / `6` | `3` | The profile-view container card, the two icon badges (Visual Personality section), modal/sheet surfaces (the log-out confirmation sheet) |
+| raised | `#2F5D50` / `{width:0, height:4}` / `0.18` / `12` | `6` | The primary CTA button only (Continue / Save changes), in its default/enabled state |
+
+`raised` uses the button's own accent-green as the shadow color instead of pure black — a neutral black shadow reads muddy under a saturated fill, so tinting the shadow toward the element's own hue is the one deliberately "designed" choice in this set (the kind of detail a flat black drop-shadow skips). Disabled/loading CTA states use `subtle` instead of `raised`, since a floating shadow under an inert button reads as a bug, not polish.
+
+Platform note: Android's `elevation` only renders a visible shadow on a `View` that has an explicit opaque `backgroundColor`. Set the fill color on the exact element carrying the elevation token — do not apply `elevation` to a transparent wrapper and expect a shadow to appear around its (differently-colored) child.
+
+Negative scope, stated explicitly so the executor doesn't over-apply: no elevation/shadow on avatars, text inputs, or plain-text buttons ("Skip for now", "Resend email", "Forgot password?", the method-toggle links). Three tokens used on a small, named set of surfaces is what keeps this reading as "quiet depth" rather than decoration sprinkled everywhere.
 
 ---
 
@@ -80,7 +101,8 @@ Platform note: Roboto (Android) has no true 600 weight. On Android, map the "600
 |------|-------|-------|
 | Dominant (60%) | #FFFFFF | Screen backgrounds, default surface behind all onboarding and profile screens |
 | Secondary (30%) | #F1EFEA | Cards, input field fill, section backgrounds, bottom tab bar (once it exists in later phases) |
-| Accent (10%) | #2F5D50 (muted forest green) | See "Accent reserved for" below. Default color choice, applied because no brand color is locked in PROJECT.md/CONTEXT.md; chosen for being flat/muted (not neon, not a gradient) and explicitly not purple, consistent with PROJECT.md's "no purple gradients" constraint. Revisit alongside the wheel/category color system in Phase 2 if a different brand color emerges there. |
+| Accent (10%) | #2F5D50 (muted forest green) | See "Accent reserved for" below. Default color choice, applied because no brand color is locked in PROJECT.md/CONTEXT.md; chosen for being flat/muted (not neon, not a gradient) and explicitly not purple, consistent with PROJECT.md's "no purple gradients" constraint. |
+| Secondary Accent | #B8863C (muted ochre/sand) | Within the same 10% accent envelope as above, not additive to it. See "Secondary accent reserved for" below. Added in this revision to widen the palette's range beyond a single accent color, per user request for more designer-considered color use. |
 | Destructive | #C0392B | Destructive actions and error states only |
 
 Accent reserved for (explicit list, nothing else may use this color):
@@ -89,7 +111,35 @@ Accent reserved for (explicit list, nothing else may use this color):
 - Text links: "Forgot password?", "Log in instead" / "Sign up instead" toggle links
 - Onboarding step-progress indicator (the active step dot)
 
+Secondary accent reserved for (explicit list, nothing else may use this color):
+- The glyph color inside the two icon badges added in this revision (empty-bio icon on the profile view screen, verify-email waiting-state icon) — see "Visual Personality" below
+- That same icon badge's soft background tint, at 12% opacity of #B8863C over whatever surface it sits on — the only place in this phase a tint/opacity variant of a palette color is used
+
+Color-separation note: #B8863C was chosen over an earlier terracotta/clay candidate specifically for hue distance from the destructive color. #C0392B (destructive) sits at roughly hue 6 degrees (red); #B8863C sits at roughly hue 36 degrees (ochre/gold) — about 30 degrees apart at similar saturation and lightness. A terracotta closer to hue 15-16 degrees would sit only ~10 degrees from destructive and risk reading as "the same color" at small icon sizes (e.g. a 20dp glyph), which would blur the "destructive = alarm" signal this palette otherwise protects carefully. Ochre also pairs conventionally with muted forest green as a warm-cool complement, without either color reading as louder or more saturated than the other.
+
 Status color (exempt from the 60/30/10 budget as a small inline utility signal, not a surface): success `#3A7D44` for the username-available check icon and label only. This mirrors the conventional exemption for small status icons/text and must not spread beyond that one use.
+
+**Coordination with Phase 2 (daily-roll category wheel):** this phase's two identity colors (#2F5D50 forest green, #B8863C ochre/sand) are the app's anchor palette, not the whole story. The wheel is this app's other major color surface and needs its own broader categorical palette (N visually distinct wedge colors) — Phase 2 should not be limited to just these two colors. But PROJECT.md's wheel-specific constraint is explicit and binding here too: "flat/muted, typography-led, restrained-motion treatment — no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart icons on wedges." Read together, that means Phase 2's wedge colors should stay in the same muted, flat saturation-and-lightness family these two anchors establish (not diverge into neon or high-chroma territory), even though they don't have to literally reuse these two hexes. Treat this phase's palette as the tonal calibration reference for Phase 2's wheel-color research, not a hard color lock.
+
+---
+
+## Visual Personality (Empty & Status States)
+
+Not in the base template; added in this revision to close the "plain-text-only empty state" gap flagged after user review. The goal is a small, restrained amount of custom personality, not decoration for its own sake — and never emoji or stock/AI-slop imagery, per PROJECT.md.
+
+### Icon badge component contract
+
+A small reusable pattern: a circular container (`avatar / icon badge` radius token, see Shape) at 40dp diameter, holding one 20dp `@expo/vector-icons` (Ionicons) glyph, with `card` elevation (see Elevation) so it reads as a small raised chip rather than a flat sticker. Used exactly twice in this phase:
+
+| Location | Icon | Glyph color | Badge fill |
+|----------|------|-------------|------------|
+| Profile view screen, empty-bio state | Ionicons `create-outline` (pencil line) | Secondary Accent #B8863C | Secondary Accent at 12% opacity, over the Secondary-surface (#F1EFEA) card |
+| Verify-email waiting screen | Ionicons `mail-outline` | Secondary Accent #B8863C | Secondary Accent at 12% opacity, over the Dominant (#FFFFFF) background |
+
+This is deliberately small in scope: two icons across the whole phase, not an icon on every empty field or every screen. Explicitly NOT used for:
+- The avatar placeholder, which stays a plain person-silhouette icon directly on the Secondary surface with no badge/tint — it represents "no photo yet," a neutral absence, not an empty-state prompt inviting action
+- The username-availability check icon, which stays inline in its existing success-color treatment (see Interaction Contracts), no badge
+- Any decorative/hero illustration — out of scope; this phase uses only these two functional line icons, nothing purely ornamental
 
 ---
 
@@ -105,8 +155,9 @@ No em dashes used anywhere below, per PROJECT.md's standing "no em dashes" const
 | Primary CTA - photo step (required weight) | "Continue" |
 | Secondary CTA - photo step (skippable, D-06) | "Skip for now", rendered as a plain text button (no fill, no border) so it never competes visually with "Continue" |
 | Primary CTA - profile edit | "Save changes" |
-| Empty state heading | "Add a bio" |
-| Empty state body | "Tell people what you're rolling for." (shown as the tappable placeholder inside an empty bio field) |
+| Empty state (profile VIEW screen, bio absent) - heading | "Add a bio" |
+| Empty state (profile VIEW screen, bio absent) - body | "Tell people what you're rolling for." Shown next to the icon-badge treatment described in Visual Personality above; tapping the whole empty-state row navigates to profile edit. |
+| Empty state (profile EDIT screen, bio field) | Same copy, "Tell people what you're rolling for.", rendered as the standard `TextInput` `placeholder` prop, matching every other field's placeholder treatment. No icon badge here; the badge belongs to the view screen's empty state only, never inside a live editable input. |
 | Error state - duplicate email | "That email's already registered. Log in instead." |
 | Error state - username taken (live check or insert-time conflict, see RESEARCH.md Pitfall 4) | "That username's taken. Try one of these:" followed by up to 3 tappable alternates |
 | Error state - network failure | "Couldn't connect. Check your connection and try again." |
@@ -126,7 +177,7 @@ Not part of the base template; added because this phase's screens (onboarding se
 - **Insert-time conflict:** if the live check passed but the server-side insert still rejects (race condition, RESEARCH.md Pitfall 4), show the same "Taken" state copy and refreshed alternates after submit, not a generic error toast. The insert response is authoritative over the earlier live check.
 
 ### Verify-email screen
-- **Waiting state:** shows the entered email address and "We sent a verification link to {email}. Tap it to continue." plus a "Resend email" text button (not primary-CTA styling).
+- **Waiting state:** shows the entered email address, the `mail-outline` icon badge (Visual Personality above), and "We sent a verification link to {email}. Tap it to continue." plus a "Resend email" text button (not primary-CTA styling).
 - **Resend cooldown:** after tapping Resend, disable the button and show a 30-second countdown in its place, then re-enable.
 - **Deep-link return:** when verification completes (link tap or poll), show a brief confirmation state (success-color checkmark plus "Verified") for a moment, then auto-advance to the name step. No extra manual "Continue" tap and no silent jump with zero feedback.
 
@@ -140,11 +191,14 @@ Not part of the base template; added because this phase's screens (onboarding se
 - Error text sits directly below its field, left-aligned, in the destructive color, replacing any helper text rather than stacking both.
 - On submit with unresolved errors, focus jumps to the first invalid field.
 
-### Session-restore on launch
-- The root layout reads SecureStore and calls `/auth/refresh` before routing. Hold the native splash screen (render nothing else, no spinner) until this resolves, then route directly to `(app)` or `(auth)`. Do not render either route's UI before the refresh call settles, to avoid a flash of the wrong screen.
+### Session-restore and font-load gate on launch
+- The root layout calls `SplashScreen.preventAutoHideAsync()` immediately, then in parallel: (a) loads `PlusJakartaSans_400Regular` and `PlusJakartaSans_600SemiBold` via `useFonts` from `expo-font`, and (b) reads SecureStore and calls `/auth/refresh`.
+- Hold the native splash screen (render nothing else, no spinner) until BOTH conditions have settled: the font hook has returned `true` OR its error branch has fired, AND the session-refresh call has resolved (success or failure). One combined gate, not two sequential holds, so there is exactly one splash-to-app transition rather than a double flash.
+- **Font-load failure branch (must be handled, not left to hang):** if `useFonts` returns an error, treat it the same as "loaded" for gating purposes, do not wait indefinitely for a font that will never arrive, fall back to the platform system font (San Francisco / Roboto) for that app session, and log the error for later investigation.
+- Once both conditions are settled, call `SplashScreen.hideAsync()` and route directly to `(app)` or `(auth)`. Do not render either route's UI, and do not render text in a system-font fallback state, before this combined gate clears — this is what prevents both the "wrong screen" flash and an "unstyled/system-font" flash of text in one gate rather than requiring two.
 
 ### Photo step (D-06)
-- "Continue" (accent-filled, primary weight) is visually dominant; "Skip for now" (plain text, secondary weight) sits below it. Skipping must never read as an error path or a discouraged choice, matching real Instagram behavior.
+- "Continue" (accent-filled, primary weight, `raised` elevation) is visually dominant; "Skip for now" (plain text, secondary weight, no elevation) sits below it. Skipping must never read as an error path or a discouraged choice, matching real Instagram behavior.
 
 ---
 
@@ -166,4 +220,4 @@ Not part of the base template; added because this phase's screens (onboarding se
 - [ ] Dimension 5 Spacing: PASS
 - [ ] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** pending (revision 2 — re-verification required; substantive additions since v1's pass, not a typo fix)
