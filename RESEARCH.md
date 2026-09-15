@@ -1,0 +1,48 @@
+# Prior-art research
+
+Research run 2026-09-15 across ~50 web searches in 5 parallel angles: direct combo apps, dice/roll mechanics, "authentic photo only" apps, cross-category taste trackers, and precedent features from BeReal/Letterboxd/Daylio/Wordle.
+
+## Verdict
+
+No exact match surfaced for the full combination (roll-assigned category → mandatory personal photo → universal 4-field entry → chronological diary → BeReal-style reciprocity gate). Treat that as weak news, not a green light: every individual piece of the concept, and most pairs of pieces, are already shipped by existing products. This is a real but *assemblable* whitespace, not a defensible moat — a competitor (or one of the apps below) could plausibly bolt on the missing pieces.
+
+Confidence is tiered: high confidence that BeReal, Letterboxd, Beli, and Backloggd are each confirmed single-purpose with no combination attempted; lower confidence that literally no small indie app anywhere does a roll-feeds-a-rated-diary, since app-store search is weak at surfacing niche apps (a couple of the closest matches below were only found via narrow queries).
+
+⚠️ Naming collision: an app called **"Roll — Fresh film daily"** already ships in the daily-authentic-photo space. Different app, but worth knowing if the working name sticks.
+
+## Closest matches
+
+| App | How close | Key difference |
+|---|---|---|
+| **[Memorizer / Mio](https://apps.apple.com/us/app/memorizer-movie-book-place/id1493352956)** | Closest entry-schema match — 70k MAU, TechCrunch-covered. One object = photo + written opinion + rating + category tag, across movie/book/place/restaurant/museum/concert/game/podcast. | Photos are optional and auto-pulled from camera roll via image recognition, not deliberately captured for the entry. No dice/wheel category assignment (user picks). No reciprocity gate — social layer is recommendation-driven. |
+| **[pov — Daily Photo Challenge](https://apps.apple.com/us/app/pov/id6746675543)** | Matches the entire BeReal half almost exactly: daily surprise prompt, unedited self-taken photo, streaks, friend feed with lightweight reactions. | No rating system, no titled items/categories in this concept's sense, no diary — pure photo-challenge, never rates or logs an object. |
+| **[PI.FYI](https://apps.apple.com/us/app/pi-fyi-share-your-taste/id6474037926)** ("Letterboxd meets Myspace, but for anything") | Cross-category taste logging (film/music/restaurants/books), friends feed, daily-recurring streak-based habit loop. | No dice/wheel randomizer, no self-taken-photo rule, no fixed 4-field schema, no reciprocity gate — browsable social feed, not a gated daily reveal. |
+| **[Rated: Share & Review Content](https://apps.apple.com/us/app/rated-share-review-content/id6476522766)** | Broadest category coverage found (film, book, TV, music, restaurant, hotel, escape room, podcast, YouTube), with friend-similarity scores — the clearest "Letterboxd for everything" pitch. | No daily category-roll mechanic, entries use standard posters/covers rather than a personal photo, no reciprocity gate. |
+| **[Quick Memo — 5-Star Rating Log](https://apps.apple.com/app/id6749899018)** | Entry format is almost exactly the 4 fields: title + 1–5 stars + optional photo + optional comment, across movie/book/place/restaurant. | No daily roll, no social/friend feed at all, photo is optional/any-source. |
+| **[Jotly](http://www.jotly.co/)** | Closest precedent for the core authenticity idea: photograph literally anything, rate it, with a name/description built around a photo of the actual object. | No dice/randomizer (fully open-ended), letter grade instead of stars, no friend feed/gate, niche/dormant rather than active mainstream. |
+| **[The Dice Challenge](https://apps.apple.com/us/app/the-dice-challenge/id6756913819)** | Closest direct analog to roll-assigns-a-category itself, including purchasable category packs (a shipped answer to wheel customizability) and solo-or-friends framing. | Rolls produce activities/dares, not entities to be photographed/rated/diary-logged — completion is a streak tick, not a kept card. |
+| **[Beli](https://apps.apple.com/us/app/beli/id1478375386)** | Strongest real-world proof that a mandatory-feeling personal photo + competitive friend feed works as a daily habit — for food. | Single category only, no roll, comparative bracket-ranking instead of stars, no reciprocity gate (feed is open). |
+| **[Crumble](https://crumble.me/home)** | Independently ships a reciprocity-adjacent gate: mutual-accept-only friending, no public feed. | Single category (food), no roll at all, gate is on friending not on viewing-after-posting. |
+| **[Tastral](https://www.tastral.com/)** | Represents the "default," non-authentic version of the diary half: cross-media rating/logging with themed boards. | Confirmed via site fetch: all cover art auto-pulled from TMDB/IGDB/Google Books/Spotify — the clearest direct opposite of a personal-photo rule. |
+| **[BeReal](https://bereal.com/)** | Source mechanic, not a competitor — origin of the daily-surprise-prompt and post-before-you-peek reciprocity gate. Confirmed still active in 2026 under Voodoo (€500M 2024 acquisition). | No categories, no ratings, no diary at all — one undifferentiated daily photo, always satisfiable (unlike a rolled category that may not match what happened that day). |
+| **[Letterboxd](https://letterboxd.com/)** | Source mechanic — origin of the 1–5 star rating, diary, one-line-reaction mechanic. | Film-only, official poster art (not personal photos), no daily prompt/roll, friend/follow feed is explicitly ungated. |
+
+## Whitespace
+
+The genuinely unoccupied cell is narrower than "nothing does all five things" — it's specifically: **a roll that produces a durable, rated, photographed diary artifact**, rather than a roll that's stateless (picks and forgets) or a log where the category is always user-chosen. Randomizer/wheel apps (Spin The Wheel, Picker Wheel, The Dice Challenge, Random Challenge: Daily Quest, Letterboxd watchlist pickers) pick and forget — no photo, rating, or diary entry results. Every rate-and-log app found (Letterboxd, Memorizer/Mio, Achriom, Tastral, KiLog, Rated, Quick Memo) has a category that's always user-chosen, never rolled. Nothing sits at the intersection where the roll *feeds* the log.
+
+A second, smaller unoccupied cell: reciprocity gating applied to a *taste diary* rather than a moment-photo. BeReal gates a generic daily selfie; Crumble gates friending (not viewing); Letterboxd's activity feed is explicitly ungated. Nobody gates a rated, categorized diary entry behind having posted your own that day.
+
+## Risks
+
+- **Cold-start / no network effect.** A reciprocity-gated friend feed is worthless at low friend density — BeReal itself had to ship an opt-in Friends-of-Friends feed specifically to solve "can't find real-life friends on the app." Requires a friend circle already using it before the core payoff means anything (the classic failure mode behind Artifact).
+- **Entry friction is stacked directly against the gate that rewards it.** Daylio's core loop is ~2 taps, under 30 seconds, photo entirely optional — and that's the 4.8-star app. This concept's mandatory photo + title + rating is heavier, and because friends' entries are locked behind posting your own, entry friction directly suppresses the action that unlocks the feed.
+- **Authenticity-by-constraint as the whole value proposition is a proven failure mode, not just a validation signal.** Poparazzi built its entire identity on "no filters, no stock imagery, no staged content," hit #1 on the App Store in 2021, and shut down in 2023.
+- **The self-photo rule has no clear enforcement mechanism** as currently scoped, and this is now a bigger open question given the decision to allow camera-roll uploads (see README) rather than forcing live capture.
+- **Solo mode is unproven for this shape of product.** Lapse's 2025 removal of its social layer caused documented user churn — the friend-feed half may not be optional for retention in a photo-sharing product. Daylio proves solo *can* work, but only because its retention driver is personal insight (mood/activity correlation), not social display — this concept doesn't yet have an equivalent solo payoff designed (see "Taste correlation insights" in the README feature backlog).
+- **Scarcity-vs-flexibility tradeoff.** Wordle's creator deliberately capped it at one puzzle/day with no archive to preserve non-addictiveness; the later paywalled archive was seen by fans as diluting that value. Evidence leans toward strict daily scarcity over "once a day or on demand."
+- **Structural risk at the center of the novelty claim:** a rolled category isn't always satisfiable, unlike BeReal's "whatever you're doing right now" (always answerable) or Wordle's fixed daily puzzle. If the wheel says "book" and nothing was read that day, the only resolutions are skip (streak breaks for bad luck, not bad behavior), fake it (kills the authenticity rule), or free re-roll (collapses the differentiator into "Quick Memo with a friend feed," which already exists). Still unresolved.
+
+## Precedent features referenced
+
+Sourced from BeReal, Letterboxd, Daylio, and Wordle — full detail folded into the README feature backlog. Notable named mechanics not otherwise covered above: BeReal's RealMoji (photo-based reactions), Streaks with conditional restore, RealGroups, Behind-the-Scenes clips, Friends-of-Friends; Letterboxd's Year in Review, Lists, Diary-vs-"watched" distinction, Four Favorites; Daylio's two-tap entry and mood/activity correlation stats; Wordle's spoiler-free share grid and one-puzzle-per-day design philosophy.
