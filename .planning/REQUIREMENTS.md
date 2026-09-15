@@ -13,7 +13,7 @@
 
 ### Roll & Wheel
 
-- [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening around 8:00 PM, and cannot re-spin until the next window opens unless a reroll token is available. Window duration, timezone handling, and day-boundary rules (which also govern FEED-02's "late" badge) are an open decision to close out during Phase 2 discussion, not yet locked.
+- [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. Exact window/late-badge grace-period cutoff (which also governs FEED-02's "late" badge) is a minor tuning parameter to set during Phase 2 planning, not a blocking unknown.
 - [ ] **ROLL-02**: User can earn one extra reroll token per week via streak milestones, and can spend a token to re-spin within the same day
 - [ ] **ROLL-03**: User can customize their wheel by adding, removing, and reweighting categories (bigger wedge = higher probability), starting from a small default set (6-8 categories)
 - [ ] **ROLL-04**: Wheel spin screen shows every category wedge with a deceleration/landing moment, in a flat/muted, typography-led, restrained-motion style (no prize-wheel/gambling aesthetics: no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart wedge icons)
@@ -23,7 +23,7 @@
 - [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, and an optional one-line reaction, logged against the day's rolled category
 - [ ] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
 - [ ] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
-- [ ] **ENTRY-04**: User can resolve a day when the rolled category isn't satisfiable (e.g., wheel says "book," nothing was read that day), and sees the streak consequence of that resolution when confirming it. The exact resolution mechanic (skip and break the streak, allow a reroll, or another approach) is an open decision to close out during Phase 3 discussion, not yet locked.
+- [ ] **ENTRY-04**: User can freeze a day when the rolled category isn't satisfiable (e.g., wheel says "book," nothing was read that day) — no entry is required that day and the streak is preserved, distinct from a reroll (ROLL-02, which swaps the category and still requires posting). Freezes are capped, not unlimited, to preserve daily scarcity; exact cap count is a minor tuning parameter for Phase 3 planning. A frozen day must be visibly distinguishable in the diary (DIARY-01), not a silent gap.
 
 ### Personal Diary
 
@@ -105,4 +105,4 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 
 ---
 *Requirements defined: 2026-09-15*
-*Last updated: 2026-09-15 after roadmap creation*
+*Last updated: 2026-09-15 after roadmap creation; ROLL-01 and ENTRY-04 resolved same day via discussion (see PROJECT.md Key Decisions)*

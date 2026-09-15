@@ -34,6 +34,8 @@ Grounded in research, not just a vibe: BeReal proved the daily-surprise-prompt m
 | Mobile client | **React Native, Expo managed workflow** (`expo-camera` + `expo-image-picker` for capture/upload, EAS Build/Update for releases) | Matches the single-shot camera-or-library spec without needing native-only capabilities (BeReal-style simultaneous dual-camera capture was the one place cross-platform is genuinely behind native, and this project doesn't need it). EAS Update ships JS-level bugfixes in hours with no App Store review — important because a broken build blocks every user's daily post and costs them a streak day. Largest hiring pool if the team ever needs to grow. Native (Swift+Kotlin) is the documented runner-up and the right move later if dual-camera/real-time camera ML gets added or the team grows enough to support two codebases. |
 | API layer | **REST/JSON** to start | Near-unanimous fit for a CRUD-shaped workload (daily roll fetch, photo+title+rating+reaction post, feed reads). Upgrade path if needed later: Connect (`connect-go`) rather than raw gRPC, since React Native can't originate true HTTP/2 gRPC without a proxy/bridge. |
 | Roll/unlock timing | **Fixed daily time, 8:00 PM**, not randomized | User's explicit choice — a scheduled daily sync rather than BeReal's randomized notification window. Trade-off to be aware of: BeReal's randomized timing is what creates its specific "caught off guard, prove it's real" urgency; a fixed time is more predictable/plannable for users (good for habit-forming) but leans a bit more toward "you knew this was coming" than BeReal's surprise framing. Worth revisiting if authenticity-proof (not just habit-forming) becomes a priority. |
+| Roll timezone | **Each user's own local 8:00 PM**, not one globally-synced moment | A small, possibly multi-timezone friend group shouldn't have someone spinning at 3 AM their time just to stay in sync with BeReal-style global simultaneity. Day boundaries and streaks follow each person's own local calendar day. Exact late-badge grace-period cutoff is a minor tuning detail for Phase 2 planning, not a blocker. |
+| Unsatisfiable-category resolution | **Streak freeze** — no entry required that day, streak is preserved (not a reroll, not a broken streak) | Chosen over "skip, streak breaks" (punishes bad luck) and coexists with the separate weekly reroll token (ROLL-02, which lets you swap to a different category and still post). Freeze is capped, not unlimited, to preserve the daily-scarcity differentiator — exact cap is a minor tuning detail for Phase 3 planning. Frozen days should read as visibly distinct in the diary (not a silent gap) so they don't look like a missed day. |
 
 ## Feature backlog
 
@@ -64,8 +66,6 @@ Full competitive research (prior-art verdict, closest matches, whitespace, and r
 
 - Exact wheel size and default starter categories.
 - How weighting/reweighting works in the UI (drag to resize wedges? numeric sliders?).
-- The core structural risk flagged by research: a rolled category isn't always satisfiable (what happens if the dice/wheel says "book" and you didn't read anything that day) — skip-breaks-streak vs. reroll-kills-the-differentiator is still undecided.
-- Tech stack — not yet chosen.
 - Whether/how to signal "this photo is from camera roll, logged a day late" vs. same-day, now that library uploads are allowed.
 - Whether this needs a friend group to feel complete from day one, or ships solo-first with the insights feature as the retention hook.
 

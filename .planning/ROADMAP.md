@@ -43,7 +43,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 **UI hint**: yes
 
-**Note**: ROLL-01's exact window duration, timezone handling, and day-boundary rules are an open decision, not yet locked; resolve during Phase 2 discussion. Phase 5's FEED-02 "late" badge logic depends on this definition.
+**Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. Exact window/late-badge grace-period cutoff (feeding Phase 5's FEED-02 "late" badge logic) remains a minor tuning parameter to set during Phase 2 planning.
 
 ### Phase 3: Daily Entry
 **Goal**: Users log a structured daily entry against their rolled category
@@ -57,7 +57,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 **UI hint**: yes
 
-**Note**: ENTRY-04's exact resolution mechanic (skip-and-break-streak, reroll, or another approach) is an open decision, not yet locked; resolve during Phase 3 discussion. It trades off streak fairness against the once-daily differentiator and the authenticity premise.
+**Resolved**: Unsatisfiable-category days use a capped streak-freeze — no entry required, streak preserved, distinct from the ROLL-02 reroll token. Exact freeze cap remains a minor tuning parameter to set during Phase 3 planning.
 
 ### Phase 4: Personal Diary
 **Goal**: Users can browse the chronological taste diary that their daily entries build up
