@@ -5,8 +5,8 @@ milestone_name: milestone
 current_phase: 1
 current_phase_name: Foundation & Accounts
 status: planning
-stopped_at: Phase 1 UI-SPEC revision 7 approved (dark theme)
-last_updated: "2026-09-15T15:44:30.990Z"
+stopped_at: Phase 1 UI-SPEC revision 8 approved (light-editorial theme reversal)
+last_updated: "2026-09-16T15:06:43.332Z"
 last_activity: 2026-09-15
 last_activity_desc: Roadmap, requirements, and project docs created from ingest synthesis (README.md, RESEARCH.md, docs/original-concept-notes.md)
 progress:
@@ -87,6 +87,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-15T15:44:30.985Z
-Stopped at: Phase 1 UI-SPEC revision 7 approved (dark theme)
+Last session: 2026-09-16T15:06:43.323Z
+Stopped at: Phase 1 UI-SPEC revision 8 approved (light-editorial theme reversal)
 Resume file: .planning/phases/01-foundation-accounts/01-UI-SPEC.md
