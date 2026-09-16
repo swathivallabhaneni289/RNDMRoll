@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-reviewed_at: 2026-09-15
+status: approved
+reviewed_at: 2026-09-16
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -319,14 +319,18 @@ Unchanged by this revision.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending
-- [ ] Dimension 2 Visuals: pending
-- [ ] Dimension 3 Color: pending
-- [ ] Dimension 4 Typography: pending
-- [ ] Dimension 5 Spacing: pending
-- [ ] Dimension 6 Registry Safety: pending
+- [x] Dimension 1 Copywriting: FLAG (non-blocking — see Recommendations below)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS (not applicable — RN/Expo target, no shadcn/third-party registry)
 
-**Approval:** pending re-verification for revision 8 (dark-to-light theme reversal, editorial direction). All 6 dimensions reset to pending per the write contract for this revision.
+**Approval:** APPROVED by gsd-ui-checker, 2026-09-16, for revision 8 (dark-to-light theme reversal, editorial direction). 6/6 dimensions passed or flagged non-blocking.
+
+**Recommendations (non-blocking, carry into planning):**
+- Add declared heading copy for the five Heading-role screens (name, username, photo onboarding steps; profile view/edit) to the Copywriting Contract table — currently referenced only by role/size in Typography, not given actual text.
+- No dedicated copy/screen exists for email/password entry despite D-01 naming it as a login method alongside Apple/Google. Carried forward unchanged from revision 7 (already approved at that count) — not new debt from this revision, but worth closing during planning.
 
 ### Focal Points (carried forward from revision 4 checker recommendation, re-confirm on this revision)
 
