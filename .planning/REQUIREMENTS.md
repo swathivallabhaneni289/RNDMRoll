@@ -20,7 +20,7 @@
 
 ### Daily Entry
 
-- [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, and an optional one-line reaction, logged against the day's rolled category
+- [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction, and an optional comment (a short free-text thought), logged against the day's rolled category
 - [ ] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
 - [ ] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
 - [ ] **ENTRY-04**: User can freeze a day when the rolled category isn't satisfiable (e.g., wheel says "book," nothing was read that day) — no entry is required that day and the streak is preserved, distinct from a reroll (ROLL-02, which swaps the category and still requires posting). Freezes are capped, not unlimited, to preserve daily scarcity; exact cap count is a minor tuning parameter for Phase 3 planning. A frozen day must be visibly distinguishable in the diary (DIARY-01), not a silent gap.
@@ -105,4 +105,4 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 
 ---
 *Requirements defined: 2026-09-15*
-*Last updated: 2026-09-15 after roadmap creation; ROLL-01 and ENTRY-04 resolved same day via discussion (see PROJECT.md Key Decisions)*
+*Last updated: 2026-09-16 — ENTRY-01 split into a distinct optional reaction field and optional comment field, per user decision (see PROJECT.md Key Decisions). ROLL-01 and ENTRY-04 resolved 2026-09-15 via discussion (see PROJECT.md Key Decisions).*
