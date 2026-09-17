@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-reviewed_at: 2026-09-16
+status: approved
+reviewed_at: 2026-09-17
 shadcn_initialized: false
 preset: none
 created: 2026-09-15
@@ -332,14 +332,14 @@ Unchanged by this revision. The new horizontal swipe-paging behavior on the 3-sc
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: pending
-- [ ] Dimension 2 Visuals: pending
-- [ ] Dimension 3 Color: pending
-- [ ] Dimension 4 Typography: pending
-- [ ] Dimension 5 Spacing: pending
-- [ ] Dimension 6 Registry Safety: pending
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending re-verification for revision 9 (pre-signup marketing onboarding addition + name/username/photo consolidation).
+**Approval:** APPROVED by gsd-ui-checker, 2026-09-17, for revision 9 (pre-signup marketing onboarding addition + name/username/photo consolidation). 6/6 dimensions passed.
 
 **Recommendations carried forward from revision 8 (re-stated for the current screen set, not new debt):**
 - No dedicated copy/screen exists for email/password entry despite D-01 naming it as a login method alongside Apple/Google. Carried forward unchanged across revisions 7, 8, and 9 — not new debt from this revision, still worth closing during planning. If closed, the phase's screen count becomes 10 (see revision_reason).
