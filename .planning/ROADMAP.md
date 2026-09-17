@@ -7,6 +7,7 @@ RNDMRoll delivers a daily habit-loop mobile app in five phases: first the accoun
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
@@ -21,81 +22,114 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Foundation & Accounts
+
 **Goal**: Users can create an account, log in, and see their own profile: the foundation the rest of the app builds on
 **Depends on**: Nothing (first phase)
 **Requirements**: ACCT-01, ACCT-03
 **Success Criteria** (what must be TRUE):
+
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
+
 **Plans**: 15 plans across 6 waves
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — Go module scaffold, config loader, and external service provisioning
 - [ ] 01-02-PLAN.md — Expo app scaffold, platform light lock, and UI-SPEC design tokens
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 01-03-PLAN.md — Postgres schema, user domain model, and pgx repositories
 - [ ] 01-04-PLAN.md — Brand mark, dot-grid texture, and the eight UI primitives
 - [ ] 01-05-PLAN.md — SecureStore session store, API client, and auth-gated routing
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 01-06-PLAN.md — Auth primitives, rate limiting, and shared HTTP plumbing
 - [ ] 01-07-PLAN.md — Onboarding screens: choose method, email auth, verify email
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 01-08-PLAN.md — Password auth endpoints: signup, login, refresh, logout
 - [ ] 01-09-PLAN.md — Email verification flow, mailer, and the verified-only gate
 - [ ] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification
 - [ ] 01-11-PLAN.md — Profile, username suggestion, and avatar upload endpoints
 - [ ] 01-12-PLAN.md — Onboarding screens: name, username, photo
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 01-13-PLAN.md — API server wiring and end-to-end integration tests
 - [ ] 01-14-PLAN.md — Profile view and edit screens
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 01-15-PLAN.md — Phase verification: automated sweep and device UAT
+
 **UI hint**: yes
 
 ### Phase 2: Daily Roll
+
 **Goal**: Users receive a randomized, once-daily category via a customizable spin-wheel mechanic, with a restrained, non-gambling visual treatment
 **Depends on**: Phase 1
 **Requirements**: ROLL-01, ROLL-02, ROLL-03, ROLL-04
 **Success Criteria** (what must be TRUE):
+
   1. User can spin a wheel once per day within a fixed daily window (opening around 8:00 PM) and receive a category
   2. User cannot spin again until the next day's window opens, unless they have a reroll token
   3. User can earn and spend one weekly streak-based reroll token
   4. User can customize their wheel's categories and relative weights
   5. Wheel spin screen uses a flat, muted, restrained-motion visual treatment (no prize-wheel/gambling aesthetic)
+
 **Plans**: TBD
 **UI hint**: yes
 
 **Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. Exact window/late-badge grace-period cutoff (feeding Phase 5's FEED-02 "late" badge logic) remains a minor tuning parameter to set during Phase 2 planning.
 
 ### Phase 3: Daily Entry
+
 **Goal**: Users log a structured daily entry against their rolled category
 **Depends on**: Phase 2
 **Requirements**: ENTRY-01, ENTRY-02, ENTRY-03, ENTRY-04
 **Success Criteria** (what must be TRUE):
+
   1. User can see today's rolled category before logging an entry
   2. User can log an entry with a photo (camera or library), title, half-star rating, and optional reaction
   3. Logging a repeat title creates a new dated entry rather than overwriting the prior one
   4. User can resolve a day when the rolled category isn't satisfiable and sees the streak consequence of that resolution
+
 **Plans**: TBD
 **UI hint**: yes
 
 **Resolved**: Unsatisfiable-category days use a capped streak-freeze — no entry required, streak preserved, distinct from the ROLL-02 reroll token. Exact freeze cap remains a minor tuning parameter to set during Phase 3 planning.
 
 ### Phase 4: Personal Diary
+
 **Goal**: Users can browse the chronological taste diary that their daily entries build up
 **Depends on**: Phase 3
 **Requirements**: DIARY-01, DIARY-02
 **Success Criteria** (what must be TRUE):
+
   1. User can view a chronological diary of all past entries
   2. User can filter their diary by category
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 5: Friend Feed
+
 **Goal**: Users build a friend circle and see what their friends rolled and rated each day, gated behind posting their own entry
 **Depends on**: Phase 1, Phase 3
 **Requirements**: ACCT-02, FEED-01, FEED-02, FEED-03, FEED-04
 **Success Criteria** (what must be TRUE):
+
   1. User can add friends to form their friend circle
   2. User who has posted today's entry can view friends' entries for the day
   3. User who posts late still unlocks the feed with a "late" badge instead of being blocked
   4. User with no friends yet (or below the gate threshold) sees their diary instead of an empty/locked feed
   5. User can react to a friend's entry with a one-tap emoji
+
 **Plans**: TBD
 **UI hint**: yes
 
