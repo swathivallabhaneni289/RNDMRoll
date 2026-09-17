@@ -5,14 +5,14 @@ milestone_name: milestone
 current_phase: 1
 current_phase_name: Foundation & Accounts
 status: executing
-stopped_at: Phase 1 UI-SPEC revision 8 approved (light-editorial theme reversal)
-last_updated: "2026-09-17T08:32:39.444Z"
+stopped_at: "Phase 1 UI-SPEC revision 9 approved (onboarding redesign: 4 new marketing screens + consolidated create-profile screen)"
+last_updated: "2026-09-17T08:47:16.624Z"
 last_activity: 2026-09-15
 last_activity_desc: Roadmap, requirements, and project docs created from ingest synthesis (README.md, RESEARCH.md, docs/original-concept-notes.md)
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 15
   completed_plans: 0
   percent: 0
 ---
@@ -87,6 +87,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-16T15:06:43.323Z
-Stopped at: Phase 1 UI-SPEC revision 8 approved (light-editorial theme reversal)
+Last session: 2026-09-17T08:47:16.618Z
+Stopped at: Phase 1 UI-SPEC revision 9 approved (onboarding redesign: 4 new marketing screens + consolidated create-profile screen)
 Resume file: .planning/phases/01-foundation-accounts/01-UI-SPEC.md
