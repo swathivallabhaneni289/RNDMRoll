@@ -27,7 +27,24 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
-**Plans**: TBD
+**Plans**: 15 plans across 6 waves
+
+Plans:
+- [ ] 01-01-PLAN.md — Go module scaffold, config loader, and external service provisioning
+- [ ] 01-02-PLAN.md — Expo app scaffold, platform light lock, and UI-SPEC design tokens
+- [ ] 01-03-PLAN.md — Postgres schema, user domain model, and pgx repositories
+- [ ] 01-04-PLAN.md — Brand mark, dot-grid texture, and the eight UI primitives
+- [ ] 01-05-PLAN.md — SecureStore session store, API client, and auth-gated routing
+- [ ] 01-06-PLAN.md — Auth primitives, rate limiting, and shared HTTP plumbing
+- [ ] 01-07-PLAN.md — Onboarding screens: choose method, email auth, verify email
+- [ ] 01-08-PLAN.md — Password auth endpoints: signup, login, refresh, logout
+- [ ] 01-09-PLAN.md — Email verification flow, mailer, and the verified-only gate
+- [ ] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification
+- [ ] 01-11-PLAN.md — Profile, username suggestion, and avatar upload endpoints
+- [ ] 01-12-PLAN.md — Onboarding screens: name, username, photo
+- [ ] 01-13-PLAN.md — API server wiring and end-to-end integration tests
+- [ ] 01-14-PLAN.md — Profile view and edit screens
+- [ ] 01-15-PLAN.md — Phase verification: automated sweep and device UAT
 **UI hint**: yes
 
 ### Phase 2: Daily Roll
@@ -89,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 0/TBD | Not started | - |
+| 1. Foundation & Accounts | 0/15 | Planned | - |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
