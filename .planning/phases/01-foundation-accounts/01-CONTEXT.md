@@ -8,6 +8,8 @@
 
 Users can create an account, log in (staying logged in across app sessions), and view/edit their own profile. This is the identity foundation the rest of the app (daily roll, diary, friend feed) builds on. Adding friends (ACCT-02) is explicitly out of scope here — that's Phase 5, once there's a friend feed to gate.
 
+**Revised 2026-09-17:** Phase boundary now also includes a 4-screen pre-signup editorial onboarding sequence (previously an explicitly-open, undecided question — see UI-SPEC revision 8's "Scope note" and `docs/design-brief-2026-09-16.md`'s reconciliation notes). Resolved by the user supplying a full screen-by-screen redesign brief for it — see D-05 below and `docs/design-brief-2026-09-17-onboarding.md`.
+
 </domain>
 
 <decisions>
@@ -20,8 +22,8 @@ Users can create an account, log in (staying logged in across app sessions), and
 
 ### Signup Friction / Onboarding Sequence
 - **D-04:** Email verification IS required before a user can use the app (user explicitly chose this over the lower-friction "no verification" option).
-- **D-05:** Onboarding sequence mirrors Instagram's real flow: (1) choose signup method → (2) verify email → (3) enter name → (4) auto-suggested username generated from name (editable, with a uniqueness check — NOT a blank field the user fills from scratch) → (5) optional profile photo (skippable) → (6) land in the app.
-- **D-06:** Profile photo is optional/skippable at signup, matching real Instagram behavior — can be added later from the profile screen.
+- **D-05 (revised 2026-09-17):** Onboarding sequence, per the editorial onboarding redesign brief (`docs/design-brief-2026-09-17-onboarding.md`): (0) **NEW** — a 4-screen pre-signup editorial sequence (Welcome/splash → The Ritual → Real > Perfect → Same Prompt, CTA "Continue") introduces the product before any account action; (1) choose signup method (unchanged); (2) verify email if email chosen (unchanged); (3) **consolidated** — a single "Create your profile" screen replaces the prior three separate name/username/photo steps: avatar, name, auto-suggested @username (still editable with a uniqueness check — NOT a blank field, same mechanic as before), and a short bio field, all on one screen; (4) land in the app. Original Instagram-mirroring rationale for the post-verification steps (auto-suggested username, uniqueness check) carries forward unchanged, just consolidated into one screen instead of three.
+- **D-06:** Profile photo is optional/skippable at signup, matching real Instagram behavior — can be added later from the profile screen. Still holds inside the consolidated "Create your profile" screen: the avatar tap target must support skipping, even though the redesign brief's mockup shows the filled state.
 
 ### Profile Content
 - **D-07:** Phase 1 profile screen shows identity fields only: avatar, name, username, bio. No stats/streak/diary-count placeholders — those depend on features (roll, diary) that don't exist until later phases.
