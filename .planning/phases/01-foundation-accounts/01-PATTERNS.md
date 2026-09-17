@@ -2,7 +2,9 @@
 
 **Mapped:** 2026-09-16
 **Files analyzed:** 35 (backend + mobile, new-only; counting each onboarding/app screen individually)
-**Analogs found:** 0 / 35 in-repo (first implementation phase) — 8 of 35 UI files have a concrete in-repo reference (the approved `01-UI-SPEC.md`, revision 8) instead of an external-only one
+**Analogs found:** 0 / 35 in-repo (first implementation phase) — 6 of the UI files have a concrete in-repo reference (the approved `01-UI-SPEC.md`, revision 9) instead of an external-only one
+
+**Reconciled 2026-09-17 against UI-SPEC revision 9 / D-05 (revised):** the separate `name.tsx`, `username.tsx`, and `photo.tsx` onboarding screens were consolidated into a single `app/(auth)/profile-setup.tsx`, so the three rows for them below are now one row. This reconciliation was filename-and-citation level only: the four pre-signup marketing screens revision 9 adds (`welcome.tsx`, `ritual.tsx`, `real-photos.tsx`, `everyone-rolls.tsx`, planned in `01-16-PLAN.md`) are **not** mapped in this document, and the counts above were not re-derived for them. Treat `01-UI-SPEC.md` revision 9 and the plan set as authoritative where this map is silent.
 
 ## Repository State
 
@@ -38,9 +40,7 @@ Per instructions, this PATTERNS.md does not fabricate nonexistent analog files. 
 | `app/(auth)/_layout.tsx` | component | request-response | RESEARCH.md Recommended Project Structure (Mobile) | no analog — establishes pattern |
 | `app/(auth)/choose-method.tsx` | component | request-response | `01-UI-SPEC.md` Brand Mark, Background Texture, Copywriting Contract (wordmark/CTA copy), Social sign-in buttons | in-repo UI-SPEC reference |
 | `app/(auth)/verify-email.tsx` | component | request-response | `01-UI-SPEC.md` Display Role Application (promoted heading), Visual Personality (mail-outline icon badge), Interaction Contracts > Verify-email screen | in-repo UI-SPEC reference |
-| `app/(auth)/name.tsx` | component | request-response | `01-UI-SPEC.md` Typography (Heading role), Form validation timing | in-repo UI-SPEC reference |
-| `app/(auth)/username.tsx` | component | request-response | `01-UI-SPEC.md` Interaction Contracts > Username step state machine, Color (Success/Destructive status colors) | in-repo UI-SPEC reference |
-| `app/(auth)/photo.tsx` | component | request-response | `01-UI-SPEC.md` Interaction Contracts > Photo step (D-06), Copywriting Contract (Finish setup / Skip for now) | in-repo UI-SPEC reference |
+| `app/(auth)/profile-setup.tsx` | component | request-response | `01-UI-SPEC.md` Typography (Heading role), Interaction Contracts > Create your profile screen state machine, Form validation timing, Color (Success/Destructive status colors), Copywriting Contract (Create your profile / Optional / Finish setup) | in-repo UI-SPEC reference |
 | `app/(app)/_layout.tsx` | component | CRUD | RESEARCH.md Recommended Project Structure (Mobile) | no analog — establishes pattern |
 | `app/(app)/profile/index.tsx` | component | CRUD | `01-UI-SPEC.md` Elevation (`card`/`lg` radius container), Visual Personality (empty-bio icon badge), Copywriting Contract (empty state copy) | in-repo UI-SPEC reference |
 | `app/(app)/profile/edit.tsx` | component | CRUD | `01-UI-SPEC.md` Shape (`md` radius inputs), Color (CTA fill states), Copywriting Contract ("Save changes") | in-repo UI-SPEC reference |
@@ -115,7 +115,7 @@ email := payload.Claims["email"].(string)
 
 Apple: fetch/cache JWKS from `https://appleid.apple.com/auth/keys` via `keyfunc`, then parse+verify `identityToken` with `golang-jwt`, checking `iss=="https://appleid.apple.com"` and `aud==<Apple Service ID/bundle ID>`.
 
-**Critical constraint (Pitfall 1b):** Apple returns `fullName`/`email` only on the user's *first* authorization for a given Apple ID + bundle ID. Persist both to the `users` row immediately on that first callback — the onboarding "enter name" step (D-05 step 3) must pre-fill from this payload for Apple signups since a retry will return `null`.
+**Critical constraint (Pitfall 1b):** Apple returns `fullName`/`email` only on the user's *first* authorization for a given Apple ID + bundle ID. Persist both to the `users` row immediately on that first callback — the name field on the consolidated create-profile screen (D-05, revised 2026-09-17) must pre-fill from this payload for Apple signups since a retry will return `null`.
 
 **Never trust client-asserted identity** (Pitfall 3 / Security Domain — Forged social-login identity): the OAuth endpoints must accept only the raw provider token, never a `{provider, email, name}` payload from the client.
 
@@ -189,17 +189,17 @@ export default function RootLayout() {
 
 ### Onboarding + profile screens `app/(auth)/*.tsx`, `app/(app)/profile/*.tsx` (component, request-response / CRUD)
 
-**Primary reference for these 8 files: the approved `01-UI-SPEC.md` (revision 8, light editorial theme, status: approved 2026-09-16)** — this is an in-repo, concrete design contract, not an external framework convention, and takes precedence over RESEARCH.md's generic structure notes for anything visual/interaction-level. RESEARCH.md's Recommended Project Structure (Mobile) still governs the file layout (`app/(auth)/`, `app/(app)/profile/`) and the six-step D-05 sequence order: `choose-method.tsx` → `verify-email.tsx` → `name.tsx` → `username.tsx` (auto-suggested, editable, live uniqueness check — **never a blank field**, per RESEARCH.md Anti-Patterns) → `photo.tsx` (skippable, per D-06).
+**Primary reference for these files: the approved `01-UI-SPEC.md` (revision 9, light editorial theme, status: approved 2026-09-17)** — this is an in-repo, concrete design contract, not an external framework convention, and takes precedence over RESEARCH.md's generic structure notes for anything visual/interaction-level. RESEARCH.md's Recommended Project Structure (Mobile) still governs the file layout (`app/(auth)/`, `app/(app)/profile/`). The post-signup D-05 (revised 2026-09-17) sequence order is now: `choose-method.tsx` → `verify-email.tsx` → `profile-setup.tsx`, the single consolidated screen carrying the optional avatar (per D-06), the name, the username (auto-suggested, editable, live uniqueness check — **never a blank field**, per RESEARCH.md Anti-Patterns), and the bio.
 
 **Concrete tokens to copy from `01-UI-SPEC.md`:**
 - **Color** (§ Color, lines ~120-163): Dominant `#F6F5F2` backgrounds, Secondary `#E8E7E3` cards/fields, `#FFFFFF` elevation-only white, Ink `#111111` (default text + sole accent), Muted `#625F5B`, Divider `#D3D0C9`, Destructive `#9A3B32`, Success `#416B4C`.
-- **Shape** (§ Shape, lines ~58-67): `md` (8dp) is the hard cap on buttons/inputs — no pill buttons; `lg` (24dp) reserved only for the profile-view container card and log-out sheet, never on tappable elements.
-- **Typography** (§ Typography, lines ~71-97): Body 16/24, Label 14/20, Button/CTA 16/24 (`WorkSans_600SemiBold`), Heading 22/28 (`Domine_600SemiBold`), Display 40/46 — Display used only on choose-method wordmark and verify-email heading.
+- **Shape** (§ Shape (Radius), lines ~56-65): `md` (8dp) is the hard cap on buttons/inputs — no pill buttons; `lg` (24dp) reserved for large non-interactive containers only — the profile-view container card, the log-out sheet, and (extended in revision 9) the marketing photo panels — never on tappable elements.
+- **Typography** (§ Typography, lines ~71-97): Body 16/24, Label 14/20, Button/CTA 16/24 (`WorkSans_600SemiBold`), Heading 22/28 (`Domine_600SemiBold`), Display 40/46 — per revision 9's Display Role Application, Display is used on the four pre-signup marketing screens plus the choose-method wordmark and the verify-email heading, and explicitly **not** on the dense create-profile screen, which takes the Heading tier.
 - **Elevation** (§ Elevation, lines ~100-116): `subtle` (flat, no shadow) for field rows; `card` (`#FFFFFF` fill + soft shadow) for the profile container; `raised` (Ink fill + heaviest shadow) for the primary CTA only.
-- **Interaction Contracts** (§ Interaction Contracts, lines ~271-305): username state machine (idle/checking/available/taken/insert-conflict), verify-email waiting/resend-cooldown/deep-link states, social sign-in button loading/error/cancel states, form validation timing (blur vs. 400ms-debounced live), session-restore/font-load splash gate, photo-step CTA hierarchy, icon-only `accessibilityLabel` requirement.
+- **Interaction Contracts** (§ Interaction Contracts): the "Create your profile screen state machine" section, which revision 9 substituted for revision 8's separate "Username step state machine" and "Photo step (D-06)" sections and which carries the username states (idle/checking/available/taken/insert-conflict) and the optional-photo affordance together; plus verify-email waiting/resend-cooldown/deep-link states, social sign-in button loading/error/cancel states, form validation timing (blur vs. 400ms-debounced live), session-restore/font-load splash gate, the pre-signup marketing sequence's advance/back rules, and the icon-only `accessibilityLabel` requirement.
 - **Copywriting Contract** (§ Copywriting Contract, lines ~247-267): exact button/error/empty-state strings — use verbatim, do not paraphrase (e.g. "That email's already registered. Log in instead.", "Couldn't connect. Check your connection and try again.").
 
-**Standing design constraints still apply on top of UI-SPEC tokens** (PROJECT.md Constraints, restated in RESEARCH.md's Project Constraints section and the user's own memory): no purple gradients, no pill-shaped buttons, no fake reviews/counters, no vague hero text, no emoji-as-icons, no em dashes, no over-the-top scroll animations, no AI-slop photos/copy, no cursor animations. UI-SPEC revision 8 was checker-approved against these constraints already (see its Checker Sign-Off), so implementers should treat UI-SPEC as the pre-verified concretization of these rules, not a separate check to redo from scratch.
+**Standing design constraints still apply on top of UI-SPEC tokens** (PROJECT.md Constraints, restated in RESEARCH.md's Project Constraints section and the user's own memory): no purple gradients, no pill-shaped buttons, no fake reviews/counters, no vague hero text, no emoji-as-icons, no em dashes, no over-the-top scroll animations, no AI-slop photos/copy, no cursor animations. UI-SPEC revision 9 was checker-approved against these constraints already (see its Checker Sign-Off), so implementers should treat UI-SPEC as the pre-verified concretization of these rules, not a separate check to redo from scratch.
 
 ---
 
@@ -252,12 +252,12 @@ Store the token hashed (not plaintext) with a 24h expiry; mark consumed on succe
 | `lib/api/client.ts` | service | request-response | No `lib/api/` directory exists yet |
 | `lib/session/store.ts` | store | event-driven | No `lib/session/` directory exists yet |
 
-All entries above reference RESEARCH.md's "Recommended Project Structure," "Architecture Patterns," and "Code Examples" sections as the closest available (external, not in-repo) pattern source. The 8 onboarding/profile UI files (`choose-method.tsx`, `verify-email.tsx`, `name.tsx`, `username.tsx`, `photo.tsx`, `profile/index.tsx`, `profile/edit.tsx`, and file layout for `_layout.tsx`s) are the exception — those have the approved in-repo `01-UI-SPEC.md` as a concrete reference and are listed separately in File Classification above, not in this table.
+All entries above reference RESEARCH.md's "Recommended Project Structure," "Architecture Patterns," and "Code Examples" sections as the closest available (external, not in-repo) pattern source. The 6 onboarding/profile UI files (`choose-method.tsx`, `verify-email.tsx`, `profile-setup.tsx`, `profile/index.tsx`, `profile/edit.tsx`, and file layout for `_layout.tsx`s) are the exception — those have the approved in-repo `01-UI-SPEC.md` as a concrete reference and are listed separately in File Classification above, not in this table.
 
 **Phase 2+ PATTERNS.md documents should treat this phase's actual implementation as the first real in-repo analog set** once it lands (e.g., future controller files should copy from `internal/httpapi/auth.go`'s handler shape, not re-derive from RESEARCH.md; future onboarding-adjacent screens should copy from this phase's implemented screens, which will themselves already conform to `01-UI-SPEC.md`'s tokens).
 
 Two items are explicitly blocked on external provisioning, not on code patterns (RESEARCH.md Environment Availability):
-- S3-compatible object storage credentials — blocks avatar upload implementation (`profile.go` photo field, `photo.tsx`)
+- S3-compatible object storage credentials — blocks avatar upload implementation (`profile.go` photo field, the avatar control on `profile-setup.tsx`)
 - Transactional email provider account — blocks `internal/mail/mailer.go` concrete implementation (interface/abstraction can still be built and unit-tested against a mock)
 
 ## Metadata
