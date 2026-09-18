@@ -253,7 +253,11 @@ export default function ProfileSetupScreen() {
 
       const ticket = await api.post<AvatarUploadTicket>('/me/avatar/upload-url', {
         content_type: contentType,
-        content_length: asset.fileSize ?? blob.size,
+        // The presigned PUT's bound content-length must match the bytes
+        // actually sent in the request body below (the blob), not the
+        // picker's own asset metadata -- which can disagree once
+        // `quality: 0.8` re-compresses the original file.
+        content_length: blob.size,
       });
 
       const putResponse = await fetch(ticket.upload_url, {
