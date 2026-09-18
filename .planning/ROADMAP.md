@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
 
-**Plans**: 5/16 plans executed
+**Plans**: 8/16 plans executed
 
 Plans:
 **Wave 1**
@@ -47,9 +47,9 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-06-PLAN.md — Auth primitives, rate limiting, and shared HTTP plumbing
-- [ ] 01-07-PLAN.md — Onboarding screens: choose method, email auth, verify email
-- [ ] 01-16-PLAN.md — Pre-signup marketing screens: welcome cover and the three numbered pitch screens
+- [x] 01-06-PLAN.md — Auth primitives, rate limiting, and shared HTTP plumbing
+- [x] 01-07-PLAN.md — Onboarding screens: choose method, email auth, verify email
+- [x] 01-16-PLAN.md — Pre-signup marketing screens: welcome cover and the three numbered pitch screens
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 5/16 | In Progress|  |
+| 1. Foundation & Accounts | 8/16 | In Progress|  |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
