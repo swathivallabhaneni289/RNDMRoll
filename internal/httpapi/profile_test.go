@@ -50,15 +50,6 @@ func newAuthedGroup(t *testing.T, deps TestDeps) (*gin.Engine, *gin.RouterGroup)
 	return router, group
 }
 
-func decodeBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
-	t.Helper()
-	var m map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
-		t.Fatalf("failed to decode JSON response %q: %v", w.Body.String(), err)
-	}
-	return m
-}
-
 // fakeAvatarStore is an in-memory storage.AvatarStore for profile_test.go.
 // It records the last call's arguments so createAvatarUploadURL's
 // caller-scoping can be asserted without a real S3-compatible endpoint.
