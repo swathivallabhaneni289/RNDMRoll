@@ -15,6 +15,7 @@
     "@expo-google-fonts/domine": "^0.4.2",
     "@expo-google-fonts/work-sans": "^0.4.2",
     "@expo/ui": "~57.0.19",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-google-signin/google-signin": "^16.1.5",
     "expo": "~57.0.24",
     "expo-apple-authentication": "~57.0.2",
