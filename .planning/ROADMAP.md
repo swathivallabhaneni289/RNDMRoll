@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
 
-**Plans**: 8/16 plans executed
+**Plans**: 12/16 plans executed
 
 Plans:
 **Wave 1**
@@ -53,10 +53,10 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-08-PLAN.md — Password auth endpoints: signup, login, refresh, logout
-- [ ] 01-09-PLAN.md — Email verification flow, mailer, and the verified-only gate
-- [ ] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification
-- [ ] 01-11-PLAN.md — Profile, username suggestion, and avatar upload endpoints
+- [x] 01-08-PLAN.md — Password auth endpoints: signup, login, refresh, logout
+- [x] 01-09-PLAN.md — Email verification flow, mailer, and the verified-only gate
+- [x] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification
+- [x] 01-11-PLAN.md — Profile, username suggestion, and avatar upload endpoints
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 8/16 | In Progress|  |
+| 1. Foundation & Accounts | 12/16 | In Progress|  |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
