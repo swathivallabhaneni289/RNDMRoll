@@ -41,7 +41,7 @@ key-decisions:
   - "Register(rg *gin.RouterGroup) on both handlers adds routes only; it does not call rg.Use(RequireAuth(...)) or reference RequireVerified. Plan 01-13-PLAN.md (line 94) confirms this is the intended shape: it creates a nested authenticated group applying RequireAuth(secret) then RequireVerified(repo) and mounts ProfileHandler/UsernameHandler there. internal/middleware.RequireVerified does not exist in this worktree (it is plan 01-09's deliverable, building in a sibling worktree not yet merged) and this plan's verify gates never grep for it -- this is a wiring-contract note, not a deviation; nothing here deviated from the plan."
   - "PATCH /me's 409 conflict handler defaults the requested-username value to empty string if req.Username is somehow nil when ErrUsernameTaken is returned (defensive; the real repository can only raise that error when a username was actually submitted, matching plan 01-03's UpdateProfile/coalesce semantics)"
   - "GET /usernames/suggest's alternates are derived from NormalizeUsername(name) (the plain base), not re-normalizing the already-suffixed `username` suggestion -- so alternates are independent suffixed variants of the same base rather than variants of the specific suggested handle"
-  - "REQUIREMENTS.md left unmodified for ACCT-01 and ACCT-03, matching plans 01-01 and 01-03's precedent: these endpoints exist and are fully unit-tested, but nothing serves them yet -- cmd/api/main.go does not exist until plan 01-13 wires it, and ACCT-01 additionally needs the sibling wave-4 plans (01-08 signup/login, 01-09 verification, 01-10 OAuth), none of which are merged into this worktree yet. Marking either complete here would be a false positive in project-wide tracking, and REQUIREMENTS.md's checkbox lines are also a shared-file conflict risk across this wave's four parallel worktrees (01-08/01-09/01-10/01-11) if each independently edited them."
+  - "REQUIREMENTS.md left unmodified for ACCT-01 and ACCT-03. This plan genuinely ships a working, fully unit-tested GET /v1/me -- the backend half of ACCT-03 -- so the 01-01/01-03 precedent's literal reasoning ('no HTTP endpoint exists yet') does not transfer cleanly here and is not the operative reason. The actual reasons: (1) REQUIREMENTS.md's checkbox lines and Traceability table rows are a shared-file conflict risk across this wave's four parallel worktrees (01-08/01-09/01-10/01-11), each of which lists ACCT-01 and/or ACCT-03 in its own frontmatter and could independently edit the same lines on merge -- the orchestrator is the single writer for exactly this reason with STATE.md/ROADMAP.md, and the same logic applies here even though the tooling doesn't enforce it; (2) ACCT-03 as a user-facing statement ('User can view their own profile') also needs its UI half, which doesn't exist until plan 01-14's profile view screen, and ACCT-01 additionally needs the sibling wave-4 plans (01-08 signup/login, 01-09 verification, 01-10 OAuth) merged. Marking either complete from this worktree alone would risk a false positive and a merge conflict; the orchestrator (or a later phase-completion pass) should reconcile REQUIREMENTS.md once the full wave is merged and 01-13/01-14 land."
 
 patterns-established:
   - "Advisory availability/suggestion endpoints (GET /usernames/*) always return a non-nil alternates array, even when empty, so the wire contract's `alternates: string[]` never marshals as null"
@@ -135,10 +135,10 @@ coverage:
         ref: "internal/httpapi/profile_test.go#TestProfile_AvatarUploadURL_ReturnsTicketForCaller"
         status: pass
       - kind: unit
-        ref: "internal/httpapi/username_test.go#TestUsername_Suggest_ReturnsFreeSuggestionDerivedFromName"
+        ref: "internal/httpapi/username_test.go#TestUsernameEndpoint_Suggest_ReturnsFreeSuggestionDerivedFromName"
         status: pass
       - kind: unit
-        ref: "internal/httpapi/username_test.go#TestUsername_Available_ReportsAvailabilityAndAlternatesWhenTaken"
+        ref: "internal/httpapi/username_test.go#TestUsernameEndpoint_Available_ReportsAvailabilityAndAlternatesWhenTaken"
         status: pass
       - kind: other
         ref: "go test ./internal/httpapi -run 'TestProfile|TestUsername' -v -count=1 (9/9 pass); go vet ./internal/httpapi; grep gates for no :id/:userID/:user_id path params, no json:\"id\"/json:\"user_id\" struct tags, SubjectFromContext, onboarding_complete, KeyBySubject, suggestions, and bio's max=160 binding all pass"
@@ -319,7 +319,9 @@ Both username routes are rate-limited to 20 requests/minute keyed by the authent
 
 ## Decisions Made
 
-See `key-decisions` in frontmatter. Summary: `storage.Config` is a narrow package-local struct (not the full app `config.Config`) with identical S3 field names for a mechanical mapping in 01-13; `Register(rg)` adds routes only and leaves `RequireAuth`/`RequireVerified` wiring to 01-13, matching what 01-13-PLAN.md itself already specifies; `REQUIREMENTS.md` is left unmodified for `ACCT-01`/`ACCT-03`, matching plans 01-01 and 01-03's precedent, since nothing serves these endpoints to a real client yet and (separately) the checkbox lines are a shared-file conflict risk across this wave's four parallel worktrees.
+See `key-decisions` in frontmatter. Summary: `storage.Config` is a narrow package-local struct (not the full app `config.Config`) with identical S3 field names for a mechanical mapping in 01-13; `Register(rg)` adds routes only and leaves `RequireAuth`/`RequireVerified` wiring to 01-13, matching what 01-13-PLAN.md itself already specifies.
+
+`REQUIREMENTS.md` is left unmodified for `ACCT-01`/`ACCT-03` -- but *not* for the 01-01/01-03 reason ("no HTTP endpoint exists yet"), which no longer applies: this plan ships a working, tested `GET /v1/me`, the backend half of ACCT-03. The actual reasons are (1) REQUIREMENTS.md's checkbox/Traceability lines are a shared-file conflict risk across this wave's four parallel worktrees, each of which could independently edit the same lines on merge, and (2) ACCT-03's UI half is still pending plan 01-14 and ACCT-01 still needs the sibling wave-4 plans merged. This is flagged for the orchestrator or a later phase-completion pass to reconcile once the full wave lands.
 
 ## Deviations from Plan
 
