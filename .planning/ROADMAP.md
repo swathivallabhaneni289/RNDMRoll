@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
 
-**Plans**: 12/16 plans executed
+**Plans**: 15/16 plans executed
 
 Plans:
 **Wave 1**
@@ -60,9 +60,9 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 01-12-PLAN.md — Consolidated create-profile screen: avatar, name, username, bio
-- [ ] 01-13-PLAN.md — API server wiring and end-to-end integration tests
-- [ ] 01-14-PLAN.md — Profile view and edit screens
+- [x] 01-12-PLAN.md — Consolidated create-profile screen: avatar, name, username, bio
+- [x] 01-13-PLAN.md — API server wiring and end-to-end integration tests
+- [x] 01-14-PLAN.md — Profile view and edit screens
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 12/16 | In Progress|  |
+| 1. Foundation & Accounts | 15/16 | In Progress|  |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
