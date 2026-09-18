@@ -33,7 +33,7 @@ func newAuthTestHandler(t *testing.T) (*gin.Engine, *AuthHandler, TestDeps) {
 	}
 	router := newTestRouter(t, deps)
 	refreshSvc := auth.NewRefreshService(deps.RefreshTokens, 30*24*time.Hour)
-	handler := NewAuthHandler(deps.Users, refreshSvc, deps.Verifications, deps.Mailer, []byte("test-secret"), 15*time.Minute)
+	handler := NewAuthHandler(deps.Users, refreshSvc, deps.Mailer, []byte("test-secret"), 15*time.Minute)
 	rg := router.Group("/v1")
 	handler.Register(rg)
 	return router, handler, deps
@@ -372,7 +372,7 @@ func TestRefresh_ExpiredToken_Returns401TokenExpired(t *testing.T) {
 	}
 	router := newTestRouter(t, deps)
 	expiredRefreshSvc := auth.NewRefreshService(deps.RefreshTokens, -time.Minute)
-	handler := NewAuthHandler(deps.Users, expiredRefreshSvc, deps.Verifications, deps.Mailer, []byte("test-secret"), 15*time.Minute)
+	handler := NewAuthHandler(deps.Users, expiredRefreshSvc, deps.Mailer, []byte("test-secret"), 15*time.Minute)
 	rg := router.Group("/v1")
 	handler.Register(rg)
 

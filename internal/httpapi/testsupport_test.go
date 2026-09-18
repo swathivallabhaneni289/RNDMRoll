@@ -15,26 +15,31 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
-
-// mailer is the sending abstraction plan 01-09 declares concretely in
-// internal/mail. It is re-declared here (structurally, not by import --
-// that package does not exist yet) so a wave 4 handler test can construct
-// a TestDeps.Mailer today; 01-09's concrete type satisfies this shape.
-type mailer interface {
-	SendVerificationEmail(ctx context.Context, toEmail, token string) error
-}
 
 // TestDeps bundles the fakes a wave 4 handler test wires into the handler
 // constructors it builds on top of newTestRouter. Each field is the
 // interface type a real handler depends on, not the concrete fake, so a
 // test can swap in a different double without changing the handler.
+//
+// Mailer is mail.Mailer (the real interface internal/mail.Service
+// implements), not a local placeholder. Plan 01-06 originally declared a
+// structurally different placeholder here (SendVerificationEmail(ctx,
+// toEmail, token string) error) because internal/mail did not exist yet;
+// plan 01-09 built the real package with the *user.User-based signature but
+// deliberately left this placeholder untouched to avoid a merge conflict
+// with concurrent wave-4 worktrees, and flagged the reconciliation for
+// plan 01-13. That reconciliation happens here: fakeMailer below now
+// implements the real mail.Mailer interface, so every handler test in this
+// package (including auth_test.go's) exercises the same contract
+// cmd/api/main.go wires against.
 type TestDeps struct {
 	Users         user.Repository
 	RefreshTokens user.RefreshTokenRepository
 	Verifications user.EmailVerificationRepository
-	Mailer        mailer
+	Mailer        mail.Mailer
 }
 
 // newTestRouter returns a bare gin.Engine with panic recovery attached and
@@ -361,27 +366,23 @@ func (f *fakeVerificationRepo) DeleteForUser(ctx context.Context, userID uuid.UU
 
 var _ user.EmailVerificationRepository = (*fakeVerificationRepo)(nil)
 
-// --- fakeMailer: in-memory mailer ---
-
-type sentVerificationEmail struct {
-	ToEmail string
-	Token   string
-}
+// --- fakeMailer: in-memory mail.Mailer ---
 
 type fakeMailer struct {
 	mu   sync.Mutex
-	sent []sentVerificationEmail
+	sent []*user.User
 }
 
 func newFakeMailer() *fakeMailer {
 	return &fakeMailer{}
 }
 
-func (f *fakeMailer) SendVerificationEmail(ctx context.Context, toEmail, token string) error {
+func (f *fakeMailer) SendVerificationEmail(ctx context.Context, u *user.User) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.sent = append(f.sent, sentVerificationEmail{ToEmail: toEmail, Token: token})
+	stored := *u
+	f.sent = append(f.sent, &stored)
 	return nil
 }
 
-var _ mailer = (*fakeMailer)(nil)
+var _ mail.Mailer = (*fakeMailer)(nil)
