@@ -1,4 +1,4 @@
-import { api } from '@/lib/api/client';
+import { api, ApiError } from '@/lib/api/client';
 import type { ApiUser, AvatarUploadTicket } from '@/lib/api/types';
 
 /**
@@ -64,11 +64,25 @@ export async function uploadAvatar(
   const fileResponse = await fetch(localUri);
   const fileBlob = await fileResponse.blob();
 
-  await fetch(ticket.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: fileBlob,
-  });
+  let putResponse: Response;
+  try {
+    putResponse = await fetch(ticket.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: fileBlob,
+    });
+  } catch {
+    throw new ApiError(0, 'network_unavailable');
+  }
+
+  // T-01-PRV-05's mitigation is the storage provider rejecting a
+  // type/size mismatch bound into the presigned request -- that rejection
+  // is only a real mitigation if this function actually checks the PUT's
+  // outcome instead of returning a public_url for an object that was
+  // never written.
+  if (!putResponse.ok) {
+    throw new ApiError(putResponse.status, 'server_error', 'Photo upload failed. Please try again.');
+  }
 
   return ticket.public_url;
 }

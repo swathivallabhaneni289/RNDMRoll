@@ -131,7 +131,7 @@ export default function ProfileScreen() {
         animationType="fade"
         onRequestClose={() => setConfirmingSignOut(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(17,17,17,0.4)', justifyContent: 'flex-end' }}>
+        <View style={{ flex: 1, backgroundColor: color.scrimOverlay, justifyContent: 'flex-end' }}>
           <View
             style={{
               backgroundColor: color.card,
