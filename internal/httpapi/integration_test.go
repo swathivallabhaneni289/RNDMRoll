@@ -88,6 +88,20 @@ func integrationRepoRoot() string {
 // requireIntegrationPool skips the calling test when TEST_DATABASE_URL is
 // unset, otherwise returns a fresh pool and truncates every account table
 // on cleanup so tests do not leak state into one another.
+//
+// NOTE on running this package's tests alongside internal/store/postgres's:
+// both packages truncate the same `users` table against the same
+// TEST_DATABASE_URL. `go test ./...` never sets TEST_DATABASE_URL itself,
+// so a plain `go test ./...` run is unaffected either way (every test here
+// and in internal/store/postgres skips). But `TEST_DATABASE_URL=... go
+// test ./...` (exporting it for the whole module) can run this package's
+// and internal/store/postgres's test binaries concurrently under go test's
+// default package-level parallelism, and a truncate from one package's
+// cleanup can then wipe rows a concurrently-running test in the other
+// still needs. `make test-all-integration` runs the full suite with
+// TEST_DATABASE_URL set and `-p 1` to serialize package execution and
+// avoid exactly that race; prefer it over a bare `TEST_DATABASE_URL=...
+// go test ./...` invocation.
 func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if integrationTestDatabaseURL == "" {
@@ -96,6 +110,14 @@ func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 	pool, err := postgres.NewPool(context.Background(), integrationTestDatabaseURL)
 	if err != nil {
 		t.Fatalf("httpapi integration: postgres.NewPool: %v", err)
+	}
+	// Truncate on entry too, not just on cleanup: guards against residue
+	// left behind by a prior run that crashed or was interrupted before its
+	// own t.Cleanup ran, which would otherwise surface as a spurious
+	// user.ErrEmailTaken on this run's first signup.
+	if _, err := pool.Exec(context.Background(), "truncate users cascade"); err != nil {
+		pool.Close()
+		t.Fatalf("httpapi integration: entry truncate failed: %v", err)
 	}
 	t.Cleanup(func() {
 		if _, err := pool.Exec(context.Background(), "truncate users cascade"); err != nil {
