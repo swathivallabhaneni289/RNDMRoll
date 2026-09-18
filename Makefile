@@ -1,4 +1,4 @@
-.PHONY: run dev test migrate-up migrate-down migrate-new db-create
+.PHONY: run dev test test-integration migrate-up migrate-down migrate-new db-create
 
 run:
 	go run ./cmd/api
@@ -8,6 +8,9 @@ dev:
 
 test:
 	go test ./...
+
+test-integration:
+	TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://localhost:5432/rndmroll_test?sslmode=disable}" go test ./internal/httpapi -v -count=1
 
 migrate-up:
 	migrate -path migrations -database "$$DATABASE_URL" up
