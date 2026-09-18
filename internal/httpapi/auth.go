@@ -108,6 +108,11 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyByIPAndField("email"),
 	}), h.Login)
+	// Neither refresh nor logout sits behind RequireAuth: refresh exists
+	// precisely because the access token has already expired, and logout
+	// must work from that same state.
+	rg.POST("/auth/refresh", h.Refresh)
+	rg.POST("/auth/logout", h.Logout)
 }
 
 // SignupRequest is the signup request body. max=72 is bcrypt's hard byte
@@ -267,4 +272,71 @@ func apiUser(u *user.User) gin.H {
 		"email_verified":      u.EmailVerified,
 		"onboarding_complete": u.OnboardingComplete(),
 	}
+}
+
+// RefreshRequest is the refresh request body.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// LogoutRequest is the logout request body.
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// Refresh exchanges a presented refresh token for a new access+refresh
+// pair, rotating the refresh token in the same call. The response always
+// carries the rotated refresh token -- the client persists both values on
+// every refresh, and omitting the new one would leave the device holding a
+// token the server has already revoked, surfacing as a spurious forced
+// logout on the client's next launch. user.ErrTokenExpired and
+// user.ErrTokenInvalid propagate unchanged through RespondError, since the
+// mobile client branches on exactly those two codes.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req RefreshRequest
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		RespondValidationError(c, err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	userAgent := c.Request.UserAgent()
+	userID, newRefreshToken, err := h.refresh.Redeem(ctx, req.RefreshToken, &userAgent)
+	if err != nil {
+		RespondError(c, err)
+		return
+	}
+
+	accessToken, err := auth.IssueAccessToken(userID, h.jwtSecret, h.accessTTL)
+	if err != nil {
+		log.Printf("httpapi: refresh issue access token failed: %v", err)
+		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
+		return
+	}
+
+	Respond(c, http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+		"expires_in":    int(h.accessTTL.Seconds()),
+	})
+}
+
+// Logout revokes the presented refresh token and responds 204. A token
+// that is already missing, malformed, or revoked still returns 204: the
+// client calls logout on a best-effort basis and must not be trapped in a
+// signed-in shell by a failure here (RefreshService.Revoke already
+// tolerates this miss).
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req LogoutRequest
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		RespondValidationError(c, err)
+		return
+	}
+
+	if err := h.refresh.Revoke(c.Request.Context(), req.RefreshToken); err != nil {
+		RespondError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
