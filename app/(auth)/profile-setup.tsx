@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -11,23 +11,32 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { color, radius, space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
-import type { AvatarUploadTicket } from '@/lib/api/types';
-import { getDraft } from '@/lib/onboarding/draft';
+import type { ApiUser, AvatarUploadTicket, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
+import { clearDraft, getDraft } from '@/lib/onboarding/draft';
+import { useSession } from '@/lib/session/store';
 
 /**
  * D-05 (revised 2026-09-17) step 3: the consolidated "Create your profile"
- * screen, replacing the prior separate name/username/photo steps. This is
- * one route built across two plan tasks: Task 1 (this pass) establishes the
- * screen shell -- hero avatar with immediate upload, name field, bio field,
- * and the pinned CTA -- and positions the username field with its reserved
- * status row. Task 2 wires the username suggestion/debounce/state machine
- * into that field and row, and owns the single authoritative PATCH /me save.
+ * screen, replacing the prior separate name/username/photo steps. Built
+ * across two plan tasks: Task 1 established the screen shell -- hero avatar
+ * with immediate upload, name field, bio field, and the pinned CTA -- and
+ * positioned the username field with its reserved status row. Task 2 (this
+ * pass) wires the username suggestion/400ms-debounce/five-state machine
+ * into that field and row, and owns the single authoritative PATCH /me
+ * save. Every endpoint, debounce value, and state name here is carried over
+ * unchanged from the screen this one consolidates -- see 01-11-SUMMARY.md
+ * for the exact wire contract this depends on.
  */
 
 const AVATAR_SIZE = 120;
 const AVATAR_GLYPH_SIZE = 56;
 const BIO_MAX_LENGTH = 160;
 const NAME_MAX_LENGTH = 50;
+const USERNAME_DEBOUNCE_MS = 400;
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+const USERNAME_TAKEN_MESSAGE = "That username's taken. Try one of these:";
+
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 function validateName(value: string): string | undefined {
   if (value.length === 0) return 'Enter your name.';
@@ -35,11 +44,23 @@ function validateName(value: string): string | undefined {
   return undefined;
 }
 
+function validateUsernameFormat(value: string): string | undefined {
+  if (!USERNAME_PATTERN.test(value)) {
+    return 'Use lowercase letters, numbers, and underscores, 3 to 20 characters.';
+  }
+  return undefined;
+}
+
 export default function ProfileSetupScreen() {
+  const { reloadUser } = useSession();
+
   const [name, setName] = useState(() => getDraft().suggestedName ?? '');
   const [nameError, setNameError] = useState<string | undefined>();
 
   const [username, setUsername] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const [usernameFormatError, setUsernameFormatError] = useState<string | undefined>();
+  const [alternates, setAlternates] = useState<string[]>([]);
 
   const [bio, setBio] = useState('');
 
@@ -48,13 +69,134 @@ export default function ProfileSetupScreen() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState<string | undefined>();
 
-  // Referenced by Task 2's submit handler once it lands; avatarPublicUrl
-  // itself is the field this screen's single PATCH /me reads from.
-  const avatarPublicUrlRef = useRef(avatarPublicUrl);
-  avatarPublicUrlRef.current = avatarPublicUrl;
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | undefined>();
+
+  // A suggestion is fetched exactly once (mount, or the Name field's first
+  // blur -- whichever comes first) per D-05: the username field must never
+  // render blank. usernameEditedRef guards against that suggestion landing
+  // late and clobbering a value the user has since typed themselves.
+  const suggestionFetchedRef = useRef(false);
+  const usernameEditedRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Bumped on every check dispatch so a slow, stale response (superseded by
+  // a newer keystroke's check) can be discarded on arrival instead of
+  // clobbering the state a faster, more recent check already set.
+  const checkTokenRef = useRef(0);
+
+  useEffect(() => {
+    const draft = getDraft();
+    if (draft.suggestedName) {
+      suggestionFetchedRef.current = true;
+      fetchSuggestion(draft.suggestedName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  async function fetchSuggestion(displayName: string) {
+    setUsernameStatus('checking');
+    try {
+      const result = await api.get<UsernameSuggestion>(`/usernames/suggest?name=${encodeURIComponent(displayName)}`);
+      if (!usernameEditedRef.current) {
+        setUsername(result.username);
+        setUsernameStatus('idle');
+        setUsernameFormatError(undefined);
+        setAlternates([]);
+      }
+    } catch {
+      if (!usernameEditedRef.current) {
+        setUsernameStatus('idle');
+      }
+    }
+  }
+
+  async function runAvailabilityCheck(value: string) {
+    setUsernameStatus('checking');
+    checkTokenRef.current += 1;
+    const token = checkTokenRef.current;
+    try {
+      const result = await api.get<UsernameAvailability>(`/usernames/available?username=${encodeURIComponent(value)}`);
+      if (checkTokenRef.current !== token) return;
+      if (result.available) {
+        setUsernameStatus('available');
+        setAlternates([]);
+      } else {
+        setUsernameStatus('taken');
+        setAlternates(result.alternates);
+      }
+    } catch {
+      if (checkTokenRef.current !== token) return;
+      setUsernameStatus('idle');
+    }
+  }
+
+  function handleUsernameChange(text: string) {
+    usernameEditedRef.current = true;
+    setUsername(text);
+    setAlternates([]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const formatError = validateUsernameFormat(text);
+    if (formatError) {
+      setUsernameFormatError(formatError);
+      setUsernameStatus('idle');
+      return;
+    }
+    setUsernameFormatError(undefined);
+    debounceRef.current = setTimeout(() => runAvailabilityCheck(text), USERNAME_DEBOUNCE_MS);
+  }
+
+  function handleAlternateTap(alternate: string) {
+    usernameEditedRef.current = true;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setUsername(alternate);
+    setUsernameFormatError(undefined);
+    runAvailabilityCheck(alternate);
+  }
 
   function handleNameBlur() {
     setNameError(validateName(name.trim()));
+    if (!suggestionFetchedRef.current && name.trim().length > 0) {
+      suggestionFetchedRef.current = true;
+      fetchSuggestion(name.trim());
+    }
+  }
+
+  async function handleSubmit() {
+    if (ctaDisabled || submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(undefined);
+
+    const body: { name: string; username: string; bio?: string; avatar_url?: string } = {
+      name: name.trim(),
+      username,
+    };
+    if (bio.trim().length > 0) body.bio = bio;
+    if (avatarPublicUrl) body.avatar_url = avatarPublicUrl;
+
+    try {
+      await api.patch<ApiUser>('/me', body);
+      await reloadUser();
+      clearDraft();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'username_taken') {
+        setUsernameStatus('taken');
+        setAlternates(err.suggestions ?? []);
+      } else if (err instanceof ApiError) {
+        setSubmitError(err.userMessage);
+      } else {
+        setSubmitError('Something went wrong. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleAvatarPress() {
@@ -133,7 +275,46 @@ export default function ProfileSetupScreen() {
   }
 
   const nameInvalid = name.trim().length === 0 || Boolean(nameError);
-  const ctaDisabled = nameInvalid;
+  const usernameInvalid = username.trim().length === 0 || Boolean(usernameFormatError);
+  const ctaDisabled = nameInvalid || usernameInvalid || usernameStatus === 'checking' || submitting;
+
+  function renderUsernameStatus() {
+    if (usernameFormatError) {
+      return (
+        <AppText role="label" tone="destructive">
+          {usernameFormatError}
+        </AppText>
+      );
+    }
+    if (usernameStatus === 'checking') {
+      return (
+        <View accessible accessibilityLabel="Checking availability" style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ActivityIndicator size="small" color={color.ink} />
+          <AppText role="label" tone="muted">
+            {' Checking...'}
+          </AppText>
+        </View>
+      );
+    }
+    if (usernameStatus === 'available') {
+      return (
+        <View accessible accessibilityLabel="Username available" style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="checkmark-circle" size={16} color={color.success} />
+          <AppText role="label" tone="success">
+            {' Available'}
+          </AppText>
+        </View>
+      );
+    }
+    if (usernameStatus === 'taken') {
+      return (
+        <AppText role="label" tone="destructive">
+          {USERNAME_TAKEN_MESSAGE}
+        </AppText>
+      );
+    }
+    return null;
+  }
 
   return (
     <Screen scroll={false}>
@@ -226,12 +407,40 @@ export default function ProfileSetupScreen() {
           </View>
 
           <View style={{ marginTop: space.md }}>
-            <TextField label="Username" autoCapitalize="none" autoCorrect={false} value={username} onChangeText={setUsername} />
-            {/* Reserved 24dp status row: Task 2 fills this with the
-                checking/available/taken state machine. Kept empty and
-                fixed-height here so the bio field below never jumps once
-                that state machine starts driving content into it. */}
-            <View style={{ minHeight: 24, justifyContent: 'center', marginTop: 4 }} />
+            <TextField
+              label="Username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              textContentType="username"
+              value={username}
+              onChangeText={handleUsernameChange}
+            />
+            {/* Fixed-height 24dp status row, reserved across idle/checking/
+                available so the bio field below never jumps. The taken
+                state is the one explicit exception: its alternate-chip row
+                is allowed to push content below it downward. */}
+            <View style={{ minHeight: 24, justifyContent: 'center', marginTop: 4 }}>{renderUsernameStatus()}</View>
+            {usernameStatus === 'taken' && alternates.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs }}>
+                {alternates.map((alternate) => (
+                  <Pressable
+                    key={alternate}
+                    onPress={() => handleAlternateTap(alternate)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use username ${alternate}`}
+                    style={{
+                      backgroundColor: color.secondary,
+                      borderRadius: radius.sm,
+                      paddingHorizontal: space.sm,
+                      paddingVertical: 4,
+                    }}
+                  >
+                    <AppText role="label">{alternate}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <View style={{ marginTop: space.md }}>
@@ -247,7 +456,14 @@ export default function ProfileSetupScreen() {
         </ScrollView>
 
         <View style={{ paddingTop: space.md, paddingBottom: space.md }}>
-          <PrimaryButton label="Finish setup" disabled={ctaDisabled} />
+          {submitError ? (
+            <View style={{ marginBottom: space.sm, alignItems: 'center' }}>
+              <AppText role="label" tone="destructive">
+                {submitError}
+              </AppText>
+            </View>
+          ) : null}
+          <PrimaryButton label="Finish setup" onPress={handleSubmit} disabled={ctaDisabled} loading={submitting} />
         </View>
       </KeyboardAvoidingView>
     </Screen>
