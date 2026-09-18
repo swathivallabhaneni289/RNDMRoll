@@ -9,7 +9,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-func TestUsername_Suggest_ReturnsFreeSuggestionDerivedFromName(t *testing.T) {
+func TestUsernameEndpoint_Suggest_ReturnsFreeSuggestionDerivedFromName(t *testing.T) {
 	users := newFakeUserRepo()
 	caller, err := users.Create(context.Background(), "suggest@example.com", nil, true, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestUsername_Suggest_ReturnsFreeSuggestionDerivedFromName(t *testing.T) {
 	}
 }
 
-func TestUsername_Available_ReportsAvailabilityAndAlternatesWhenTaken(t *testing.T) {
+func TestUsernameEndpoint_Available_ReportsAvailabilityAndAlternatesWhenTaken(t *testing.T) {
 	users := newFakeUserRepo()
 	caller, err := users.Create(context.Background(), "checker@example.com", nil, true, nil)
 	if err != nil {
