@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
@@ -293,4 +294,141 @@ func TestLogin_UnverifiedAccount_Returns403EmailNotVerified(t *testing.T) {
 	if body["error"] != "email_not_verified" {
 		t.Fatalf("expected error=email_not_verified, got %v", body["error"])
 	}
+}
+
+// --- Task 2: Refresh and logout handlers ---
+
+// loginAndGetTokens seeds a verified user and performs a real login over
+// the router, returning the issued access and refresh tokens.
+func loginAndGetTokens(t *testing.T, router *gin.Engine, deps TestDeps, email, password string) (accessToken, refreshToken string) {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	via := user.VerifiedViaPasswordFlow
+	if _, err := deps.Users.Create(context.Background(), email, &hash, true, &via); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Email: email, Password: password})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	accessToken, _ = body["access_token"].(string)
+	refreshToken, _ = body["refresh_token"].(string)
+	if accessToken == "" || refreshToken == "" {
+		t.Fatalf("expected non-empty tokens from login, got %v", body)
+	}
+	return accessToken, refreshToken
+}
+
+func TestRefresh_ValidToken_Returns200WithNewTokenPairDifferentFromPresented(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	_, refreshToken := loginAndGetTokens(t, router, deps, "refresh-me@example.com", "correct-password")
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", RefreshRequest{RefreshToken: refreshToken})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	for _, field := range []string{"access_token", "refresh_token", "expires_in"} {
+		if _, ok := body[field]; !ok {
+			t.Fatalf("expected %s in response, got %v", field, body)
+		}
+	}
+	newRefreshToken, _ := body["refresh_token"].(string)
+	if newRefreshToken == refreshToken {
+		t.Fatal("expected the rotated refresh token to differ from the presented token")
+	}
+}
+
+func TestRefresh_SecondUseOfSameToken_Returns401TokenInvalid(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	_, refreshToken := loginAndGetTokens(t, router, deps, "reuse@example.com", "correct-password")
+
+	first := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", RefreshRequest{RefreshToken: refreshToken})
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first refresh to succeed, got %d: %s", first.Code, first.Body.String())
+	}
+
+	second := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", RefreshRequest{RefreshToken: refreshToken})
+	if second.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on second use, got %d: %s", second.Code, second.Body.String())
+	}
+	body := decodeBody(t, second)
+	if body["error"] != "token_invalid" {
+		t.Fatalf("expected error=token_invalid, got %v", body["error"])
+	}
+}
+
+func TestRefresh_ExpiredToken_Returns401TokenExpired(t *testing.T) {
+	deps := TestDeps{
+		Users:         newFakeUserRepo(),
+		RefreshTokens: newFakeRefreshRepo(),
+		Verifications: newFakeVerificationRepo(),
+		Mailer:        newFakeMailer(),
+	}
+	router := newTestRouter(t, deps)
+	expiredRefreshSvc := auth.NewRefreshService(deps.RefreshTokens, -time.Minute)
+	handler := NewAuthHandler(deps.Users, expiredRefreshSvc, deps.Verifications, deps.Mailer, []byte("test-secret"), 15*time.Minute)
+	rg := router.Group("/v1")
+	handler.Register(rg)
+
+	expiredToken, err := expiredRefreshSvc.Issue(context.Background(), uuid.New(), nil)
+	if err != nil {
+		t.Fatalf("issue expired token: %v", err)
+	}
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", RefreshRequest{RefreshToken: expiredToken})
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	if body["error"] != "token_expired" {
+		t.Fatalf("expected error=token_expired, got %v", body["error"])
+	}
+}
+
+func TestRefresh_MissingRefreshToken_Returns400ValidationFailed(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", map[string]string{})
+
+	assertValidationFailed(t, rec)
+}
+
+func TestLogout_RevokesToken_SubsequentRefreshReturns401(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	_, refreshToken := loginAndGetTokens(t, router, deps, "logout-me@example.com", "correct-password")
+
+	logoutRec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/logout", LogoutRequest{RefreshToken: refreshToken})
+	if logoutRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/refresh", RefreshRequest{RefreshToken: refreshToken})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 refreshing a revoked token, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogout_AlreadyInvalidToken_Returns204(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/logout", LogoutRequest{RefreshToken: "not-a-real-token"})
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogout_MissingRefreshToken_Returns400ValidationFailed(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/logout", map[string]string{})
+
+	assertValidationFailed(t, rec)
 }
