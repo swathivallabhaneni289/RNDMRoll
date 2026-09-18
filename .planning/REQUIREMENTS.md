@@ -7,7 +7,7 @@
 
 ### Accounts & Profile
 
-- [ ] **ACCT-01**: User can create an account and log in, and stays logged in across app sessions
+- [x] **ACCT-01**: User can create an account and log in, and stays logged in across app sessions
 - [ ] **ACCT-02**: User can add friends (e.g., via invite/username) to form their friend circle
 - [ ] **ACCT-03**: User can view their own profile
 
@@ -80,7 +80,7 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCT-01 | Phase 1 | Pending |
+| ACCT-01 | Phase 1 | Complete |
 | ACCT-03 | Phase 1 | Pending |
 | ROLL-01 | Phase 2 | Pending |
 | ROLL-02 | Phase 2 | Pending |
@@ -99,6 +99,7 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 | FEED-04 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 17 total
 - Mapped to phases: 17
 - Unmapped: 0 ✓
