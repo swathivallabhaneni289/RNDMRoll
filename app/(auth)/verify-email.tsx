@@ -117,7 +117,13 @@ export default function VerifyEmailScreen() {
     }
   }
 
-  const resendDisabled = cooldown > 0 || resending;
+  // A cold start reached via the deep link (Linking.getInitialURL()) is a
+  // fresh process: the in-memory onboarding draft (deliberately not
+  // persisted — see lib/onboarding/draft.ts) is empty, so `email` is ''
+  // here. Resend has nothing to resend to in that case, so it stays
+  // disabled rather than silently no-op-ing the exact dead-end the
+  // token_expired/token_consumed messages below exist to avoid.
+  const resendDisabled = cooldown > 0 || resending || email.length === 0;
   const resendAccessibilityLabel =
     cooldown > 0 ? `Resend email, available in ${cooldown} seconds` : 'Resend email';
 
@@ -139,9 +145,11 @@ export default function VerifyEmailScreen() {
               <AppText role="display">Check your email</AppText>
             </View>
 
-            <View style={{ marginTop: space.md, paddingHorizontal: space.lg }}>
-              <AppText role="body">{`We sent a verification link to ${email}. Tap it to continue.`}</AppText>
-            </View>
+            {email.length > 0 ? (
+              <View style={{ marginTop: space.md, paddingHorizontal: space.lg }}>
+                <AppText role="body">{`We sent a verification link to ${email}. Tap it to continue.`}</AppText>
+              </View>
+            ) : null}
 
             {status === 'expired' || status === 'consumed' ? (
               <View style={{ marginTop: space.md, paddingHorizontal: space.lg }}>
