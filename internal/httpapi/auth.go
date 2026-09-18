@@ -4,10 +4,6 @@
 package httpapi
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"log"
 	"net/http"
@@ -17,44 +13,39 @@ import (
 	"github.com/gin-gonic/gin/binding"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-// Mailer is the narrow consumer contract AuthHandler depends on to send a
-// verification email. Declared here at the point of use, rather than
-// importing internal/mail (which plan 01-09 builds in a sibling worktree in
-// this same wave), is what lets these two plans execute concurrently.
+// Mailer reconciliation (plan 01-13): plan 01-08 originally declared a
+// local Mailer interface here (SendVerificationEmail(ctx, toEmail, token
+// string) error) matching testsupport_test.go's placeholder, since
+// internal/mail did not exist yet in that worktree. Plan 01-09 then built
+// the real internal/mail package with a structurally different interface
+// (SendVerificationEmail(ctx, *user.User) error), where mail.Service itself
+// owns token generation, hashing, persistence, and supersession
+// (DeleteForUser before Insert). Both plans' SUMMARY.md files flagged this
+// plan as the place to reconcile it.
 //
-// Deviation from PLAN.md (Rule 3 - blocking): the plan's own text specifies
-// this interface as SendVerificationEmail(ctx, *user.User) error. That
-// shape is incompatible with the mailer interface plan 01-06 already
-// committed in internal/httpapi/testsupport_test.go
-// (SendVerificationEmail(ctx, toEmail, token string) error), whose
-// TestDeps.Mailer field and fakeMailer are typed against it. The plan's own
-// task instruction requires writing this plan's tests against that shared
-// harness without modifying testsupport_test.go (owned by 01-06, and
-// off-limits here since 01-09 is editing it concurrently in this wave per
-// the orchestrator's file-overlap analysis). Matching the already-shipped
-// signature is the only way to satisfy both constraints; 01-06's own
-// SUMMARY.md already anticipated this reconciliation ("Plan 01-09 should
-// reconcile its concrete Mailer interface with testsupport_test.go's local
-// placeholder"). Because the signature takes toEmail/token rather than a
-// *user.User, AuthHandler now needs its own EmailVerificationRepository
-// dependency (not listed in the plan's struct field list) to generate and
-// persist the token before calling the mailer.
-type Mailer interface {
-	SendVerificationEmail(ctx context.Context, toEmail, token string) error
-}
-
-const (
-	// verificationTokenTTL is how long a freshly issued email verification
-	// token stays valid, per RESEARCH.md Common Pitfalls #5.
-	verificationTokenTTL = 24 * time.Hour
-	// verificationTokenBytes is the crypto/rand entropy per verification
-	// token, matching internal/auth/refresh.go's refresh-token treatment.
-	verificationTokenBytes = 32
-)
+// Resolution: AuthHandler now depends on mail.Mailer directly -- the same
+// interface VerifyEmailHandler (plan 01-09) already depends on -- and no
+// longer generates or persists its own verification token. This collapses
+// two independent token-issuing code paths (this handler's own
+// crypto/rand+EmailVerificationRepository path, and mail.Service's) into
+// exactly one: mail.Service, constructed once in cmd/api/main.go and handed
+// to both AuthHandler and VerifyEmailHandler. The AuthHandler.mailer field
+// keeps its own name (not mail.Mailer's package-qualified name) only
+// because that's the existing struct field; its type is now mail.Mailer.
+//
+// Behavioral note: mail.Service.SendVerificationEmail calls DeleteForUser
+// before Insert, which this handler's old path did not. This is a no-op on
+// a fresh signup (nothing to delete yet) and strictly better afterward
+// (supersede semantics: an old outstanding token from the account's
+// verification row is a no-op here too, since Signup never runs twice for
+// the same account). No test relied on the old dual-token-path behavior.
+//
+// See 01-13-SUMMARY.md for the full reconciliation record.
 
 // dummyPasswordHash is a real bcrypt hash compared against on a
 // missing-account login attempt, so that path performs the same bcrypt
@@ -73,25 +64,26 @@ func mustHashDummyPassword() string {
 
 // AuthHandler implements the signup, login, refresh, and logout endpoints.
 type AuthHandler struct {
-	users         user.Repository
-	refresh       *auth.RefreshService
-	verifications user.EmailVerificationRepository
-	mailer        Mailer
-	jwtSecret     []byte
-	accessTTL     time.Duration
+	users     user.Repository
+	refresh   *auth.RefreshService
+	mailer    mail.Mailer
+	jwtSecret []byte
+	accessTTL time.Duration
 }
 
 // NewAuthHandler constructs an AuthHandler. accessTTL is the lifetime of
 // each minted access token; the refresh token's lifetime lives on refresh
-// itself (see auth.NewRefreshService).
-func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, verifications user.EmailVerificationRepository, mailer Mailer, jwtSecret []byte, accessTTL time.Duration) *AuthHandler {
+// itself (see auth.NewRefreshService). mailer is the real internal/mail
+// interface -- it owns verification token generation, hashing, and
+// persistence itself (see the Mailer reconciliation note above), so this
+// handler no longer takes its own EmailVerificationRepository dependency.
+func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, mailer mail.Mailer, jwtSecret []byte, accessTTL time.Duration) *AuthHandler {
 	return &AuthHandler{
-		users:         users,
-		refresh:       refresh,
-		verifications: verifications,
-		mailer:        mailer,
-		jwtSecret:     jwtSecret,
-		accessTTL:     accessTTL,
+		users:     users,
+		refresh:   refresh,
+		mailer:    mailer,
+		jwtSecret: jwtSecret,
+		accessTTL: accessTTL,
 	}
 }
 
@@ -167,34 +159,11 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	if err := h.sendVerificationEmail(ctx, u); err != nil {
+	if err := h.mailer.SendVerificationEmail(ctx, u); err != nil {
 		log.Printf("httpapi: signup verification email failed for user %s: %v", u.ID, err)
 	}
 
 	Respond(c, http.StatusCreated, gin.H{"user_id": u.ID})
-}
-
-// sendVerificationEmail generates a single-use, hashed, expiring
-// verification token, persists it, and hands the raw token to the mailer.
-func (h *AuthHandler) sendVerificationEmail(ctx context.Context, u *user.User) error {
-	raw, hash, err := generateVerificationToken()
-	if err != nil {
-		return err
-	}
-	if err := h.verifications.Insert(ctx, u.ID, hash, time.Now().Add(verificationTokenTTL)); err != nil {
-		return err
-	}
-	return h.mailer.SendVerificationEmail(ctx, u.Email, raw)
-}
-
-func generateVerificationToken() (raw string, hash []byte, err error) {
-	buf := make([]byte, verificationTokenBytes)
-	if _, err := rand.Read(buf); err != nil {
-		return "", nil, err
-	}
-	raw = base64.RawURLEncoding.EncodeToString(buf)
-	sum := sha256.Sum256(buf)
-	return raw, sum[:], nil
 }
 
 // Login authenticates by email and password. Unknown-account and
