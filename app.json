@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "RNDMRoll",
+    "slug": "rndmroll",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "rndmroll",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.rndmroll.app",
+      "userInterfaceStyle": "light",
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "package": "com.rndmroll.app",
+      "userInterfaceStyle": "light"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      "expo-apple-authentication",
+      "expo-image-picker",
+      "expo-secure-store",
+      "expo-image",
+      "expo-web-browser"
+    ]
+  }
+}
