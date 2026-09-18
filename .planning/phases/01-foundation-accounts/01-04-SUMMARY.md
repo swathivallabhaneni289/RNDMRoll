@@ -219,6 +219,16 @@ None - no external service configuration required.
 - Flag for the orchestrator/human: the `@expo/vector-icons` dependency addition (deviation 1 above) did not go through the interactive package-legitimacy gate that 01-02 used for its own dependency set, because this plan is fully autonomous with no checkpoint task through which to request one. It is a first-party Expo package, SDK-version-pinned, and the sole new dependency (one package, 13 lockfile lines) — but worth a quick human glance given the process precedent.
 - No blockers for downstream screen plans.
 
+## Self-Check
+
+- All 14 `key-files.created` verified present on disk with `[ -f ]`.
+- `git log --oneline --all --grep="01-04"` returns 6 commits (dependency fix, four task commits, this summary).
+- `npx tsc --noEmit` re-run clean (exit 0) after all four tasks.
+- All four tasks' `<acceptance_criteria>` re-run verbatim from `01-04-PLAN.md` after completion: Task 1 PASS, Task 2 PASS, Task 3 PASS (four sub-checks re-run individually after a sandbox command-complexity refusal on the combined one-liner), Task 4 PASS.
+- Plan-level `<verification>` re-run: `npx tsc --noEmit` clean; every file under `components/` imports `@/lib/theme/tokens`; zero raw hex literals found via `grep -rEn` across `components/`; only pre-approved packages (`react`, `react-native`, `react-native-safe-area-context`, `react-native-svg`) plus the one flagged new dependency (`@expo/vector-icons`) are imported.
+
+## Self-Check: PASSED
+
 ---
 *Phase: 01-foundation-accounts*
 *Plan: 04*
