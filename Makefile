@@ -1,7 +1,10 @@
-.PHONY: run test migrate-up migrate-down migrate-new db-create
+.PHONY: run dev test migrate-up migrate-down migrate-new db-create
 
 run:
 	go run ./cmd/api
+
+dev:
+	set -a && . ./.env && set +a && go run ./cmd/api
 
 test:
 	go test ./...
