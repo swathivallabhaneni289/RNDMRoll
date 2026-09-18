@@ -9,7 +9,7 @@
 
 - [x] **ACCT-01**: User can create an account and log in, and stays logged in across app sessions
 - [ ] **ACCT-02**: User can add friends (e.g., via invite/username) to form their friend circle
-- [ ] **ACCT-03**: User can view their own profile
+- [x] **ACCT-03**: User can view their own profile
 
 ### Roll & Wheel
 
@@ -81,7 +81,7 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ACCT-01 | Phase 1 | Complete |
-| ACCT-03 | Phase 1 | Pending |
+| ACCT-03 | Phase 1 | Complete |
 | ROLL-01 | Phase 2 | Pending |
 | ROLL-02 | Phase 2 | Pending |
 | ROLL-03 | Phase 2 | Pending |

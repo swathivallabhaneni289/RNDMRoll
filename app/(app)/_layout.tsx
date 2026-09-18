@@ -8,7 +8,7 @@ import { color } from '@/lib/theme/tokens';
  */
 export default function AppLayout() {
   return (
-    <Stack screenOptions={{ contentStyle: { backgroundColor: color.dominant } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.dominant } }}>
       <Stack.Screen name="profile" />
     </Stack>
   );

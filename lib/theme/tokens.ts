@@ -26,6 +26,8 @@ export const color = {
   inkTexture: 'rgba(17,17,17,0.08)',
   /** Disabled CTA label, rendered on top of the disabled Ink fill above. */
   onInkDisabled: 'rgba(246,245,242,0.7)',
+  /** Modal/sheet backdrop overlay behind a bottom sheet (e.g. the profile screen's log-out confirmation). */
+  scrimOverlay: 'rgba(17,17,17,0.4)',
 } as const;
 
 export const space = {
