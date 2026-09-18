@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
 
-**Plans**: 2/16 plans executed
+**Plans**: 5/16 plans executed
 
 Plans:
 **Wave 1**
@@ -41,9 +41,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-03-PLAN.md — Postgres schema, user domain model, and pgx repositories
-- [ ] 01-04-PLAN.md — Brand mark, dot-grid texture, and the twelve UI primitives
-- [ ] 01-05-PLAN.md — SecureStore session store, API client, and auth-gated routing
+- [x] 01-03-PLAN.md — Postgres schema, user domain model, and pgx repositories
+- [x] 01-04-PLAN.md — Brand mark, dot-grid texture, and the twelve UI primitives
+- [x] 01-05-PLAN.md — SecureStore session store, API client, and auth-gated routing
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 2/16 | In Progress|  |
+| 1. Foundation & Accounts | 5/16 | In Progress|  |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
