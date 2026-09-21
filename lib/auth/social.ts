@@ -1,5 +1,4 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { api } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
 import { setDraft } from '@/lib/onboarding/draft';
@@ -83,16 +82,39 @@ export async function signInWithApple(): Promise<SocialSignInResult> {
   return result;
 }
 
-// Configured once at module load, per the plan: SDK-resolved client IDs come
-// from the two EXPO_PUBLIC_* env keys this module introduces. Safe to call
-// with undefined values before those are provisioned; the native module
-// simply has nothing configured until they are.
-GoogleSignin.configure({
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
-});
+let googleSigninConfigured = false;
+
+/**
+ * The Google Sign-In package's own module-level code calls
+ * TurboModuleRegistry.getEnforcing() as soon as it is required, which throws
+ * immediately anywhere the native module isn't compiled in (Expo Go, web —
+ * this library has no web implementation at all). A static top-level import
+ * in this file previously made that throw happen the moment choose-method.tsx
+ * loaded this module, taking down the whole (auth) navigation stack (every
+ * screen it declares) rather than just the Google button. Deferring the
+ * import to first actual use means every other screen and sign-in method
+ * keeps working on platforms without the native module; only an actual tap
+ * on "Continue with Google" fails there, which is the correct, contained
+ * failure surface.
+ */
+async function getGoogleSignin() {
+  const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+  if (!googleSigninConfigured) {
+    // SDK-resolved client IDs come from the two EXPO_PUBLIC_* env keys this
+    // module introduces. Safe to call with undefined values before those are
+    // provisioned in .env — configure() itself does not throw on undefined,
+    // only a later hasPlayServices()/signIn() call does.
+    GoogleSignin.configure({
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+    });
+    googleSigninConfigured = true;
+  }
+  return GoogleSignin;
+}
 
 export async function signInWithGoogle(): Promise<SocialSignInResult> {
+  const GoogleSignin = await getGoogleSignin();
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
 
