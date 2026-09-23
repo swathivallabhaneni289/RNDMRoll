@@ -22,13 +22,24 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
  * Redirecting before they settle would send an about-to-be-authenticated
  * user through (auth) for a flash, which is exactly what _layout.tsx's
  * gating exists to prevent.
+ *
+ * Redirects target each group's own explicit initial screen ("/(app)/profile",
+ * "/(auth)/welcome") rather than the bare group path ("/(app)", "/(auth)").
+ * Empirically, a bare group path fails to resolve here and falls through to
+ * Unmatched Route: the group's own Stack.Protected guard and this redirect
+ * both fire from the same gateSettled flip, and the guard hasn't committed
+ * yet when the bare-group redirect tries to resolve against it. An explicit
+ * child path doesn't depend on that timing. (auth)/_layout.tsx's own effect
+ * still re-redirects welcome -> choose-method immediately when intro's
+ * already been seen, so this doesn't reintroduce the marketing sequence for
+ * returning users.
  */
 export default function Index() {
   const { status, user } = useSession();
   const { fontsLoaded, fontError } = useAppFonts();
   const { resolved: introResolved } = useIntroSeen();
 
-  const gateSettled = status !== 'loading' && (fontsLoaded || fontError) && introResolved;
+  const gateSettled = Boolean(status !== 'loading' && (fontsLoaded || fontError) && introResolved);
 
   if (!gateSettled) {
     // The native splash screen is still covering the app at this point
@@ -38,7 +49,7 @@ export default function Index() {
   }
 
   if (status === 'authenticated' && user?.onboarding_complete === true) {
-    return <Redirect href="/(app)" />;
+    return <Redirect href="/(app)/profile" />;
   }
-  return <Redirect href="/(auth)" />;
+  return <Redirect href="/(auth)/welcome" />;
 }
