@@ -83,7 +83,7 @@ export default function VerifyEmailScreen() {
   }, []);
 
   // Brief confirmation moment before handing off, per UI-SPEC: a visible
-  // "Verified" state, then automatic advance — no manual Continue tap, no
+  // "Verified" state, then automatic advance: no manual Continue tap, no
   // silent jump straight into the app.
   useEffect(() => {
     if (status !== 'success' || !pendingAuthResult) return;
@@ -119,7 +119,7 @@ export default function VerifyEmailScreen() {
 
   // A cold start reached via the deep link (Linking.getInitialURL()) is a
   // fresh process: the in-memory onboarding draft (deliberately not
-  // persisted — see lib/onboarding/draft.ts) is empty, so `email` is ''
+  // persisted; see lib/onboarding/draft.ts) is empty, so `email` is ''
   // here. Resend has nothing to resend to in that case, so it stays
   // disabled rather than silently no-op-ing the exact dead-end the
   // token_expired/token_consumed messages below exist to avoid.

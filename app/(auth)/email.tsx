@@ -19,7 +19,7 @@ import { useSession } from '@/lib/session/store';
  * provisional pending review at the plan 01-15 UAT checkpoint (see
  * 01-07-SUMMARY.md for the full list).
  *
- * Single screen, two modes toggled in place — the Copywriting Contract's
+ * Single screen, two modes toggled in place: the Copywriting Contract's
  * "Log in instead" / "Sign up instead" links are a same-screen toggle pair,
  * not two routes.
  */
@@ -95,7 +95,7 @@ export default function EmailScreen() {
         return;
       }
       if (mode === 'login' && err instanceof ApiError && err.code === 'email_not_verified') {
-        // Next action is opening mail, not retrying the form — not an error.
+        // Next action is opening mail, not retrying the form. Not an error.
         setDraft({ email, provider: 'email' });
         router.push('/verify-email');
         return;

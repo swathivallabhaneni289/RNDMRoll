@@ -19,7 +19,7 @@ const toneColor = {
 /**
  * The single text primitive every screen in this phase renders through.
  * `role` selects the type token (fontSize/lineHeight/fontFamily); `tone`
- * selects the color. Never sets a numeric font weight directly — weight
+ * selects the color. Never sets a numeric font weight directly: weight
  * lives entirely in the token's `fontFamily` string (UI-SPEC platform note).
  */
 export function AppText({ role = 'body', tone = 'default', children, ...rest }: AppTextProps) {

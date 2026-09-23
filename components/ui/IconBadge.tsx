@@ -4,7 +4,7 @@ import { color, elevation, radius } from '@/lib/theme/tokens';
 
 type IconBadgeProps = {
   name: React.ComponentProps<typeof Ionicons>['name'];
-  /** The surface the badge sits ON — the badge fills with the *other* neutral. */
+  /** The surface the badge sits ON; the badge fills with the *other* neutral. */
   surface: 'dominant' | 'secondary';
   accessibilityLabel: string;
 };

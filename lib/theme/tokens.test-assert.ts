@@ -1,7 +1,7 @@
 /**
  * Compile-time contract pins for lib/theme/tokens.ts.
  *
- * This file is never imported at runtime — nothing in the app imports it. It exists
+ * This file is never imported at runtime: nothing in the app imports it. It exists
  * purely so `tsc --noEmit` fails loudly if a later plan edits a token value that
  * another already-planned screen relies on. Every binding below is `export const`
  * using a `satisfies` expression (never a bare local `const`): Task 1 sets
@@ -10,7 +10,7 @@
  * strengthen. Exporting keeps each binding used from the compiler's point of view.
  *
  * If an assertion below fails to compile, a later plan changed a token another
- * plan already depends on — resolve the conflict deliberately, do not silently
+ * plan already depends on. Resolve the conflict deliberately; do not silently
  * edit this file to match the new value.
  */
 

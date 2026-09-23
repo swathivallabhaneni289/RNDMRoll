@@ -6,7 +6,7 @@ import { setDraft } from '@/lib/onboarding/draft';
 /**
  * Native Apple and Google sign-in wrappers. Both post only the raw provider
  * identity token to the backend oauth endpoints (POST /v1/auth/oauth/apple,
- * POST /v1/auth/oauth/google) — never a client-shaped identity payload.
+ * POST /v1/auth/oauth/google): never a client-shaped identity payload.
  * RESEARCH.md Pitfall 3 and PATTERNS.md's "Server-side token verification"
  * pattern both require the backend to independently re-verify signature,
  * issuer, audience, and expiry (plan 01-10); a client-asserted email or
@@ -45,7 +45,7 @@ function joinFullName(fullName: AppleAuthentication.AppleAuthenticationFullName 
 
 /**
  * Apple returns `fullName`/`email` only on a user's very first authorization
- * for this Apple ID + bundle ID (RESEARCH.md Pitfall 1b) — every later call
+ * for this Apple ID + bundle ID (RESEARCH.md Pitfall 1b); every later call
  * returns null for both. Whatever comes back this call is captured into the
  * onboarding draft immediately, since a second attempt would come back empty.
  */
@@ -87,8 +87,8 @@ let googleSigninConfigured = false;
 /**
  * The Google Sign-In package's own module-level code calls
  * TurboModuleRegistry.getEnforcing() as soon as it is required, which throws
- * immediately anywhere the native module isn't compiled in (Expo Go, web —
- * this library has no web implementation at all). A static top-level import
+ * immediately anywhere the native module isn't compiled in (Expo Go, web,
+ * since this library has no web implementation at all). A static top-level import
  * in this file previously made that throw happen the moment choose-method.tsx
  * loaded this module, taking down the whole (auth) navigation stack (every
  * screen it declares) rather than just the Google button. Deferring the
@@ -102,7 +102,7 @@ async function getGoogleSignin() {
   if (!googleSigninConfigured) {
     // SDK-resolved client IDs come from the two EXPO_PUBLIC_* env keys this
     // module introduces. Safe to call with undefined values before those are
-    // provisioned in .env — configure() itself does not throw on undefined,
+    // provisioned in .env: configure() itself does not throw on undefined,
     // only a later hasPlayServices()/signIn() call does.
     GoogleSignin.configure({
       iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,

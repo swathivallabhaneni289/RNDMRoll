@@ -1,6 +1,6 @@
 /**
  * UI-SPEC design tokens (revision 8's values; revision 9 carries every value in this
- * file forward unchanged — see 01-UI-SPEC.md revision_reason). Every color, spacing,
+ * file forward unchanged; see 01-UI-SPEC.md revision_reason). Every color, spacing,
  * radius, typography, and elevation value used anywhere in this app must come from
  * this module. No screen writes a raw hex string.
  */
@@ -42,7 +42,7 @@ export const space = {
 
 /**
  * Minimum tappable hit-area floor (applied via padding or `hitSlop`), for icon-only
- * controls and tappable rows. This is a hit-area floor, not a spacing step — do not
+ * controls and tappable rows. This is a hit-area floor, not a spacing step; do not
  * treat it as part of the `space` scale.
  */
 export const minTouchTarget = 44;

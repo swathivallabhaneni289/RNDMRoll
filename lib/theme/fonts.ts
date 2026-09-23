@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 /**
  * Loads the three locked font files this app uses (UI-SPEC Typography/Font rows).
  * Screens must not render text until `fontsLoaded` is true (or `fontError` is set,
- * in which case they fall back to `systemFallback` below) — see the Interaction
+ * in which case they fall back to `systemFallback` below); see the Interaction
  * Contracts "Session-restore and font-load gate" section.
  */
 export function useAppFonts() {

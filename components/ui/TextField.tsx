@@ -22,10 +22,10 @@ type TextFieldProps = {
  *
  * Deviation: the plan calls for `accessibilityInvalid` on the error
  * state, but that prop does not exist on React Native's TextInput type
- * (verified against the installed RN types — no `accessibilityInvalid`
+ * (verified against the installed RN types: no `accessibilityInvalid`
  * anywhere in ViewAccessibility.d.ts or TextInput.d.ts). Using
  * `accessibilityLiveRegion="polite"` on the error text instead, which
- * announces the error to screen readers on appearance — the same
+ * announces the error to screen readers on appearance, the same
  * functional goal via a prop that actually typechecks.
  */
 export function TextField({

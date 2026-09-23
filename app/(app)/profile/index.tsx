@@ -15,7 +15,7 @@ const AVATAR_GLYPH_SIZE = 44;
 
 /**
  * ACCT-03's profile view. D-07 is exact about scope: identity fields only
- * (avatar, name, username, bio) — nothing summarizing a feature that
+ * (avatar, name, username, bio), nothing summarizing a feature that
  * doesn't exist yet this phase, since a placeholder for it would be
  * inventing product surface with no data behind it. Renders the session
  * user directly (lib/session/store.ts); edit.tsx's reloadUser() call after

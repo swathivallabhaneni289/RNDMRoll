@@ -11,7 +11,7 @@ const PANEL_GLYPH_OPACITY = 0.3;
  * Secondary-fill photo stand-in with a centered image-outline glyph.
  * Phase 1 has no photo pipeline, so this takes no image source prop at
  * all: it is a declared layout stand-in real photography later replaces
- * by filling the same box. Hidden from screen readers — it carries no
+ * by filling the same box. Hidden from screen readers: it carries no
  * information they need.
  */
 export function PhotoPlaceholder({ variant }: { variant: 'cover' | 'panel' }) {

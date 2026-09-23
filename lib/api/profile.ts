@@ -5,7 +5,7 @@ import type { ApiUser, AvatarUploadTicket } from '@/lib/api/types';
  * Shared profile read/write calls used by both the profile view and profile
  * edit screens. Request/response shapes are the exact GET/PATCH /me and
  * POST /me/avatar/upload-url contract plan 01-11 built and documented in
- * 01-11-SUMMARY.md — this module does not reshape any of it.
+ * 01-11-SUMMARY.md; this module does not reshape any of it.
  */
 
 /**
@@ -28,7 +28,7 @@ export async function fetchProfile(): Promise<ApiUser> {
  * one field (e.g. a bio edit) never rewrites an untouched field (e.g.
  * username) and cannot trip a spurious username conflict. A 409
  * `username_taken` response surfaces as an `ApiError` with its
- * `suggestions` array carried through unchanged — this function does not
+ * `suggestions` array carried through unchanged; this function does not
  * catch or reshape that error, so the caller (the edit screen) can render
  * the same taken state the create-profile screen renders.
  */
@@ -47,7 +47,7 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
  * to the returned `upload_url` with a matching Content-Type header (a raw
  * `fetch`, not the `api` client, since this request goes straight to object
  * storage and must not carry our Authorization header), and return the
- * `public_url`. Never calls PATCH /me itself — the caller decides when to
+ * `public_url`. Never calls PATCH /me itself; the caller decides when to
  * persist, which is what lets the edit screen batch an avatar change
  * together with a name/username/bio change into a single save.
  */

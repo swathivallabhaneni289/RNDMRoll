@@ -9,7 +9,7 @@ import type { ApiErrorBody, ApiErrorCode } from '@/lib/api/types';
  *
  * This module never reads or writes the OS keychain directly. It reaches session
  * state only through `getAccessToken` (an in-memory accessor) and the
- * `refreshSession`/`signOut` delegates that lib/session/store.ts exports —
+ * `refreshSession`/`signOut` delegates that lib/session/store.ts exports;
  * lib/session/store.ts is the only module in the repo permitted to import the
  * secure-storage package.
  */

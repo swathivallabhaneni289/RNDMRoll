@@ -4,7 +4,7 @@ import { PhotoPlaceholder } from '@/components/ui/PhotoPlaceholder';
 
 /**
  * Shared photo-panel surface: `card` elevation's shadow keys plus the
- * `lg` radius, filled with Secondary rather than `card`'s white — these
+ * `lg` radius, filled with Secondary rather than `card`'s white: these
  * are photo stand-ins, not literal white card surfaces. Not exported;
  * PhotoPanel, PolaroidCard, and SplitPhotoPanels each compose it with
  * their own outer spacing so side margins never compound.
@@ -34,7 +34,7 @@ export function PhotoPanel({ aspectRatio = 4 / 5 }: { aspectRatio?: number }) {
 /**
  * A square photo area with an additional `space.md` bottom padding
  * strip, simulating a polaroid frame's wider bottom border. `rotation`
- * is a required, caller-supplied number — never randomized, never
+ * is a required, caller-supplied number, never randomized, never
  * animated (PROJECT.md bans over-the-top scroll animations).
  */
 export function PolaroidCard({ rotation }: { rotation: number }) {

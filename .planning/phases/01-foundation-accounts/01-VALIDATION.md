@@ -1,9 +1,9 @@
 ---
 phase: 1
 slug: foundation-accounts
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: automated_gates_passed
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-15
 ---
 
@@ -40,12 +40,12 @@ Task IDs are assigned during planning (step 8) — this table maps requirements 
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | ACCT-01 | V2/V3 | Signup creates a user with `email_verified=false` and a hashed (bcrypt) password | unit | `go test ./internal/httpapi -run TestSignup -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | ACCT-01 | V2/V3 | Login with correct credentials returns access+refresh tokens; wrong password rejected with a generic error | unit | `go test ./internal/httpapi -run TestLogin -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | ACCT-01 | V3 | Refresh endpoint issues a new access token for a valid refresh token; rejects expired/revoked ones | unit | `go test ./internal/httpapi -run TestRefresh -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | ACCT-01 | V2 | Unverified user cannot access `(app)`-gated endpoints (D-04 email verification gate) | integration | `go test ./internal/httpapi -run TestEmailVerificationGate -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | ACCT-03 | V4 | `GET /me` returns the caller's own profile only, derived from the token subject claim (never a client-supplied ID) | unit | `go test ./internal/httpapi -run TestGetProfile -v` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | ACCT-03 | V4/V5 | `PATCH /me` updates name/username/bio, rejects a taken username | unit | `go test ./internal/httpapi -run TestUpdateProfile -v` | ❌ W0 | ⬜ pending |
+| Task 1 | 01-08 | 4 | ACCT-01 | V2/V3 | Signup creates a user with `email_verified=false` and a hashed (bcrypt) password | unit | `go test ./internal/httpapi -run TestSignup_ValidBody_Returns201AndHashesPassword -v` | ✅ | ✅ green |
+| Task 1 | 01-08 | 4 | ACCT-01 | V2/V3 | Login with correct credentials returns access+refresh tokens; wrong password rejected with a generic error | unit | `go test ./internal/httpapi -run TestLogin_CorrectCredentials_Returns200WithTokensAndUser\|TestLogin_WrongPassword_Returns401InvalidCredentials -v` | ✅ | ✅ green |
+| Task 2 | 01-08 | 4 | ACCT-01 | V3 | Refresh endpoint issues a new access token for a valid refresh token; rejects expired/revoked ones | unit | `go test ./internal/httpapi -run TestRefresh_ValidToken_Returns200WithNewTokenPairDifferentFromPresented\|TestRefresh_ExpiredToken_Returns401TokenExpired -v` | ✅ | ✅ green |
+| Task 3 | 01-09 | 4 | ACCT-01 | V2 | Unverified user cannot access `(app)`-gated endpoints (D-04 email verification gate) | integration | `go test ./internal/middleware -run TestRequireVerified_UnverifiedAccountReturns403AndHandlerNeverRuns -v && go test ./internal/httpapi -run TestUnverifiedCannotReachProfile -v` | ✅ | ✅ green |
+| Task 3 | 01-11 | 4 | ACCT-03 | V4 | `GET /me` returns the caller's own profile only, derived from the token subject claim (never a client-supplied ID) | unit | `go test ./internal/httpapi -run TestProfile_GetMe_ReturnsCallerProfileWithOnboardingComplete\|TestProfile_GetMe_NoBearerTokenReturns401 -v` | ✅ | ✅ green |
+| Task 3 | 01-11 | 4 | ACCT-03 | V4/V5 | `PATCH /me` updates name/username/bio, rejects a taken username | unit | `go test ./internal/httpapi -run TestProfile_PatchMe_UpdatesFieldsIndependently\|TestProfile_PatchMe_UsernameTakenReturns409WithAlternates -v` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -72,11 +72,13 @@ Task IDs are assigned during planning (step 8) — this table maps requirements 
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+All six Per-Task Verification Map rows are backed by passing tests as of the 01-15 phase-closing sweep (`go build ./...`, `go vet ./...`, full `go test ./...` all green; see 01-15-SUMMARY.md for the run). The four Manual-Only Verifications below remain outstanding pending the 01-15 device walkthrough checkpoint.
+
+**Approval:** pending device walkthrough (01-15 Task 2)
