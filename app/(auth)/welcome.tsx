@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { PhotoPlaceholder } from '@/components/ui/PhotoPlaceholder';
@@ -34,20 +34,17 @@ export default function WelcomeScreen() {
     <View style={{ flex: 1 }}>
       <StatusBar style="light" />
 
-      <View style={StyleSheet.absoluteFill}>
+      <ImageReveal style={StyleSheet.absoluteFill} duration={700}>
         <PhotoPlaceholder variant="cover" />
-      </View>
+      </ImageReveal>
 
       <PhotoScrim topOpaqueFraction={topOpaqueFraction} />
 
-      <Animated.View
-        entering={FadeIn.duration(600)}
-        style={{ position: 'absolute', top: insets.top, left: space.lg }}
-      >
+      <FadeInUp delay={60} duration={500} style={{ position: 'absolute', top: insets.top, left: space.lg }}>
         <AppText role="label" tone="onInk">
           {'one roll.\none real moment.'}
         </AppText>
-      </Animated.View>
+      </FadeInUp>
 
       <View
         style={{
@@ -59,14 +56,14 @@ export default function WelcomeScreen() {
           justifyContent: 'flex-end',
         }}
       >
-        <Animated.View entering={FadeInDown.delay(110).duration(600)} style={{ marginBottom: space.md }}>
+        <FadeInUp delay={160} duration={500} style={{ marginBottom: space.md }}>
           <AppText role="display" tone="onInk">
             {'RNDMRoll'}
           </AppText>
-        </Animated.View>
-        <Animated.View entering={FadeInDown.delay(220).duration(600)}>
+        </FadeInUp>
+        <FadeInUp delay={260} duration={500}>
           <PrimaryButton label="Get started" variant="onPhoto" onPress={() => router.push('/ritual')} />
-        </Animated.View>
+        </FadeInUp>
       </View>
     </View>
   );

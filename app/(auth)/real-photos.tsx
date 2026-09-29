@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
 import { AdvanceControl } from '@/components/ui/AdvanceControl';
 import { AppText } from '@/components/ui/AppText';
 import { PhotoPanel } from '@/components/ui/PhotoPanel';
@@ -14,26 +14,23 @@ export default function RealPhotosScreen() {
   return (
     <Screen scroll={false}>
       <AdvanceControl onAdvance={() => router.push('/everyone-rolls')}>
-        <Animated.View entering={FadeIn.delay(220).duration(400)} style={{ paddingTop: space.sm }}>
+        <FadeInUp delay={180} duration={350} style={{ paddingTop: space.sm }}>
           <StepProgress current={2} total={3} />
-        </Animated.View>
+        </FadeInUp>
 
-        <Animated.View
-          entering={FadeInDown.delay(330).duration(500)}
-          style={{ marginTop: space.xl, marginBottom: space.xl }}
-        >
+        <ImageReveal delay={440} style={{ marginTop: space.xl, marginBottom: space.xl }}>
           <PhotoPanel />
-        </Animated.View>
+        </ImageReveal>
 
-        <Animated.View entering={FadeInDown.delay(440).duration(450)}>
+        <FadeInUp delay={260} duration={420}>
           <AppText role="display">{'real photos only.'}</AppText>
-        </Animated.View>
+        </FadeInUp>
 
-        <Animated.View entering={FadeIn.delay(550).duration(450)} style={{ marginTop: space.md }}>
+        <FadeInUp delay={340} duration={400} style={{ marginTop: space.md }}>
           <AppText role="body">
             {'No posters. No album covers. No stock images. Only moments you actually captured.'}
           </AppText>
-        </Animated.View>
+        </FadeInUp>
       </AdvanceControl>
     </Screen>
   );

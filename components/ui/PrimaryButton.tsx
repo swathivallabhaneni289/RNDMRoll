@@ -1,4 +1,5 @@
 import { ActivityIndicator, GestureResponderEvent, Pressable, Text } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AppText } from '@/components/ui/AppText';
 import { color, elevation, minTouchTarget, radius, type } from '@/lib/theme/tokens';
 
@@ -34,38 +35,61 @@ export function PrimaryButton({
       ? { ...elevation.raised, backgroundColor: color.dominant }
       : { ...elevation.raised };
 
+  // docs/motion-interaction-direction.md Section 10: "subtle press feedback
+  // on interactive elements", built once here rather than per screen since
+  // every PrimaryButton call site gets it for free. Skipped entirely while
+  // inert so a disabled/loading button never looks tappable.
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <Pressable
-      onPress={isInert ? undefined : onPress}
-      accessibilityRole="button"
-      accessibilityState={{ disabled, busy: loading }}
-      style={{
-        ...containerStyle,
-        borderRadius: radius.md,
-        minHeight: minTouchTarget,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 16,
-      }}
-    >
-      {loading ? (
-        <ActivityIndicator color={isOnPhoto ? color.ink : color.dominant} />
-      ) : disabled ? (
-        <Text
-          style={{
-            fontSize: type.button.fontSize,
-            lineHeight: type.button.lineHeight,
-            fontFamily: type.button.fontFamily,
-            color: color.onInkDisabled,
-          }}
-        >
-          {label}
-        </Text>
-      ) : (
-        <AppText role="button" tone={isOnPhoto ? 'default' : 'onInk'}>
-          {label}
-        </AppText>
-      )}
-    </Pressable>
+    <Animated.View style={isInert ? undefined : pressStyle}>
+      <Pressable
+        onPress={isInert ? undefined : onPress}
+        onPressIn={
+          isInert
+            ? undefined
+            : () => {
+                scale.value = withTiming(0.97, { duration: 90, easing: Easing.out(Easing.cubic) });
+              }
+        }
+        onPressOut={
+          isInert
+            ? undefined
+            : () => {
+                scale.value = withSpring(1, { damping: 16, stiffness: 220, overshootClamping: true });
+              }
+        }
+        accessibilityRole="button"
+        accessibilityState={{ disabled, busy: loading }}
+        style={{
+          ...containerStyle,
+          borderRadius: radius.md,
+          minHeight: minTouchTarget,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 16,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator color={isOnPhoto ? color.ink : color.dominant} />
+        ) : disabled ? (
+          <Text
+            style={{
+              fontSize: type.button.fontSize,
+              lineHeight: type.button.lineHeight,
+              fontFamily: type.button.fontFamily,
+              color: color.onInkDisabled,
+            }}
+          >
+            {label}
+          </Text>
+        ) : (
+          <AppText role="button" tone={isOnPhoto ? 'default' : 'onInk'}>
+            {label}
+          </AppText>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }

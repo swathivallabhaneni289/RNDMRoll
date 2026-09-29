@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SplitPhotoPanels } from '@/components/ui/PhotoPanel';
@@ -19,32 +19,29 @@ export default function EveryoneRollsScreen() {
 
   return (
     <Screen scroll={false}>
-      <Animated.View entering={FadeIn.delay(220).duration(400)} style={{ paddingTop: space.sm }}>
+      <FadeInUp delay={180} duration={350} style={{ paddingTop: space.sm }}>
         <StepProgress current={3} total={3} />
-      </Animated.View>
+      </FadeInUp>
 
-      <Animated.View
-        entering={FadeInDown.delay(330).duration(500)}
-        style={{ marginTop: space.xl, marginBottom: space.xl }}
-      >
+      <ImageReveal delay={440} style={{ marginTop: space.xl, marginBottom: space.xl }}>
         <SplitPhotoPanels />
-      </Animated.View>
+      </ImageReveal>
 
-      <Animated.View entering={FadeInDown.delay(440).duration(450)}>
+      <FadeInUp delay={260} duration={420}>
         <AppText role="display">{'everyone rolls. everyone shares.'}</AppText>
-      </Animated.View>
+      </FadeInUp>
 
-      <Animated.View entering={FadeIn.delay(550).duration(450)} style={{ marginTop: space.md, marginBottom: space.xl }}>
+      <FadeInUp delay={340} duration={400} style={{ marginTop: space.md, marginBottom: space.xl }}>
         <AppText role="body">
           {
             'Every night at 8:00 PM, your circle each rolls their own category from their own wheel. The fun is seeing what everyone got and how they showed up for it.'
           }
         </AppText>
-      </Animated.View>
+      </FadeInUp>
 
-      <Animated.View entering={FadeIn.delay(660).duration(450)} style={{ marginTop: 'auto', paddingBottom: space.lg }}>
+      <FadeInUp delay={540} duration={400} style={{ marginTop: 'auto', paddingBottom: space.lg }}>
         <PrimaryButton label="Continue" onPress={handleContinue} />
-      </Animated.View>
+      </FadeInUp>
     </Screen>
   );
 }

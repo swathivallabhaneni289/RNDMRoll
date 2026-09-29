@@ -1,12 +1,7 @@
 import { ReactNode, useRef } from 'react';
-import {
-  GestureResponderEvent,
-  PanResponder,
-  PanResponderGestureState,
-  Pressable,
-  View,
-} from 'react-native';
+import { GestureResponderEvent, PanResponder, PanResponderGestureState, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { PressScale } from '@/lib/motion/primitives';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 const SWIPE_THRESHOLD = 60;
@@ -47,7 +42,7 @@ export function AdvanceControl({ onAdvance, accessibilityLabel = 'Next', childre
   return (
     <View style={{ flex: 1 }} {...panResponder.panHandlers}>
       {children}
-      <Pressable
+      <PressScale
         onPress={onAdvance}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -59,7 +54,7 @@ export function AdvanceControl({ onAdvance, accessibilityLabel = 'Next', childre
         }}
       >
         <Ionicons name="chevron-forward" size={24} color={color.ink} />
-      </Pressable>
+      </PressScale>
     </View>
   );
 }

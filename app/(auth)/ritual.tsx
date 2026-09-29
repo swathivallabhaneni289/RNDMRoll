@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
 import { AdvanceControl } from '@/components/ui/AdvanceControl';
 import { AppText } from '@/components/ui/AppText';
 import { PolaroidCard } from '@/components/ui/PhotoPanel';
@@ -14,10 +14,15 @@ export default function RitualScreen() {
   return (
     <Screen scroll={false}>
       <AdvanceControl onAdvance={() => router.push('/real-photos')}>
-        <Animated.View entering={FadeIn.delay(220).duration(400)} style={{ paddingTop: space.sm }}>
+        <FadeInUp delay={180} duration={350} style={{ paddingTop: space.sm }}>
           <StepProgress current={1} total={3} />
-        </Animated.View>
+        </FadeInUp>
 
+        {/* Layout stays as designed (photos above the headline); only the
+            entrance TIMING follows docs/motion-interaction-direction.md
+            Section 1's heading -> text -> image -> action sequence, via each
+            element's own delay -- the photo trio (visually first) is timed
+            to settle in last. */}
         <View
           style={{
             flexDirection: 'row',
@@ -26,26 +31,26 @@ export default function RitualScreen() {
             marginBottom: space.xl,
           }}
         >
-          <Animated.View entering={FadeInDown.delay(330).duration(450)} style={{ flex: 1, marginTop: space.md }}>
+          <ImageReveal delay={440} style={{ flex: 1, marginTop: space.md }}>
             <PolaroidCard rotation={-6} />
-          </Animated.View>
-          <Animated.View entering={FadeInDown.delay(440).duration(450)} style={{ flex: 1 }}>
+          </ImageReveal>
+          <ImageReveal delay={440} style={{ flex: 1 }}>
             <PolaroidCard rotation={0} />
-          </Animated.View>
-          <Animated.View entering={FadeInDown.delay(550).duration(450)} style={{ flex: 1, marginTop: space.md }}>
+          </ImageReveal>
+          <ImageReveal delay={440} style={{ flex: 1, marginTop: space.md }}>
             <PolaroidCard rotation={6} />
-          </Animated.View>
+          </ImageReveal>
         </View>
 
-        <Animated.View entering={FadeInDown.delay(660).duration(450)}>
+        <FadeInUp delay={260} duration={420}>
           <AppText role="display">{"life's better when it's random."}</AppText>
-        </Animated.View>
+        </FadeInUp>
 
-        <Animated.View entering={FadeIn.delay(770).duration(450)} style={{ marginTop: space.md }}>
+        <FadeInUp delay={340} duration={400} style={{ marginTop: space.md }}>
           <AppText role="body">
             {"Every night at 8:00 PM, your wheel reveals tonight's category."}
           </AppText>
-        </Animated.View>
+        </FadeInUp>
       </AdvanceControl>
     </Screen>
   );
