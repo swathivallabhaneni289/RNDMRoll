@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { AdvanceControl } from '@/components/ui/AdvanceControl';
 import { AppText } from '@/components/ui/AppText';
 import { PolaroidCard } from '@/components/ui/PhotoPanel';
@@ -13,9 +14,9 @@ export default function RitualScreen() {
   return (
     <Screen scroll={false}>
       <AdvanceControl onAdvance={() => router.push('/real-photos')}>
-        <View style={{ paddingTop: space.sm }}>
+        <Animated.View entering={FadeIn.delay(220).duration(400)} style={{ paddingTop: space.sm }}>
           <StepProgress current={1} total={3} />
-        </View>
+        </Animated.View>
 
         <View
           style={{
@@ -25,24 +26,26 @@ export default function RitualScreen() {
             marginBottom: space.xl,
           }}
         >
-          <View style={{ flex: 1, marginTop: space.md }}>
+          <Animated.View entering={FadeInDown.delay(330).duration(450)} style={{ flex: 1, marginTop: space.md }}>
             <PolaroidCard rotation={-6} />
-          </View>
-          <View style={{ flex: 1 }}>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.delay(440).duration(450)} style={{ flex: 1 }}>
             <PolaroidCard rotation={0} />
-          </View>
-          <View style={{ flex: 1, marginTop: space.md }}>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.delay(550).duration(450)} style={{ flex: 1, marginTop: space.md }}>
             <PolaroidCard rotation={6} />
-          </View>
+          </Animated.View>
         </View>
 
-        <AppText role="display">{"life's better when it's random."}</AppText>
+        <Animated.View entering={FadeInDown.delay(660).duration(450)}>
+          <AppText role="display">{"life's better when it's random."}</AppText>
+        </Animated.View>
 
-        <View style={{ marginTop: space.md }}>
+        <Animated.View entering={FadeIn.delay(770).duration(450)} style={{ marginTop: space.md }}>
           <AppText role="body">
             {"Every night at 8:00 PM, your wheel reveals tonight's category."}
           </AppText>
-        </View>
+        </Animated.View>
       </AdvanceControl>
     </Screen>
   );

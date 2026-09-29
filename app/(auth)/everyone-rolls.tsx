@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SplitPhotoPanels } from '@/components/ui/PhotoPanel';
@@ -18,27 +19,32 @@ export default function EveryoneRollsScreen() {
 
   return (
     <Screen scroll={false}>
-      <View style={{ paddingTop: space.sm }}>
+      <Animated.View entering={FadeIn.delay(220).duration(400)} style={{ paddingTop: space.sm }}>
         <StepProgress current={3} total={3} />
-      </View>
+      </Animated.View>
 
-      <View style={{ marginTop: space.xl, marginBottom: space.xl }}>
+      <Animated.View
+        entering={FadeInDown.delay(330).duration(500)}
+        style={{ marginTop: space.xl, marginBottom: space.xl }}
+      >
         <SplitPhotoPanels />
-      </View>
+      </Animated.View>
 
-      <AppText role="display">{'everyone rolls. everyone shares.'}</AppText>
+      <Animated.View entering={FadeInDown.delay(440).duration(450)}>
+        <AppText role="display">{'everyone rolls. everyone shares.'}</AppText>
+      </Animated.View>
 
-      <View style={{ marginTop: space.md, marginBottom: space.xl }}>
+      <Animated.View entering={FadeIn.delay(550).duration(450)} style={{ marginTop: space.md, marginBottom: space.xl }}>
         <AppText role="body">
           {
             'Every night at 8:00 PM, your circle each rolls their own category from their own wheel. The fun is seeing what everyone got and how they showed up for it.'
           }
         </AppText>
-      </View>
+      </Animated.View>
 
-      <View style={{ marginTop: 'auto', paddingBottom: space.lg }}>
+      <Animated.View entering={FadeIn.delay(660).duration(450)} style={{ marginTop: 'auto', paddingBottom: space.lg }}>
         <PrimaryButton label="Continue" onPress={handleContinue} />
-      </View>
+      </Animated.View>
     </Screen>
   );
 }

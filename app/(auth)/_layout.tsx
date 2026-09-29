@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
 import { color } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
 import { useIntroSeen } from '@/lib/onboarding/intro-seen';
@@ -20,6 +21,17 @@ export default function AuthLayout() {
   const router = useRouter();
   const { status, user } = useSession();
   const { seenIntro, resolved: introResolved } = useIntroSeen();
+  const reducedMotion = useReducedMotion();
+
+  // Button-advanced screens (reached by tapping a CTA, not by the AdvanceControl
+  // swipe/chevron) fade in rather than push, so the direction change between the
+  // two advance mechanisms reads intentionally rather than identically. Reduced
+  // Motion collapses both to a fade per Apple's own guidance: never delete
+  // meaning-bearing motion outright, substitute a dissolve.
+  const pushTransition = reducedMotion
+    ? { animation: 'fade' as const, animationDuration: 220 }
+    : { animation: 'simple_push' as const, animationDuration: 220 };
+  const fadeTransition = { animation: 'fade' as const, animationDuration: 220 };
 
   // The initial route is decided from two inputs and nothing else, per the plan:
   // a half-onboarded authenticated user always resumes at profile-setup, and an
@@ -45,10 +57,10 @@ export default function AuthLayout() {
       }}
     >
       <Stack.Screen name="welcome" />
-      <Stack.Screen name="ritual" />
-      <Stack.Screen name="real-photos" />
-      <Stack.Screen name="everyone-rolls" />
-      <Stack.Screen name="choose-method" />
+      <Stack.Screen name="ritual" options={fadeTransition} />
+      <Stack.Screen name="real-photos" options={pushTransition} />
+      <Stack.Screen name="everyone-rolls" options={pushTransition} />
+      <Stack.Screen name="choose-method" options={fadeTransition} />
       <Stack.Screen name="email" />
       <Stack.Screen name="verify-email" />
       <Stack.Screen name="profile-setup" />
