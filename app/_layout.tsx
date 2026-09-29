@@ -10,6 +10,14 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
 // screen ever flashes before the route decision is ready.
 SplashScreen.preventAutoHideAsync();
 
+// Mirrors (auth)/_layout.tsx's own unstable_settings: without an explicit
+// initialRouteName, expo-router's linking resolver has no default screen to
+// fall back to for the bare "/" URL once Stack.Protected-guarded siblings are
+// present, and shows Unmatched Route instead of ever mounting "index".
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 function RootNavigator() {
   const { status, user } = useSession();
   const { fontsLoaded, fontError } = useAppFonts();
