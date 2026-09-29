@@ -1,0 +1,121 @@
+/* Shared reset + chrome for RNDMRoll comparison sketches.
+   Each sketch defines its own variant color/type tokens inline —
+   the two directions being compared are aesthetically incompatible
+   by design, so there is no single shared palette here. */
+
+@import url('https://fonts.googleapis.com/css2?family=Domine:wght@400;500;600;700&family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Work Sans', system-ui, sans-serif;
+  background: #d8d8d8;
+}
+
+body {
+  padding-top: 52px;
+}
+
+/* Variant tab bar */
+#variant-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  padding: 10px 16px;
+  display: flex;
+  gap: 8px;
+  font-family: system-ui, sans-serif;
+}
+
+.variant-tab {
+  appearance: none;
+  border: 1px solid #444;
+  background: #262626;
+  color: #ccc;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.variant-tab.active {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+  font-weight: 600;
+}
+
+.variant {
+  display: none;
+}
+
+.variant.active {
+  display: block;
+}
+
+/* Phone-frame stage: these are mobile screens, not web pages */
+.phone-stage {
+  min-height: calc(100vh - 52px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 48px;
+  padding: 40px 20px;
+  flex-wrap: wrap;
+}
+
+.phone-frame {
+  width: 375px;
+  height: 812px;
+  border-radius: 44px;
+  border: 10px solid #111;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  background: #000;
+  flex-shrink: 0;
+}
+
+.phone-frame .screen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.phone-caption {
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #444;
+  margin-top: 12px;
+  max-width: 375px;
+}
+
+/* Sketch toolbar (bottom-right utility) */
+#sketch-tools {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9999;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+#sketch-tools:hover {
+  opacity: 1;
+}

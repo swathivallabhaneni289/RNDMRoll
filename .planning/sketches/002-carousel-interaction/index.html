@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sketch 002 — Carousel Interaction</title>
+<style>
+  /* ---------- Inlined shared theme (../themes/default.css) ----------
+     Safari blocks file:// stylesheets loaded from outside the HTML's own
+     folder by default, so this is inlined rather than linked. ---------- */
+  @import url('https://fonts.googleapis.com/css2?family=Domine:wght@400;500;600;700&family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Work Sans', system-ui, sans-serif; background: #d8d8d8; }
+  body { padding-top: 52px; }
+  #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; background: #1a1a1a; border-bottom: 1px solid #333; padding: 10px 16px; display: flex; gap: 8px; font-family: system-ui, sans-serif; }
+  .variant-tab { appearance: none; border: 1px solid #444; background: #262626; color: #ccc; font-size: 13px; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+  .variant-tab.active { background: #fff; color: #111; border-color: #fff; font-weight: 600; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .phone-stage { min-height: calc(100vh - 52px); display: flex; align-items: flex-start; justify-content: center; gap: 48px; padding: 40px 20px; flex-wrap: wrap; }
+  .phone-frame { width: 375px; height: 812px; border-radius: 44px; border: 10px solid #111; overflow: hidden; position: relative; box-shadow: 0 30px 60px rgba(0,0,0,0.35); background: #000; flex-shrink: 0; }
+  .phone-frame .screen { position: absolute; inset: 0; overflow: hidden; }
+  .phone-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 13px; color: #444; margin-top: 12px; max-width: 375px; }
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font-family: system-ui, sans-serif; font-size: 12px; background: rgba(0,0,0,0.75); color: #fff; padding: 8px 12px; border-radius: 8px; opacity: 0.45; transition: opacity 0.15s; }
+  #sketch-tools:hover { opacity: 1; }
+</style>
+<style>
+  /* ---------- Shared card content data (same 3 steps, both variants) ---------- */
+  /* Step 1: Ritual — "life's better when it's random."
+     Step 2: Real Photos — "real photos only."
+     Step 3: Everyone Rolls — "everyone rolls. everyone shares." */
+
+  /* ---------- Variant A: Swipe-to-next-screen (current app direction) ---------- */
+  .swipe-stage {
+    position: relative; height: 100%; width: 100%; overflow: hidden; background: #F6F5F2;
+  }
+  .swipe-screen {
+    position: absolute; inset: 0; background: #F6F5F2; padding: 60px 24px 24px;
+    font-family: 'Work Sans', sans-serif; color: #111;
+    transition: transform 0.22s ease-out, opacity 0.22s ease-out;
+    display: flex; flex-direction: column;
+  }
+  .swipe-screen.offstage-right { transform: translateX(100%); }
+  .swipe-screen.offstage-left { transform: translateX(-30%); opacity: 0; }
+  .step-progress { font-size: 14px; color: #625F5B; margin-bottom: 28px; }
+  .step-progress b { color: #111; font-weight: 600; }
+  .polaroid-row { display: flex; gap: 8px; margin-bottom: 32px; }
+  .polaroid { flex: 1; background: #E8E7E3; border-radius: 24px; aspect-ratio: 0.78; padding-bottom: 14px; display:flex; align-items:center; justify-content:center; }
+  .polaroid svg { width: 28px; height: 28px; opacity: 0.3; }
+  .polaroid.r-1 { transform: rotate(-6deg); margin-top: 12px; }
+  .polaroid.r-2 { transform: rotate(0deg); }
+  .polaroid.r-3 { transform: rotate(6deg); margin-top: 12px; }
+  .swipe-headline { font-family: 'Domine', serif; font-size: 26px; font-weight: 600; margin: 0 0 12px 0; }
+  .swipe-body { font-size: 15px; line-height: 22px; color: #333; margin: 0; }
+  .swipe-chevron {
+    position: absolute; right: 24px; bottom: 24px;
+    width: 44px; height: 44px; border-radius: 50%; border: none; background: transparent;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .swipe-hint { position: absolute; bottom: 28px; left: 24px; font-size: 12px; color: #999; }
+
+  /* ---------- Variant B: Tinder-style draggable card deck ---------- */
+  .deck-stage {
+    position: relative; height: 100%; width: 100%; background: #F6F5F2;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .deck-progress { position: absolute; top: 54px; left: 24px; font-size: 14px; color: #625F5B; z-index: 20; }
+  .deck-card {
+    position: absolute; width: 300px; height: 560px; border-radius: 28px;
+    background: #fff; box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    padding: 28px; display: flex; flex-direction: column;
+    font-family: 'Work Sans', sans-serif; color: #111;
+    touch-action: none; user-select: none; cursor: grab;
+    will-change: transform;
+  }
+  .deck-card:active { cursor: grabbing; }
+  .deck-card .deck-photo { flex: 1; background: linear-gradient(135deg,#ffd3e0,#c2e9fb); border-radius: 18px; margin-bottom: 20px; display:flex; align-items:center; justify-content:center; }
+  .deck-card .deck-photo svg { width: 36px; height: 36px; opacity: 0.4; }
+  .deck-headline { font-family: 'Domine', serif; font-size: 24px; font-weight: 700; margin: 0 0 8px; }
+  .deck-body { font-size: 14px; color: #555; line-height: 20px; margin: 0; }
+  .deck-stamp {
+    position: absolute; top: 24px; padding: 6px 14px; border: 3px solid; border-radius: 8px;
+    font-family: system-ui; font-weight: 800; font-size: 20px; letter-spacing: 1px;
+    transform: rotate(-18deg); opacity: 0;
+  }
+  .deck-stamp.like { left: 24px; color: #34c759; border-color: #34c759; }
+  .deck-empty {
+    font-family: 'Work Sans', sans-serif; text-align: center; color: #888; max-width: 240px;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab active" onclick="showVariant('a', event)">A: Swipe to next screen (current)</button>
+  <button class="variant-tab" onclick="showVariant('b', event)">B: Tinder-style card deck</button>
+</div>
+
+<div id="variant-a" class="variant active">
+  <div class="phone-stage">
+    <div>
+      <div class="phone-frame">
+        <div class="screen swipe-stage" id="swipeStage"></div>
+      </div>
+      <div class="phone-caption">Swipe left or tap the corner chevron to advance one full screen at a time. Each screen owns the whole frame — no card metaphor, no drag-tracking, matches AdvanceControl's existing threshold-release gesture.</div>
+    </div>
+  </div>
+</div>
+
+<div id="variant-b" class="variant">
+  <div class="phone-stage">
+    <div>
+      <div class="phone-frame">
+        <div class="screen deck-stage" id="deckStage">
+          <div class="deck-progress" id="deckProgress">01 / 03</div>
+        </div>
+      </div>
+      <div class="phone-caption">Drag the card left, it rotates and trails your finger, release past threshold to send it flying off and reveal the next one underneath — the classic dating-app card-stack mechanic.</div>
+    </div>
+  </div>
+</div>
+
+<div id="sketch-tools">Sketch 002 · Carousel Interaction</div>
+
+<script>
+function showVariant(id, evt) {
+  document.querySelectorAll('.variant').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).classList.add('active');
+  if (evt) evt.target.classList.add('active');
+}
+
+const STEPS = [
+  { headline: "life's better when it's random.", body: "Every night at 8:00 PM, your wheel reveals tonight's category." },
+  { headline: 'real photos only.', body: 'No posters. No album covers. No stock images. Only moments you actually captured.' },
+  { headline: 'everyone rolls. everyone shares.', body: 'Every night at 8:00 PM, your circle each rolls their own category from their own wheel.' },
+];
+
+const IMG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/></svg>';
+
+/* ---------- Variant A build ---------- */
+const swipeStage = document.getElementById('swipeStage');
+let swipeIndex = 0;
+
+function renderSwipeScreen(i) {
+  const s = STEPS[i];
+  const el = document.createElement('div');
+  el.className = 'swipe-screen';
+  el.innerHTML = `
+    <div class="step-progress"><b>0${i + 1}</b> / 03</div>
+    <div class="polaroid-row">
+      <div class="polaroid r-1">${IMG_ICON}</div>
+      <div class="polaroid r-2">${IMG_ICON}</div>
+      <div class="polaroid r-3">${IMG_ICON}</div>
+    </div>
+    <div class="swipe-headline">${s.headline}</div>
+    <div class="swipe-body">${s.body}</div>
+    <div class="swipe-hint">swipe left, or tap the chevron</div>
+    <button class="swipe-chevron" onclick="advanceSwipe()">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#111" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  `;
+  return el;
+}
+
+function advanceSwipe() {
+  const current = swipeStage.querySelector('.swipe-screen');
+  if (current) {
+    current.classList.add('offstage-left');
+    setTimeout(() => current.remove(), 220);
+  }
+  swipeIndex = (swipeIndex + 1) % STEPS.length;
+  const next = renderSwipeScreen(swipeIndex);
+  next.classList.add('offstage-right');
+  swipeStage.appendChild(next);
+  requestAnimationFrame(() => requestAnimationFrame(() => next.classList.remove('offstage-right')));
+}
+
+swipeStage.appendChild(renderSwipeScreen(0));
+let touchStartX = null;
+swipeStage.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+swipeStage.addEventListener('touchend', (e) => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (dx < -60) advanceSwipe();
+  touchStartX = null;
+});
+swipeStage.addEventListener('mousedown', (e) => { touchStartX = e.clientX; });
+swipeStage.addEventListener('mouseup', (e) => {
+  if (touchStartX === null) return;
+  const dx = e.clientX - touchStartX;
+  if (dx < -60) advanceSwipe();
+  touchStartX = null;
+});
+
+/* ---------- Variant B build: draggable card deck ---------- */
+const deckStage = document.getElementById('deckStage');
+const deckProgress = document.getElementById('deckProgress');
+let deckPos = 0;
+
+function buildDeck() {
+  deckStage.querySelectorAll('.deck-card, .deck-empty').forEach((n) => n.remove());
+  const remaining = STEPS.slice(deckPos);
+  if (remaining.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'deck-empty';
+    empty.innerHTML = "That's the whole sequence — this is where it'd hand off into signup.";
+    deckStage.appendChild(empty);
+    deckProgress.textContent = '03 / 03';
+    return;
+  }
+  remaining.slice(0, 3).reverse().forEach((step, revIdx) => {
+    const depth = remaining.slice(0, 3).length - 1 - revIdx;
+    const card = document.createElement('div');
+    card.className = 'deck-card';
+    card.style.transform = `translateY(${depth * 10}px) scale(${1 - depth * 0.04})`;
+    card.style.zIndex = 10 - depth;
+    card.innerHTML = `
+      <div class="deck-stamp like">KEEP</div>
+      <div class="deck-photo">${IMG_ICON}</div>
+      <div class="deck-headline">${step.headline}</div>
+      <div class="deck-body">${step.body}</div>
+    `;
+    if (depth === 0) makeDraggable(card);
+    deckStage.appendChild(card);
+  });
+  deckProgress.textContent = `0${deckPos + 1} / 03`;
+}
+
+function makeDraggable(card) {
+  let startX = 0, startY = 0, dx = 0, dy = 0, dragging = false;
+  const stamp = card.querySelector('.deck-stamp');
+
+  function onDown(x, y) {
+    dragging = true; startX = x; startY = y;
+    card.style.transition = 'none';
+  }
+  function onMove(x, y) {
+    if (!dragging) return;
+    dx = x - startX; dy = y - startY;
+    const rot = dx / 18;
+    card.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
+    stamp.style.opacity = Math.min(Math.abs(dx) / 80, 1);
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    card.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+    if (dx < -100) {
+      card.style.transform = `translate(-600px, ${dy}px) rotate(-30deg)`;
+      card.style.opacity = '0';
+      setTimeout(() => { deckPos++; buildDeck(); }, 260);
+    } else {
+      card.style.transform = 'translate(0,0) rotate(0)';
+      stamp.style.opacity = 0;
+    }
+  }
+
+  card.addEventListener('pointerdown', (e) => { card.setPointerCapture(e.pointerId); onDown(e.clientX, e.clientY); });
+  card.addEventListener('pointermove', (e) => onMove(e.clientX, e.clientY));
+  card.addEventListener('pointerup', onUp);
+  card.addEventListener('pointercancel', onUp);
+}
+
+buildDeck();
+</script>
+
+</body>
+</html>
