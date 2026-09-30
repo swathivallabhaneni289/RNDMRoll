@@ -1,0 +1,171 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-30T10:10:25.971Z",
+  "phase": "01",
+  "phase_name": "foundation-accounts",
+  "phase_dir": ".planning/phases/01-foundation-accounts",
+  "plan": 15,
+  "task": 1,
+  "total_tasks": 2,
+  "status": "paused",
+  "branch": "lab/frosted-editorial",
+  "head_commit": "86f6d0b",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Full automated sweep across both stacks and the design-constraint scan",
+      "status": "in_progress",
+      "progress": "First pass ran 2026-09-23 (content landed as 1582a05: em dashes stripped, 01-VALIDATION.md verification map reconciled; that file claims go build, go vet and full go test were green). The results were never written to 01-15-SUMMARY.md, and 10 UI files changed after that pass (09-29 motion work). Read-only re-check on 2026-09-30, all clean: em dash scan, 24dp and circular radius token file sets, bare borderRadius, emoji-as-icon, retired routes and StepDots, app.json light lock, tsc --noEmit (exit 0, lab enabled, covers lab/). NOT re-run: go build, go vet, go test, expo export. Open deviation: the plan's literal raw-hex gate exits 1 because of lib/theme/tokens.test-assert.ts (8 intentional UI-SPEC pin literals from plan 01-02)."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 2,
+      "name": "Device walkthrough and planner-authored copy approval (checkpoint:human-verify, blocking)",
+      "status": "in_progress",
+      "progress": "The developer was mid-UAT on the booted iPhone 17 Pro simulator against the live Metro. Which of the 20 steps are confirmed, and any section F copy decisions, are recorded nowhere: ask the developer first. Steps 1-7 (marketing sequence) need re-confirmation because the 09-29 motion commits changed those screens and PrimaryButton."
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The 20-step device walkthrough and the section F copy decisions can only be done by the developer, and per-step progress is not recorded anywhere",
+      "type": "human_action",
+      "workaround": "Ask the developer which steps and decisions are already confirmed before doing anything else"
+    },
+    {
+      "description": "Unverified whether real Apple, Google, S3-compatible and Resend credentials are configured on the running API. .env exists and differs from .env.example (contents deliberately not read). Needed for step 15 photo upload, step 19 Apple sign-in and step 20 Google sign-in; step 11 expects MAIL_DRIVER=log",
+      "type": "external",
+      "workaround": "Ask the developer. Per 01-13-SUMMARY these were deferred placeholders as of 2026-09-18"
+    },
+    {
+      "description": "The plan's literal raw-hex gate (01-15 Task 1 automated line) exits 1 because lib/theme/tokens.test-assert.ts holds 8 satisfies '#RRGGBB' pin literals",
+      "type": "technical",
+      "workaround": "Decide: allow-list that one file in the scan (compile-time pin file for UI-SPEC values, never imported at runtime) or amend the gate. Record the choice in 01-15-SUMMARY.md. Do not edit the pins to make the scan pass"
+    },
+    {
+      "description": "01-15-SUMMARY.md does not exist, yet 01-VALIDATION.md line 82 cites it as the record of the sweep run",
+      "type": "technical",
+      "workaround": "Write it when Task 1 is re-run and Task 2 is approved, then make line 82 true"
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Complete the 20-step device walkthrough (sections A to E of 01-15-PLAN.md Task 2)",
+      "context": "Only the developer can drive the simulator. Steps 1-7 must be re-confirmed after the 09-29 motion changes",
+      "blocking": true
+    },
+    {
+      "action": "Decide keep-or-change for the six planner-authored strings (Profile, Edit profile, Sign up with email, Log in, At least 8 characters., Create account), confirm the deliberate omission of Forgot password, and confirm the two flagged cover-screen resolutions",
+      "context": "01-15 section F. Required before the phase can close",
+      "blocking": true
+    },
+    {
+      "action": "Type 'approved' (the plan's resume-signal), or list copy changes and issues found",
+      "context": "Closes 01-15 Task 2",
+      "blocking": true
+    },
+    {
+      "action": "Approve or decline cleanup of the stale executor worktree (.claude/worktrees/agent-a9db1abbfc95acd40 plus branch worktree-agent-a9db1abbfc95acd40, two commits b208816 and 8186a9d superseded in content by 1582a05) and the 844M QA clone at /private/tmp/claude-501/-Users-swathivallabhaneni-code-RNDMRoll/c3d25668-c876-4bd4-958b-1f1d46f92751/scratchpad",
+      "context": "Nothing was deleted during the pause",
+      "blocking": false
+    },
+    {
+      "action": "Decide the frosted-material lab (adopt, reject, or keep dev-only) and record it in PROJECT.md. Also settle sketches 001-003 (winner null)",
+      "context": "The lab and sketches reopen the locked no-glass, no-gradient rule. Nothing outside lab/ may adopt them before a recorded decision",
+      "blocking": false
+    },
+    {
+      "action": "Before any launch: connect a custom domain, add a favicon, remove any built-with-AI tag",
+      "context": "Standing launch gate (memory project_rndmroll_launch_gate). Not part of Phase 1 closure",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Roll is a spin wheel, once per day at each user's local 8:00 PM, plus one optional weekly streak reroll token. Photos may come from camera or library",
+      "rationale": "Resolved during doc ingest with user approval over docs/original-concept-notes.md (STATE.md, PROJECT.md)",
+      "phase": "01"
+    },
+    {
+      "decision": "One consolidated create-profile screen and four pre-signup marketing screens, with a numeric step indicator and no dot component",
+      "rationale": "D-05 revised 2026-09-17 (UI-SPEC revision 9)",
+      "phase": "01"
+    },
+    {
+      "decision": "Load the Google Sign-In module lazily via dynamic import inside signInWithGoogle",
+      "rationale": "A top-level import threw at module load wherever the native module is absent and took down the whole (auth) Stack (255ca31)",
+      "phase": "01"
+    },
+    {
+      "decision": "app/index.tsx is an always-present index route, the root Stack stays mounted, and redirects target explicit group screens (/(auth)/welcome, /(app)/profile) rather than bare group paths",
+      "rationale": "Bare group redirects raced the Stack.Protected guard and left a permanent Unmatched Route on cold launch. Only a real launch caught it (61855e2, a4fffa5)",
+      "phase": "01"
+    },
+    {
+      "decision": "ios and android package.json scripts use expo run:*",
+      "rationale": "Native Apple and Google sign-in modules cannot load in Expo Go (61855e2)",
+      "phase": "01"
+    },
+    {
+      "decision": "The full DB-backed Go suite runs serialized via make test-all-integration (go test ./... -p 1)",
+      "rationale": "internal/httpapi and internal/store/postgres truncate the same users table and can race under default package parallelism (01-13)",
+      "phase": "01"
+    },
+    {
+      "decision": "Forgot-password flow and link are deliberately omitted from Phase 1",
+      "rationale": "Neither ACCT-01 nor ACCT-03 requires it and a dead link is worse than none. The developer must confirm in 01-15 section F",
+      "phase": "01"
+    },
+    {
+      "decision": "Motion follows docs/motion-interaction-direction.md through lib/motion/primitives.tsx and the onboarding choreography",
+      "rationale": "Implemented 2026-09-29 (8fd36d3, 0b93368). It changed the marketing screens and PrimaryButton after the last sweep",
+      "phase": "01"
+    },
+    {
+      "decision": "The frosted-material experiment stays isolated in lab/, dev-only, inert until lab/enable.sh, and is UNDECIDED",
+      "rationale": "It deliberately reopens the locked no-glass rule. The developer wants to judge it on real screens first (docs/frosted-editorial-experiment.md, commit 86f6d0b)",
+      "phase": "lab"
+    }
+  ],
+  "background_processes": [
+    {
+      "name": "Metro dev server",
+      "pid": 58826,
+      "port": 8081,
+      "command": "expo start --dev-client --clear",
+      "since": "2026-09-23 14:57 IST",
+      "state": "running, /status ok, serving this working tree including the enabled lab shims",
+      "action": "leave running"
+    },
+    {
+      "name": "Go API",
+      "pid": 94625,
+      "port": 8080,
+      "command": "go run build output (go-build tmp dir, exe/api)",
+      "since": "2026-09-21 13:43 IST",
+      "state": "running, /healthz returns 200, no Go or migration changes since it started so it matches HEAD",
+      "action": "leave running. If it must restart use make dev, which loads ./.env"
+    },
+    {
+      "name": "PostgreSQL 16 (Homebrew)",
+      "pid": 2243,
+      "port": 5432,
+      "state": "running. Databases rndmroll_dev (live API) and rndmroll_test (Go tests)",
+      "action": "leave running"
+    },
+    {
+      "name": "iOS simulator iPhone 17 Pro",
+      "state": "booted. The developer's UAT device with the dev build installed. Nothing listens on 8082",
+      "action": "do not use it for QA or automation"
+    }
+  ],
+  "uncommitted_files": [
+    ".planning/STATE.md (modified: hook-written session note, stopped_at context exhaustion at 78%. Position fields in its body are stale: Plan 1 of 16, 0%, resume file UI-SPEC. This file supersedes them)",
+    ".planning/config.json (untracked: workflow._auto_chain_active false)",
+    "app/lab/ (untracked: 5 dev-only route shims created by lab/enable.sh at 14:38 IST. Never commit)",
+    ".claude/ (untracked: settings.local.json plus nested stale worktree agent-a9db1abbfc95acd40 with its own node_modules. Never git add -A or git add .)"
+  ],
+  "next_action": "Run /gsd-resume-work. Before touching anything, ask the developer (1) which of walkthrough steps 1-20 and which section F decisions are already confirmed, and (2) whether the lab may be disabled at this boundary. Leave Metro, the API and Postgres running. Then follow the ordered plan in .planning/phases/01-foundation-accounts/.continue-here.md: static Task 1 checks (safe with the app running), lab disable at a walkthrough boundary, expo export, cold-launch check, walkthrough approval, then 01-15-SUMMARY.md.",
+  "context_notes": "Written from repo state, process checks, phase artifacts and memory notes. The pausing session had no earlier conversation, so anything only the developer knows is marked unknown. Phase 01 is one plan from done (15 of 16 SUMMARYs). Plan 01-15 is the automated sweep plus a human device walkthrough. After the 09-23 first sweep the developer hit two dev-client bugs during the walkthrough (both fixed), then spent 09-29 and 09-30 on motion polish, three comparison sketches (winner null) and a dev-only frosted-material lab (branch lab/frosted-editorial, commit 86f6d0b, currently ENABLED through untracked app/lab shims on the live Metro). Those are side threads outside GSD plans, but they change the screens under UAT. This WIP commit lives on lab/frosted-editorial. main (equal to origin/main at 8076227) has neither the lab commit nor this handoff, so resume from this branch or cherry-pick the commit (it only touches .planning/). Before ever checking out main run bash lab/disable.sh, otherwise the dangling @/lab imports break the live Metro. Phase-closing commits (01-15 SUMMARY, ROADMAP and STATE completion) probably belong on main rather than the undecided experiment branch: decide at resume."
+}
