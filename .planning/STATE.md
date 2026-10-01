@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-accounts
 status: executing
-stopped_at: context exhaustion at 100% (2026-09-17)
-last_updated: "2026-09-17T16:15:58.612Z"
-last_activity: 2026-09-17
-last_activity_desc: Phase 01 execution started
+stopped_at: Session resumed 2026-09-30; running 01-15 Task 1 static re-check while the developer does the Task 2 device walkthrough
+last_updated: "2026-10-01T08:58:03.909Z"
+last_activity: 2026-09-29
+last_activity_desc: Phase 01 execution resumed (wave continue)
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 16
-  completed_plans: 0
+  total_plans: 17
+  completed_plans: 15
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 Phase: 01 (foundation-accounts) — EXECUTING
 Plan: 1 of 16
 Status: Executing Phase 01
-Last activity: 2026-09-17 — Phase 01 execution started
+Last activity: 2026-09-29 — Phase 01 execution resumed (wave continue)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - Ingest: Roll mechanic resolved to spin-wheel (not dice), per user approval over docs/original-concept-notes.md
 - Ingest: Roll cadence resolved to strictly once/day at 8:00 PM + optional weekly streak-earned reroll token (not on-demand)
 - Ingest: Photo source resolved to camera capture AND photo library upload both allowed (not camera-only)
+- [Phase 01]: Real Google and Apple sign-in and production photo storage setup are deferred to the end of the whole project; test-mode stand-ins meanwhile — Developer decision 2026-10-01: wants speed, account creation is their manual task. GitHub issue 2 holds the checklist.
+- [Phase 05]: Friend feed look: Instagram-style posts as frosted glass cards over a soft blurred background, feed only — Developer decision 2026-10-01 from a reference screenshot. See docs/design-brief-2026-10-01-feed.md. Standing rules still apply.
+- [Phase 01]: Defects from the static walkthrough review are fixed in plan 01-17 before the device walkthrough; branch stays lab/frosted-editorial — Developer: do not skip anything. Isolated copy, review, apply at a boundary.
 
 ### Pending Todos
 
@@ -87,6 +90,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-17T16:01:20.605Z
-Stopped at: context exhaustion at 100% (2026-09-17)
-Resume file: .planning/phases/01-foundation-accounts/01-UI-SPEC.md
+Last session: 2026-09-30T10:30:35.738Z
+Stopped at: Session resumed 2026-09-30; running 01-15 Task 1 static re-check while the developer does the Task 2 device walkthrough
+Resume file: .planning/phases/01-foundation-accounts/.continue-here.md

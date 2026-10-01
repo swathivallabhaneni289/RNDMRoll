@@ -1,6 +1,8 @@
 # Frosted Material + Editorial UI Experiment (2026-09-30)
 
-Status: **experiment, undecided.** Nothing here is adopted. The code is isolated in `lab/`, development builds only, and does not touch the roll screen, onboarding, authentication or any product logic.
+**Update 2026-10-01:** the developer decided the Phase 5 friend feed should be Instagram-style posts as frosted glass cards over a soft blurred background (feed only), per a reference screenshot. See `docs/design-brief-2026-10-01-feed.md` and the PROJECT.md Key Decisions table. Everything else in this document is still an experiment.
+
+Status: **experiment, undecided (the feed look is now decided, see the update above).** Nothing here is adopted. The code is isolated in `lab/`, development builds only, and does not touch the roll screen, onboarding, authentication or any product logic.
 
 ## Why this exists
 

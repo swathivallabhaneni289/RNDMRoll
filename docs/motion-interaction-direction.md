@@ -23,7 +23,7 @@ Keep the existing RNDMRoll visual system:
 * Work Sans for UI/body
 * no gradients
 * no purple/blue accent colors
-* no glassmorphism
+* no glassmorphism (amended 2026-10-01: the Phase 5 friend feed is the one exception, see `docs/design-brief-2026-10-01-feed.md`; the rule stands everywhere else)
 * no pill-heavy UI
 * no excessive rounded cards
 * no generic AI-dashboard patterns
