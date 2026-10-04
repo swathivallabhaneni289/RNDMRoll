@@ -9,7 +9,7 @@ import { StepProgress } from '@/components/ui/StepProgress';
 import { markIntroSeen } from '@/lib/onboarding/intro-seen';
 import { space } from '@/lib/theme/tokens';
 
-export default function EveryoneRollsScreen() {
+export default function EveryoneSpinsScreen() {
   const router = useRouter();
 
   function handleContinue() {
@@ -28,13 +28,13 @@ export default function EveryoneRollsScreen() {
       </ImageReveal>
 
       <FadeInUp delay={260} duration={420}>
-        <AppText role="display">{'everyone rolls. everyone shares.'}</AppText>
+        <AppText role="display">{'everyone spins. everyone shares.'}</AppText>
       </FadeInUp>
 
       <FadeInUp delay={340} duration={400} style={{ marginTop: space.md, marginBottom: space.xl }}>
         <AppText role="body">
           {
-            'Every night at 8:00 PM, your circle each rolls their own category from their own wheel. The fun is seeing what everyone got and how they showed up for it.'
+            'Every night at 8:00 PM, your circle each spins their own wheel. The fun is seeing what everyone got and how they showed up for it.'
           }
         </AppText>
       </FadeInUp>

@@ -336,7 +336,7 @@ export default function EditProfileScreen() {
             onChangeText={setBio}
             onBlur={validateBioOnBlur}
             error={bioError}
-            placeholder="Tell people what you're rolling for."
+            placeholder="Tell people what you're spinning for."
             multiline
             numberOfLines={3}
             maxLength={BIO_MAX_LENGTH}

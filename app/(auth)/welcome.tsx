@@ -42,7 +42,7 @@ export default function WelcomeScreen() {
 
       <FadeInUp delay={60} duration={500} style={{ position: 'absolute', top: insets.top, left: space.lg }}>
         <AppText role="label" tone="onInk">
-          {'one roll.\none real moment.'}
+          {'one spin.\none real moment.'}
         </AppText>
       </FadeInUp>
 

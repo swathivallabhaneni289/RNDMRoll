@@ -13,7 +13,7 @@ export default function RealPhotosScreen() {
 
   return (
     <Screen scroll={false}>
-      <AdvanceControl onAdvance={() => router.push('/everyone-rolls')}>
+      <AdvanceControl onAdvance={() => router.push('/everyone-spins')}>
         <FadeInUp delay={180} duration={350} style={{ paddingTop: space.sm }}>
           <StepProgress current={2} total={3} />
         </FadeInUp>

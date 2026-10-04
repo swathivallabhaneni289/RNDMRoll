@@ -450,7 +450,7 @@ export default function ProfileSetupScreen() {
           <View style={{ marginTop: space.md }}>
             <TextField
               label="Bio"
-              placeholder="Tell people what you're rolling for."
+              placeholder="Tell people what you're spinning for."
               value={bio}
               onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
               multiline

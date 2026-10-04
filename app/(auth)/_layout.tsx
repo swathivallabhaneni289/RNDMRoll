@@ -59,7 +59,7 @@ export default function AuthLayout() {
       <Stack.Screen name="welcome" />
       <Stack.Screen name="ritual" options={fadeTransition} />
       <Stack.Screen name="real-photos" options={pushTransition} />
-      <Stack.Screen name="everyone-rolls" options={pushTransition} />
+      <Stack.Screen name="everyone-spins" options={pushTransition} />
       <Stack.Screen name="choose-method" options={fadeTransition} />
       <Stack.Screen name="email" />
       <Stack.Screen name="verify-email" />

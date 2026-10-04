@@ -104,7 +104,7 @@ export default function ProfileScreen() {
                 <View style={{ marginLeft: space.md, flex: 1 }}>
                   <AppText role="heading">Add a bio</AppText>
                   <AppText role="body" tone="muted">
-                    Tell people what you're rolling for.
+                    Tell people what you're spinning for.
                   </AppText>
                 </View>
               </Pressable>

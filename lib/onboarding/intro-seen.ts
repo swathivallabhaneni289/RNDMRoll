@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 /**
  * Non-credential flag recording that the pre-signup marketing intro (Welcome, The
- * Ritual, Real > Perfect, Everyone Rolls) has already been shown to this device.
+ * Ritual, Real > Perfect, Everyone Spins) has already been shown to this device.
  *
  * This is deliberately NOT a credential and must never go in the OS keychain:
  * RESEARCH.md's Don't Hand-Roll table reserves the keychain-backed store for
