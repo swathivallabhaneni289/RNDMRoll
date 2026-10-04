@@ -13,15 +13,15 @@ import { color as tokenColor } from '@/lib/theme/tokens';
  * The gap round the pointer is a real cut (an SVG mask), not a background-coloured stroke,
  * so the mark sits correctly on the dot-grid texture and on any other surface.
  */
-const WEDGES: ReadonlyArray<readonly [number, number]> = [
+export const WEDGES: ReadonlyArray<readonly [number, number]> = [
   [-2.0, 46.6],
   [93.3, 137.0],
   [179.8, 218.5],
   [261.5, 310.1],
 ];
-const WEDGE_OUT = 0.9064;
-const HUB_RING = 0.1735;
-const HUB_DOT = 0.1102;
+export const WEDGE_OUT = 0.9064;
+export const HUB_RING = 0.1735;
+export const HUB_DOT = 0.1102;
 
 /** Angles are degrees clockwise from 12 o'clock. */
 function polar(deg: number, r: number): string {
@@ -29,14 +29,14 @@ function polar(deg: number, r: number): string {
   return `${(r * Math.sin(a)).toFixed(4)} ${(-r * Math.cos(a)).toFixed(4)}`;
 }
 
-const WEDGE_PATHS = WEDGES.map(
+export const WEDGE_PATHS = WEDGES.map(
   ([a0, a1]) => `M 0 0 L ${polar(a0, WEDGE_OUT)} A ${WEDGE_OUT} ${WEDGE_OUT} 0 0 1 ${polar(a1, WEDGE_OUT)} Z`
 );
 
 /** The pointer is an inset triangle drawn with a round-joined stroke, which rounds its corners. */
-const POINTER_POINTS = '-0.1507,-1.3022 0.1507,-1.3022 0,-0.9965';
-const POINTER_STROKE = 0.075;
-const NOTCH_STROKE = 0.1993;
+export const POINTER_POINTS = '-0.1507,-1.3022 0.1507,-1.3022 0,-0.9965';
+export const POINTER_STROKE = 0.075;
+export const NOTCH_STROKE = 0.1993;
 
 let markCount = 0;
 

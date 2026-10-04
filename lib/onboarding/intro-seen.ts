@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 
 /**
- * Non-credential flag recording that the pre-signup marketing intro (Welcome, The
- * Ritual, Real > Perfect, Everyone Spins) has already been shown to this device.
+ * Non-credential flag recording that the pre-signup Welcome page has already been
+ * shown to this device.
  *
  * This is deliberately NOT a credential and must never go in the OS keychain:
  * RESEARCH.md's Don't Hand-Roll table reserves the keychain-backed store for

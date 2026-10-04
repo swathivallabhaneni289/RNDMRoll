@@ -1,70 +1,58 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
+import { useState } from 'react';
+import { View } from 'react-native';
+import { SpinningMark } from '@/components/brand/SpinningMark';
+import { WHEEL_WORDS } from '@/components/brand/WheelBackground';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { PhotoPlaceholder } from '@/components/ui/PhotoPlaceholder';
-import {
-  PhotoScrim,
-  SCRIM_BOTTOM_SAFE_FRACTION,
-  SCRIM_TOP_SAFE_FRACTION,
-} from '@/components/ui/PhotoScrim';
-import { space, type } from '@/lib/theme/tokens';
+import { Screen } from '@/components/ui/Screen';
+import { FadeInUp, ImageReveal } from '@/lib/motion/primitives';
+import { markIntroSeen } from '@/lib/onboarding/intro-seen';
+import { space } from '@/lib/theme/tokens';
 
 /**
- * Two lines of Label-role type: the tagline's exact rendered block height,
- * used below to widen the scrim's flat top zone past its declared default
- * whenever a device's own top inset plus this block needs more room.
+ * The single pre-signup page (UI-SPEC revision 11): the wheel logo spins and stops, then
+ * Get started goes straight to the method chooser. The earlier Ritual, Real > Perfect and
+ * Everyone Spins pages were removed as not useful.
  */
-const TAGLINE_BLOCK_HEIGHT = type.label.lineHeight * 2;
-
 export default function WelcomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const [picked, setPicked] = useState<string | null>(null);
+  const [kick, setKick] = useState(0); // bumped whenever the wheel starts moving; the background wheels spin up
 
-  const topOpaqueFraction = Math.max(
-    SCRIM_TOP_SAFE_FRACTION,
-    (insets.top + TAGLINE_BLOCK_HEIGHT + space.sm) / height
-  );
+  // Each time the wheel comes to rest, one category label lights up: a different one every time.
+  function handleLanded() {
+    setPicked((prev) => {
+      const others = WHEEL_WORDS.filter((w) => w !== prev);
+      return others[Math.floor(Math.random() * others.length)];
+    });
+  }
+
+  function handleGetStarted() {
+    void markIntroSeen();
+    router.push('/choose-method');
+  }
 
   return (
-    <View style={{ flex: 1 }}>
-      <StatusBar style="light" />
-
-      <ImageReveal style={StyleSheet.absoluteFill} duration={700}>
-        <PhotoPlaceholder variant="cover" />
-      </ImageReveal>
-
-      <PhotoScrim topOpaqueFraction={topOpaqueFraction} />
-
-      <FadeInUp delay={60} duration={500} style={{ position: 'absolute', top: insets.top, left: space.lg }}>
-        <AppText role="label" tone="onInk">
+    <Screen scroll={false} wheels wheelLabel={picked} wheelKick={kick}>
+      <FadeInUp delay={60} duration={500} style={{ paddingTop: space.sm }}>
+        <AppText role="label" tone="muted">
           {'one spin.\none real moment.'}
         </AppText>
       </FadeInUp>
 
-      <View
-        style={{
-          position: 'absolute',
-          left: space.lg,
-          right: space.lg,
-          top: height * (1 - SCRIM_BOTTOM_SAFE_FRACTION),
-          bottom: insets.bottom + space.lg,
-          justifyContent: 'flex-end',
-        }}
-      >
-        <FadeInUp delay={160} duration={500} style={{ marginBottom: space.md }}>
-          <AppText role="display" tone="onInk">
-            {'RNDMRoll'}
-          </AppText>
-        </FadeInUp>
-        <FadeInUp delay={260} duration={500}>
-          <PrimaryButton label="Get started" variant="onPhoto" onPress={() => router.push('/ritual')} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ImageReveal delay={120} duration={600}>
+          <SpinningMark size={260} rollIn onLanded={handleLanded} onSpinStart={() => setKick((k) => k + 1)} />
+        </ImageReveal>
+        <FadeInUp delay={260} duration={500} style={{ marginTop: space.md }}>
+          <AppText role="display">{'RNDMRoll'}</AppText>
         </FadeInUp>
       </View>
-    </View>
+
+      <FadeInUp delay={360} duration={500} style={{ paddingBottom: space.lg }}>
+        <PrimaryButton label="Get started" onPress={handleGetStarted} />
+      </FadeInUp>
+    </Screen>
   );
 }

@@ -61,7 +61,7 @@ export default function ChooseMethodScreen() {
   }
 
   return (
-    <Screen texture>
+    <Screen wheels>
       <View style={{ flex: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center' }}>
           <BrandMark size={64} />
