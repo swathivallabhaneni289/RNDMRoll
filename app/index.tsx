@@ -29,10 +29,9 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
  * Unmatched Route: the group's own Stack.Protected guard and this redirect
  * both fire from the same gateSettled flip, and the guard hasn't committed
  * yet when the bare-group redirect tries to resolve against it. An explicit
- * child path doesn't depend on that timing. (auth)/_layout.tsx's own effect
- * still re-redirects welcome -> choose-method immediately when intro's
- * already been seen, so this doesn't reintroduce the marketing sequence for
- * returning users.
+ * child path doesn't depend on that timing. Welcome is the start page on every
+ * signed-out launch (UI-SPEC revision 11), so there is no second redirect and
+ * no flash of the sign-in page before it.
  */
 export default function Index() {
   const { status, user } = useSession();

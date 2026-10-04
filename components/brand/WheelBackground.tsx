@@ -16,7 +16,7 @@ import { HUB_RING, WEDGE_OUT, WEDGES } from '@/components/brand/BrandMark';
  * ghost wheels (with dial tick marks) bleed off opposite corners and turn in opposite directions;
  * they spin up in sympathy whenever the main wheel moves (`kick` changes), then settle back to
  * their drift. A dashed arc orbits at the right edge, a few specks drift and breathe outside the
- * content column, and the five wheel categories sit at the edges as tiny tracked labels, one of
+ * content column, and the wheel categories (the five defaults plus camera) sit at the edges as tiny tracked labels, one of
  * which lights up when it is `active`. Everything is ink at low opacity so it never competes with
  * the logo or buttons, and it stands still under Reduce Motion. It replaces the dot grid on
  * Welcome and the method chooser, sits behind the content, and ignores touches.
@@ -53,9 +53,10 @@ const LABELS = [
   { word: 'BOOK', x: 0.065, y: 0.385 },
   { word: 'SONG', x: 0.075, y: 0.755 },
   { word: 'PLACE', x: 0.09, y: 0.83 },
+  { word: 'CAMERA', x: 0.7, y: 0.755 },
 ] as const;
 
-/** The five wheel categories, for the screen that wants to light one up. */
+/** The wheel categories shown (the five defaults plus camera), for the screen that lights one up. */
 export const WHEEL_WORDS: readonly string[] = LABELS.map((l) => l.word);
 
 function polar(cx: number, cy: number, r: number, deg: number) {

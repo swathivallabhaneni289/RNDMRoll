@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { color } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
-import { useIntroSeen } from '@/lib/onboarding/intro-seen';
 
 /**
  * D-05 (revised 2026-10-04) sequence order. Welcome is the single pre-signup
@@ -20,25 +19,18 @@ export const unstable_settings = {
 export default function AuthLayout() {
   const router = useRouter();
   const { status, user } = useSession();
-  const { seenIntro, resolved: introResolved } = useIntroSeen();
 
   const fadeTransition = { animation: 'fade' as const, animationDuration: 220 };
 
-  // The initial route is decided from two inputs and nothing else, per the plan:
-  // a half-onboarded authenticated user always resumes at profile-setup, and an
-  // unauthenticated user's start point depends on whether they've already seen
-  // the pre-signup marketing sequence.
+  // A half-onboarded authenticated user always resumes at profile-setup. Everyone
+  // else starts on the default initial route, 'welcome', on every launch (UI-SPEC
+  // revision 11): there is no skip-after-first-time rule any more, so the first
+  // page is always the same and there is no flash of the sign-in page before it.
   useEffect(() => {
     if (status === 'authenticated' && user?.onboarding_complete === false) {
       router.replace('/profile-setup');
-      return;
     }
-    if (!introResolved) return;
-    if (seenIntro === true) {
-      router.replace('/choose-method');
-    }
-    // seenIntro === false: stay on the default initial route, 'welcome'.
-  }, [status, user?.onboarding_complete, introResolved, seenIntro, router]);
+  }, [status, user?.onboarding_complete, router]);
 
   return (
     <Stack
