@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
@@ -244,5 +246,292 @@ func TestOAuth_NewSocialAccountHasOnboardingIncomplete(t *testing.T) {
 	}
 	if userBody["onboarding_complete"] != false {
 		t.Errorf("onboarding_complete = %v, want false", userBody["onboarding_complete"])
+	}
+}
+
+// oauthRig wires the oauth, login and refresh handlers over one shared user
+// repo and one shared refresh-token repo, so a test can prove what a social
+// sign-in does to credentials and sessions that were issued before it.
+type oauthRig struct {
+	router  *gin.Engine
+	users   *fakeUserRepo
+	refresh *auth.RefreshService
+	apple   *fakeAppleVerifier
+	google  *fakeGoogleVerifier
+}
+
+func newOAuthRig(t *testing.T) *oauthRig {
+	t.Helper()
+	users := newFakeUserRepo()
+	refreshService := auth.NewRefreshService(newFakeRefreshRepo(), 720*time.Hour)
+	secret := []byte("test-secret-at-least-32-bytes!!")
+	rig := &oauthRig{users: users, refresh: refreshService, apple: &fakeAppleVerifier{}, google: &fakeGoogleVerifier{}}
+	rig.router = newTestRouter(t, TestDeps{Users: users})
+	NewOAuthHandler(users, rig.apple, rig.google, refreshService, secret, 15*time.Minute).Register(&rig.router.RouterGroup)
+	NewAuthHandler(users, refreshService, newFakeMailer(), secret, 15*time.Minute).Register(&rig.router.RouterGroup)
+	return rig
+}
+
+func (r *oauthRig) post(t *testing.T, path string, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	return doJSONRequest(t, r.router, http.MethodPost, path, body)
+}
+
+func (r *oauthRig) seedPasswordAccount(t *testing.T, email, password string, verified bool) *user.User {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	var via *user.VerificationSource
+	if verified {
+		v := user.VerifiedViaPasswordFlow
+		via = &v
+	}
+	u, err := r.users.Create(context.Background(), email, &hash, verified, via)
+	if err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	return u
+}
+
+func TestOAuth_SocialSignInClaimsUnverifiedPasswordAccount(t *testing.T) {
+	providers := []struct {
+		name string
+		path string
+		body map[string]any
+		via  user.VerificationSource
+		arm  func(r *oauthRig)
+	}{
+		{
+			name: "google", path: "/auth/oauth/google", body: map[string]any{"id_token": "t"}, via: user.VerifiedViaGoogle,
+			arm: func(r *oauthRig) {
+				r.google.identity = &auth.GoogleIdentity{Subject: "g-claim", Email: "Victim@Example.com", EmailVerified: true}
+			},
+		},
+		{
+			name: "apple", path: "/auth/oauth/apple", body: map[string]any{"identity_token": "t"}, via: user.VerifiedViaApple,
+			arm: func(r *oauthRig) {
+				r.apple.identity = &auth.AppleIdentity{Subject: "a-claim", Email: "Victim@Example.com", EmailVerified: true}
+			},
+		},
+	}
+	for _, tc := range providers {
+		t.Run(tc.name, func(t *testing.T) {
+			rig := newOAuthRig(t)
+			seeded := rig.seedPasswordAccount(t, "victim@example.com", "attacker-password", false)
+			// A session minted before the claim, as a pre-registrant could hold.
+			oldRefresh, err := rig.refresh.Issue(context.Background(), seeded.ID, nil)
+			if err != nil {
+				t.Fatalf("issue refresh token: %v", err)
+			}
+			tc.arm(rig)
+
+			rec := rig.post(t, tc.path, tc.body)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+			}
+			resp := decodeBody(t, rec)
+			if resp["is_new_user"] != false {
+				t.Errorf("is_new_user = %v, want false (linked)", resp["is_new_user"])
+			}
+			userBody, _ := resp["user"].(map[string]any)
+			if userBody["id"] != seeded.ID.String() {
+				t.Errorf("user.id = %v, want %v", userBody["id"], seeded.ID)
+			}
+			if userBody["email_verified"] != true {
+				t.Errorf("response email_verified = %v, want true", userBody["email_verified"])
+			}
+
+			stored, err := rig.users.GetByID(context.Background(), seeded.ID)
+			if err != nil {
+				t.Fatalf("GetByID: %v", err)
+			}
+			if !stored.EmailVerified {
+				t.Error("stored account still unverified")
+			}
+			if stored.EmailVerifiedVia == nil || *stored.EmailVerifiedVia != tc.via {
+				t.Errorf("EmailVerifiedVia = %v, want %s", stored.EmailVerifiedVia, tc.via)
+			}
+			if stored.PasswordHash != nil {
+				t.Error("password hash was kept; the pre-registered password must be discarded")
+			}
+
+			login := rig.post(t, "/auth/login", map[string]any{"email": "victim@example.com", "password": "attacker-password"})
+			assertInvalidCredentials(t, login)
+
+			refresh := rig.post(t, "/auth/refresh", map[string]any{"refresh_token": oldRefresh})
+			if refresh.Code != http.StatusUnauthorized || decodeBody(t, refresh)["error"] != "token_invalid" {
+				t.Errorf("old refresh token: status = %d, body = %s, want 401 token_invalid", refresh.Code, refresh.Body.String())
+			}
+		})
+	}
+}
+
+func TestOAuth_SocialSignInLeavesVerifiedPasswordAccountUnchanged(t *testing.T) {
+	rig := newOAuthRig(t)
+	seeded := rig.seedPasswordAccount(t, "owner@example.com", "real-password", true)
+	oldRefresh, err := rig.refresh.Issue(context.Background(), seeded.ID, nil)
+	if err != nil {
+		t.Fatalf("issue refresh token: %v", err)
+	}
+	rig.google.identity = &auth.GoogleIdentity{Subject: "g-keep", Email: "owner@example.com", EmailVerified: true}
+
+	rec := rig.post(t, "/auth/oauth/google", map[string]any{"id_token": "t"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	stored, err := rig.users.GetByID(context.Background(), seeded.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if stored.PasswordHash == nil || *stored.PasswordHash != *seeded.PasswordHash {
+		t.Error("password hash of a verified account changed")
+	}
+	if stored.EmailVerifiedVia == nil || *stored.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
+		t.Errorf("EmailVerifiedVia = %v, want password_flow (unchanged)", stored.EmailVerifiedVia)
+	}
+	if stored.GoogleSubject == nil || *stored.GoogleSubject != "g-keep" {
+		t.Errorf("GoogleSubject = %v, want g-keep (linked)", stored.GoogleSubject)
+	}
+
+	login := rig.post(t, "/auth/login", map[string]any{"email": "owner@example.com", "password": "real-password"})
+	if login.Code != http.StatusOK {
+		t.Errorf("password login after link: status = %d, body = %s, want 200", login.Code, login.Body.String())
+	}
+	refresh := rig.post(t, "/auth/refresh", map[string]any{"refresh_token": oldRefresh})
+	if refresh.Code != http.StatusOK {
+		t.Errorf("existing refresh token after link: status = %d, body = %s, want 200", refresh.Code, refresh.Body.String())
+	}
+}
+
+func TestOAuth_AppleUnverifiedEmailDoesNotLinkToExistingAccount(t *testing.T) {
+	rig := newOAuthRig(t)
+	seeded := rig.seedPasswordAccount(t, "taken@example.com", "real-password", true)
+	rig.apple.identity = &auth.AppleIdentity{Subject: "a-unverified", Email: "taken@example.com", EmailVerified: false}
+
+	rec := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t"})
+	if rec.Code != http.StatusConflict || decodeBody(t, rec)["error"] != "email_taken" {
+		t.Fatalf("status = %d, body = %s, want 409 email_taken", rec.Code, rec.Body.String())
+	}
+	stored, err := rig.users.GetByID(context.Background(), seeded.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if stored.AppleSubject != nil {
+		t.Errorf("AppleSubject = %v, want nil (an unverified email must not link)", *stored.AppleSubject)
+	}
+}
+
+func TestOAuth_AppleNewAccountWithEmptyEmailIsRejected(t *testing.T) {
+	rig := newOAuthRig(t)
+	rig.apple.identity = &auth.AppleIdentity{Subject: "a-no-email", Email: "", EmailVerified: true}
+
+	rec := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t", "full_name": "No Email"})
+	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["error"] != "validation_failed" {
+		t.Fatalf("status = %d, body = %s, want 400 validation_failed", rec.Code, rec.Body.String())
+	}
+	if _, err := rig.users.GetByProviderSubject(context.Background(), user.VerifiedViaApple, "a-no-email"); err == nil {
+		t.Error("an account was created for an Apple identity with no email")
+	}
+}
+
+func TestOAuth_AppleRepeatSignInWithoutEmailStillResolvesBySubject(t *testing.T) {
+	rig := newOAuthRig(t)
+	rig.apple.identity = &auth.AppleIdentity{Subject: "a-repeat", Email: "repeat@example.com", EmailVerified: true}
+	if rec := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t"}); rec.Code != http.StatusOK {
+		t.Fatalf("first sign-in status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	// Apple may omit the email on later authorizations; the subject alone
+	// must still sign the user in.
+	rig.apple.identity = &auth.AppleIdentity{Subject: "a-repeat", Email: "", EmailVerified: false}
+	rec := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("repeat sign-in status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if decodeBody(t, rec)["is_new_user"] != false {
+		t.Error("repeat sign-in was treated as a new user")
+	}
+}
+
+func TestOAuth_AppleNewAccountTakesVerifiedFromEmailVerifiedClaim(t *testing.T) {
+	cases := []struct {
+		name         string
+		verified     bool
+		wantVerified bool
+		wantVia      bool
+	}{
+		{name: "verified claim", verified: true, wantVerified: true, wantVia: true},
+		{name: "unverified claim", verified: false, wantVerified: false, wantVia: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rig := newOAuthRig(t)
+			rig.apple.identity = &auth.AppleIdentity{Subject: "a-claim-" + tc.name, Email: "claim@example.com", EmailVerified: tc.verified}
+
+			rec := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t"})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+			}
+			stored, err := rig.users.GetByProviderSubject(context.Background(), user.VerifiedViaApple, "a-claim-"+tc.name)
+			if err != nil {
+				t.Fatalf("GetByProviderSubject: %v", err)
+			}
+			if stored.EmailVerified != tc.wantVerified {
+				t.Errorf("EmailVerified = %v, want %v", stored.EmailVerified, tc.wantVerified)
+			}
+			if (stored.EmailVerifiedVia != nil) != tc.wantVia {
+				t.Errorf("EmailVerifiedVia = %v, want set = %v", stored.EmailVerifiedVia, tc.wantVia)
+			}
+		})
+	}
+}
+
+// T-01-UAT-01: Apple delivers the name only on the first authorization, so a
+// later sign-in (null or empty full_name) must never overwrite or clear it.
+func TestOAuth_RepeatAppleSignInNeverOverwritesStoredName(t *testing.T) {
+	cases := []struct {
+		name   string
+		second map[string]any
+	}{
+		{name: "full_name null", second: map[string]any{"identity_token": "t2", "full_name": nil}},
+		{name: "full_name empty string", second: map[string]any{"identity_token": "t2", "full_name": ""}},
+		{name: "full_name a different name", second: map[string]any{"identity_token": "t2", "full_name": "Someone Else"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rig := newOAuthRig(t)
+			rig.apple.identity = &auth.AppleIdentity{Subject: "a-name", Email: "ada@example.com", EmailVerified: true}
+
+			first := rig.post(t, "/auth/oauth/apple", map[string]any{"identity_token": "t1", "full_name": "Ada Lovelace"})
+			if first.Code != http.StatusOK {
+				t.Fatalf("first sign-in status = %d, body = %s", first.Code, first.Body.String())
+			}
+			stored, err := rig.users.GetByProviderSubject(context.Background(), user.VerifiedViaApple, "a-name")
+			if err != nil {
+				t.Fatalf("GetByProviderSubject: %v", err)
+			}
+			if stored.Name == nil || *stored.Name != "Ada Lovelace" {
+				t.Fatalf("name after first sign-in = %v, want Ada Lovelace", stored.Name)
+			}
+
+			second := rig.post(t, "/auth/oauth/apple", tc.second)
+			if second.Code != http.StatusOK {
+				t.Fatalf("second sign-in status = %d, body = %s", second.Code, second.Body.String())
+			}
+			secondUser, _ := decodeBody(t, second)["user"].(map[string]any)
+			if secondUser["name"] != "Ada Lovelace" {
+				t.Errorf("response name = %v, want Ada Lovelace", secondUser["name"])
+			}
+			stored, err = rig.users.GetByProviderSubject(context.Background(), user.VerifiedViaApple, "a-name")
+			if err != nil {
+				t.Fatalf("GetByProviderSubject: %v", err)
+			}
+			if stored.Name == nil || *stored.Name != "Ada Lovelace" {
+				t.Errorf("stored name after second sign-in = %v, want Ada Lovelace", stored.Name)
+			}
+		})
 	}
 }

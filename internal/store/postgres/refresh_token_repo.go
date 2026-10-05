@@ -79,9 +79,16 @@ func (r *RefreshTokenRepo) Rotate(ctx context.Context, oldID uuid.UUID, newHash 
 		return uuid.UUID{}, err
 	}
 
-	const updateQ = `update refresh_tokens set revoked_at = now(), rotated_to = $1 where id = $2`
-	if _, err := tx.Exec(ctx, updateQ, newID, oldID); err != nil {
+	// revoked_at is rechecked here, not just in GetActiveByHash: a revoke or a
+	// second rotation that committed after the caller's check must not let
+	// this call mint a live replacement. Zero rows rolls the insert back.
+	const updateQ = `update refresh_tokens set revoked_at = now(), rotated_to = $1 where id = $2 and revoked_at is null`
+	tag, err := tx.Exec(ctx, updateQ, newID, oldID)
+	if err != nil {
 		return uuid.UUID{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return uuid.UUID{}, user.ErrTokenInvalid
 	}
 
 	if err := tx.Commit(ctx); err != nil {

@@ -187,6 +187,20 @@ func (f *fakeUserRepo) MarkEmailVerified(ctx context.Context, id uuid.UUID, via 
 	return nil
 }
 
+func (f *fakeUserRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok || u.EmailVerified {
+		return false, nil
+	}
+	u.EmailVerified = true
+	u.EmailVerifiedVia = &via
+	u.PasswordHash = nil
+	u.UpdatedAt = time.Now()
+	return true, nil
+}
+
 func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.ProfilePatch) (*user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

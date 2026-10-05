@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
@@ -88,7 +90,7 @@ func (h *OAuthHandler) SignInWithApple(c *gin.Context) {
 		return
 	}
 
-	u, isNewUser, err := h.findOrCreateAccount(c.Request.Context(), user.VerifiedViaApple, identity.Subject, identity.Email)
+	u, isNewUser, err := h.findOrCreateAccount(c.Request.Context(), user.VerifiedViaApple, identity.Subject, identity.Email, identity.EmailVerified)
 	if err != nil {
 		RespondError(c, err)
 		return
@@ -122,7 +124,7 @@ func (h *OAuthHandler) SignInWithGoogle(c *gin.Context) {
 		return
 	}
 
-	u, isNewUser, err := h.findOrCreateAccount(c.Request.Context(), user.VerifiedViaGoogle, identity.Subject, identity.Email)
+	u, isNewUser, err := h.findOrCreateAccount(c.Request.Context(), user.VerifiedViaGoogle, identity.Subject, identity.Email, identity.EmailVerified)
 	if err != nil {
 		RespondError(c, err)
 		return
@@ -138,35 +140,97 @@ func (h *OAuthHandler) SignInWithGoogle(c *gin.Context) {
 }
 
 // findOrCreateAccount implements the shared social sign-in flow: a repeat
-// sign-in resolves by provider subject; a first sign-in whose verified
-// email matches an existing password account links the subject to it
-// rather than creating a duplicate; otherwise a new account is created
-// already verified. Both providers verify the address before issuing a
-// token -- and the Google verifier additionally rejects an unverified
-// email claim before this is ever reached -- so creating with
-// email_verified true here satisfies D-04 at the API boundary the same way
-// RequireVerified reads the column for a password account.
-func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.VerificationSource, subject, email string) (*user.User, bool, error) {
+// sign-in resolves by provider subject; a first sign-in whose email matches
+// an existing account links the subject to it rather than creating a
+// duplicate; otherwise a new account is created. emailVerified is the
+// provider's own email_verified claim. Only a verified claim may link to an
+// existing account: an unverified one proves nothing about who owns the
+// address, so a match is refused with ErrEmailTaken instead.
+//
+// Linking to an account that is still unverified is the provider proving
+// ownership of the address, so the account is claimed: marked verified, its
+// password credential discarded and its refresh tokens revoked, because
+// whoever pre-registered the address with a password never proved they own
+// it and must not keep access to the account.
+//
+// The claim is several writes with no transaction, so its order decides what
+// a failure leaves behind, and every step is idempotent so a plain retry
+// converges: (a) revoke refresh tokens, (b) claim, (c) link the subject.
+//   - (a) fails: nothing changed; the retry matches by email again.
+//   - (b) fails: tokens are gone but the account is still unverified and
+//     unlinked; the retry matches by email again and repeats (a) and (b).
+//   - (c) fails: the account is already claimed; the retry sees a verified
+//     account and only links.
+//
+// Between (a) and (b) the old password still exists, but it cannot mint a
+// session: Login refuses an unverified account and Signup issues none, so (a)
+// is defense in depth for tokens issued before the claim, not a gate. An access
+// token issued earlier stays valid until it expires, which is short.
+//
+// Linking first would be wrong: the retry would then resolve by subject and
+// return early, leaving the password and the old tokens alive. The subject
+// branch also runs (a) and (b) while the account is unverified, which heals
+// an account left linked but unclaimed by an earlier attempt that failed.
+func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.VerificationSource, subject, email string, emailVerified bool) (*user.User, bool, error) {
 	existing, err := h.users.GetByProviderSubject(ctx, provider, subject)
 	switch {
 	case err == nil:
+		// Only claim for the address the provider vouches for: the account
+		// is already bound by subject, but its stored email must be the one
+		// the provider just verified.
+		if !existing.EmailVerified && emailVerified && strings.EqualFold(existing.Email, email) {
+			if err := h.claimUnverifiedAccount(ctx, existing.ID, provider); err != nil {
+				return nil, false, err
+			}
+			healed, err := h.users.GetByID(ctx, existing.ID)
+			if err != nil {
+				return nil, false, err
+			}
+			return healed, false, nil
+		}
 		return existing, false, nil
 	case !errors.Is(err, user.ErrNotFound):
 		return nil, false, err
 	}
 
+	// Apple only sends the email on a first authorization and may omit it,
+	// so an empty one is only fatal here, where an account would be created.
+	if email == "" {
+		return nil, false, user.ErrProviderEmailMissing
+	}
+
 	byEmail, err := h.users.GetByEmailCI(ctx, email)
 	switch {
 	case err == nil:
-		if linkErr := h.users.LinkProviderSubject(ctx, byEmail.ID, provider, subject); linkErr != nil {
-			return nil, false, linkErr
+		if !emailVerified {
+			return nil, false, user.ErrEmailTaken
 		}
-		return byEmail, false, nil
+		if byEmail.EmailVerified {
+			if err := h.users.LinkProviderSubject(ctx, byEmail.ID, provider, subject); err != nil {
+				return nil, false, err
+			}
+			return byEmail, false, nil
+		}
+		if err := h.claimUnverifiedAccount(ctx, byEmail.ID, provider); err != nil {
+			return nil, false, err
+		}
+		if err := h.users.LinkProviderSubject(ctx, byEmail.ID, provider, subject); err != nil {
+			return nil, false, err
+		}
+		claimed, err := h.users.GetByID(ctx, byEmail.ID)
+		if err != nil {
+			return nil, false, err
+		}
+		return claimed, false, nil
 	case !errors.Is(err, user.ErrNotFound):
 		return nil, false, err
 	}
 
-	created, err := h.users.Create(ctx, email, nil, true, &provider)
+	var via *user.VerificationSource
+	if emailVerified {
+		via = &provider
+	}
+	created, err := h.users.Create(ctx, email, nil, emailVerified, via)
 	if err != nil {
 		return nil, false, err
 	}
@@ -178,6 +242,19 @@ func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.Ve
 		return nil, false, err
 	}
 	return created, true, nil
+}
+
+// claimUnverifiedAccount cuts off the pre-registrant: refresh tokens are
+// revoked first, then the password is discarded and the email marked
+// verified. Both steps are idempotent (revoking nothing is fine, and the
+// claim is a guarded UPDATE that does nothing on a verified account), so
+// it is safe to run again after a failure or alongside a concurrent claim.
+func (h *OAuthHandler) claimUnverifiedAccount(ctx context.Context, id uuid.UUID, provider user.VerificationSource) error {
+	if err := h.refreshTokens.RevokeAll(ctx, id); err != nil {
+		return err
+	}
+	_, err := h.users.ClaimUnverifiedEmail(ctx, id, provider)
+	return err
 }
 
 // persistNameIfUnset writes name to the account only when it is non-empty

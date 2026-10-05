@@ -74,6 +74,10 @@ func (f *fakeVerifiedRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p us
 	return nil, user.ErrNotFound
 }
 
+func (f *fakeVerifiedRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
+	return false, nil
+}
+
 var _ user.Repository = (*fakeVerifiedRepo)(nil)
 
 const testJWTSecret = "test-secret-at-least-32-bytes!!"

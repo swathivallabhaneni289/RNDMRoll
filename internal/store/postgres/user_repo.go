@@ -50,7 +50,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 // mapUniqueViolation maps a Postgres unique-violation (SQLSTATE 23505) on
 // one of the users table's four unique indexes to its typed domain error.
 // This insert-time mapping is the authoritative uniqueness decision (see
-// RESEARCH.md Pitfall 4) — it returns nil for any other kind of error,
+// RESEARCH.md Pitfall 4), and it returns nil for any other kind of error,
 // including no error at all.
 func mapUniqueViolation(err error) error {
 	var pgErr *pgconn.PgError
@@ -179,8 +179,22 @@ func (r *UserRepo) MarkEmailVerified(ctx context.Context, id uuid.UUID, via user
 	return nil
 }
 
+// ClaimUnverifiedEmail verifies the email and drops the password in one
+// statement guarded by email_verified = false, so a verified account is
+// never touched. password_hash is nullable (social-only accounts already
+// store NULL), and auth.ComparePassword rejects an empty hash, so NULL is
+// the unusable credential and no placeholder hash is needed.
+func (r *UserRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
+	const q = `update users set email_verified = true, email_verified_via = $1::text, password_hash = null where id = $2 and email_verified = false`
+	tag, err := r.pool.Exec(ctx, q, string(via), id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // UpdateProfile applies a partial update via coalesce($n::text, column) so
-// even the partial-update path stays a single fixed query string — no
+// even the partial-update path stays a single fixed query string, so no
 // dynamically built SET list ever varies with input.
 func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.ProfilePatch) (*user.User, error) {
 	const q = `

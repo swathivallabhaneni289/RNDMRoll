@@ -63,6 +63,8 @@ func RespondError(c *gin.Context, err error) {
 		Respond(c, http.StatusConflict, gin.H{"error": string(CodeTokenConsumed)})
 	case errors.Is(err, user.ErrSubjectLinkedToOtherAccount):
 		Respond(c, http.StatusConflict, gin.H{"error": string(CodeSubjectLinked)})
+	case errors.Is(err, user.ErrProviderEmailMissing):
+		Respond(c, http.StatusBadRequest, gin.H{"error": string(CodeValidationFailed), "message": "The sign-in provider did not share an email address."})
 	default:
 		log.Printf("httpapi: unmapped error: %v", err)
 		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})

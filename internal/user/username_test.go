@@ -55,6 +55,10 @@ func (f *fakeUsernameRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p Pr
 	return nil, ErrNotFound
 }
 
+func (f *fakeUsernameRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via VerificationSource) (bool, error) {
+	return false, ErrNotFound
+}
+
 var _ Repository = (*fakeUsernameRepo)(nil)
 
 func TestUsername_NormalizeStripsSpacesCapsAndPunctuation(t *testing.T) {

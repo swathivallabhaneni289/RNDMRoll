@@ -43,7 +43,7 @@ type User struct {
 // OnboardingComplete reports whether the user has finished the onboarding
 // flow: their email is verified and both a name and a username are set.
 // This is the sole authority for the D-05 step-6 "land in the app"
-// condition — the API exposes it and the mobile root layout routes on it.
+// condition: the API exposes it and the mobile root layout routes on it.
 func (u *User) OnboardingComplete() bool {
 	if !u.EmailVerified {
 		return false
@@ -70,4 +70,5 @@ var (
 	ErrTokenExpired                = errors.New("user: token expired")
 	ErrTokenConsumed               = errors.New("user: token already consumed")
 	ErrSubjectLinkedToOtherAccount = errors.New("user: provider subject already linked to another account")
+	ErrProviderEmailMissing        = errors.New("user: provider returned no email address")
 )

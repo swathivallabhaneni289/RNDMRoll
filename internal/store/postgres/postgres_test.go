@@ -212,6 +212,50 @@ func TestRefreshTokenRepo_Rotate_OldHashNoLongerResolves(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenRepo_Rotate_RevokedTokenIsRefusedAndMintsNothing(t *testing.T) {
+	pool := requireTestPool(t)
+	userRepo := postgres.NewUserRepo(pool)
+	tokenRepo := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+
+	owner := mustCreateUser(t, userRepo, "rotate-revoked@example.com")
+
+	oldHash := []byte("rotate-revoked-old-hash-000001")
+	oldID, err := tokenRepo.Insert(ctx, owner.ID, oldHash, time.Now().Add(1*time.Hour), nil)
+	if err != nil {
+		t.Fatalf("Insert(old): %v", err)
+	}
+	// A revoke that lands after the caller validated the token but before Rotate.
+	if err := tokenRepo.RevokeAllForUser(ctx, owner.ID); err != nil {
+		t.Fatalf("RevokeAllForUser: %v", err)
+	}
+
+	newHash := []byte("rotate-revoked-new-hash-000001")
+	if _, err := tokenRepo.Rotate(ctx, oldID, newHash, time.Now().Add(1*time.Hour)); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Fatalf("Rotate(revoked token): got %v, want ErrTokenInvalid", err)
+	}
+	if _, err := tokenRepo.GetActiveByHash(ctx, newHash); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Fatalf("GetActiveByHash(new hash after refused rotate): got %v, want ErrTokenInvalid (no row may survive)", err)
+	}
+
+	// Rotating the same token twice must not mint two live successors.
+	liveHash := []byte("rotate-twice-old-hash-00000001")
+	liveID, err := tokenRepo.Insert(ctx, owner.ID, liveHash, time.Now().Add(1*time.Hour), nil)
+	if err != nil {
+		t.Fatalf("Insert(live): %v", err)
+	}
+	if _, err := tokenRepo.Rotate(ctx, liveID, []byte("rotate-twice-new-hash-00000001"), time.Now().Add(1*time.Hour)); err != nil {
+		t.Fatalf("first Rotate: %v", err)
+	}
+	secondHash := []byte("rotate-twice-new-hash-00000002")
+	if _, err := tokenRepo.Rotate(ctx, liveID, secondHash, time.Now().Add(1*time.Hour)); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Fatalf("second Rotate of the same token: got %v, want ErrTokenInvalid", err)
+	}
+	if _, err := tokenRepo.GetActiveByHash(ctx, secondHash); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Fatalf("GetActiveByHash(second successor): got %v, want ErrTokenInvalid", err)
+	}
+}
+
 func TestEmailVerificationRepo_ConsumeByHash_SecondCallReturnsErrTokenConsumed(t *testing.T) {
 	pool := requireTestPool(t)
 	userRepo := postgres.NewUserRepo(pool)
@@ -236,5 +280,65 @@ func TestEmailVerificationRepo_ConsumeByHash_SecondCallReturnsErrTokenConsumed(t
 
 	if _, err := verifyRepo.ConsumeByHash(ctx, tokenHash, now); !errors.Is(err, user.ErrTokenConsumed) {
 		t.Fatalf("ConsumeByHash (second call): got %v, want ErrTokenConsumed", err)
+	}
+}
+
+func TestUserRepo_ClaimUnverifiedEmail_VerifiesAndDropsPassword(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	hash := "bcrypt-hash"
+	created, err := repo.Create(ctx, "claim@example.com", &hash, false, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	claimed, err := repo.ClaimUnverifiedEmail(ctx, created.ID, user.VerifiedViaGoogle)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimUnverifiedEmail: claimed = %v, err = %v, want true, nil", claimed, err)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if !got.EmailVerified {
+		t.Error("EmailVerified = false, want true")
+	}
+	if got.EmailVerifiedVia == nil || *got.EmailVerifiedVia != user.VerifiedViaGoogle {
+		t.Errorf("EmailVerifiedVia = %v, want google", got.EmailVerifiedVia)
+	}
+	if got.PasswordHash != nil {
+		t.Errorf("PasswordHash = %q, want NULL", *got.PasswordHash)
+	}
+}
+
+func TestUserRepo_ClaimUnverifiedEmail_LeavesVerifiedAccountUntouched(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	hash := "bcrypt-hash"
+	via := user.VerifiedViaPasswordFlow
+	created, err := repo.Create(ctx, "verified@example.com", &hash, true, &via)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	claimed, err := repo.ClaimUnverifiedEmail(ctx, created.ID, user.VerifiedViaApple)
+	if err != nil || claimed {
+		t.Fatalf("ClaimUnverifiedEmail: claimed = %v, err = %v, want false, nil", claimed, err)
+	}
+
+	got, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.PasswordHash == nil || *got.PasswordHash != hash {
+		t.Errorf("PasswordHash = %v, want %q (unchanged)", got.PasswordHash, hash)
+	}
+	if got.EmailVerifiedVia == nil || *got.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
+		t.Errorf("EmailVerifiedVia = %v, want password_flow (unchanged)", got.EmailVerifiedVia)
 	}
 }

@@ -27,6 +27,14 @@ type Repository interface {
 	UsernameTaken(ctx context.Context, username string) (bool, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID, via VerificationSource) error
 	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfilePatch) (*User, error)
+	// ClaimUnverifiedEmail is for a provider that has just proved ownership
+	// of the account's address. Only while the account is still unverified,
+	// it marks the email verified via the provider and discards the password
+	// credential, since whoever pre-registered the address with a password
+	// never proved they own it. It reports whether it changed a row; false
+	// means the account was already verified (or does not exist) and nothing
+	// was touched.
+	ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via VerificationSource) (bool, error)
 }
 
 // RefreshToken is the domain representation of a refresh_tokens row.
