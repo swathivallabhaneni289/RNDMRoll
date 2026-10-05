@@ -1,0 +1,99 @@
+# 01-15 pre-trace of walkthrough steps 8 to 18 (2026-10-04)
+
+What this is: a read-only trace of checklist steps 8 to 18, and of every on-screen string, against the working tree (HEAD 2f6e292 plus the uncommitted 01-17 hardening patch). Four readers traced one group of steps each, then four skeptics tried to refute every finding. Result: 47 findings. The 35 that code can settle were all confirmed; the 12 that need a person watching a device are in section 3. Nothing was run and no code was changed. Raw results: workflow run `wf_be115bd6-7ab` (journal at `~/.claude/projects/-Users-swathivallabhaneni-code-RNDMRoll/6c5e7bce-5014-4534-9bae-3a87b5be99c5/subagents/workflows/wf_be115bd6-7ab/journal.jsonl`).
+
+Standing context: the walkthrough is the developer's, in small "reply ok" groups. Do not edit app code or reload the app while they are mid-signup (a reload drops the in-memory draft). Code fixes in section 4 wait for a boundary they name.
+
+## 1. Checklist text corrected in 01-15-PLAN.md today
+
+- Section A intro: no clean install is needed, Welcome shows on every signed-out launch.
+- Step 8: six labels in capitals, the Apple button appears about a second late, Android shows two buttons.
+- Step 10: no countdown number is drawn, the label only goes grey for 30 s; Resend replaces the earlier link.
+- Step 11: use the newest link; it is an http localhost link that opens a Safari page which hands off to the app; keep the app open on Check your email.
+- Step 13: the username fills when Name loses focus, and its status ends blank (never "Available") for the suggestion. This matches UI-SPEC and plan 01-12; only the checklist was loose.
+- Step 14: names the taken username (`test_user`) and the exact taken wording.
+- Step 15: a camera photo cannot be taken on the simulator; the library path is spelled out.
+- Step 16: needs the API running; no flash of the Welcome page.
+- Step 17: "spin count" instead of "roll count".
+- Step 18: Log out now returns to the Welcome page, not the method chooser (commit 2f6e292, by design); Edit profile has no Cancel button.
+- Section F carries a stale marker at its top; the current approval list is section 5 below.
+
+## 2. Notes for whoever drives the sign-up steps
+
+- Use a new made-up email for every sign-up (for example `test2@example.com`). No real mail is sent in test mode (`MAIL_DRIVER=log`); the link is printed in `~/.local/share/rndmroll-api/api.log`. Any well-formed address is accepted; passwords take 8 to 72 characters.
+- Sign-ups are limited to 3 per minute per computer address (burst 3, refills 1 per 20 s), logins to 5 per minute, and the app shows only `Something went wrong. Please try again.` when a limit is hit. An API restart resets the limiter.
+- Resend (step 10) deletes the earlier link, so always open the NEWEST `mail:` block. Newest link: `grep -o 'http://localhost:8080/v1/auth/verify-email/callback?token=[A-Za-z0-9_-]*' ~/.local/share/rndmroll-api/api.log | tail -1`.
+- Open the link in the simulator (for example `xcrun simctl openurl booted '<link>'`) while the app sits on Check your email. Expect a Safari page "Verifying your email / Redirecting you back to the app."; iOS may ask "Open in RNDMRoll?" and needs a tap. A cold start from the link loses the token (no address line, Resend disabled), so stay on the warm path.
+- If a verify call fails (API briefly down), opening the same link again does nothing: tap Resend and use the new link.
+- Logging in with an unverified account opens Check your email saying a link was sent, although nothing was just sent: tap Resend.
+- Try Take photo first, on an empty form. expo-image-picker 57.0.19 has no simulator guard on iOS (its changelog says the camera may now be launched on the simulator), so the outcome is unknown and a native crash would drop anything typed. Expected: `Camera isn't available on this device.` (or the permission message).
+- The first Choose from library shows the iOS Photos permission prompt: allow it. Declining shows `We need photo library access to add a profile photo. You can add one later from your profile.`
+- Step 13: a name like "Test User" suggests `test_user` plus digits (that name is taken), so use a different name such as "Ava Stone". Step 14 then types `test_user`, held by the smoke account in `rndmroll_dev`.
+- Stopping the API and relaunching shows Welcome (the tokens are kept). Start the API, press Home, reopen the app: it should reach Profile without a login.
+- An expired or revoked refresh token on launch now lands on Welcome (the first page) and must not hang the splash.
+- Edit profile has no Cancel or back button. Use the swipe-back gesture; unsaved edits are dropped.
+
+## 3. Watch list: only a person on a device can judge these
+
+1. Does Safari hand off to the app on its own, and what does the iOS prompt look like (step 11). Fallback: tap "Tap here if you are not redirected automatically." on the page. ANSWERED (screen recording, 2026-10-04 22:16): Safari shows the plain page, then iOS asks `Open this page in "RNDMRoll"?` with Cancel and Open, and one tap on Open is needed.
+2. Is the brief Verified screen actually seen on a warm open, or does Check your email jump straight to Create your profile (step 11).
+3. Cold open from a verification link: expected to lose the token (step 11, optional try).
+4. Label placement against the buttons on this simulator model, and the Apple row shifting the block when it appears (steps 1, 8).
+5. Take photo on the simulator: message, camera UI or crash (step 15). Do it on an empty form.
+6. Spinner on the picked photo has no scrim: visible on both test photos? (step 15).
+7. Bio height and the keyboard squeeze on small screens (step 13).
+8. First-use permission prompts interrupting the photo steps (step 15).
+9. Quit mid Create your profile and relaunch: Welcome probably flashes before the replace to Create your profile; typed data is lost either way (step 16, case not in the checklist).
+10. After confirming Log out, the native sheet must disappear and Welcome must show, with no stuck dim overlay or blank screen (step 18).
+11. Avatar change in Edit profile against the local test storage, and that the picture still shows after a relaunch (step 18).
+12. Faint background labels against the tagline and wordmark on Welcome (step 1).
+
+## 4. Confirmed defects, not yet fixed (a second small batch after the walkthrough)
+
+Medium:
+- Rate-limited sign-up and a wrong password both show `Something went wrong. Please try again.` (`email.tsx:115`, `client.ts:25-28`). Proposed copy, needs approval: `rate_limited` becomes `Too many tries. Wait a minute and try again.`, `invalid_credentials` becomes `That email or password isn't right.`
+
+Low:
+- `verify-email.tsx`: after a failed verify call the same link is ignored (the processed-token ref stays set). Clear it for errors that are not about the token.
+- `verify-email.tsx`: if `signIn` throws after the Verified state, the screen stays on Verified with no button. Catch it and return to the error state.
+- `verify-email.tsx`: Resend gives no feedback and hides every error (429, offline); confirm by the log. Raise to medium: on 2026-10-04 22:02 the developer tapped it, the server sent a second link (202), and they reported "resend email is not working" because nothing visible happened. Proposed fix: a short line under the button such as `Email sent.` (new copy, needs approval) and a visible message when the server refuses.
+- `profile-setup.tsx`: if the first username suggestion fails the field stays blank and is never retried. Reset the fetched flag in the catch.
+- `profile-setup.tsx`: the `Enter your name.` error and the greyed Finish stay after the name is fixed until Name blurs again, and the error line pushes the fields down. Clear the error on change once the name is valid.
+- `profile-setup.tsx`: Finish setup stays black and enabled while the username shows as taken (`ctaDisabled` at line 334 ignores the `taken` state; the server's final check gives the same answer). Seen on screen 2026-10-05 12:20, a black button beside a red error. Consider disabling Finish while taken.
+- `profile-setup.tsx`: a rejected upload ticket shows the generic text. Proposed copy, needs approval: `Use a JPG or PNG under 5 MB.`
+- `lib/api/client.ts`: no fetch timeout. A silent API host can keep the splash up for about a minute and keep the Log out sheet disabled. Proposed: a 10 s abort that raises the network error.
+- After a network failure at launch the user sees Welcome with no message and recovers only after a background-to-active move or a relaunch. Design decision: a retry timer or an offline note.
+- `edit.tsx`: a failed PATCH after a successful photo upload re-uploads the photo on retry; a failed reload after a saved PATCH shows an error although the data is saved; no Cancel or back control.
+- Copy: the string `Photo upload failed. Please try again.` (`lib/api/profile.ts:84`) is never shown because `userMessage` ignores it; the same rule is worded two ways (`Enter your name.` in setup, `Name is required.` in edit; alert titles `Add profile photo` and `Change photo`); `Bio must be 160 characters or fewer.` is unreachable because the field stops at 160.
+- Login on an unverified account says "We sent a verification link" without sending one.
+- `intro-seen` is dead code (`markIntroSeen` is never called) but still gates the splash in two places, and its docs and a comment in `profile/index.tsx` describe the old landing. The splash gate is fragile (commits 255ca31, 61855e2, a4fffa5): fix the comments only, or cold-launch after any change.
+- The verification landing page served by the API is unstyled: tiny default-serif text `Redirecting you back to the app.` and a small blue link, with the iOS prompt over it, and the browser also asks for `/favicon.ico` (404). Seen in the 2026-10-04 recording. Proposed: centered brand type and a real `Open RNDMRoll` button (`internal/httpapi/verify_email.go:196-215`); a universal link would skip the page in production. Developer requirement 2026-10-05 (see the PROJECT.md decisions table): the link must open the app directly when installed and the browser otherwise; that needs the real domain, an Apple team ID and a native rebuild, so the page stays as it is until the end-of-project account setup.
+- Small phones: the lower background labels overlap the method buttons on an iPhone SE class screen (about 667pt tall). Estimated from the code, not seen on a device.
+- Docs: UI-SPEC frontmatter still says revision 10, and its rev 11 override says five categories (the code has six).
+
+## 5. On-screen strings for the developer's keep-or-change decision (Section F)
+
+Present current wording only. Welcome has three strings (`one spin. / one real moment.`, `RNDMRoll`, `Get started`) and all are declared in the UI-SPEC contract; every string not listed below is declared too.
+
+A. The original six, all present verbatim: `Profile`, `Edit profile`, `Sign up with email`, `Log in`, `At least 8 characters.`, `Create account`.
+
+B. In no earlier approval list (planner-authored in 01-07-SUMMARY, dropped from F and the sweep):
+- Email screen: labels `Email` and `Password`; `Enter a valid email address.`; `Password must be at least 8 characters.`; `Enter your password.`; toggle links `Log in instead` and `Sign up instead`.
+- Verify screen: `That link was already used. Send a new one below.`
+- Everywhere: `Something went wrong. Please try again.`
+- Profile screens: field labels `Name`, `Username`, `Bio`; action-sheet `Cancel`.
+
+C. New since the last approval (these replace four older sweep strings: the two username rule lines, `Take Photo`, `Choose from Library`): `3 to 20 letters, numbers, or underscores.`; `Take photo`; `Choose from library`; `Camera isn't available on this device.`; `Couldn't check that username. Try again.`; `That username's taken.`; `Couldn't open your photo library.`; `This link has expired or was replaced. Send a new one below.`
+
+D. Planner-authored, in the sweep, still present: `Enter your name.`; `Name must be 50 characters or fewer.`; the two permission sentences on Create your profile; `Couldn't upload your photo. Try again.`; on Edit profile `Name is required.`, `Change photo`, `Camera access is needed to take a photo.`, `Photo library access is needed to choose a photo.` (the old `{n} characters left` counter was replaced on 2026-10-05 by a bare `n / 160` number on both profile screens).
+
+## 6. Changes made during the walkthrough
+
+- 2026-10-05 about 12:07, developer request ("i want my bio box to be big", with a reference picture): `components/ui/TextField.tsx` now gives a multiline field its height from `numberOfLines` (3 lines, 96pt minimum, 12pt vertical padding, text aligned to the top), because iOS ignores `numberOfLines` for height. Both Create your profile and Edit profile already pass 3 lines and UI-SPEC says "about 3 lines tall", so both are fixed by this one edit. Checked: `tsc` exit 0; after a reload the Bio box measures about 94pt against 42pt for the other fields. The running app did not pick the edit up by itself (Fast Refresh did not apply), so Claude relaunched it; startup frames at 1.5 s sampling showed no Welcome flash on the way to Create your profile (watch-list item 9, not conclusive). The file is NOT part of the 01-17 patch: include it in the mobile commit.
+- 2026-10-05 about 12:11, developer asked for the number from the reference picture: `TextField` gained a `showCount` prop that draws `n / max` right-aligned under the field (needs `maxLength`). Create your profile now shows `0 / 160` (`maxLength` 160 added next to the existing slice) and Edit profile uses the same component, replacing its text `N characters left` (one planner-authored string less to approve). 160 is the app's real limit; the picture said 150. The running app picked this edit up by Fast Refresh. Files: `components/ui/TextField.tsx`, `app/(auth)/profile-setup.tsx`, `app/(app)/profile/edit.tsx`; `tsc` exit 0.
+- 2026-10-05 about 12:40, developer: "it looks too AI made, re-design it" (read as the Profile screen they had just landed on). Claude rebuilt the Profile VIEW in place; every string is unchanged. New file `components/brand/DialAvatar.tsx` (thin dial ring with sixty ticks, initials in the display serif when there is no photo, photo fills the disc otherwise); `app/(app)/profile/index.tsx` rewritten: small tracked `Profile` kicker, avatar, name in the display role, username, bio between hairlines (or the `Add a bio` row with an arrow), `Edit profile` and `Log out` as full-width rows pinned to the bottom, log-out sheet restyled with the same rows (logic untouched). Removed: shadowed card, person glyph, circular icon badge, centered text buttons. Only one piece of the wheel's look is borrowed (the dial ring); no new animation. Recorded as UI-SPEC revision 12; checklist step 17 and the radius allow-list line in the plan updated (circular token now lives in DialAvatar.tsx, six distinct files). Checks: `tsc` exit 0, no non-ASCII or raw hex in the changed files, screenshot of the empty-bio, no-photo state taken (Fast Refresh applied it). Not seen yet: a photo avatar, a 50-character name (three lines, shrinks to 60 percent), a 160-character bio, the restyled log-out sheet; reasoned through in code only. Create your profile and Edit profile still use the old grey-glyph avatar; carry the new look there only if the developer likes this one.
+- 2026-10-05 about 12:50, developer on the redesign: "nope still looks off, it doesn't match the vibe of the website, it looks too off". NOT accepted. The website is not in the repo, the notes or the GitHub homepage field, so Claude cannot see it; the developer was asked for a screenshot or link. Until they send it, the redesigned Profile (UI-SPEC revision 12) is a draft, not a decision; do not carry it to Create or Edit, and the old card version is recoverable from the git diff of `app/(app)/profile/index.tsx` plus the 01-17 patch.
+- Close-out blind spot: `components/brand/WheelBackground.tsx` lines 171 and 172 (from the 2026-10-04 commits) hold the literal `#111111` twice, so the raw-hex gate in 01-15 Task 1 will flag it when re-run. Use `color.ink` there or allow-list it.
+- Not changed, pending the developer's word: the picture's placeholders `Your name`, `@yourusername`, `Tell people what you're into...`. The declared Bio placeholder stays `Tell people what you're spinning for.`
+
+Checked and clean: no em dash, en dash, emoji or non-ASCII character in app, components or lib; no user-visible "roll" wording (only code identifiers and comments); no leftover text from the removed marketing screens on any screen (orphan components `AdvanceControl`, `StepProgress`, `PhotoPanel`, `PhotoPlaceholder`, `PhotoScrim` and `BackgroundDotGrid` are imported nowhere).
