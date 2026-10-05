@@ -20,6 +20,13 @@ const BIO_MAX_LENGTH = 160;
 const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 const USERNAME_TAKEN_MESSAGE = "That username's taken. Try one of these:";
+const USERNAME_TAKEN_NO_ALTERNATES_MESSAGE = "That username's taken.";
+const USERNAME_CHECK_FAILED_MESSAGE = "Couldn't check that username. Try again.";
+
+// Without alternates the "Try one of these:" lead-in would point at nothing.
+function takenMessage(alternates: string[]): string {
+  return alternates.length > 0 ? USERNAME_TAKEN_MESSAGE : USERNAME_TAKEN_NO_ALTERNATES_MESSAGE;
+}
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -57,7 +64,6 @@ export default function EditProfileScreen() {
 
   const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
   const [pendingAvatarMimeType, setPendingAvatarMimeType] = useState<string>('image/jpeg');
-  const [pendingAvatarFileSize, setPendingAvatarFileSize] = useState<number | undefined>(undefined);
   const [avatarError, setAvatarError] = useState<string | undefined>(undefined);
 
   const [saving, setSaving] = useState(false);
@@ -86,7 +92,7 @@ export default function EditProfileScreen() {
 
     if (!USERNAME_PATTERN.test(username)) {
       setUsernameStatus('idle');
-      setUsernameError('3-20 lowercase letters, numbers, or underscores.');
+      setUsernameError('3 to 20 letters, numbers, or underscores.');
       setUsernameAlternates([]);
       return;
     }
@@ -116,11 +122,13 @@ export default function EditProfileScreen() {
       } else {
         setUsernameStatus('taken');
         setUsernameAlternates(result.alternates);
-        setUsernameError(USERNAME_TAKEN_MESSAGE);
+        setUsernameError(takenMessage(result.alternates));
       }
     } catch {
       if (usernameRef.current !== candidate) return;
       setUsernameStatus('idle');
+      setUsernameAlternates([]);
+      setUsernameError(USERNAME_CHECK_FAILED_MESSAGE);
     }
   }
 
@@ -154,30 +162,41 @@ export default function EditProfileScreen() {
     ]);
   }
 
+  // Both launchers reject on devices without a camera (simulators) or when
+  // the picker fails to open; surface that as the avatar error instead of an
+  // unhandled rejection from the Alert button handler.
   async function pickFromCamera() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setAvatarError('Camera access is needed to take a photo.');
-      return;
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setAvatarError('Camera access is needed to take a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+      applyPickedAsset(result);
+    } catch {
+      setAvatarError("Camera isn't available on this device.");
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    applyPickedAsset(result);
   }
 
   async function pickFromLibrary() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setAvatarError('Photo library access is needed to choose a photo.');
-      return;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setAvatarError('Photo library access is needed to choose a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+      applyPickedAsset(result);
+    } catch {
+      setAvatarError("Couldn't open your photo library.");
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    applyPickedAsset(result);
   }
 
   function applyPickedAsset(result: ImagePicker.ImagePickerResult) {
@@ -185,19 +204,26 @@ export default function EditProfileScreen() {
     const asset = result.assets[0];
     setPendingAvatarUri(asset.uri);
     setPendingAvatarMimeType(asset.mimeType ?? 'image/jpeg');
-    setPendingAvatarFileSize(asset.fileSize);
     setAvatarError(undefined);
   }
 
-  async function resolveContentLength(uri: string, fallback?: number): Promise<number> {
-    if (fallback && fallback > 0) return fallback;
+  // The presigned PUT signs ContentLength, so it must be the size of the
+  // bytes actually uploaded, not the picker's asset.fileSize (which can
+  // differ after the picker re-encodes at quality 0.8).
+  async function resolveContentLength(uri: string): Promise<number> {
     const response = await fetch(uri);
     const blob = await response.blob();
     return blob.size;
   }
 
+  const trimmedName = name.trim();
+  const trimmedBio = bio.trim();
+
   const hasChanges =
-    name !== initialName || username !== initialUsername || bio !== initialBio || pendingAvatarUri !== null;
+    trimmedName !== initialName.trim() ||
+    username !== initialUsername ||
+    trimmedBio !== initialBio.trim() ||
+    pendingAvatarUri !== null;
 
   const nameValid = name.trim().length > 0 && name.length <= 50;
   const usernameValid = username === initialUsername || USERNAME_PATTERN.test(username);
@@ -213,12 +239,12 @@ export default function EditProfileScreen() {
 
     try {
       const patch: ProfilePatch = {};
-      if (name !== initialName) patch.name = name;
+      if (trimmedName !== initialName.trim()) patch.name = trimmedName;
       if (username !== initialUsername) patch.username = username;
-      if (bio !== initialBio) patch.bio = bio;
+      if (trimmedBio !== initialBio.trim()) patch.bio = trimmedBio;
 
       if (pendingAvatarUri) {
-        const contentLength = await resolveContentLength(pendingAvatarUri, pendingAvatarFileSize);
+        const contentLength = await resolveContentLength(pendingAvatarUri);
         const publicUrl = await uploadAvatar(pendingAvatarUri, pendingAvatarMimeType, contentLength);
         patch.avatar_url = publicUrl;
       }
@@ -232,8 +258,9 @@ export default function EditProfileScreen() {
         // raced into a taken username. Re-render the same taken state with
         // the fresh alternates from the 409 body, not a generic error.
         setUsernameStatus('taken');
-        setUsernameAlternates(err.suggestions ?? []);
-        setUsernameError(USERNAME_TAKEN_MESSAGE);
+        const suggestions = err.suggestions ?? [];
+        setUsernameAlternates(suggestions);
+        setUsernameError(takenMessage(suggestions));
       } else {
         setSaveError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
       }
@@ -340,13 +367,9 @@ export default function EditProfileScreen() {
             multiline
             numberOfLines={3}
             maxLength={BIO_MAX_LENGTH}
+            showCount
             textAlignVertical="top"
           />
-          <View style={{ marginTop: space.xs, alignItems: 'flex-end' }}>
-            <AppText role="label" tone="muted">
-              {`${BIO_MAX_LENGTH - bio.length} characters left`}
-            </AppText>
-          </View>
         </View>
 
         {saveError ? (

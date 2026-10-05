@@ -35,8 +35,12 @@ const NAME_MAX_LENGTH = 50;
 const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 const USERNAME_TAKEN_MESSAGE = "That username's taken. Try one of these:";
+const USERNAME_TAKEN_NO_ALTERNATES_MESSAGE = "That username's taken.";
+const USERNAME_CHECK_FAILED_MESSAGE = "Couldn't check that username. Try again.";
+const CAMERA_UNAVAILABLE_MESSAGE = "Camera isn't available on this device.";
+const LIBRARY_UNAVAILABLE_MESSAGE = "Couldn't open your photo library.";
 
-type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
 function validateName(value: string): string | undefined {
   if (value.length === 0) return 'Enter your name.';
@@ -46,15 +50,18 @@ function validateName(value: string): string | undefined {
 
 function validateUsernameFormat(value: string): string | undefined {
   if (!USERNAME_PATTERN.test(value)) {
-    return 'Use lowercase letters, numbers, and underscores, 3 to 20 characters.';
+    return '3 to 20 letters, numbers, or underscores.';
   }
   return undefined;
 }
 
 export default function ProfileSetupScreen() {
-  const { reloadUser } = useSession();
+  const { reloadUser, user } = useSession();
 
-  const [name, setName] = useState(() => getDraft().suggestedName ?? '');
+  // The draft only holds a name from a first-time Apple sign-in; fall back to
+  // the name the server already has so Google users and a relaunched app do
+  // not see a blank field.
+  const [name, setName] = useState(() => getDraft().suggestedName || user?.name?.trim() || '');
   const [nameError, setNameError] = useState<string | undefined>();
 
   const [username, setUsername] = useState('');
@@ -77,21 +84,36 @@ export default function ProfileSetupScreen() {
   // render blank. usernameEditedRef guards against that suggestion landing
   // late and clobbering a value the user has since typed themselves.
   const suggestionFetchedRef = useRef(false);
+  const nameEditedRef = useRef(false);
   const usernameEditedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Bumped on every check dispatch so a slow, stale response (superseded by
   // a newer keystroke's check) can be discarded on arrival instead of
   // clobbering the state a faster, more recent check already set.
   const checkTokenRef = useRef(0);
+  // Same idea for avatar uploads: only the newest upload may write state.
+  const uploadTokenRef = useRef(0);
 
   useEffect(() => {
-    const draft = getDraft();
-    if (draft.suggestedName) {
+    if (name.trim().length > 0) {
       suggestionFetchedRef.current = true;
-      fetchSuggestion(draft.suggestedName);
+      fetchSuggestion(name.trim());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The stored user can land after first render; fill Name then, but never
+  // over text the user has typed.
+  const storedName = user?.name?.trim() ?? '';
+  useEffect(() => {
+    if (nameEditedRef.current || !storedName) return;
+    setName((current) => (current.length === 0 ? storedName : current));
+    if (!suggestionFetchedRef.current) {
+      suggestionFetchedRef.current = true;
+      fetchSuggestion(storedName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedName]);
 
   useEffect(() => {
     return () => {
@@ -100,7 +122,9 @@ export default function ProfileSetupScreen() {
   }, []);
 
   async function fetchSuggestion(displayName: string) {
-    setUsernameStatus('checking');
+    // Show checking only when the suggestion can land: if the user already typed a username
+    // the result is ignored below and nothing would ever reset this status.
+    if (!usernameEditedRef.current) setUsernameStatus('checking');
     try {
       const result = await api.get<UsernameSuggestion>(`/usernames/suggest?name=${encodeURIComponent(displayName)}`);
       if (!usernameEditedRef.current) {
@@ -110,6 +134,8 @@ export default function ProfileSetupScreen() {
         setAlternates([]);
       }
     } catch {
+      // A failed suggestion is not a failed check of anything the user typed,
+      // so drop back to idle and leave the field blank.
       if (!usernameEditedRef.current) {
         setUsernameStatus('idle');
       }
@@ -132,20 +158,25 @@ export default function ProfileSetupScreen() {
       }
     } catch {
       if (checkTokenRef.current !== token) return;
-      setUsernameStatus('idle');
+      setUsernameStatus('error');
     }
   }
 
-  function handleUsernameChange(text: string) {
+  function handleUsernameChange(rawText: string) {
+    const text = rawText.toLowerCase();
     usernameEditedRef.current = true;
     setUsername(text);
     setAlternates([]);
+    // Idle straight away so no stale taken/available text lingers through the
+    // debounce, and bump the token so an in-flight check for the old text is
+    // discarded when it lands.
+    setUsernameStatus('idle');
+    checkTokenRef.current += 1;
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const formatError = validateUsernameFormat(text);
     if (formatError) {
       setUsernameFormatError(formatError);
-      setUsernameStatus('idle');
       return;
     }
     setUsernameFormatError(undefined);
@@ -178,7 +209,7 @@ export default function ProfileSetupScreen() {
       name: name.trim(),
       username,
     };
-    if (bio.trim().length > 0) body.bio = bio;
+    if (bio.trim().length > 0) body.bio = bio.trim();
     if (avatarPublicUrl) body.avatar_url = avatarPublicUrl;
 
     try {
@@ -200,9 +231,10 @@ export default function ProfileSetupScreen() {
   }
 
   function handleAvatarPress() {
+    if (avatarUploading) return;
     Alert.alert('Add profile photo', undefined, [
-      { text: 'Take Photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from Library', onPress: () => pickImage('library') },
+      { text: 'Take photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from library', onPress: () => pickImage('library') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }
@@ -210,40 +242,53 @@ export default function ProfileSetupScreen() {
   async function pickImage(source: 'camera' | 'library') {
     setAvatarError(undefined);
 
-    const permission =
-      source === 'camera'
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      setAvatarError(
+    let result: ImagePicker.ImagePickerResult;
+    // The launch throws where there is no camera (the iOS simulator), and the
+    // permission call can reject too; neither may escape as an unhandled
+    // rejection from the action sheet's onPress.
+    try {
+      const permission =
         source === 'camera'
-          ? "We need camera access to take a profile photo. You can add one later from your profile."
-          : "We need photo library access to add a profile photo. You can add one later from your profile."
-      );
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setAvatarError(
+          source === 'camera'
+            ? "We need camera access to take a profile photo. You can add one later from your profile."
+            : "We need photo library access to add a profile photo. You can add one later from your profile."
+        );
+        return;
+      }
+
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync(pickerOptions)
+          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+    } catch {
+      setAvatarError(source === 'camera' ? CAMERA_UNAVAILABLE_MESSAGE : LIBRARY_UNAVAILABLE_MESSAGE);
       return;
     }
 
-    const pickerOptions: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    };
-
-    const result =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync(pickerOptions)
-        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
-
     if (result.canceled || !result.assets?.[0]) return;
 
-    const asset = result.assets[0];
-    setAvatarUri(asset.uri);
-    await uploadAvatar(asset);
+    await uploadAvatar(result.assets[0]);
   }
 
   async function uploadAvatar(asset: ImagePicker.ImagePickerAsset) {
+    uploadTokenRef.current += 1;
+    const token = uploadTokenRef.current;
+    // A failed replacement must not throw away a photo that already uploaded fine.
+    const previousUri = avatarUri;
+    const previousUrl = avatarPublicUrl;
+    setAvatarUri(asset.uri);
     setAvatarUploading(true);
     setAvatarError(undefined);
     try {
@@ -270,17 +315,23 @@ export default function ProfileSetupScreen() {
         throw new Error('avatar upload PUT failed');
       }
 
+      if (uploadTokenRef.current !== token) return;
       setAvatarPublicUrl(ticket.public_url);
     } catch (err) {
+      if (uploadTokenRef.current !== token) return;
+      // Go back to the last photo that uploaded fine (or none), so the preview never shows
+      // a photo that will not be saved.
+      setAvatarUri(previousUri);
+      setAvatarPublicUrl(previousUrl);
       setAvatarError(err instanceof ApiError ? err.userMessage : "Couldn't upload your photo. Try again.");
     } finally {
-      setAvatarUploading(false);
+      if (uploadTokenRef.current === token) setAvatarUploading(false);
     }
   }
 
   const nameInvalid = name.trim().length === 0 || Boolean(nameError);
   const usernameInvalid = username.trim().length === 0 || Boolean(usernameFormatError);
-  const ctaDisabled = nameInvalid || usernameInvalid || usernameStatus === 'checking' || submitting;
+  const ctaDisabled = nameInvalid || usernameInvalid || usernameStatus === 'checking' || avatarUploading || submitting;
 
   function renderUsernameStatus() {
     if (usernameFormatError) {
@@ -313,7 +364,14 @@ export default function ProfileSetupScreen() {
     if (usernameStatus === 'taken') {
       return (
         <AppText role="label" tone="destructive">
-          {USERNAME_TAKEN_MESSAGE}
+          {alternates.length > 0 ? USERNAME_TAKEN_MESSAGE : USERNAME_TAKEN_NO_ALTERNATES_MESSAGE}
+        </AppText>
+      );
+    }
+    if (usernameStatus === 'error') {
+      return (
+        <AppText role="label" tone="destructive">
+          {USERNAME_CHECK_FAILED_MESSAGE}
         </AppText>
       );
     }
@@ -339,6 +397,7 @@ export default function ProfileSetupScreen() {
           >
             <Pressable
               onPress={handleAvatarPress}
+              disabled={avatarUploading}
               accessibilityRole="button"
               accessibilityLabel="Add profile photo"
               style={{
@@ -404,7 +463,10 @@ export default function ProfileSetupScreen() {
               autoComplete="name"
               textContentType="name"
               value={name}
-              onChangeText={setName}
+              onChangeText={(text) => {
+                nameEditedRef.current = true;
+                setName(text);
+              }}
               onBlur={handleNameBlur}
               error={nameError}
             />
@@ -420,11 +482,13 @@ export default function ProfileSetupScreen() {
               value={username}
               onChangeText={handleUsernameChange}
             />
-            {/* Fixed-height 24dp status row, reserved across idle/checking/
-                available so the bio field below never jumps. The taken
-                state is the one explicit exception: its alternate-chip row
-                is allowed to push content below it downward. */}
-            <View style={{ minHeight: 24, justifyContent: 'center', marginTop: 4 }}>{renderUsernameStatus()}</View>
+            {/* Fixed 24dp status row; every status string fits one label line,
+                so none of them moves the bio field below it. The taken state is the
+                one explicit exception: its alternate-chip row is allowed to
+                push content below it downward. */}
+            <View style={{ height: 24, justifyContent: 'center', marginTop: 4 }}>
+              {renderUsernameStatus()}
+            </View>
             {usernameStatus === 'taken' && alternates.length > 0 ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs }}>
                 {alternates.map((alternate) => (
@@ -455,6 +519,8 @@ export default function ProfileSetupScreen() {
               onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
               multiline
               numberOfLines={3}
+              maxLength={BIO_MAX_LENGTH}
+              showCount
             />
           </View>
         </ScrollView>

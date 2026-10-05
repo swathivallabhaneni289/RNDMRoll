@@ -8,7 +8,7 @@ import { TextField } from '@/components/ui/TextField';
 import { space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
-import { setDraft } from '@/lib/onboarding/draft';
+import { clearDraft, setDraft } from '@/lib/onboarding/draft';
 import { useSession } from '@/lib/session/store';
 
 /**
@@ -79,13 +79,19 @@ export default function EmailScreen() {
 
     setFormError(null);
     setSubmitting(true);
+    // A keyboard's trailing space passes client validation but the server
+    // rejects it, so send the trimmed value everywhere.
+    const trimmedEmail = email.trim();
     try {
       if (mode === 'signup') {
-        await api.post('/auth/signup', { email, password }, { auth: false });
-        setDraft({ email, provider: 'email' });
+        await api.post('/auth/signup', { email: trimmedEmail, password }, { auth: false });
+        // A name left by an earlier failed Apple attempt must not prefill this account.
+        clearDraft();
+        setDraft({ email: trimmedEmail, provider: 'email' });
         router.push('/verify-email');
       } else {
-        const result = await api.post<AuthResult>('/auth/login', { email, password }, { auth: false });
+        const result = await api.post<AuthResult>('/auth/login', { email: trimmedEmail, password }, { auth: false });
+        clearDraft();
         // Root layout's guard routes onward from here (profile-setup or (app)).
         await signIn(result);
       }
@@ -96,7 +102,8 @@ export default function EmailScreen() {
       }
       if (mode === 'login' && err instanceof ApiError && err.code === 'email_not_verified') {
         // Next action is opening mail, not retrying the form. Not an error.
-        setDraft({ email, provider: 'email' });
+        clearDraft();
+        setDraft({ email: trimmedEmail, provider: 'email' });
         router.push('/verify-email');
         return;
       }

@@ -1,4 +1,4 @@
-import { getAccessToken, refreshSession, signOut } from '@/lib/session/store';
+import { getAccessToken, isDefinitiveAuthFailure, refreshSession } from '@/lib/session/store';
 import type { ApiErrorBody, ApiErrorCode } from '@/lib/api/types';
 
 /**
@@ -106,7 +106,12 @@ async function request<T>(
   const code = errorBody.error as ApiErrorCode;
   const apiError = new ApiError(response.status, code, errorBody.message, errorBody.suggestions);
 
-  if (response.status === 401 && code === 'token_expired' && !opts.retry) {
+  // /auth/refresh answers an expired REFRESH token with the same 401 token_expired. Taking
+  // this branch for it (or for any unauthenticated call) would start a second refresh whose
+  // own 401 awaits the first, so the two wait on each other forever and restore() never
+  // settles. Those 401s must surface as the ApiError for the store to sign out on.
+  const isRefreshable = opts.auth !== false && path !== '/auth/refresh';
+  if (response.status === 401 && code === 'token_expired' && !opts.retry && isRefreshable) {
     if (!refreshPromise) {
       refreshPromise = refreshSession().finally(() => {
         refreshPromise = null;
@@ -114,9 +119,10 @@ async function request<T>(
     }
     try {
       await refreshPromise;
-    } catch {
-      await signOut();
-      throw apiError;
+    } catch (refreshErr) {
+      // The store has already signed out on a definitive rejection. Any other refresh
+      // failure (offline, 5xx) must surface as itself and must not end the session.
+      throw isDefinitiveAuthFailure(refreshErr) ? apiError : refreshErr;
     }
     return request<T>(method, path, body, { ...opts, retry: true });
   }

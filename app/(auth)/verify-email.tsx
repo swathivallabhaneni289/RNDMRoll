@@ -50,7 +50,9 @@ export default function VerifyEmailScreen() {
       setPendingAuthResult(result);
       setStatus('success');
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'token_expired') {
+      // token_invalid is what a link replaced by a newer resend looks like to
+      // the server, so it shares the expired message instead of the generic one.
+      if (err instanceof ApiError && (err.code === 'token_expired' || err.code === 'token_invalid')) {
         setStatus('expired');
       } else if (err instanceof ApiError && err.code === 'token_consumed') {
         setStatus('consumed');
@@ -155,7 +157,7 @@ export default function VerifyEmailScreen() {
               <View style={{ marginTop: space.md, paddingHorizontal: space.lg }}>
                 <AppText role="body" tone="destructive">
                   {status === 'expired'
-                    ? 'That link expired. Send a new one below.'
+                    ? 'This link has expired or was replaced. Send a new one below.'
                     : 'That link was already used. Send a new one below.'}
                 </AppText>
               </View>

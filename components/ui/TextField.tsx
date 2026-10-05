@@ -2,14 +2,18 @@ import { useState } from 'react';
 import { ActivityIndicator, Text, TextInput, TextInputProps, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
-import { color, minTouchTarget, radius, type } from '@/lib/theme/tokens';
+import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
+
+const MULTILINE_PADDING = 12;
 
 type TextFieldProps = {
   label: string;
   error?: string;
   status?: FieldStatus;
+  /** Shows "n / max" under the field, right-aligned. Needs `maxLength`. */
+  showCount?: boolean;
 } & Omit<TextInputProps, 'style'>;
 
 /**
@@ -32,11 +36,15 @@ export function TextField({
   label,
   error,
   status = 'idle',
+  showCount = false,
   onFocus,
   onBlur,
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  const multiline = rest.multiline === true;
+  const lines = rest.numberOfLines ?? 3;
+  const count = typeof rest.value === 'string' ? rest.value.length : 0;
 
   return (
     <View>
@@ -56,8 +64,12 @@ export function TextField({
           borderRadius: radius.md,
           borderWidth: focused ? 1.5 : 1,
           borderColor: focused ? color.ink : color.inkRest,
-          minHeight: minTouchTarget,
+          // iOS ignores numberOfLines for height, so a multiline field takes its height from the line count here.
+          minHeight: multiline ? type.body.lineHeight * lines + MULTILINE_PADDING * 2 : minTouchTarget,
           paddingHorizontal: 12,
+          ...(multiline
+            ? { paddingTop: MULTILINE_PADDING, paddingBottom: MULTILINE_PADDING, textAlignVertical: 'top' as const }
+            : null),
           fontSize: type.body.fontSize,
           lineHeight: type.body.lineHeight,
           fontFamily: type.body.fontFamily,
@@ -102,6 +114,13 @@ export function TextField({
         >
           {error}
         </Text>
+      ) : null}
+      {showCount && rest.maxLength ? (
+        <View style={{ marginTop: space.xs, alignItems: 'flex-end' }}>
+          <AppText role="label" tone="muted" accessibilityLabel={`${count} of ${rest.maxLength} characters`}>
+            {`${count} / ${rest.maxLength}`}
+          </AppText>
+        </View>
       ) : null}
     </View>
   );

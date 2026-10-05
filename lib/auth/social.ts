@@ -1,7 +1,7 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { api } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
-import { setDraft } from '@/lib/onboarding/draft';
+import { clearDraft, setDraft } from '@/lib/onboarding/draft';
 
 /**
  * Native Apple and Google sign-in wrappers. Both post only the raw provider
@@ -67,19 +67,19 @@ export async function signInWithApple(): Promise<SocialSignInResult> {
 
   const fullName = joinFullName(credential.fullName);
 
-  const result = await api.post<AuthResult>(
-    '/auth/oauth/apple',
-    { identity_token: credential.identityToken, full_name: fullName },
-    { auth: false }
-  );
-
+  // Captured before the POST: Apple will not hand the name over again, so a
+  // failed request must not lose it for a retry within this process.
   setDraft({
     provider: 'apple',
     ...(fullName ? { suggestedName: fullName } : {}),
     ...(credential.email ? { email: credential.email } : {}),
   });
 
-  return result;
+  return api.post<AuthResult>(
+    '/auth/oauth/apple',
+    { identity_token: credential.identityToken, full_name: fullName },
+    { auth: false }
+  );
 }
 
 let googleSigninConfigured = false;
@@ -129,6 +129,8 @@ export async function signInWithGoogle(): Promise<SocialSignInResult> {
 
   const result = await api.post<AuthResult>('/auth/oauth/google', { id_token: idToken }, { auth: false });
 
+  // A name left in the draft by an earlier failed Apple attempt must not prefill this account.
+  clearDraft();
   setDraft({ provider: 'google' });
 
   return result;

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { BackHandler } from 'react-native';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { color } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
 
@@ -18,6 +19,7 @@ export const unstable_settings = {
 
 export default function AuthLayout() {
   const router = useRouter();
+  const segments = useSegments();
   const { status, user } = useSession();
 
   const fadeTransition = { animation: 'fade' as const, animationDuration: 220 };
@@ -32,6 +34,20 @@ export default function AuthLayout() {
     }
   }, [status, user?.onboarding_complete, router]);
 
+  // gestureEnabled covers the iOS swipe only; Android's hardware back ignores
+  // it. The user is already signed in here, so going back would land on signup
+  // or intro and drop everything typed. Treat this screen as a root: back
+  // leaves the app instead of popping the stack.
+  const onProfileSetup = (segments as string[])[segments.length - 1] === 'profile-setup';
+  useEffect(() => {
+    if (!onProfileSetup) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      BackHandler.exitApp();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onProfileSetup]);
+
   return (
     <Stack
       screenOptions={{
@@ -43,7 +59,7 @@ export default function AuthLayout() {
       <Stack.Screen name="choose-method" options={fadeTransition} />
       <Stack.Screen name="email" />
       <Stack.Screen name="verify-email" />
-      <Stack.Screen name="profile-setup" />
+      <Stack.Screen name="profile-setup" options={{ gestureEnabled: false }} />
     </Stack>
   );
 }
