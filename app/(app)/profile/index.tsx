@@ -1,17 +1,54 @@
 import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
-import { IconBadge } from '@/components/ui/IconBadge';
+import { DialAvatar } from '@/components/brand/DialAvatar';
 import { Screen } from '@/components/ui/Screen';
-import { TextButton } from '@/components/ui/TextButton';
-import { color, elevation, radius, space } from '@/lib/theme/tokens';
+import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
 
-const AVATAR_DIAMETER = 96;
-const AVATAR_GLYPH_SIZE = 44;
+const ROW_HEIGHT = 56;
+const hairline = { borderColor: color.divider, borderTopWidth: StyleSheet.hairlineWidth } as const;
+
+/** A full-width row between hairlines: the profile's actions, and the log-out sheet's. */
+function ActionRow({
+  label,
+  onPress,
+  tone = 'default',
+  arrow = false,
+  last = false,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  tone?: 'default' | 'destructive';
+  arrow?: boolean;
+  last?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => ({
+        ...hairline,
+        borderBottomWidth: last ? StyleSheet.hairlineWidth : 0,
+        minHeight: ROW_HEIGHT,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        opacity: pressed ? 0.55 : 1,
+      })}
+    >
+      <AppText role="button" tone={disabled ? 'muted' : tone}>
+        {label}
+      </AppText>
+      {arrow ? <Ionicons name="arrow-forward" size={18} color={color.ink} /> : null}
+    </Pressable>
+  );
+}
 
 /**
  * ACCT-03's profile view. D-07 is exact about scope: identity fields only
@@ -21,6 +58,10 @@ const AVATAR_GLYPH_SIZE = 44;
  * user directly (lib/session/store.ts); edit.tsx's reloadUser() call after
  * a save is what keeps this screen fresh, so it performs no fetch of its
  * own.
+ *
+ * Layout (UI-SPEC revision 12): a left-aligned masthead (small caps label, the
+ * dial-ring avatar, the name in the display serif, the username), the bio between
+ * two hairlines, and the actions as rows pinned to the bottom. No card, no shadow.
  */
 export default function ProfileScreen() {
   const router = useRouter();
@@ -28,7 +69,8 @@ export default function ProfileScreen() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const hasBio = Boolean(user?.bio && user.bio.length > 0);
+  const trimmedBio = user?.bio?.trim() ?? '';
+  const hasBio = trimmedBio.length > 0;
 
   async function handleConfirmSignOut() {
     setSigningOut(true);
@@ -45,84 +87,66 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <View style={{ paddingTop: space.xl, paddingBottom: space.xl }}>
-        <AppText role="heading">Profile</AppText>
-
-        <View
+      <View style={{ flex: 1, paddingTop: space.lg, paddingBottom: space.lg }}>
+        <Text
+          accessibilityRole="header"
           style={{
-            marginTop: space.lg,
-            borderRadius: radius.lg,
-            padding: space.lg,
-            ...elevation.card,
+            fontFamily: type.button.fontFamily,
+            fontSize: type.label.fontSize,
+            lineHeight: type.label.lineHeight,
+            letterSpacing: 2.4,
+            textTransform: 'uppercase',
+            color: color.muted,
           }}
         >
-          <View style={{ alignItems: 'center' }}>
-            <View
-              style={{
-                width: AVATAR_DIAMETER,
-                height: AVATAR_DIAMETER,
-                borderRadius: radius.full,
-                backgroundColor: color.secondary,
+          Profile
+        </Text>
+
+        <View style={{ marginTop: space.xl }}>
+          <DialAvatar name={user?.name ?? ''} uri={user?.avatar_url} />
+        </View>
+
+        <View style={{ marginTop: space.lg }}>
+          <AppText role="display" numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.6}>
+            {user?.name ?? ''}
+          </AppText>
+          <View style={{ marginTop: space.xs }}>
+            <AppText role="body" tone="muted">{`@${user?.username ?? ''}`}</AppText>
+          </View>
+        </View>
+
+        <View style={{ ...hairline, borderBottomWidth: StyleSheet.hairlineWidth, marginTop: space.xl }}>
+          {hasBio ? (
+            <View style={{ paddingVertical: space.lg }}>
+              <AppText role="body">{trimmedBio}</AppText>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => router.push('/(app)/profile/edit')}
+              accessibilityRole="button"
+              accessibilityLabel="Add a bio"
+              style={({ pressed }) => ({
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-              }}
+                paddingVertical: space.lg,
+                opacity: pressed ? 0.55 : 1,
+              })}
             >
-              {user?.avatar_url ? (
-                <Image
-                  source={{ uri: user.avatar_url }}
-                  style={{ width: AVATAR_DIAMETER, height: AVATAR_DIAMETER }}
-                  contentFit="cover"
-                  accessibilityLabel="Profile photo"
-                />
-              ) : (
-                <Ionicons name="person" size={AVATAR_GLYPH_SIZE} color={color.inkAvatarPlaceholder} />
-              )}
-            </View>
-
-            <View style={{ marginTop: space.md, alignItems: 'center' }}>
-              <AppText role="heading">{user?.name ?? ''}</AppText>
-              <View style={{ marginTop: space.xs }}>
-                <AppText role="body" tone="muted">{`@${user?.username ?? ''}`}</AppText>
+              <View style={{ flex: 1 }}>
+                <AppText role="heading">Add a bio</AppText>
+                <AppText role="body" tone="muted">
+                  Tell people what you're spinning for.
+                </AppText>
               </View>
-            </View>
-          </View>
-
-          <View style={{ marginTop: space.lg }}>
-            {hasBio ? (
-              <AppText role="body">{user?.bio}</AppText>
-            ) : (
-              <Pressable
-                onPress={() => router.push('/(app)/profile/edit')}
-                accessibilityRole="button"
-                accessibilityLabel="Add a bio"
-                style={{ flexDirection: 'row', alignItems: 'center' }}
-              >
-                <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  <IconBadge name="create-outline" surface="secondary" accessibilityLabel="Add a bio" />
-                </View>
-                <View style={{ marginLeft: space.md, flex: 1 }}>
-                  <AppText role="heading">Add a bio</AppText>
-                  <AppText role="body" tone="muted">
-                    Tell people what you're spinning for.
-                  </AppText>
-                </View>
-              </Pressable>
-            )}
-          </View>
+              <Ionicons name="arrow-forward" size={18} color={color.ink} />
+            </Pressable>
+          )}
         </View>
 
-        <View style={{ marginTop: space.xl, alignItems: 'center' }}>
-          <TextButton label="Edit profile" onPress={() => router.push('/(app)/profile/edit')} />
-        </View>
+        <View style={{ flex: 1, minHeight: space.xl }} />
 
-        <View style={{ marginTop: space.md, alignItems: 'center' }}>
-          <TextButton
-            label="Log out"
-            tone="destructive"
-            onPress={() => setConfirmingSignOut(true)}
-          />
-        </View>
+        <ActionRow label="Edit profile" arrow onPress={() => router.push('/(app)/profile/edit')} />
+        <ActionRow label="Log out" tone="destructive" last onPress={() => setConfirmingSignOut(true)} />
       </View>
 
       <Modal
@@ -134,7 +158,7 @@ export default function ProfileScreen() {
         <View style={{ flex: 1, backgroundColor: color.scrimOverlay, justifyContent: 'flex-end' }}>
           <View
             style={{
-              backgroundColor: color.card,
+              ...elevation.card,
               borderTopLeftRadius: radius.lg,
               borderTopRightRadius: radius.lg,
               padding: space.lg,
@@ -142,17 +166,16 @@ export default function ProfileScreen() {
             }}
           >
             <AppText role="body">Log out of RNDMRoll? You'll need to sign back in.</AppText>
-            <View style={{ marginTop: space.lg, alignItems: 'center' }}>
-              <TextButton
+            <View style={{ marginTop: space.lg }}>
+              <ActionRow
                 label="Log out"
                 tone="destructive"
                 disabled={signingOut}
                 onPress={handleConfirmSignOut}
               />
-            </View>
-            <View style={{ marginTop: space.md, alignItems: 'center' }}>
-              <TextButton
+              <ActionRow
                 label="Stay logged in"
+                last
                 disabled={signingOut}
                 onPress={() => setConfirmingSignOut(false)}
               />
