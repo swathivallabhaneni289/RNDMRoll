@@ -1,0 +1,124 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-10-06T09:09:42.750Z",
+  "phase": "01",
+  "phase_name": "foundation-accounts",
+  "phase_dir": ".planning/phases/01-foundation-accounts",
+  "plan": 15,
+  "task": 2,
+  "total_tasks": 2,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "01-15 Task 1 automated sweep (and the read-only trace of steps 8 to 18)",
+      "status": "done",
+      "commit": "7419f3a"
+    },
+    {
+      "id": 2,
+      "name": "01-17 hardening fixes applied and committed",
+      "status": "done",
+      "commit": "ba57e39"
+    },
+    {
+      "id": 3,
+      "name": "The 'Make it yours.' page built in edit mode and made the landing page",
+      "status": "done",
+      "commit": "6054474"
+    },
+    {
+      "id": 4,
+      "name": "01-15 Task 2 device walkthrough",
+      "status": "in_progress",
+      "progress": "Section A, steps 9 to 11, 13, 14, 15 first half and 16 passed with the developer; 17 and 18 not run; 8 to 15 superseded by the one-page sign-up"
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 5,
+      "name": "Walkthrough steps 17 and 18 on the existing account",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "Write a new small plan (01-19) for the one-page sign-up and get the developer's go",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Build the one-page sign-up (server first, then app), cold-launch checks, walkthrough",
+      "status": "not_started"
+    },
+    {
+      "id": 8,
+      "name": "Fix the confirmed small defects batch and approve strings (PRETRACE sections 4 and 5)",
+      "status": "not_started"
+    },
+    {
+      "id": 9,
+      "name": "Close Phase 1 only after the developer types approved (SUMMARYs, VALIDATION, ROADMAP, STATE, gates)",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No go yet from the developer for a new sign-up plan",
+      "type": "human_action",
+      "workaround": "Write the plan, ask for an explicit 'start'"
+    },
+    {
+      "description": "Steps 19 and 20 (Apple, Google) need real accounts, deferred to the end of the project",
+      "type": "external",
+      "workaround": "Recorded as deferred"
+    },
+    {
+      "description": "Dev-only 'Open debugger to view warnings' bar on every launch, text unidentified",
+      "type": "technical",
+      "workaround": "Tap its x"
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Say 'start' after reading the new sign-up plan",
+      "context": "Plan 01-18 was superseded; nothing is built for the one-page sign-up",
+      "blocking": true
+    },
+    {
+      "action": "Supply real Terms and Privacy text, set up Google, Apple, S3 and Resend accounts, domain, favicon, remove AI tag",
+      "context": "Launch list in PROJECT.md; deferred to the end",
+      "blocking": false
+    },
+    {
+      "action": "Decide whether to push the 7 local commits to GitHub",
+      "context": "The repo is public; nothing has been pushed this session",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Sign-up is one page: email, password (8+), birthday (13+), photo, name, username, bio; first-time button Continue, edit button Save changes; no code, no email verification; bio and photo optional",
+      "rationale": "Developer decision 2026-10-06 replacing the Instagram-style multi-screen flow",
+      "phase": "01"
+    },
+    {
+      "decision": "The Profile view page is removed; the landing page is the Make it yours page",
+      "rationale": "Developer: no middle page, do not want to tap to see the new design",
+      "phase": "01"
+    },
+    {
+      "decision": "Real accounts and Terms/Privacy text come at the end; Claude writes no legal text",
+      "rationale": "Developer 2026-10-01 and 2026-10-05",
+      "phase": "01"
+    }
+  ],
+  "uncommitted_files": [
+    "app/lab/ (on purpose)",
+    "docs/reference/ extras (on purpose)",
+    ".claude/ (on purpose)",
+    ".planning/config.json (on purpose)"
+  ],
+  "next_action": "Run /gsd-resume-work, offer to finish walkthrough steps 17 and 18, write the new small plan 01-19 for the one-page sign-up (first-time mode and edit mode), and ask for an explicit start before building. Do not push.",
+  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results. Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals. Plan 01-18 is superseded but its research is reusable."
+}
