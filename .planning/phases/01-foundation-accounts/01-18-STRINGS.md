@@ -1,0 +1,96 @@
+# 01-18 strings and decisions awaiting the developer (2026-10-05)
+
+Source: the planning workflow `wf_d76ca6fe-32b`. Every string below is new or changed on-screen text; the developer keeps or changes each one, one screen at a time during the walkthrough. Nothing is built yet.
+
+## Strings for approval
+
+- all sign-up screens (new): Back
+- all sign-up screens (new): Too many tries. Try again in {time}. (times: 40 seconds, 1 minute, 5 minutes, 1 hour, 3 hours)
+- all sign-up screens (new): This sign-up timed out. Start again.
+- all sign-up screens (new): Start again
+- all sign-up screens (reused): Continue; Something went wrong. Please try again.; Couldn't connect. Check your connection and try again.; Step N of 7 screen reader label; Log out (first catch-up screen)
+- choose-method (new): Already have an account?
+- choose-method (new): This sign-in doesn't share a verified email. Use Continue with Email instead.
+- choose-method (reused): RNDMRoll; Continue with Email; Continue with Apple; Continue with Google; Log in
+- email (new): What's your email?
+- email (new): We'll send you a 6-digit code to confirm it.
+- email (reused): Email; Enter a valid email address.; Log in instead
+- code (new): We sent a 6-digit code to {email}. It expires in 10 minutes.
+- code (new): No code? Check spam. If you already have an account, we sent a note about logging in instead.
+- code (new): Code
+- code (new): Change email
+- code (new): Send a new code
+- code (new): Send a new code in {m:ss}
+- code (new, screen reader): Send a new code, available in {n} seconds
+- code (new): New code sent. Your earlier code no longer works. (shown only when a new code was actually sent)
+- code (new): That code isn't right. {n} tries left. (last one: 1 try left.)
+- code (new): That code has expired. Send a new one.
+- code (new): Too many wrong codes. Send a new code to try again.
+- code (new, only when arriving from Log in): Your account was never confirmed. Enter the code, then choose a new password.
+- code (reused): Check your email
+- password (new): Create a password
+- password (new): Show password
+- password (new): Hide password
+- password (new): That password is too long. Use 72 characters or fewer.
+- password (reused): At least 8 characters.; Password; Password must be at least 8 characters.
+- birthday (new): When's your birthday?
+- birthday (new): You must be 13 or older to use RNDMRoll. Nobody else sees your birthday.
+- birthday (new): Month
+- birthday (new): Day
+- birthday (new): Year
+- birthday (new): Enter your birthday as month, day and year.
+- birthday (new): Enter a four-digit year.
+- birthday (new): That date doesn't exist. Check the day and month.
+- birthday (new): That date is in the future.
+- birthday (new): RNDMRoll is for ages 13 and up.
+- birthday (new, replaces the earlier wording): We can't make an account for you. We didn't keep your birthday.
+- birthday (new): Start over
+- name (new): What's your name?
+- name (new): This shows on your profile. You can change it later.
+- name (reused): Name; Enter your name.; Name must be 50 characters or fewer.
+- username (new): Pick a username
+- username (new): You can change it later.
+- username (reused): Username; 3 to 20 letters, numbers, or underscores.; Checking...; Available; That username's taken. Try one of these:; That username's taken.; Couldn't check that username. Try again.
+- agree (new): What RNDMRoll keeps
+- agree (new): Your email address.
+- agree (new): Your email address, from Apple.
+- agree (new): Your email address, from Google.
+- agree (new): Your password, stored scrambled so nobody can read it.
+- agree (new): Your name and username.
+- agree (new): Your birthday, which stays private.
+- agree (new): A photo and bio, only if you add them.
+- agree (new): Nobody else sees your email or your birthday.
+- agree (new, only when arriving from Log in and the old row holds data): That email belongs to an account we can't recreate here. Use Continue with Apple or Continue with Google instead.
+- agree (reused): Create account; That email's already registered. Log in instead.; Log in (link)
+- agree, later variant (build only when Terms and Privacy documents exist, all new): Agree to the terms; By tapping I agree you accept the Terms and the Privacy Policy.; Terms; Privacy Policy; I agree
+- login (new): That email or password isn't right.
+- login (reused): Log in; Sign up instead; Enter your password.
+- profile (new): Add a photo
+- profile (reused): Add profile photo; Change profile photo; Take photo; Choose from library; Cancel; Camera isn't available on this device.; Couldn't open your photo library.; Camera access is needed to take a photo.; Photo library access is needed to choose a photo.; Couldn't upload your photo. Try again.; Add a bio; Tell people what you're spinning for.
+- edit profile (changed): the photo sheet title 'Change photo' becomes 'Add profile photo' or 'Change profile photo'
+- email, code notice (new): subject 'Your RNDMRoll code is 123456'; body 'Your RNDMRoll code is 123456.' / 'It expires in 10 minutes. Only the newest code works.' / 'If you did not ask for this, you can ignore this message.'
+- email, owner notice (new): subject 'You already have a RNDMRoll account'; body 'Someone asked to create a RNDMRoll account with this email address. You already have one, so we did not send a code.' / 'To use it, open the app and log in with this email. If you signed up with Apple or Google, use that button on the first screen.' / 'If this was not you, you can ignore this message.'
+
+## Decisions the developer must make, with defaults
+
+- **Terms and Privacy Policy: who supplies the text?**
+  - Options: A) You supply both documents later and they are bundled as in-app screens; until then Create account records 'none' with no acceptance time. B) Generate with a template service and paste in. C) Skip the agree step until launch (conflicts with your step 4).
+  - Recommendation: A. I write no legal text. Also confirm your launch regions against the age 13 floor before release.
+- **Existing accounts in the dev database have no birthday or terms record. What happens to them?**
+  - Options: A) Accounts that are verified with name and username are marked as already agreed and asked nothing; only half-finished ones see the catch-up screens. B) Ask every account once for birthday and agree on next launch.
+  - Recommendation: A. Same screens either way, so you can switch to B later.
+- **Old accounts that were never verified: a correct code does not sign them in. They go through the whole flow and the empty old row is replaced. OK?**
+  - Options: A) Yes, never sign in from a code (closes a takeover hole). B) A correct code signs the old account in (matches the product spec wording, weaker).
+  - Recommendation: A.
+- **An existing half-finished account that enters an age under 13 on the catch-up screens.**
+  - Options: A) Block, leave the row, sign out on the phone. B) Delete the account and its sessions.
+  - Recommendation: A. Deleting a live row is destructive and only old test rows can reach it.
+- **There is no Forgot password today, and the new 'you already have an account' email can only point people to log in or use Apple or Google.**
+  - Options: A) Put Forgot password by 6-digit code on the launch gate and build it before launch. B) Build it inside this plan. C) Leave it out.
+  - Recommendation: A. The code machinery will exist, but it is a separate plan.
+- **The app work edits screens that your running dev client shows, and the 01-15 walkthrough is unfinished.**
+  - Options: A) Finish the remaining 01-15 steps on the old code first. B) Mark them superseded and build the app half in a separate git worktree.
+  - Recommendation: B, with Metro left alone until the cutover step.
+- **Apple or Google says the email is not verified and no account exists.**
+  - Options: A) Refuse with a message that points to Continue with Email (today an unverified row is created). B) Send them through the email code step.
+  - Recommendation: A.
