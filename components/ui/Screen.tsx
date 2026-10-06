@@ -23,7 +23,7 @@ export function Screen({
 }: {
   children?: ReactNode;
   texture?: boolean;
-  wheels?: boolean;
+  wheels?: boolean | 'corner';
   wheelLabel?: string | null;
   wheelKick?: number;
   scroll?: boolean;
@@ -41,7 +41,7 @@ export function Screen({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.dominant, paddingHorizontal: space.lg }}>
       {texture ? <BackgroundDotGrid /> : null}
-      {wheels ? <WheelBackground active={wheelLabel} kick={wheelKick} /> : null}
+      {wheels === 'corner' ? <WheelBackground corner /> : wheels ? <WheelBackground active={wheelLabel} kick={wheelKick} /> : null}
       <View style={{ flex: 1 }}>{content}</View>
     </SafeAreaView>
   );

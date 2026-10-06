@@ -1,21 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Modal, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
+import { DialAvatar } from '@/components/brand/DialAvatar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { TextButton } from '@/components/ui/TextButton';
 import { TextField } from '@/components/ui/TextField';
-import { color, elevation, radius, space } from '@/lib/theme/tokens';
+import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import { updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { UsernameAvailability } from '@/lib/api/types';
 import { useSession } from '@/lib/session/store';
 
-const AVATAR_DIAMETER = 96;
-const AVATAR_GLYPH_SIZE = 40;
 const BIO_MAX_LENGTH = 160;
 const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
@@ -44,7 +43,9 @@ type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
  */
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { user, reloadUser } = useSession();
+  const { user, reloadUser, signOut } = useSession();
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const initialName = user?.name ?? '';
   const initialUsername = user?.username ?? '';
@@ -251,7 +252,8 @@ export default function EditProfileScreen() {
 
       await updateProfile(patch);
       await reloadUser();
-      router.back();
+      // This page is also the app's landing page, so there may be nothing to go back to.
+      if (router.canGoBack()) router.back();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'username_taken') {
         // Insert-time conflict: the live check passed but the save still
@@ -271,37 +273,73 @@ export default function EditProfileScreen() {
 
   const avatarPreviewUri = pendingAvatarUri ?? initialAvatarUrl;
 
+  async function handleConfirmSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+      // The root guard routes back to Welcome once status flips to unauthenticated.
+    } finally {
+      setSigningOut(false);
+      setConfirmingSignOut(false);
+    }
+  }
+
   return (
-    <Screen>
-      <View style={{ paddingTop: space.xl, paddingBottom: space.xl }}>
-        <AppText role="heading">Edit profile</AppText>
+    <Screen wheels="corner">
+      <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          {router.canGoBack() ? (
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={12}
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="chevron-back" size={22} color={color.ink} />
+            <AppText role="body">Back</AppText>
+          </Pressable>
+          ) : (
+            <View />
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text
+              style={{
+                fontFamily: type.label.fontFamily,
+                fontSize: type.label.fontSize - 3,
+                letterSpacing: 3,
+                textTransform: 'uppercase',
+                color: color.muted,
+              }}
+            >
+              RNDMRoll
+            </Text>
+            <View style={{ width: 28, height: 1, marginLeft: space.sm, backgroundColor: color.muted }} />
+          </View>
+        </View>
+
+        <View style={{ marginTop: space.xl }}>
+          <AppText role="display">Make it yours.</AppText>
+          <View style={{ marginTop: space.sm }}>
+            <AppText role="body" tone="muted">
+              This is where your daily spins will live.
+            </AppText>
+          </View>
+        </View>
 
         <View style={{ marginTop: space.lg, alignItems: 'center' }}>
-          <Pressable
+          <DialAvatar
+            name={name}
+            uri={avatarPreviewUri}
+            placeholder="camera"
+            ring={false}
+            badge
             onPress={handleChangePhoto}
-            accessibilityRole="button"
             accessibilityLabel="Change profile photo"
-            style={{
-              width: AVATAR_DIAMETER,
-              height: AVATAR_DIAMETER,
-              borderRadius: radius.full,
-              backgroundColor: color.secondary,
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}
-          >
-            {avatarPreviewUri ? (
-              <Image
-                source={{ uri: avatarPreviewUri }}
-                style={{ width: AVATAR_DIAMETER, height: AVATAR_DIAMETER }}
-                contentFit="cover"
-                accessibilityLabel="Profile photo"
-              />
-            ) : (
-              <Ionicons name="person" size={AVATAR_GLYPH_SIZE} color={color.inkAvatarPlaceholder} />
-            )}
-          </Pressable>
+          />
+          <View style={{ marginTop: space.sm }}>
+            <TextButton label={avatarPreviewUri ? 'Change photo' : 'Add photo'} tone="muted" onPress={handleChangePhoto} />
+          </View>
           {avatarError ? (
             <View style={{ marginTop: space.xs }}>
               <AppText role="label" tone="destructive">
@@ -314,6 +352,7 @@ export default function EditProfileScreen() {
         <View style={{ marginTop: space.lg }}>
           <TextField
             label="Name"
+            variant="soft"
             value={name}
             onChangeText={setName}
             onBlur={validateNameOnBlur}
@@ -327,6 +366,8 @@ export default function EditProfileScreen() {
         <View style={{ marginTop: space.md }}>
           <TextField
             label="Username"
+            variant="soft"
+            prefix="@"
             value={username}
             onChangeText={(value) => setUsername(value.toLowerCase())}
             status={usernameStatus}
@@ -359,6 +400,7 @@ export default function EditProfileScreen() {
         <View style={{ marginTop: space.md }}>
           <TextField
             label="Bio"
+            variant="soft"
             value={bio}
             onChangeText={setBio}
             onBlur={validateBioOnBlur}
@@ -368,6 +410,8 @@ export default function EditProfileScreen() {
             numberOfLines={3}
             maxLength={BIO_MAX_LENGTH}
             showCount
+            clearable
+            hint="Optional"
             textAlignVertical="top"
           />
         </View>
@@ -381,9 +425,40 @@ export default function EditProfileScreen() {
         ) : null}
 
         <View style={{ marginTop: space.lg }}>
-          <PrimaryButton label="Save changes" onPress={handleSave} disabled={!canSubmit} loading={saving} />
+          <PrimaryButton label="Save changes" arrow onPress={handleSave} disabled={!canSubmit} loading={saving} />
+        </View>
+
+        <View style={{ marginTop: space.lg, alignItems: 'center' }}>
+          <TextButton label="Log out" tone="destructive" onPress={() => setConfirmingSignOut(true)} />
         </View>
       </View>
+
+      <Modal
+        visible={confirmingSignOut}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmingSignOut(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: color.scrimOverlay, justifyContent: 'flex-end' }}>
+          <View
+            style={{
+              ...elevation.card,
+              borderTopLeftRadius: radius.lg,
+              borderTopRightRadius: radius.lg,
+              padding: space.lg,
+              paddingBottom: space.xl,
+            }}
+          >
+            <AppText role="body">Log out of RNDMRoll? You'll need to sign back in.</AppText>
+            <View style={{ marginTop: space.lg, alignItems: 'center' }}>
+              <TextButton label="Log out" tone="destructive" disabled={signingOut} onPress={handleConfirmSignOut} />
+            </View>
+            <View style={{ marginTop: space.md, alignItems: 'center' }}>
+              <TextButton label="Stay logged in" disabled={signingOut} onPress={() => setConfirmingSignOut(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

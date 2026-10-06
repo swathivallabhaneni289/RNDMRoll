@@ -174,8 +174,16 @@ function Label({ word, x, y, active }: { word: string; x: number; y: number; act
   );
 }
 
-export function WheelBackground({ active = null, kick = 0 }: { active?: string | null; kick?: number }) {
+export function WheelBackground({ active = null, kick = 0, corner = false }: { active?: string | null; kick?: number; corner?: boolean }) {
   const { width: W, height: H } = useWindowDimensions();
+  if (corner) {
+    // The profile form: one faint ghost wheel in the lower left corner, nothing else.
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <SlowGhost cx={0.02 * W} cy={1.0 * H} R={0.34 * W} rot={20} seconds={90} dir={1} kick={0} />
+      </View>
+    );
+  }
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <SlowGhost cx={0.04 * W} cy={0.185 * H} R={0.33 * W} rot={12} seconds={45} dir={1} kick={kick} />

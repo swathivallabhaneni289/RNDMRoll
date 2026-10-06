@@ -1,12 +1,14 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { Circle, Path, Svg } from 'react-native-svg';
 import { AppText } from '@/components/ui/AppText';
-import { color, radius } from '@/lib/theme/tokens';
+import { color, elevation, radius } from '@/lib/theme/tokens';
 
 const DISC = 104;
 const RING_R = 64;
 const SIZE = RING_R * 2;
+const BADGE = 40;
 
 function polar(r: number, deg: number) {
   const a = (deg * Math.PI) / 180;
@@ -34,17 +36,37 @@ function initialsOf(name: string) {
 }
 
 /**
- * The profile avatar: a round photo, or the person's initials in the display serif when there is
- * no photo yet, inside a thin dial ring. The ring is the one piece of the wheel's look this
- * screen borrows; it is drawn, static and ink at low opacity.
+ * The profile avatar: a round photo, or, when there is no photo yet, the person's initials in
+ * the display serif or a camera that invites adding one. By default it sits inside a thin dial
+ * ring (drawn, static, ink at low opacity); `ring={false}` gives the plain circle used by the
+ * profile form, and `badge` adds the small camera badge on a photo's lower right edge.
  */
-export function DialAvatar({ name, uri }: { name: string; uri?: string | null }) {
-  return (
-    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={SIZE} height={SIZE} pointerEvents="none" style={{ position: 'absolute' }}>
-        <Circle cx={RING_R} cy={RING_R} r={RING_R - 0.75} fill="none" stroke={color.ink} strokeOpacity={0.18} strokeWidth={1.5} />
-        <Path d={TICKS} stroke={color.ink} strokeOpacity={0.3} strokeWidth={1} fill="none" />
-      </Svg>
+export function DialAvatar({
+  name,
+  uri,
+  placeholder = 'initials',
+  ring = true,
+  badge = false,
+  onPress,
+  accessibilityLabel,
+}: {
+  name: string;
+  uri?: string | null;
+  placeholder?: 'initials' | 'camera';
+  ring?: boolean;
+  badge?: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const outer = ring ? SIZE : DISC;
+  const body = (
+    <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
+      {ring ? (
+        <Svg width={SIZE} height={SIZE} pointerEvents="none" style={{ position: 'absolute' }}>
+          <Circle cx={RING_R} cy={RING_R} r={RING_R - 0.75} fill="none" stroke={color.ink} strokeOpacity={0.18} strokeWidth={1.5} />
+          <Path d={TICKS} stroke={color.ink} strokeOpacity={0.3} strokeWidth={1} fill="none" />
+        </Svg>
+      ) : null}
       <View
         style={{
           width: DISC,
@@ -60,12 +82,41 @@ export function DialAvatar({ name, uri }: { name: string; uri?: string | null })
           <Image source={{ uri }} style={{ width: DISC, height: DISC }} contentFit="cover" accessibilityLabel="Profile photo" />
         ) : (
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <AppText role="display" allowFontScaling={false}>
-              {initialsOf(name)}
-            </AppText>
+            {placeholder === 'camera' ? (
+              <Ionicons name="camera-outline" size={40} color={color.ink} />
+            ) : (
+              <AppText role="display" allowFontScaling={false}>
+                {initialsOf(name)}
+              </AppText>
+            )}
           </View>
         )}
       </View>
+      {badge && uri ? (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={{
+            ...elevation.card,
+            position: 'absolute',
+            right: -4,
+            bottom: 2,
+            width: BADGE,
+            height: BADGE,
+            borderRadius: radius.full,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="camera-outline" size={20} color={color.ink} />
+        </View>
+      ) : null}
     </View>
+  );
+  if (!onPress) return body;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
+      {body}
+    </Pressable>
   );
 }

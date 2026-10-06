@@ -1,4 +1,5 @@
-import { ActivityIndicator, GestureResponderEvent, Pressable, Text } from 'react-native';
+import { ActivityIndicator, GestureResponderEvent, Pressable, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AppText } from '@/components/ui/AppText';
 import { color, elevation, minTouchTarget, radius, type } from '@/lib/theme/tokens';
@@ -9,6 +10,8 @@ type PrimaryButtonProps = {
   disabled?: boolean;
   loading?: boolean;
   variant?: 'standard' | 'onPhoto';
+  /** A small arrow after the label (the profile form's Continue and Save). */
+  arrow?: boolean;
 };
 
 /**
@@ -25,6 +28,7 @@ export function PrimaryButton({
   disabled = false,
   loading = false,
   variant = 'standard',
+  arrow = false,
 }: PrimaryButtonProps) {
   const isInert = disabled || loading;
   const isOnPhoto = variant === 'onPhoto';
@@ -74,20 +78,28 @@ export function PrimaryButton({
         {loading ? (
           <ActivityIndicator color={isOnPhoto ? color.ink : color.dominant} />
         ) : disabled ? (
-          <Text
-            style={{
-              fontSize: type.button.fontSize,
-              lineHeight: type.button.lineHeight,
-              fontFamily: type.button.fontFamily,
-              color: color.onInkDisabled,
-            }}
-          >
-            {label}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text
+              style={{
+                fontSize: type.button.fontSize,
+                lineHeight: type.button.lineHeight,
+                fontFamily: type.button.fontFamily,
+                color: color.onInkDisabled,
+              }}
+            >
+              {label}
+            </Text>
+            {arrow ? <Ionicons name="arrow-forward" size={18} color={color.onInkDisabled} style={{ marginLeft: 8 }} /> : null}
+          </View>
         ) : (
-          <AppText role="button" tone={isOnPhoto ? 'default' : 'onInk'}>
-            {label}
-          </AppText>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <AppText role="button" tone={isOnPhoto ? 'default' : 'onInk'}>
+              {label}
+            </AppText>
+            {arrow ? (
+              <Ionicons name="arrow-forward" size={18} color={isOnPhoto ? color.ink : color.dominant} style={{ marginLeft: 8 }} />
+            ) : null}
+          </View>
         )}
       </Pressable>
     </Animated.View>

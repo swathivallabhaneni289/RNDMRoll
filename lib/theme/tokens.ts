@@ -9,6 +9,8 @@ export const color = {
   dominant: '#F6F5F2',
   secondary: '#E8E7E3',
   card: '#FFFFFF',
+  /** Soft profile-form field fill: translucent white over the paper. */
+  fieldSoft: 'rgba(255,255,255,0.55)',
   ink: '#111111',
   muted: '#625F5B',
   divider: '#D3D0C9',
