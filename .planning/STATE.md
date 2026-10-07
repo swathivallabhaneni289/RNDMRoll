@@ -69,6 +69,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Real Google and Apple sign-in and production photo storage setup are deferred to the end of the whole project; test-mode stand-ins meanwhile — Developer decision 2026-10-01: wants speed, account creation is their manual task. GitHub issue 2 holds the checklist.
 - [Phase 05]: Friend feed look: Instagram-style posts as frosted glass cards over a soft blurred background, feed only — Developer decision 2026-10-01 from a reference screenshot. See docs/design-brief-2026-10-01-feed.md. Standing rules still apply.
 - [Phase 01]: Defects from the static walkthrough review are fixed in plan 01-17 before the device walkthrough; branch stays lab/frosted-editorial — Developer: do not skip anything. Isolated copy, review, apply at a boundary.
+- [Phase 01]: Plan 01-18 (code-flow sign-up) is superseded by 01-19 (2026-10-07): one-page sign-up with a birthday (13+), no code, no email check; Apple and Google also enter a birthday (open decision a). Developer said start.
 
 ### Pending Todos
 

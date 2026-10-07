@@ -1,13 +1,13 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-06T10:16:39.000Z",
+  "timestamp": "2026-10-07T16:45:00.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
-  "plan": 15,
-  "task": 2,
-  "total_tasks": 2,
-  "status": "paused",
+  "plan": 19,
+  "task": 4,
+  "total_tasks": 5,
+  "status": "executing",
   "completed_tasks": [
     {
       "id": 1,
@@ -29,61 +29,73 @@
     },
     {
       "id": 4,
-      "name": "01-15 Task 2 device walkthrough",
-      "status": "in_progress",
-      "progress": "Section A, steps 9 to 11, 13, 14, 15 first half and 16 passed with the developer; 17 and 18 not run; 8 to 15 superseded by the one-page sign-up"
+      "name": "01-19 plan written, developer said start (decision a)",
+      "status": "done",
+      "commit": "383d789"
+    },
+    {
+      "id": 5,
+      "name": "01-19 Task 1 server: one-request sign-up, private birthday, no verified gate, body cap, atomic claim; 254 Go tests pass, 0 skip",
+      "status": "done",
+      "commit": "7ca2471"
+    },
+    {
+      "id": 6,
+      "name": "01-19 Task 2 app: one ProfileForm in three modes, login screen, routing, cleanup",
+      "status": "done",
+      "commit": "bf755de"
+    },
+    {
+      "id": 7,
+      "name": "01-19 Task 3A cutover: api.pre-19 backup, rndmroll_dev at schema version 2, new API on 8080, 21-check smoke test passed, throwaway rows deleted",
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "name": "Cold launch of the dev client as a complete account (Ava): landing page, checked by screenshot",
+      "status": "done"
     }
   ],
   "remaining_tasks": [
     {
-      "id": 5,
-      "name": "Walkthrough steps 17 and 18 on the existing account",
-      "status": "not_started"
-    },
-    {
-      "id": 6,
-      "name": "Plan 01-19 for the one-page sign-up: written 2026-10-06 as .planning/phases/01-foundation-accounts/01-19-PLAN.md (uncommitted, checked by three skeptics, then edited by hand); waiting for the developer's a or b answer (Apple and Google birthday) and the word start",
-      "status": "written_waiting_for_go"
-    },
-    {
-      "id": 7,
-      "name": "Build the one-page sign-up (server first, then app), cold-launch checks, walkthrough",
-      "status": "not_started"
-    },
-    {
-      "id": 8,
-      "name": "Fix the confirmed small defects batch and approve strings (PRETRACE sections 4 and 5)",
-      "status": "not_started"
-    },
-    {
       "id": 9,
-      "name": "Close Phase 1 only after the developer types approved (SUMMARYs, VALIDATION, ROADMAP, STATE, gates)",
+      "name": "01-19 Task 4: the developer's walkthrough, Groups 1 to 5 in small steps (Group 1 starts with Log out on the phone, then Claude relaunches to confirm Welcome)",
+      "status": "not_started"
+    },
+    {
+      "id": 10,
+      "name": "Approve strings: the 01-19 table plus the surviving ones in 01-15-PRETRACE sections 5 and 6, and answer the open decision (a assumed)",
+      "status": "not_started"
+    },
+    {
+      "id": 11,
+      "name": "Write 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command; one close-out commit; only after the developer types approved",
       "status": "not_started"
     }
   ],
   "blockers": [
     {
-      "description": "01-19-PLAN.md is written but the developer has not yet said start (and has not answered a or b for Apple and Google birthday)",
+      "description": "Waiting for the developer to walk Task 4 on the phone",
       "type": "human_action",
-      "workaround": "Ask once, in plain words; never treat a background notification as the go"
+      "workaround": "Give one small group at a time and wait for ok or what looked wrong"
     },
     {
       "description": "Steps 19 and 20 (Apple, Google) need real accounts, deferred to the end of the project",
       "type": "external",
-      "workaround": "Recorded as deferred"
-    },
-    {
-      "description": "Dev-only 'Open debugger to view warnings' bar on every launch, text unidentified",
-      "type": "technical",
-      "workaround": "Tap its x"
+      "workaround": "Finish mode with a test-only account stands in"
     }
   ],
   "async_jobs": [],
   "human_actions_pending": [
     {
-      "action": "Say 'start' after reading the new sign-up plan",
-      "context": "Plan 01-18 was superseded; 01-19-PLAN.md is written (order: Task 1 server, 3A cutover, 2 app, 3B gates and docs, 4 walkthrough); nothing is built for the one-page sign-up",
+      "action": "Walk the 01-19 Task 4 groups on the phone and say ok or what looked off; later type approved",
+      "context": "Everything is built, committed locally and live on the dev API",
       "blocking": true
+    },
+    {
+      "action": "Find the password of the developer's own test1@gmail.com account (needed in Group 4, step 21)",
+      "context": "Old account made before 01-19, no birthday on file",
+      "blocking": false
     },
     {
       "action": "Supply real Terms and Privacy text, set up Google, Apple, S3 and Resend accounts, domain, favicon, remove AI tag",
@@ -91,8 +103,8 @@
       "blocking": false
     },
     {
-      "action": "Decide whether to push the 7 local commits to GitHub",
-      "context": "The repo is public; nothing has been pushed this session",
+      "action": "Decide whether to push the local commits to GitHub",
+      "context": "The repo is public; nothing has been pushed",
       "blocking": false
     }
   ],
@@ -119,6 +131,6 @@
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "Plan 01-19 is already written: do NOT rewrite it. Wait for the developer's answer (a or b for the Apple and Google birthday question) and the word start. Then build in the plan's order (Task 1, 3A, 2, 3B, 4), local commits with explicit paths, never push. Walkthrough steps 17 and 18 are folded into the plan's Task 4 walkthrough (after the build). The dev database has THREE accounts (smoke-test, ava.stone.1004 and the developer's own test1@gmail.com); never delete or edit them.",
+  "next_action": "01-19 is built and live on the dev API. Give the developer Task 4 Group 1 (plain words): on the phone tap Log out and confirm, land on Welcome; Claude then relaunches (xcrun simctl terminate booted com.rndmroll.app; xcrun simctl launch booted com.rndmroll.app) and screenshots to confirm Welcome shows first; then Get started shows Continue with Email, Google, Log in link. Then Groups 2 to 5 one at a time (Claude-run steps: 5 under-13 curl, 10 optional stopped storage, 17 to 19 test-only incomplete account in rndmroll_dev, deleted by exact email afterwards; never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com). Rollback if needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
   "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results. Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals. Plan 01-18 is superseded but its research is reusable."
 }
