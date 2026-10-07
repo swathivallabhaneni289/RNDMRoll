@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
@@ -149,28 +148,27 @@ func (h *OAuthHandler) SignInWithGoogle(c *gin.Context) {
 //
 // Linking to an account that is still unverified is the provider proving
 // ownership of the address, so the account is claimed: marked verified, its
-// password credential discarded and its refresh tokens revoked, because
-// whoever pre-registered the address with a password never proved they own
-// it and must not keep access to the account.
+// password credential discarded and its refresh tokens revoked, all in ONE
+// transaction (ClaimAndRevoke). Whoever pre-registered the address with a
+// password never proved they own it and must not keep access. Login no
+// longer refuses unverified accounts (sign-up sends no email), so the claim
+// is the only thing that cuts the pre-registrant off, and it must not be
+// possible to land between "password gone" and "tokens revoked". The claim
+// keeps the account's name, username, avatar and birthday, so the real owner
+// lands already complete.
 //
-// The claim is several writes with no transaction, so its order decides what
-// a failure leaves behind, and every step is idempotent so a plain retry
-// converges: (a) revoke refresh tokens, (b) claim, (c) link the subject.
+// The claim and the subject link are two writes, ordered so a plain retry
+// converges: (a) claim (one transaction), (b) link the subject.
 //   - (a) fails: nothing changed; the retry matches by email again.
-//   - (b) fails: tokens are gone but the account is still unverified and
-//     unlinked; the retry matches by email again and repeats (a) and (b).
-//   - (c) fails: the account is already claimed; the retry sees a verified
+//   - (b) fails: the account is already claimed; the retry sees a verified
 //     account and only links.
-//
-// Between (a) and (b) the old password still exists, but it cannot mint a
-// session: Login refuses an unverified account and Signup issues none, so (a)
-// is defense in depth for tokens issued before the claim, not a gate. An access
-// token issued earlier stays valid until it expires, which is short.
 //
 // Linking first would be wrong: the retry would then resolve by subject and
 // return early, leaving the password and the old tokens alive. The subject
-// branch also runs (a) and (b) while the account is unverified, which heals
-// an account left linked but unclaimed by an earlier attempt that failed.
+// branch also runs the claim while the account is unverified, which heals an
+// account left linked but unclaimed by an earlier attempt that failed. An
+// access token issued before the claim stays valid until it expires, which
+// is short.
 func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.VerificationSource, subject, email string, emailVerified bool) (*user.User, bool, error) {
 	existing, err := h.users.GetByProviderSubject(ctx, provider, subject)
 	switch {
@@ -179,7 +177,7 @@ func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.Ve
 		// is already bound by subject, but its stored email must be the one
 		// the provider just verified.
 		if !existing.EmailVerified && emailVerified && strings.EqualFold(existing.Email, email) {
-			if err := h.claimUnverifiedAccount(ctx, existing.ID, provider); err != nil {
+			if _, err := h.users.ClaimAndRevoke(ctx, existing.ID, provider); err != nil {
 				return nil, false, err
 			}
 			healed, err := h.users.GetByID(ctx, existing.ID)
@@ -211,7 +209,7 @@ func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.Ve
 			}
 			return byEmail, false, nil
 		}
-		if err := h.claimUnverifiedAccount(ctx, byEmail.ID, provider); err != nil {
+		if _, err := h.users.ClaimAndRevoke(ctx, byEmail.ID, provider); err != nil {
 			return nil, false, err
 		}
 		if err := h.users.LinkProviderSubject(ctx, byEmail.ID, provider, subject); err != nil {
@@ -242,19 +240,6 @@ func (h *OAuthHandler) findOrCreateAccount(ctx context.Context, provider user.Ve
 		return nil, false, err
 	}
 	return created, true, nil
-}
-
-// claimUnverifiedAccount cuts off the pre-registrant: refresh tokens are
-// revoked first, then the password is discarded and the email marked
-// verified. Both steps are idempotent (revoking nothing is fine, and the
-// claim is a guarded UPDATE that does nothing on a verified account), so
-// it is safe to run again after a failure or alongside a concurrent claim.
-func (h *OAuthHandler) claimUnverifiedAccount(ctx context.Context, id uuid.UUID, provider user.VerificationSource) error {
-	if err := h.refreshTokens.RevokeAll(ctx, id); err != nil {
-		return err
-	}
-	_, err := h.users.ClaimUnverifiedEmail(ctx, id, provider)
-	return err
 }
 
 // persistNameIfUnset writes name to the account only when it is non-empty

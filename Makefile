@@ -19,7 +19,9 @@ test-integration:
 # GOMAXPROCS) can run those two packages' test binaries concurrently
 # against the same TEST_DATABASE_URL, so a truncate from one package's
 # cleanup can wipe rows a concurrently-running test in the other package
-# still needs. -p 1 removes that race. Plain `go test ./...` (the `test`
+# still needs. -p 1 removes that race. It is also required for another
+# reason: TestMigrations_0002IsReversible drops and re-adds a column mid-run,
+# so the suite must never run with package parallelism against one database. Plain `go test ./...` (the `test`
 # target above) stays safe because it never has TEST_DATABASE_URL set, so
 # every DB-touching test in both packages skips.
 test-all-integration:

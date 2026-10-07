@@ -1,51 +1,27 @@
 // Package httpapi (this file): the four password-path authentication
 // endpoints -- signup, login, refresh, logout -- and their route
-// registration. This is ACCT-01's core HTTP surface.
+// registration. Sign-up is one request: it takes every field of the
+// "Make it yours." page and answers with a signed-in session, with no code
+// and no email check. This is ACCT-01's core HTTP surface.
 package httpapi
 
 import (
 	"errors"
 	"log"
 	"net/http"
+	"net/mail"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
-
-// Mailer reconciliation (plan 01-13): plan 01-08 originally declared a
-// local Mailer interface here (SendVerificationEmail(ctx, toEmail, token
-// string) error) matching testsupport_test.go's placeholder, since
-// internal/mail did not exist yet in that worktree. Plan 01-09 then built
-// the real internal/mail package with a structurally different interface
-// (SendVerificationEmail(ctx, *user.User) error), where mail.Service itself
-// owns token generation, hashing, persistence, and supersession
-// (DeleteForUser before Insert). Both plans' SUMMARY.md files flagged this
-// plan as the place to reconcile it.
-//
-// Resolution: AuthHandler now depends on mail.Mailer directly -- the same
-// interface VerifyEmailHandler (plan 01-09) already depends on -- and no
-// longer generates or persists its own verification token. This collapses
-// two independent token-issuing code paths (this handler's own
-// crypto/rand+EmailVerificationRepository path, and mail.Service's) into
-// exactly one: mail.Service, constructed once in cmd/api/main.go and handed
-// to both AuthHandler and VerifyEmailHandler. The AuthHandler.mailer field
-// keeps its own name (not mail.Mailer's package-qualified name) only
-// because that's the existing struct field; its type is now mail.Mailer.
-//
-// Behavioral note: mail.Service.SendVerificationEmail calls DeleteForUser
-// before Insert, which this handler's old path did not. This is a no-op on
-// a fresh signup (nothing to delete yet) and strictly better afterward
-// (supersede semantics: an old outstanding token from the account's
-// verification row is a no-op here too, since Signup never runs twice for
-// the same account). No test relied on the old dual-token-path behavior.
-//
-// See 01-13-SUMMARY.md for the full reconciliation record.
 
 // dummyPasswordHash is a real bcrypt hash compared against on a
 // missing-account login attempt, so that path performs the same bcrypt
@@ -66,22 +42,18 @@ func mustHashDummyPassword() string {
 type AuthHandler struct {
 	users     user.Repository
 	refresh   *auth.RefreshService
-	mailer    mail.Mailer
 	jwtSecret []byte
 	accessTTL time.Duration
 }
 
 // NewAuthHandler constructs an AuthHandler. accessTTL is the lifetime of
 // each minted access token; the refresh token's lifetime lives on refresh
-// itself (see auth.NewRefreshService). mailer is the real internal/mail
-// interface -- it owns verification token generation, hashing, and
-// persistence itself (see the Mailer reconciliation note above), so this
-// handler no longer takes its own EmailVerificationRepository dependency.
-func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, mailer mail.Mailer, jwtSecret []byte, accessTTL time.Duration) *AuthHandler {
+// itself (see auth.NewRefreshService). There is no mailer: sign-up sends no
+// email.
+func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, jwtSecret []byte, accessTTL time.Duration) *AuthHandler {
 	return &AuthHandler{
 		users:     users,
 		refresh:   refresh,
-		mailer:    mailer,
 		jwtSecret: jwtSecret,
 		accessTTL: accessTTL,
 	}
@@ -90,10 +62,17 @@ func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, mailer 
 // Register mounts the auth routes on rg. This is the only place route
 // paths for this handler appear, so no central router file is needed.
 func (h *AuthHandler) Register(rg *gin.RouterGroup) {
+	// Sign-up has no session, so it is limited twice: 10 a minute per
+	// address in total, then 3 a minute per address and email. The key is the
+	// socket address (NewServer trusts no forwarded header).
 	rg.POST("/auth/signup", middleware.RateLimit(middleware.LimitConfig{
-		Requests: 3,
+		Requests: 10,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyByIP,
+	}), middleware.RateLimit(middleware.LimitConfig{
+		Requests: 3,
+		Window:   time.Minute,
+		KeyFunc:  middleware.KeyByIPAndField("email"),
 	}), h.Signup)
 	rg.POST("/auth/login", middleware.RateLimit(middleware.LimitConfig{
 		Requests: 5,
@@ -107,44 +86,179 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 	rg.POST("/auth/logout", h.Logout)
 }
 
-// SignupRequest is the signup request body. max=72 is bcrypt's hard byte
-// ceiling (RESEARCH.md Pitfall 1), enforced here so HashPassword never
-// sees an over-long input.
+// Field limits shared by sign-up and PATCH /me.
+const (
+	maxEmailLength    = 254
+	minPasswordLength = 8
+	maxPasswordLength = 72
+	maxNameLength     = 50
+	maxBioLength      = 160
+)
+
+// SignupRequest is the signup request body. It carries no binding tags on
+// purpose: Signup validates each field by hand, in a fixed order, so every
+// rejection names its field (RespondFieldError). The password ceiling of 72
+// is bcrypt's hard byte limit (RESEARCH.md Pitfall 1).
 type SignupRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8,max=72"`
+	Email    string  `json:"email"`
+	Password string  `json:"password"`
+	Birthday string  `json:"birthday"`
+	Name     string  `json:"name"`
+	Username string  `json:"username"`
+	Bio      *string `json:"bio"`
 }
 
-// LoginRequest is the login request body.
+// LoginRequest is the login request body. The password rule is only
+// required,max=72: a short password is simply a wrong password (401), not a
+// validation error, so login never reveals the sign-up password rule.
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8,max=72"`
+	Password string `json:"password" binding:"required,max=72"`
 }
 
-// Signup creates a new unverified account and requests a verification
-// email. A mailer failure is logged, not surfaced as an error response --
-// the account exists and the user can resend, so failing the whole signup
-// over a transient mail-provider outage would be worse.
+// validEmail accepts a plain address of at most 254 characters: it must parse
+// as a single bare address (no display name, no spaces) and have a dot in the
+// domain.
+func validEmail(s string) (reason string) {
+	if s == "" {
+		return reasonRequired
+	}
+	if len(s) > maxEmailLength {
+		return reasonTooLong
+	}
+	addr, err := mail.ParseAddress(s)
+	if err != nil || addr.Address != s {
+		return reasonInvalid
+	}
+	at := strings.LastIndex(s, "@")
+	if at < 1 || !strings.Contains(s[at+1:], ".") || strings.HasSuffix(s, ".") {
+		return reasonInvalid
+	}
+	return ""
+}
+
+// cleanName trims name and checks it is 1 to 50 characters. It returns the
+// trimmed value and a failure reason ("" when fine).
+func cleanName(name string) (string, string) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", reasonRequired
+	}
+	if utf8.RuneCountInString(trimmed) > maxNameLength {
+		return "", reasonTooLong
+	}
+	if hasControlChar(trimmed, false) {
+		return "", reasonInvalid
+	}
+	return trimmed, ""
+}
+
+// hasControlChar reports whether s holds a control character (U+0000 and
+// the rest of the Unicode control class). allowLineBreaks lets a tab, line
+// feed and carriage return through, for free text like a bio. A NUL in
+// particular is never storable in Postgres text, so it is refused here with
+// a field error rather than surfacing as a 500.
+func hasControlChar(s string, allowLineBreaks bool) bool {
+	for _, r := range s {
+		if !unicode.IsControl(r) {
+			continue
+		}
+		if allowLineBreaks && (r == '\n' || r == '\r' || r == '\t') {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// Signup creates a finished account in one request and signs it in. Order:
+// each field is validated (400 validation_failed plus the field name); then
+// the age (under 13 is 403 under_minimum_age and nothing is stored, nothing
+// about the person is logged); then the username; then the password is
+// hashed; then ONE insert writes every column, so any failure stores
+// nothing. A duplicate email is 409 email_taken, a duplicate username 409
+// username_taken with suggestions (including a race, which the unique index
+// decides). Success answers with the same body as Login. The email is NOT
+// verified and no mail is sent.
 func (h *AuthHandler) Signup(c *gin.Context) {
 	var req SignupRequest
 	// ShouldBindBodyWith (not ShouldBindJSON) so the request body survives
-	// being read here even on routes whose rate limiter already consumed it
-	// via KeyByIPAndField -- signup doesn't need that today, but Login does,
-	// and using the same read path in both keeps that constraint from
-	// silently breaking if a future edit swaps signup's key function.
+	// being read here even though the rate limiter already consumed it via
+	// KeyByIPAndField.
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		RespondValidationError(c, err)
+		return
+	}
+
+	if reason := validEmail(req.Email); reason != "" {
+		RespondFieldError(c, "email", reason)
+		return
+	}
+	passwordRunes := utf8.RuneCountInString(req.Password)
+	switch {
+	case req.Password == "":
+		RespondFieldError(c, "password", reasonRequired)
+		return
+	case passwordRunes < minPasswordLength:
+		RespondFieldError(c, "password", reasonTooShort)
+		return
+	case passwordRunes > maxPasswordLength:
+		RespondFieldError(c, "password", reasonTooLong)
+		return
+	}
+
+	now := time.Now()
+	if req.Birthday == "" {
+		RespondFieldError(c, "birthday", reasonRequired)
+		return
+	}
+	birth, err := user.ValidateBirthdate(req.Birthday, now)
+	if err != nil {
+		if errors.Is(err, user.ErrBirthdateFuture) {
+			RespondFieldError(c, "birthday", reasonFuture)
+			return
+		}
+		RespondFieldError(c, "birthday", reasonInvalid)
+		return
+	}
+
+	name, reason := cleanName(req.Name)
+	if reason != "" {
+		RespondFieldError(c, "name", reason)
+		return
+	}
+	var bio *string
+	if req.Bio != nil && strings.TrimSpace(*req.Bio) != "" {
+		if utf8.RuneCountInString(*req.Bio) > maxBioLength {
+			RespondFieldError(c, "bio", reasonTooLong)
+			return
+		}
+		if hasControlChar(*req.Bio, true) {
+			RespondFieldError(c, "bio", reasonInvalid)
+			return
+		}
+		bio = req.Bio
+	}
+
+	// The age check comes after every field is well formed and before
+	// anything is stored or hashed. Nothing about a refusal is logged.
+	if user.AgeOn(birth, now) < user.MinimumAge {
+		RespondUnderMinimumAge(c)
+		return
+	}
+
+	if err := user.ValidateUsername(req.Username); err != nil {
+		RespondFieldError(c, "username", reasonInvalid)
 		return
 	}
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrPasswordTooLong) {
-			// binding's max=72 counts runes, bcrypt's ceiling counts bytes;
-			// a multi-byte-rune password can pass validation and still hit
-			// this. Map it to the same validation_failed code rather than
-			// falling through to a 500 on ordinary user input.
-			RespondValidationError(c, err)
+			// The checks above count characters; bcrypt's ceiling counts
+			// bytes, so a multi-byte password can pass them and still land
+			// here.
+			RespondFieldError(c, "password", reasonTooLong)
 			return
 		}
 		log.Printf("httpapi: signup hash password failed: %v", err)
@@ -152,18 +266,24 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	u, err := h.users.Create(ctx, req.Email, &hash, false, nil)
+	u, err := h.users.CreateComplete(c.Request.Context(), user.NewAccount{
+		Email:        req.Email,
+		PasswordHash: hash,
+		Birthday:     birth.Format("2006-01-02"),
+		Name:         name,
+		Username:     req.Username,
+		Bio:          bio,
+	})
 	if err != nil {
+		if errors.Is(err, user.ErrUsernameTaken) {
+			respondUsernameTaken(c, h.users, req.Username)
+			return
+		}
 		RespondError(c, err)
 		return
 	}
 
-	if err := h.mailer.SendVerificationEmail(ctx, u); err != nil {
-		log.Printf("httpapi: signup verification email failed for user %s: %v", u.ID, err)
-	}
-
-	Respond(c, http.StatusCreated, gin.H{"user_id": u.ID})
+	h.issueSession(c, u, http.StatusOK)
 }
 
 // Login authenticates by email and password. Unknown-account and
@@ -195,17 +315,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	if !u.EmailVerified {
-		RespondError(c, user.ErrEmailNotVerified)
-		return
-	}
-
-	h.issueSession(c, u)
+	// No verified check: sign-up sends no email, so an unverified account
+	// logs in like any other.
+	h.issueSession(c, u, http.StatusOK)
 }
 
 // issueSession mints an access+refresh token pair for u and writes the
 // AuthResult response body (lib/api/types.ts's AuthResult shape).
-func (h *AuthHandler) issueSession(c *gin.Context, u *user.User) {
+func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int) {
 	ctx := c.Request.Context()
 	accessToken, err := auth.IssueAccessToken(u.ID, h.jwtSecret, h.accessTTL)
 	if err != nil {
@@ -221,7 +338,7 @@ func (h *AuthHandler) issueSession(c *gin.Context, u *user.User) {
 		return
 	}
 
-	Respond(c, http.StatusOK, gin.H{
+	Respond(c, status, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),

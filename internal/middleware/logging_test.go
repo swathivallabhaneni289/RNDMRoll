@@ -83,9 +83,12 @@ func TestRequestLogger_RedactsSensitiveQueryParamValues(t *testing.T) {
 }
 
 func TestRedactSensitiveQuery_KeepsNonSensitiveParamsAndRedactsSensitiveOnes(t *testing.T) {
-	got := redactSensitiveQuery("name=Swathi&token=abc123&code=xyz789")
+	got := redactSensitiveQuery("page=Swathi&token=abc123&code=xyz789&name=Ada&username=ada_l")
 	if strings.Contains(got, "abc123") || strings.Contains(got, "xyz789") {
 		t.Fatalf("expected sensitive query values to be redacted, got: %s", got)
+	}
+	if strings.Contains(got, "Ada") || strings.Contains(got, "ada_l") {
+		t.Fatalf("expected name and username values to be redacted, got: %s", got)
 	}
 	if !strings.Contains(got, "Swathi") {
 		t.Fatalf("expected non-sensitive query values to survive redaction, got: %s", got)

@@ -32,7 +32,29 @@ const (
 	CodeRateLimited        ErrorCode = "rate_limited"
 	CodeValidationFailed   ErrorCode = "validation_failed"
 	CodeServerError        ErrorCode = "server_error"
+	CodeUnderMinimumAge    ErrorCode = "under_minimum_age"
+	CodePayloadTooLarge    ErrorCode = "payload_too_large"
 )
+
+// Fixed reasons RespondFieldError understands. Each maps to fixed text, so
+// neither database text nor the caller's own input ever appears in a body.
+const (
+	reasonRequired = "required"
+	reasonInvalid  = "invalid"
+	reasonTooShort = "too_short"
+	reasonTooLong  = "too_long"
+	reasonFuture   = "future"
+	reasonNotAllow = "not_allowed"
+)
+
+var fieldReasonText = map[string]string{
+	reasonRequired: "This field is required.",
+	reasonInvalid:  "This value is not valid.",
+	reasonTooShort: "This value is too short.",
+	reasonTooLong:  "This value is too long.",
+	reasonFuture:   "That date is in the future.",
+	reasonNotAllow: "This value can't be changed here.",
+}
 
 // Respond writes body as JSON with status.
 func Respond(c *gin.Context, status int, body any) {
@@ -44,6 +66,7 @@ func Respond(c *gin.Context, status int, body any) {
 // maps to a fixed 500 server_error so internal error text never reaches
 // the client; the underlying error is logged server-side instead.
 func RespondError(c *gin.Context, err error) {
+	var fieldErr *user.FieldError
 	switch {
 	case errors.Is(err, user.ErrInvalidCredentials):
 		Respond(c, http.StatusUnauthorized, gin.H{"error": string(CodeInvalidCredentials)})
@@ -63,6 +86,8 @@ func RespondError(c *gin.Context, err error) {
 		Respond(c, http.StatusConflict, gin.H{"error": string(CodeTokenConsumed)})
 	case errors.Is(err, user.ErrSubjectLinkedToOtherAccount):
 		Respond(c, http.StatusConflict, gin.H{"error": string(CodeSubjectLinked)})
+	case errors.As(err, &fieldErr):
+		RespondFieldError(c, fieldErr.Field, reasonInvalid)
 	case errors.Is(err, user.ErrProviderEmailMissing):
 		Respond(c, http.StatusBadRequest, gin.H{"error": string(CodeValidationFailed), "message": "The sign-in provider did not share an email address."})
 	default:
@@ -71,8 +96,36 @@ func RespondError(c *gin.Context, err error) {
 	}
 }
 
+// RespondFieldError writes a 400 validation_failed response that names the
+// request field that failed. field is one of email, password, birthday,
+// name, username, bio or avatar_url; reason is one of the fixed reason
+// constants above. The message is fixed text.
+func RespondFieldError(c *gin.Context, field, reason string) {
+	text, ok := fieldReasonText[reason]
+	if !ok {
+		text = fieldReasonText[reasonInvalid]
+	}
+	Respond(c, http.StatusBadRequest, gin.H{
+		"error":   string(CodeValidationFailed),
+		"field":   field,
+		"message": text,
+	})
+}
+
+// RespondUnderMinimumAge writes the 403 refusal for an under-13 birthday.
+func RespondUnderMinimumAge(c *gin.Context) {
+	Respond(c, http.StatusForbidden, gin.H{"error": string(CodeUnderMinimumAge)})
+}
+
 // RespondValidationError writes a 400 validation_failed response for a
-// failed ShouldBindJSON call.
+// failed request-body bind. A body over the size cap (http.MaxBytesReader,
+// see middleware.BodyLimit) is the one exception: it answers 413
+// payload_too_large instead.
 func RespondValidationError(c *gin.Context, err error) {
-	Respond(c, http.StatusBadRequest, gin.H{"error": string(CodeValidationFailed), "message": err.Error()})
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		Respond(c, http.StatusRequestEntityTooLarge, gin.H{"error": string(CodePayloadTooLarge)})
+		return
+	}
+	Respond(c, http.StatusBadRequest, gin.H{"error": string(CodeValidationFailed), "message": "Request body is not valid."})
 }

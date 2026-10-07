@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,36 +11,32 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-// verifiedContextKey is a package-private type distinct from auth.go's
-// contextKey, so the verified user stored under it cannot collide with the
+// userContextKey is a package-private type distinct from auth.go's
+// contextKey, so the user stored under it cannot collide with the
 // authenticated subject RequireAuth stores.
-type verifiedContextKey int
+type userContextKey int
 
-const verifiedUserKey verifiedContextKey = iota
+const loadedUserKey userContextKey = iota
 
-// ErrNoUserInContext is returned by UserFromContext when RequireVerified did
+// ErrNoUserInContext is returned by UserFromContext when RequireUser did
 // not run for this request.
-var ErrNoUserInContext = errors.New("middleware: no verified user in context")
+var ErrNoUserInContext = errors.New("middleware: no user in context")
 
-// RequireVerified returns Gin middleware that requires the authenticated
-// subject (set by a preceding RequireAuth) to resolve to a verified
-// account. This is what makes D-04 a system property rather than a UI
-// convention: the onboarding UI already declines to advance an unverified
-// user, but a gate at the route boundary means a direct API call cannot
-// bypass the decision either.
+// RequireUser returns Gin middleware that requires the authenticated
+// subject (set by a preceding RequireAuth) to resolve to an account that
+// still exists. A valid token for an account since deleted (for example an
+// under-13 social account the server removed) aborts with 401 token_invalid.
 //
-// A subject that resolves to no account (for example a token minted for an
-// account since deleted) aborts with 401 token_invalid. An account whose
-// EmailVerified is false aborts with 403 email_not_verified. On success the
-// loaded *user.User is stored in the request context for UserFromContext,
-// so downstream handlers reuse the record instead of issuing a second
-// lookup for the same row.
+// There is deliberately no email-verified check: sign-up is one page with
+// no email check, so an unverified account must be able to use the app. On
+// success the loaded *user.User is stored in the request context for
+// UserFromContext, so downstream handlers reuse the record instead of
+// issuing a second lookup for the same row.
 //
-// Social accounts (Apple/Google) are created with EmailVerified already
-// true and a provider verification source, so they pass this gate on their
-// first request without ever receiving a verification email, matching the
-// branch of RESEARCH.md Open Question 1 this phase adopts.
-func RequireVerified(repo user.Repository) gin.HandlerFunc {
+// This gate says only "a person with an account". An unfinished Apple or
+// Google account passes it, so a route that needs a finished profile must
+// also check User.OnboardingComplete().
+func RequireUser(repo user.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := SubjectFromContext(c)
 		if err != nil {
@@ -49,25 +46,27 @@ func RequireVerified(repo user.Repository) gin.HandlerFunc {
 
 		u, err := repo.GetByID(c.Request.Context(), subject)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token_invalid"})
+			if errors.Is(err, user.ErrNotFound) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token_invalid"})
+				return
+			}
+			// A database blip must not look like "your account is gone":
+			// the app signs the person out on token_invalid.
+			log.Printf("middleware: RequireUser lookup failed: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
 			return
 		}
 
-		if !u.EmailVerified {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "email_not_verified"})
-			return
-		}
-
-		ctx := context.WithValue(c.Request.Context(), verifiedUserKey, u)
+		ctx := context.WithValue(c.Request.Context(), loadedUserKey, u)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }
 
-// UserFromContext returns the *user.User RequireVerified loaded for this
+// UserFromContext returns the *user.User RequireUser loaded for this
 // request.
 func UserFromContext(c *gin.Context) (*user.User, error) {
-	value := c.Request.Context().Value(verifiedUserKey)
+	value := c.Request.Context().Value(loadedUserKey)
 	u, ok := value.(*user.User)
 	if !ok {
 		return nil, ErrNoUserInContext

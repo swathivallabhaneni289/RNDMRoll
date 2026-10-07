@@ -9,23 +9,38 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"regexp"
+	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
+// maxAvatarURLLength bounds a saved avatar_url well above any real storage
+// URL.
+const maxAvatarURLLength = 2048
+
 // UpdateProfileRequest is the PATCH /me body. Every field is a pointer so a
 // nil (omitted) field means "leave unchanged" -- this is what lets each
-// onboarding step, and later the standalone edit screen, send only the
-// field it actually changed.
+// step, and later the standalone edit screen, send only the field it
+// actually changed. There are no binding tags on purpose: patchMe validates
+// each field by hand so every rejection names its field, and so the
+// birthday (the age rule) is judged before any other field.
+//
+// Birthday is accepted only for an account that is still incomplete and has
+// no birthday on file (an Apple or Google account finishing its profile).
 type UpdateProfileRequest struct {
-	Name      *string `json:"name" binding:"omitempty,min=1,max=50"`
-	Username  *string `json:"username" binding:"omitempty,min=3,max=20"`
-	Bio       *string `json:"bio" binding:"omitempty,max=160"`
-	AvatarURL *string `json:"avatar_url" binding:"omitempty,url"`
+	Name      *string `json:"name"`
+	Username  *string `json:"username"`
+	Bio       *string `json:"bio"`
+	AvatarURL *string `json:"avatar_url"`
+	Birthday  *string `json:"birthday"`
 }
 
 // AvatarUploadRequest is the POST /me/avatar/upload-url body.
@@ -38,17 +53,23 @@ type AvatarUploadRequest struct {
 type ProfileHandler struct {
 	users   user.Repository
 	avatars storage.AvatarStore
+	// publicBaseURL is the storage public base URL (S3PublicBaseURL),
+	// exactly as the avatar store uses it to build a PublicURL. A saved
+	// avatar_url must start with <publicBaseURL>/avatars/<caller id>/.
+	publicBaseURL string
 }
 
-// NewProfileHandler constructs a ProfileHandler.
-func NewProfileHandler(users user.Repository, avatars storage.AvatarStore) *ProfileHandler {
-	return &ProfileHandler{users: users, avatars: avatars}
+// NewProfileHandler constructs a ProfileHandler. publicBaseURL is the
+// storage public base URL the avatar store hands out (config S3PublicBaseURL).
+func NewProfileHandler(users user.Repository, avatars storage.AvatarStore, publicBaseURL string) *ProfileHandler {
+	publicBaseURL = strings.TrimRight(publicBaseURL, "/")
+	return &ProfileHandler{users: users, avatars: avatars, publicBaseURL: publicBaseURL}
 }
 
 // Register mounts this handler's routes on rg. The caller is responsible
-// for attaching RequireAuth -- and, in production, RequireVerified -- to rg
-// before calling Register; plan 01-13 owns cmd/api/main.go and applies both
-// to the nested authenticated group these handlers are mounted on.
+// for attaching RequireAuth -- and, in production, RequireUser -- to rg
+// before calling Register; NewServer applies both to the signed-in group
+// these handlers are mounted on.
 func (h *ProfileHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/me", h.getMe)
 	rg.PATCH("/me", h.patchMe)
@@ -58,7 +79,8 @@ func (h *ProfileHandler) Register(rg *gin.RouterGroup) {
 // profileBody builds the ApiUser wire shape (lib/api/types.ts) as a gin.H
 // literal rather than a tagged struct, so this file never declares an ID
 // struct field tag -- the response carries the caller's own identifier as
-// data, never as something a request could set.
+// data, never as something a request could set. It never carries a
+// birthday.
 func profileBody(u *user.User) gin.H {
 	return gin.H{
 		"id":                  u.ID.String(),
@@ -72,50 +94,168 @@ func profileBody(u *user.User) gin.H {
 	}
 }
 
-func (h *ProfileHandler) getMe(c *gin.Context) {
+// currentUser returns the caller's account: the row RequireUser already
+// loaded for this request, or a fresh lookup when the route is mounted
+// without it. A missing account answers 401 token_invalid (the account was
+// deleted since the token was minted) and reports ok = false.
+func (h *ProfileHandler) currentUser(c *gin.Context) (*user.User, bool) {
+	if u, err := middleware.UserFromContext(c); err == nil {
+		return u, true
+	}
 	subject, err := middleware.SubjectFromContext(c)
 	if err != nil {
-		RespondError(c, err)
-		return
+		RespondError(c, user.ErrTokenInvalid)
+		return nil, false
 	}
-
 	u, err := h.users.GetByID(c.Request.Context(), subject)
 	if err != nil {
+		if errors.Is(err, user.ErrNotFound) {
+			RespondError(c, user.ErrTokenInvalid)
+			return nil, false
+		}
 		RespondError(c, err)
+		return nil, false
+	}
+	return u, true
+}
+
+func (h *ProfileHandler) getMe(c *gin.Context) {
+	u, ok := h.currentUser(c)
+	if !ok {
 		return
 	}
-
 	Respond(c, http.StatusOK, profileBody(u))
 }
 
+// avatarURLAllowed reports whether url lives in the caller's own avatar
+// folder. A client may only save a URL the avatar store could have handed
+// it, never another person's picture or an external image.
+func (h *ProfileHandler) avatarURLAllowed(url string, id string) bool {
+	if len(url) > maxAvatarURLLength {
+		return false
+	}
+	prefix := h.publicBaseURL + "/avatars/" + id + "/"
+	if !strings.HasPrefix(url, prefix) {
+		return false
+	}
+	rest := url[len(prefix):]
+	return avatarFileName.MatchString(rest) && !strings.Contains(rest, "..")
+}
+
+// avatarFileName is the plain file name the avatar store generates
+// (random hex plus extension). Anything else, including percent escapes,
+// slashes, backslashes, queries and fragments, is refused.
+var avatarFileName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// patchMe applies a partial profile update. Order: bind; the birthday (only
+// for an incomplete account with none on file: age first, under 13 deletes
+// the account and answers 403, so no other field is applied); each other
+// field by hand; a patch that would complete a profile with no birthday on
+// file is refused; then one UpdateProfile.
 func (h *ProfileHandler) patchMe(c *gin.Context) {
-	subject, err := middleware.SubjectFromContext(c)
-	if err != nil {
-		RespondError(c, err)
+	cur, ok := h.currentUser(c)
+	if !ok {
 		return
 	}
 
 	var req UpdateProfileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		RespondValidationError(c, err)
 		return
 	}
 
+	incomplete := !cur.OnboardingComplete()
+	patch := user.ProfilePatch{}
+
+	if req.Birthday != nil {
+		switch {
+		case !incomplete:
+			// A finished account never takes a birthday: it cannot be
+			// changed after the profile is complete.
+			RespondFieldError(c, "birthday", reasonNotAllow)
+			return
+		case cur.HasBirthday:
+			// Already on file: ignore the new value, keep the stored one.
+		default:
+			now := time.Now()
+			birth, err := user.ValidateBirthdate(*req.Birthday, now)
+			if err != nil {
+				if errors.Is(err, user.ErrBirthdateFuture) {
+					RespondFieldError(c, "birthday", reasonFuture)
+					return
+				}
+				RespondFieldError(c, "birthday", reasonInvalid)
+				return
+			}
+			if user.AgeOn(birth, now) < user.MinimumAge {
+				// Refused before any other field is read: the account is
+				// removed (its tokens go with it) and nothing else is applied
+				// or logged.
+				deleted, err := h.users.Delete(c.Request.Context(), cur.ID)
+				if err != nil {
+					RespondError(c, err)
+					return
+				}
+				if !deleted {
+					// A racing request wrote a birthday first, so the account
+					// still exists: do not tell the app to sign it out.
+					RespondFieldError(c, "birthday", reasonNotAllow)
+					return
+				}
+				RespondUnderMinimumAge(c)
+				return
+			}
+			day := birth.Format("2006-01-02")
+			patch.Birthday = &day
+		}
+	}
+
+	if req.Name != nil {
+		name, reason := cleanName(*req.Name)
+		if reason != "" {
+			RespondFieldError(c, "name", reason)
+			return
+		}
+		patch.Name = &name
+	}
 	if req.Username != nil {
 		if err := user.ValidateUsername(*req.Username); err != nil {
-			RespondValidationError(c, err)
+			RespondFieldError(c, "username", reasonInvalid)
+			return
+		}
+		patch.Username = req.Username
+	}
+	if req.Bio != nil {
+		if utf8.RuneCountInString(*req.Bio) > maxBioLength {
+			RespondFieldError(c, "bio", reasonTooLong)
+			return
+		}
+		if hasControlChar(*req.Bio, true) {
+			RespondFieldError(c, "bio", reasonInvalid)
+			return
+		}
+		patch.Bio = req.Bio
+	}
+	if req.AvatarURL != nil {
+		if !h.avatarURLAllowed(*req.AvatarURL, cur.ID.String()) {
+			RespondFieldError(c, "avatar_url", reasonInvalid)
+			return
+		}
+		patch.AvatarURL = req.AvatarURL
+	}
+
+	// An incomplete account with no birthday on file may not finish its
+	// profile: that is the only way a social account is held to the age rule.
+	if incomplete && !cur.HasBirthday && patch.Birthday == nil {
+		hasName := patch.Name != nil || (cur.Name != nil && *cur.Name != "")
+		hasUsername := patch.Username != nil || (cur.Username != nil && *cur.Username != "")
+		if hasName && hasUsername {
+			RespondFieldError(c, "birthday", reasonRequired)
 			return
 		}
 	}
 
-	patch := user.ProfilePatch{
-		Name:      req.Name,
-		Username:  req.Username,
-		Bio:       req.Bio,
-		AvatarURL: req.AvatarURL,
-	}
-
-	updated, err := h.users.UpdateProfile(c.Request.Context(), subject, patch)
+	updated, err := h.users.UpdateProfile(c.Request.Context(), cur.ID, patch)
 	if err != nil {
 		if errors.Is(err, user.ErrUsernameTaken) {
 			requested := ""
@@ -123,6 +263,10 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 				requested = *req.Username
 			}
 			respondUsernameTaken(c, h.users, requested)
+			return
+		}
+		if errors.Is(err, user.ErrNotFound) {
+			RespondError(c, user.ErrTokenInvalid)
 			return
 		}
 		RespondError(c, err)
@@ -149,9 +293,8 @@ func respondUsernameTaken(c *gin.Context, repo user.Repository, requested string
 }
 
 func (h *ProfileHandler) createAvatarUploadURL(c *gin.Context) {
-	subject, err := middleware.SubjectFromContext(c)
-	if err != nil {
-		RespondError(c, err)
+	cur, ok := h.currentUser(c)
+	if !ok {
 		return
 	}
 
@@ -161,7 +304,7 @@ func (h *ProfileHandler) createAvatarUploadURL(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.avatars.PresignAvatarUpload(c.Request.Context(), subject, req.ContentType, req.ContentLength)
+	ticket, err := h.avatars.PresignAvatarUpload(c.Request.Context(), cur.ID, req.ContentType, req.ContentLength)
 	if err != nil {
 		if errors.Is(err, storage.ErrUnsupportedContentType) || errors.Is(err, storage.ErrContentTooLarge) {
 			RespondValidationError(c, err)

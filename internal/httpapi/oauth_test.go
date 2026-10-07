@@ -263,12 +263,14 @@ type oauthRig struct {
 func newOAuthRig(t *testing.T) *oauthRig {
 	t.Helper()
 	users := newFakeUserRepo()
-	refreshService := auth.NewRefreshService(newFakeRefreshRepo(), 720*time.Hour)
+	tokens := newFakeRefreshRepo()
+	users.tokens = tokens
+	refreshService := auth.NewRefreshService(tokens, 720*time.Hour)
 	secret := []byte("test-secret-at-least-32-bytes!!")
 	rig := &oauthRig{users: users, refresh: refreshService, apple: &fakeAppleVerifier{}, google: &fakeGoogleVerifier{}}
 	rig.router = newTestRouter(t, TestDeps{Users: users})
 	NewOAuthHandler(users, rig.apple, rig.google, refreshService, secret, 15*time.Minute).Register(&rig.router.RouterGroup)
-	NewAuthHandler(users, refreshService, newFakeMailer(), secret, 15*time.Minute).Register(&rig.router.RouterGroup)
+	NewAuthHandler(users, refreshService, secret, 15*time.Minute).Register(&rig.router.RouterGroup)
 	return rig
 }
 

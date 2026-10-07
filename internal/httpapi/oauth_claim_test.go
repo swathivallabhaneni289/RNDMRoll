@@ -16,9 +16,10 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-// The claim in findOrCreateAccount is several writes with no transaction.
-// These tests make one write fail once and prove the next plain retry
-// converges to a claimed account, which is what the write order guarantees.
+// The claim in findOrCreateAccount is a ClaimAndRevoke (one transaction)
+// followed by a subject link. These tests make one write fail once and prove
+// the next plain retry converges to a claimed account, which is what the
+// write order guarantees.
 
 var errInjected = errors.New("injected repository failure")
 
@@ -29,12 +30,12 @@ type flakyUserRepo struct {
 	linkFailures  int
 }
 
-func (f *flakyUserRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
+func (f *flakyUserRepo) ClaimAndRevoke(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
 	if f.claimFailures > 0 {
 		f.claimFailures--
 		return false, errInjected
 	}
-	return f.Repository.ClaimUnverifiedEmail(ctx, id, via)
+	return f.Repository.ClaimAndRevoke(ctx, id, via)
 }
 
 func (f *flakyUserRepo) LinkProviderSubject(ctx context.Context, id uuid.UUID, provider user.VerificationSource, subject string) error {
@@ -45,24 +46,10 @@ func (f *flakyUserRepo) LinkProviderSubject(ctx context.Context, id uuid.UUID, p
 	return f.Repository.LinkProviderSubject(ctx, id, provider, subject)
 }
 
-type flakyRefreshRepo struct {
-	user.RefreshTokenRepository
-	revokeAllFailures int
-}
-
-func (f *flakyRefreshRepo) RevokeAllForUser(ctx context.Context, userID uuid.UUID) error {
-	if f.revokeAllFailures > 0 {
-		f.revokeAllFailures--
-		return errInjected
-	}
-	return f.RefreshTokenRepository.RevokeAllForUser(ctx, userID)
-}
-
 type flakyClaimRig struct {
 	router  *gin.Engine
 	users   *fakeUserRepo
 	flakyU  *flakyUserRepo
-	flakyR  *flakyRefreshRepo
 	refresh *auth.RefreshService
 	google  *fakeGoogleVerifier
 }
@@ -70,14 +57,15 @@ type flakyClaimRig struct {
 func newFlakyClaimRig(t *testing.T) *flakyClaimRig {
 	t.Helper()
 	users := newFakeUserRepo()
+	tokens := newFakeRefreshRepo()
+	users.tokens = tokens
 	flakyU := &flakyUserRepo{Repository: users}
-	flakyR := &flakyRefreshRepo{RefreshTokenRepository: newFakeRefreshRepo()}
-	refreshService := auth.NewRefreshService(flakyR, 720*time.Hour)
+	refreshService := auth.NewRefreshService(tokens, 720*time.Hour)
 	secret := []byte("test-secret-at-least-32-bytes!!")
-	rig := &flakyClaimRig{users: users, flakyU: flakyU, flakyR: flakyR, refresh: refreshService, google: &fakeGoogleVerifier{}}
+	rig := &flakyClaimRig{users: users, flakyU: flakyU, refresh: refreshService, google: &fakeGoogleVerifier{}}
 	rig.router = newTestRouter(t, TestDeps{Users: users})
 	NewOAuthHandler(flakyU, &fakeAppleVerifier{}, rig.google, refreshService, secret, 15*time.Minute).Register(&rig.router.RouterGroup)
-	NewAuthHandler(users, refreshService, newFakeMailer(), secret, 15*time.Minute).Register(&rig.router.RouterGroup)
+	NewAuthHandler(users, refreshService, secret, 15*time.Minute).Register(&rig.router.RouterGroup)
 	return rig
 }
 
@@ -128,20 +116,6 @@ func (r *flakyClaimRig) assertClaimed(t *testing.T, id uuid.UUID, oldRefresh str
 	}
 	login := doJSONRequest(t, r.router, http.MethodPost, "/auth/login", map[string]any{"email": "victim@example.com", "password": "attacker-password"})
 	assertInvalidCredentials(t, login)
-}
-
-func TestOAuth_ClaimConvergesAfterRevokeFailsOnce(t *testing.T) {
-	rig := newFlakyClaimRig(t)
-	seeded, oldRefresh := rig.seedUnverified(t)
-	rig.flakyR.revokeAllFailures = 1
-
-	if rec := rig.signInGoogle(t); rec.Code != http.StatusInternalServerError {
-		t.Fatalf("first attempt: status = %d, body = %s, want 500", rec.Code, rec.Body.String())
-	}
-	if rec := rig.signInGoogle(t); rec.Code != http.StatusOK {
-		t.Fatalf("retry: status = %d, body = %s, want 200", rec.Code, rec.Body.String())
-	}
-	rig.assertClaimed(t, seeded.ID, oldRefresh)
 }
 
 func TestOAuth_ClaimConvergesAfterClaimFailsOnce(t *testing.T) {
@@ -234,26 +208,86 @@ func TestOAuth_SubjectMatchDoesNotHealWithoutMatchingVerifiedEmail(t *testing.T)
 	}
 }
 
-// Real postgres repositories: a revoke failure then a plain retry must end
-// with a verified, password-less, linked account and no live refresh token.
+// Claim keeps everything the pre-registrant filled in: name, username, avatar
+// and birthday stay, the account stays complete, the old password is gone and
+// so is every session issued before the claim.
+func TestOAuth_ClaimKeepsProfileAndBirthdayAndEndsOldSessions(t *testing.T) {
+	rig := newFlakyClaimRig(t)
+	hash, err := auth.HashPassword("attacker-password")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	bio := "pre-registered bio"
+	seeded, err := rig.users.CreateComplete(context.Background(), user.NewAccount{
+		Email: "victim@example.com", PasswordHash: hash, Birthday: "1991-03-04",
+		Name: "Victim Name", Username: "victim_name", Bio: &bio,
+	})
+	if err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	avatar := testAvatarBaseURL + "/avatars/" + seeded.ID.String() + "/a.png"
+	if _, err := rig.users.UpdateProfile(context.Background(), seeded.ID, user.ProfilePatch{AvatarURL: &avatar}); err != nil {
+		t.Fatalf("set avatar: %v", err)
+	}
+	rig.google.identity = &auth.GoogleIdentity{Subject: "g-flaky", Email: "victim@example.com", EmailVerified: true}
+
+	// The pre-registrant logs in (an unverified account may) and holds a session.
+	login := doJSONRequest(t, rig.router, http.MethodPost, "/auth/login", map[string]any{"email": "victim@example.com", "password": "attacker-password"})
+	if login.Code != http.StatusOK {
+		t.Fatalf("pre-registrant login: %d %s", login.Code, login.Body.String())
+	}
+	oldRefresh, _ := decodeBody(t, login)["refresh_token"].(string)
+
+	rec := rig.signInGoogle(t)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("claim: %d %s", rec.Code, rec.Body.String())
+	}
+	userBody, _ := decodeBody(t, rec)["user"].(map[string]any)
+	if userBody["name"] != "Victim Name" || userBody["username"] != "victim_name" || userBody["avatar_url"] != avatar || userBody["onboarding_complete"] != true {
+		t.Errorf("claim dropped the profile: %v", userBody)
+	}
+	stored, err := rig.users.GetByID(context.Background(), seeded.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if !stored.HasBirthday || rig.users.storedBirthday(seeded.ID) != "1991-03-04" {
+		t.Errorf("claim lost the birthday (stored %q)", rig.users.storedBirthday(seeded.ID))
+	}
+	if stored.Bio == nil || *stored.Bio != bio {
+		t.Errorf("claim lost the bio: %v", stored.Bio)
+	}
+
+	refresh := doJSONRequest(t, rig.router, http.MethodPost, "/auth/refresh", map[string]any{"refresh_token": oldRefresh})
+	if refresh.Code != http.StatusUnauthorized {
+		t.Errorf("pre-registrant refresh after the claim: %d %s, want 401", refresh.Code, refresh.Body.String())
+	}
+	relogin := doJSONRequest(t, rig.router, http.MethodPost, "/auth/login", map[string]any{"email": "victim@example.com", "password": "attacker-password"})
+	assertInvalidCredentials(t, relogin)
+}
+
+// Real postgres repositories: a failed claim then a plain retry must end with
+// a verified, password-less, linked account that keeps its profile and
+// birthday, and no live session from before the claim.
 func TestIntegrationOAuth_ClaimRetryEndStateInDatabase(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	ctx := context.Background()
 
-	users := postgres.NewUserRepo(pool)
-	flakyR := &flakyRefreshRepo{RefreshTokenRepository: postgres.NewRefreshTokenRepo(pool)}
-	refreshService := auth.NewRefreshService(flakyR, 720*time.Hour)
+	realUsers := postgres.NewUserRepo(pool)
+	flakyU := &flakyUserRepo{Repository: realUsers}
+	refreshService := auth.NewRefreshService(postgres.NewRefreshTokenRepo(pool), 720*time.Hour)
 	google := &fakeGoogleVerifier{identity: &auth.GoogleIdentity{Subject: "g-db", Email: "victim@example.com", EmailVerified: true}}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewOAuthHandler(users, &fakeAppleVerifier{}, google, refreshService, []byte("test-secret-at-least-32-bytes!!"), 15*time.Minute).Register(&router.RouterGroup)
+	NewOAuthHandler(flakyU, &fakeAppleVerifier{}, google, refreshService, []byte("test-secret-at-least-32-bytes!!"), 15*time.Minute).Register(&router.RouterGroup)
 
 	hash, err := auth.HashPassword("attacker-password")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
-	seeded, err := users.Create(ctx, "victim@example.com", &hash, false, nil)
+	seeded, err := realUsers.CreateComplete(ctx, user.NewAccount{
+		Email: "victim@example.com", PasswordHash: hash, Birthday: "1991-03-04", Name: "Victim Name", Username: "victim_name",
+	})
 	if err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
@@ -262,7 +296,6 @@ func TestIntegrationOAuth_ClaimRetryEndStateInDatabase(t *testing.T) {
 			t.Fatalf("issue refresh token: %v", err)
 		}
 	}
-
 	var seededIDs []string
 	if err := pool.QueryRow(ctx, `select array_agg(id::text) from refresh_tokens where user_id = $1`, seeded.ID).Scan(&seededIDs); err != nil {
 		t.Fatalf("read seeded token ids: %v", err)
@@ -272,27 +305,29 @@ func TestIntegrationOAuth_ClaimRetryEndStateInDatabase(t *testing.T) {
 		verified    bool
 		hasPassword bool
 		googleSub   *string
+		name        *string
+		birthday    *string
 		liveTokens  int
 	}
 	read := func() state {
 		var s state
-		const q = `select email_verified, password_hash is not null, google_subject,
+		const q = `select email_verified, password_hash is not null, google_subject, name, birthday::text,
 			(select count(*) from refresh_tokens where user_id = users.id and revoked_at is null) from users where id = $1`
-		if err := pool.QueryRow(ctx, q, seeded.ID).Scan(&s.verified, &s.hasPassword, &s.googleSub, &s.liveTokens); err != nil {
+		if err := pool.QueryRow(ctx, q, seeded.ID).Scan(&s.verified, &s.hasPassword, &s.googleSub, &s.name, &s.birthday, &s.liveTokens); err != nil {
 			t.Fatalf("read account state: %v", err)
 		}
 		return s
 	}
 
-	flakyR.revokeAllFailures = 1
+	flakyU.claimFailures = 1
 	first := doJSONRequest(t, router, http.MethodPost, "/auth/oauth/google", map[string]any{"id_token": "t"})
 	if first.Code != http.StatusInternalServerError {
 		t.Fatalf("first attempt: status = %d, body = %s, want 500", first.Code, first.Body.String())
 	}
 	// Nothing may be half-applied: a retry must still find an unclaimed,
-	// unlinked account.
-	if s := read(); s.verified || !s.hasPassword || s.googleSub != nil {
-		t.Fatalf("state after failed attempt = %+v, want unverified, password kept, unlinked", s)
+	// unlinked account with its tokens alive.
+	if s := read(); s.verified || !s.hasPassword || s.googleSub != nil || s.liveTokens != 2 {
+		t.Fatalf("state after failed attempt = %+v, want unverified, password kept, unlinked, 2 live tokens", s)
 	}
 
 	retry := doJSONRequest(t, router, http.MethodPost, "/auth/oauth/google", map[string]any{"id_token": "t"})
@@ -308,6 +343,12 @@ func TestIntegrationOAuth_ClaimRetryEndStateInDatabase(t *testing.T) {
 	}
 	if s.googleSub == nil || *s.googleSub != "g-db" {
 		t.Errorf("google_subject = %v, want g-db", s.googleSub)
+	}
+	if s.name == nil || *s.name != "Victim Name" {
+		t.Errorf("name = %v, want kept", s.name)
+	}
+	if s.birthday == nil || *s.birthday != "1991-03-04" {
+		t.Errorf("birthday = %v, want kept", s.birthday)
 	}
 	// The retry itself issues one fresh session; the seeded ones must be gone.
 	if s.liveTokens != 1 {

@@ -1,8 +1,8 @@
-// Package httpapi_test-support: this file provides the harness every wave 4
-// handler plan builds on -- a bare router constructor plus in-memory fakes
-// for the plan 01-03 repository interfaces and the plan 01-09 mailer
-// interface. Because every wave 4 handler mounts itself on a fresh engine
-// inside its own test, no handler test depends on cmd/api/main.go existing.
+// Package httpapi_test-support: this file provides the harness every handler
+// test builds on -- a bare router constructor plus in-memory fakes for the
+// user and refresh-token repository interfaces. Because every handler mounts
+// itself on a fresh engine inside its own test, no handler test depends on
+// cmd/api/main.go existing.
 package httpapi
 
 import (
@@ -15,31 +15,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-// TestDeps bundles the fakes a wave 4 handler test wires into the handler
+// TestDeps bundles the fakes a handler test wires into the handler
 // constructors it builds on top of newTestRouter. Each field is the
 // interface type a real handler depends on, not the concrete fake, so a
 // test can swap in a different double without changing the handler.
-//
-// Mailer is mail.Mailer (the real interface internal/mail.Service
-// implements), not a local placeholder. Plan 01-06 originally declared a
-// structurally different placeholder here (SendVerificationEmail(ctx,
-// toEmail, token string) error) because internal/mail did not exist yet;
-// plan 01-09 built the real package with the *user.User-based signature but
-// deliberately left this placeholder untouched to avoid a merge conflict
-// with concurrent wave-4 worktrees, and flagged the reconciliation for
-// plan 01-13. That reconciliation happens here: fakeMailer below now
-// implements the real mail.Mailer interface, so every handler test in this
-// package (including auth_test.go's) exercises the same contract
-// cmd/api/main.go wires against.
 type TestDeps struct {
 	Users         user.Repository
 	RefreshTokens user.RefreshTokenRepository
-	Verifications user.EmailVerificationRepository
-	Mailer        mail.Mailer
 }
 
 // newTestRouter returns a bare gin.Engine with panic recovery attached and
@@ -60,10 +45,104 @@ func newTestRouter(t *testing.T, deps TestDeps) *gin.Engine {
 type fakeUserRepo struct {
 	mu    sync.Mutex
 	users map[uuid.UUID]*user.User
+	// birthdays holds the stored date per user. user.User deliberately has
+	// no date field, so a test reads it here to prove what was stored.
+	birthdays map[uuid.UUID]string
+	// tokens, when set, lets Delete and ClaimAndRevoke revoke refresh
+	// tokens the way the database does (cascade and the claim transaction).
+	tokens *fakeRefreshRepo
 }
 
 func newFakeUserRepo() *fakeUserRepo {
-	return &fakeUserRepo{users: make(map[uuid.UUID]*user.User)}
+	return &fakeUserRepo{users: make(map[uuid.UUID]*user.User), birthdays: make(map[uuid.UUID]string)}
+}
+
+// count returns how many accounts are stored.
+func (f *fakeUserRepo) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.users)
+}
+
+// storedBirthday returns the birthday on file for id, "" when none.
+func (f *fakeUserRepo) storedBirthday(id uuid.UUID) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.birthdays[id]
+}
+
+// seedComplete stores a finished account that has a birthday on file.
+func (f *fakeUserRepo) seedComplete(t *testing.T, email, name, username, birthday string) *user.User {
+	t.Helper()
+	pw := "x"
+	u, err := f.CreateComplete(context.Background(), user.NewAccount{
+		Email: email, PasswordHash: pw, Birthday: birthday, Name: name, Username: username,
+	})
+	if err != nil {
+		t.Fatalf("seed complete account: %v", err)
+	}
+	return u
+}
+
+func (f *fakeUserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.users {
+		if strings.EqualFold(u.Email, in.Email) {
+			return nil, user.ErrEmailTaken
+		}
+		if u.Username != nil && strings.EqualFold(*u.Username, in.Username) {
+			return nil, user.ErrUsernameTaken
+		}
+	}
+	now := time.Now()
+	hash, name, username := in.PasswordHash, in.Name, in.Username
+	u := &user.User{
+		ID:           uuid.New(),
+		Email:        in.Email,
+		PasswordHash: &hash,
+		Name:         &name,
+		Username:     &username,
+		Bio:          in.Bio,
+		HasBirthday:  true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	f.users[u.ID] = u
+	f.birthdays[u.ID] = in.Birthday
+	stored := *u
+	return &stored, nil
+}
+
+func (f *fakeUserRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok || u.HasBirthday {
+		return false, nil
+	}
+	delete(f.users, id)
+	if f.tokens != nil {
+		_ = f.tokens.RevokeAllForUser(ctx, id)
+	}
+	return true, nil
+}
+
+func (f *fakeUserRepo) ClaimAndRevoke(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok || u.EmailVerified {
+		return false, nil
+	}
+	u.EmailVerified = true
+	u.EmailVerifiedVia = &via
+	u.PasswordHash = nil
+	u.UpdatedAt = time.Now()
+	if f.tokens != nil {
+		_ = f.tokens.RevokeAllForUser(ctx, id)
+	}
+	return true, nil
 }
 
 func (f *fakeUserRepo) Create(ctx context.Context, email string, passwordHash *string, verified bool, via *user.VerificationSource) (*user.User, error) {
@@ -187,20 +266,6 @@ func (f *fakeUserRepo) MarkEmailVerified(ctx context.Context, id uuid.UUID, via 
 	return nil
 }
 
-func (f *fakeUserRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	u, ok := f.users[id]
-	if !ok || u.EmailVerified {
-		return false, nil
-	}
-	u.EmailVerified = true
-	u.EmailVerifiedVia = &via
-	u.PasswordHash = nil
-	u.UpdatedAt = time.Now()
-	return true, nil
-}
-
 func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.ProfilePatch) (*user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -227,6 +292,10 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	}
 	if p.AvatarURL != nil {
 		u.AvatarURL = p.AvatarURL
+	}
+	if p.Birthday != nil && !u.HasBirthday {
+		u.HasBirthday = true
+		f.birthdays[id] = *p.Birthday
 	}
 	u.UpdatedAt = time.Now()
 	stored := *u
@@ -320,83 +389,3 @@ func (f *fakeRefreshRepo) RevokeAllForUser(ctx context.Context, userID uuid.UUID
 }
 
 var _ user.RefreshTokenRepository = (*fakeRefreshRepo)(nil)
-
-// --- fakeVerificationRepo: in-memory user.EmailVerificationRepository ---
-
-type fakeVerificationRow struct {
-	userID     uuid.UUID
-	tokenHash  string
-	expiresAt  time.Time
-	consumedAt *time.Time
-}
-
-type fakeVerificationRepo struct {
-	mu   sync.Mutex
-	rows []*fakeVerificationRow
-}
-
-func newFakeVerificationRepo() *fakeVerificationRepo {
-	return &fakeVerificationRepo{}
-}
-
-func (f *fakeVerificationRepo) Insert(ctx context.Context, userID uuid.UUID, tokenHash []byte, expiresAt time.Time) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.rows = append(f.rows, &fakeVerificationRow{userID: userID, tokenHash: string(tokenHash), expiresAt: expiresAt})
-	return nil
-}
-
-func (f *fakeVerificationRepo) ConsumeByHash(ctx context.Context, tokenHash []byte, now time.Time) (uuid.UUID, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, row := range f.rows {
-		if row.tokenHash != string(tokenHash) {
-			continue
-		}
-		if row.consumedAt != nil {
-			return uuid.UUID{}, user.ErrTokenConsumed
-		}
-		if now.After(row.expiresAt) {
-			return uuid.UUID{}, user.ErrTokenExpired
-		}
-		row.consumedAt = &now
-		return row.userID, nil
-	}
-	return uuid.UUID{}, user.ErrTokenInvalid
-}
-
-func (f *fakeVerificationRepo) DeleteForUser(ctx context.Context, userID uuid.UUID) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	kept := f.rows[:0]
-	for _, row := range f.rows {
-		if row.userID != userID {
-			kept = append(kept, row)
-		}
-	}
-	f.rows = kept
-	return nil
-}
-
-var _ user.EmailVerificationRepository = (*fakeVerificationRepo)(nil)
-
-// --- fakeMailer: in-memory mail.Mailer ---
-
-type fakeMailer struct {
-	mu   sync.Mutex
-	sent []*user.User
-}
-
-func newFakeMailer() *fakeMailer {
-	return &fakeMailer{}
-}
-
-func (f *fakeMailer) SendVerificationEmail(ctx context.Context, u *user.User) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	stored := *u
-	f.sent = append(f.sent, &stored)
-	return nil
-}
-
-var _ mail.Mailer = (*fakeMailer)(nil)

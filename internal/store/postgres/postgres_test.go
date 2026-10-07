@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
@@ -25,6 +27,11 @@ var testDatabaseURL string
 func TestMain(m *testing.M) {
 	testDatabaseURL = os.Getenv("TEST_DATABASE_URL")
 	if testDatabaseURL != "" {
+		// Refuse a non-test database before anything migrates or truncates.
+		if err := postgres.CheckTestDatabaseURL(testDatabaseURL); err != nil {
+			fmt.Fprintf(os.Stderr, "postgres: %v\n", err)
+			os.Exit(1)
+		}
 		if err := runMigrations(testDatabaseURL); err != nil {
 			fmt.Fprintf(os.Stderr, "postgres: migration setup failed: %v\n", err)
 			os.Exit(1)
@@ -283,9 +290,10 @@ func TestEmailVerificationRepo_ConsumeByHash_SecondCallReturnsErrTokenConsumed(t
 	}
 }
 
-func TestUserRepo_ClaimUnverifiedEmail_VerifiesAndDropsPassword(t *testing.T) {
+func TestUserRepo_ClaimAndRevoke_VerifiesDropsPasswordAndRevokesTokensTogether(t *testing.T) {
 	pool := requireTestPool(t)
 	repo := postgres.NewUserRepo(pool)
+	tokenRepo := postgres.NewRefreshTokenRepo(pool)
 	ctx := context.Background()
 
 	hash := "bcrypt-hash"
@@ -293,10 +301,14 @@ func TestUserRepo_ClaimUnverifiedEmail_VerifiesAndDropsPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	liveHash := []byte("claim-live-token-hash-00000001")
+	if _, err := tokenRepo.Insert(ctx, created.ID, liveHash, time.Now().Add(time.Hour), nil); err != nil {
+		t.Fatalf("Insert token: %v", err)
+	}
 
-	claimed, err := repo.ClaimUnverifiedEmail(ctx, created.ID, user.VerifiedViaGoogle)
+	claimed, err := repo.ClaimAndRevoke(ctx, created.ID, user.VerifiedViaGoogle)
 	if err != nil || !claimed {
-		t.Fatalf("ClaimUnverifiedEmail: claimed = %v, err = %v, want true, nil", claimed, err)
+		t.Fatalf("ClaimAndRevoke: claimed = %v, err = %v, want true, nil", claimed, err)
 	}
 
 	got, err := repo.GetByID(ctx, created.ID)
@@ -312,11 +324,15 @@ func TestUserRepo_ClaimUnverifiedEmail_VerifiesAndDropsPassword(t *testing.T) {
 	if got.PasswordHash != nil {
 		t.Errorf("PasswordHash = %q, want NULL", *got.PasswordHash)
 	}
+	if _, err := tokenRepo.GetActiveByHash(ctx, liveHash); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Errorf("GetActiveByHash(token issued before the claim) = %v, want ErrTokenInvalid", err)
+	}
 }
 
-func TestUserRepo_ClaimUnverifiedEmail_LeavesVerifiedAccountUntouched(t *testing.T) {
+func TestUserRepo_ClaimAndRevoke_LeavesVerifiedAccountAndItsSessionsUntouched(t *testing.T) {
 	pool := requireTestPool(t)
 	repo := postgres.NewUserRepo(pool)
+	tokenRepo := postgres.NewRefreshTokenRepo(pool)
 	ctx := context.Background()
 
 	hash := "bcrypt-hash"
@@ -325,10 +341,14 @@ func TestUserRepo_ClaimUnverifiedEmail_LeavesVerifiedAccountUntouched(t *testing
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	liveHash := []byte("verified-live-token-hash-00001")
+	if _, err := tokenRepo.Insert(ctx, created.ID, liveHash, time.Now().Add(time.Hour), nil); err != nil {
+		t.Fatalf("Insert token: %v", err)
+	}
 
-	claimed, err := repo.ClaimUnverifiedEmail(ctx, created.ID, user.VerifiedViaApple)
+	claimed, err := repo.ClaimAndRevoke(ctx, created.ID, user.VerifiedViaApple)
 	if err != nil || claimed {
-		t.Fatalf("ClaimUnverifiedEmail: claimed = %v, err = %v, want false, nil", claimed, err)
+		t.Fatalf("ClaimAndRevoke: claimed = %v, err = %v, want false, nil", claimed, err)
 	}
 
 	got, err := repo.GetByID(ctx, created.ID)
@@ -341,4 +361,348 @@ func TestUserRepo_ClaimUnverifiedEmail_LeavesVerifiedAccountUntouched(t *testing
 	if got.EmailVerifiedVia == nil || *got.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
 		t.Errorf("EmailVerifiedVia = %v, want password_flow (unchanged)", got.EmailVerifiedVia)
 	}
+	if _, err := tokenRepo.GetActiveByHash(ctx, liveHash); err != nil {
+		t.Errorf("a verified account's session was revoked: %v", err)
+	}
+}
+
+// --- one-request sign-up, birthday, delete ---
+
+func countUsers(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), `select count(*) from users`).Scan(&n); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	return n
+}
+
+func newAccount(email, username string) user.NewAccount {
+	bio := "a short bio"
+	return user.NewAccount{Email: email, PasswordHash: "bcrypt-hash", Birthday: "1990-06-15", Name: "Full Name", Username: username, Bio: &bio}
+}
+
+func TestUserRepo_CreateComplete_StoresEveryColumnInOneInsert(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	u, err := repo.CreateComplete(ctx, newAccount("complete@example.com", "complete_user"))
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
+	}
+	if u.Name == nil || *u.Name != "Full Name" || u.Username == nil || *u.Username != "complete_user" {
+		t.Errorf("name/username = %v/%v", u.Name, u.Username)
+	}
+	if u.Bio == nil || *u.Bio != "a short bio" {
+		t.Errorf("bio = %v", u.Bio)
+	}
+	if u.EmailVerified || u.EmailVerifiedVia != nil {
+		t.Errorf("verified = %v via %v, want unverified", u.EmailVerified, u.EmailVerifiedVia)
+	}
+	if !u.HasBirthday || !u.OnboardingComplete() {
+		t.Errorf("HasBirthday = %v, complete = %v, want both true", u.HasBirthday, u.OnboardingComplete())
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, u.ID).Scan(&stored); err != nil || stored != "1990-06-15" {
+		t.Fatalf("stored birthday = %q, err = %v", stored, err)
+	}
+}
+
+func TestUserRepo_CreateComplete_NilBioStoresNull(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	in := newAccount("nobio@example.com", "no_bio")
+	in.Bio = nil
+	u, err := repo.CreateComplete(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
+	}
+	if u.Bio != nil {
+		t.Errorf("bio = %q, want NULL", *u.Bio)
+	}
+}
+
+func TestUserRepo_CreateComplete_FailuresStoreNothing(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+	if _, err := repo.CreateComplete(ctx, newAccount("holder@example.com", "held_name")); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if _, err := repo.CreateComplete(ctx, newAccount("HOLDER@example.com", "fresh_name")); !errors.Is(err, user.ErrEmailTaken) {
+		t.Errorf("duplicate email: got %v, want ErrEmailTaken", err)
+	}
+	if _, err := repo.CreateComplete(ctx, newAccount("other@example.com", "held_name")); !errors.Is(err, user.ErrUsernameTaken) {
+		t.Errorf("duplicate username: got %v, want ErrUsernameTaken", err)
+	}
+
+	badBio := newAccount("bio@example.com", "bio_user")
+	long := strings.Repeat("b", 161)
+	badBio.Bio = &long
+	badBirthday := newAccount("old@example.com", "old_user")
+	badBirthday.Birthday = "1899-12-31"
+	badUsername := newAccount("charset@example.com", "BAD NAME")
+	for name, c := range map[string]struct {
+		in    user.NewAccount
+		field string
+	}{
+		"bio over 160":      {badBio, "bio"},
+		"birthday pre-1900": {badBirthday, "birthday"},
+		"username charset":  {badUsername, "username"},
+	} {
+		_, err := repo.CreateComplete(ctx, c.in)
+		var fieldErr *user.FieldError
+		if !errors.As(err, &fieldErr) || fieldErr.Field != c.field {
+			t.Errorf("%s: got %v, want FieldError for %q", name, err, c.field)
+		} else if strings.Contains(err.Error(), "constraint") || strings.Contains(err.Error(), "violates") {
+			t.Errorf("%s: error text carries database text: %q", name, err.Error())
+		}
+	}
+	if n := countUsers(t, pool); n != 1 {
+		t.Fatalf("user count = %d, want 1 (every failed insert must leave nothing)", n)
+	}
+}
+
+func TestUserRepo_UpdateProfile_BirthdayIsWriteOnce(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+	created := mustCreateUser(t, repo, "once@example.com")
+	if created.HasBirthday {
+		t.Fatal("a Create'd account must have no birthday")
+	}
+
+	first, second := "1994-04-04", "1980-01-01"
+	u, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Birthday: &first})
+	if err != nil || !u.HasBirthday {
+		t.Fatalf("first write: %v, has = %v", err, u != nil && u.HasBirthday)
+	}
+	if _, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Birthday: &second}); err != nil {
+		t.Fatalf("second write: %v", err)
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != first {
+		t.Fatalf("stored birthday = %q (err %v), want the first value %q", stored, err, first)
+	}
+
+	// A patch without a birthday leaves it alone.
+	name := "Someone"
+	if _, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Name: &name}); err != nil {
+		t.Fatalf("name-only patch: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != first {
+		t.Fatalf("birthday after a name-only patch = %q (err %v)", stored, err)
+	}
+}
+
+func TestUserRepo_UpdateProfile_CheckViolationsAreFieldErrors(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	created := mustCreateUser(t, repo, "checks@example.com")
+
+	bad := "NOT valid"
+	_, err := repo.UpdateProfile(context.Background(), created.ID, user.ProfilePatch{Username: &bad})
+	var fieldErr *user.FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "username" {
+		t.Fatalf("got %v, want FieldError for username", err)
+	}
+	old := "1899-01-01"
+	_, err = repo.UpdateProfile(context.Background(), created.ID, user.ProfilePatch{Birthday: &old})
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "birthday" {
+		t.Fatalf("got %v, want FieldError for birthday", err)
+	}
+}
+
+func TestUserRepo_Delete_OnlyWhileNoBirthdayAndTokensGoWithIt(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	tokenRepo := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+
+	social := mustCreateUser(t, repo, "social-kid@example.com")
+	tokenHash := []byte("delete-token-hash-000000000001")
+	if _, err := tokenRepo.Insert(ctx, social.ID, tokenHash, time.Now().Add(time.Hour), nil); err != nil {
+		t.Fatalf("Insert token: %v", err)
+	}
+	deleted, err := repo.Delete(ctx, social.ID)
+	if err != nil || !deleted {
+		t.Fatalf("Delete: deleted = %v, err = %v, want true, nil", deleted, err)
+	}
+	if _, err := repo.GetByID(ctx, social.ID); !errors.Is(err, user.ErrNotFound) {
+		t.Fatalf("GetByID after delete: %v, want ErrNotFound", err)
+	}
+	if _, err := tokenRepo.GetActiveByHash(ctx, tokenHash); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Fatalf("token after delete: %v, want ErrTokenInvalid (cascade)", err)
+	}
+
+	// An account with a birthday on file is never deleted through this path.
+	real, err := repo.CreateComplete(ctx, newAccount("real@example.com", "real_person"))
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
+	}
+	deleted, err = repo.Delete(ctx, real.ID)
+	if err != nil || deleted {
+		t.Fatalf("Delete of an account with a birthday: deleted = %v, err = %v, want false, nil", deleted, err)
+	}
+	if _, err := repo.GetByID(ctx, real.ID); err != nil {
+		t.Fatalf("the account was deleted: %v", err)
+	}
+}
+
+func TestCheckTestDatabaseURL(t *testing.T) {
+	good := []string{
+		"postgres://localhost:5432/rndmroll_test?sslmode=disable",
+		"postgresql://user:pw@h/some_test",
+	}
+	for _, u := range good {
+		if err := postgres.CheckTestDatabaseURL(u); err != nil {
+			t.Errorf("CheckTestDatabaseURL(%q) = %v, want nil", u, err)
+		}
+	}
+	bad := []string{
+		"postgres://h/rndmroll_dev?sslmode=disable",
+		"postgres://localhost:5432/rndmroll_test_backup",
+		"postgres://localhost:5432/",
+		"postgres://localhost:5432",
+		"postgres://localhost:5432/rndmroll_test?dbname=rndmroll_dev",
+		"host=localhost dbname=rndmroll_test",
+		"host=localhost dbname=rndmroll_dev",
+		"",
+		"http://localhost/rndmroll_test",
+	}
+	for _, u := range bad {
+		err := postgres.CheckTestDatabaseURL(u)
+		if err == nil {
+			t.Errorf("CheckTestDatabaseURL(%q) = nil, want an error", u)
+		} else if u != "" && strings.Contains(err.Error(), "localhost:5432") {
+			t.Errorf("error text echoes the URL: %v", err)
+		}
+	}
+}
+
+// TestMigrations_0002IsReversible walks the test database down to version 1
+// and back up to 2 with explicit `goto` steps (never `down 2`, which would
+// drop 0001 and every table). It restores version 2 in a defer so a failure
+// cannot leave the shared test database behind the schema other tests need.
+// It runs under -p 1 with the rest of the suite and only on a *_test database.
+// The whole suite MUST run with -p 1: this test drops the birthday column
+// mid-run, so any other package using the same database in parallel would
+// fail.
+func TestMigrations_0002IsReversible(t *testing.T) {
+	if testDatabaseURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
+	}
+	if err := postgres.CheckTestDatabaseURL(testDatabaseURL); err != nil {
+		t.Fatalf("%v", err)
+	}
+	ctx := context.Background()
+	migrationsDir := filepath.Join(repoRoot(), "migrations")
+	goTo := func(version int) {
+		t.Helper()
+		cmd := exec.Command("migrate", "-path", migrationsDir, "-database", testDatabaseURL, "goto", fmt.Sprint(version))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("migrate goto %d: %v: %s", version, err, out)
+		}
+	}
+	defer func() {
+		cmd := exec.Command("migrate", "-path", migrationsDir, "-database", testDatabaseURL, "goto", "2")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("restoring migration version 2 failed: %v: %s", err, out)
+		}
+	}()
+
+	// A fresh pool for each phase, so no connection holds a statement cached
+	// against the other schema.
+	withPool := func(fn func(pool *pgxpool.Pool)) {
+		t.Helper()
+		pool, err := postgres.NewPool(ctx, testDatabaseURL)
+		if err != nil {
+			t.Fatalf("NewPool: %v", err)
+		}
+		defer pool.Close()
+		fn(pool)
+	}
+	hasColumn := func(pool *pgxpool.Pool) bool {
+		var n int
+		const q = `select count(*) from information_schema.columns where table_name = 'users' and column_name = 'birthday'`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("column check: %v", err)
+		}
+		return n == 1
+	}
+	hasConstraint := func(pool *pgxpool.Pool) bool {
+		var n int
+		const q = `select count(*) from pg_constraint where conname = 'users_birthday_min'`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("constraint check: %v", err)
+		}
+		return n == 1
+	}
+	version := func(pool *pgxpool.Pool) (int, bool) {
+		var v int
+		var dirty bool
+		if err := pool.QueryRow(ctx, `select version, dirty from schema_migrations`).Scan(&v, &dirty); err != nil {
+			t.Fatalf("read schema_migrations: %v", err)
+		}
+		return v, dirty
+	}
+
+	withPool(func(pool *pgxpool.Pool) {
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+		if v, dirty := version(pool); v != 2 || dirty {
+			t.Fatalf("expected version 2 (clean) before the test, got %d dirty=%v", v, dirty)
+		}
+		if !hasColumn(pool) || !hasConstraint(pool) {
+			t.Fatal("expected the birthday column and users_birthday_min at version 2")
+		}
+		mustCreateUser(t, postgres.NewUserRepo(pool), "before-down@example.com")
+	})
+
+	goTo(1)
+	withPool(func(pool *pgxpool.Pool) {
+		if v, dirty := version(pool); v != 1 || dirty {
+			t.Fatalf("after goto 1: version %d dirty=%v", v, dirty)
+		}
+		if hasColumn(pool) || hasConstraint(pool) {
+			t.Fatal("goto 1 must drop the birthday column and its constraint")
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("goto 1 changed the user count to %d, want 1", n)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email) values ('written-at-v1@example.com')`); err != nil {
+			t.Fatalf("insert at version 1: %v", err)
+		}
+	})
+
+	goTo(2)
+	withPool(func(pool *pgxpool.Pool) {
+		if v, dirty := version(pool); v != 2 || dirty {
+			t.Fatalf("after goto 2: version %d dirty=%v", v, dirty)
+		}
+		if !hasColumn(pool) || !hasConstraint(pool) {
+			t.Fatal("goto 2 must restore the birthday column and constraint")
+		}
+		var withBirthday int
+		if err := pool.QueryRow(ctx, `select count(*) from users where birthday is not null`).Scan(&withBirthday); err != nil || withBirthday != 0 {
+			t.Fatalf("existing rows must stay NULL: %d (err %v)", withBirthday, err)
+		}
+		if n := countUsers(t, pool); n != 2 {
+			t.Fatalf("user count after goto 2 = %d, want 2", n)
+		}
+		var pgErr *pgconn.PgError
+		_, err := pool.Exec(ctx, `update users set birthday = date '1899-12-31'`)
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_birthday_min" {
+			t.Fatalf("pre-1900 birthday: got %v, want a users_birthday_min violation", err)
+		}
+		if _, err := pool.Exec(ctx, `update users set birthday = date '1900-01-01'`); err != nil {
+			t.Fatalf("1900-01-01 must be allowed: %v", err)
+		}
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("final truncate: %v", err)
+		}
+	})
 }

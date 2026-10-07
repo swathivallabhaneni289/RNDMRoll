@@ -16,11 +16,12 @@ func TestUsernameEndpoint_Suggest_ReturnsFreeSuggestionDerivedFromName(t *testin
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewUsernameHandler(users).Register(group)
+	// The username checks are public: no token, no authentication middleware.
+	_ = caller
+	router := newTestRouter(t, TestDeps{Users: users})
+	NewUsernameHandler(users).Register(router.Group("/v1"))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/usernames/suggest?name=Ada+Lovelace", nil)
-	req.Header.Set("Authorization", "Bearer "+mintToken(t, caller.ID))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -57,13 +58,12 @@ func TestUsernameEndpoint_Available_ReportsAvailabilityAndAlternatesWhenTaken(t 
 		t.Fatalf("UpdateProfile returned error: %v", err)
 	}
 
-	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewUsernameHandler(users).Register(group)
-	authHeader := "Bearer " + mintToken(t, caller.ID)
+	_ = caller
+	router := newTestRouter(t, TestDeps{Users: users})
+	NewUsernameHandler(users).Register(router.Group("/v1"))
 
 	// Taken username: available=false with 3 alternates.
 	req := httptest.NewRequest(http.MethodGet, "/v1/usernames/available?username=already_taken", nil)
-	req.Header.Set("Authorization", authHeader)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -83,7 +83,6 @@ func TestUsernameEndpoint_Available_ReportsAvailabilityAndAlternatesWhenTaken(t 
 
 	// Free username: available=true with an empty (not null) alternates array.
 	req = httptest.NewRequest(http.MethodGet, "/v1/usernames/available?username=totally_free_1", nil)
-	req.Header.Set("Authorization", authHeader)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

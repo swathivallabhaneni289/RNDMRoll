@@ -26,6 +26,10 @@ var sensitiveQueryKeys = map[string]struct{}{
 	"identity_token": {},
 	"id_token":       {},
 	"code":           {},
+	// The username endpoints are public, so a name or username typed by
+	// someone who is not signed up yet must not reach the logs either.
+	"name":     {},
+	"username": {},
 }
 
 // redactSensitiveQuery parses raw as a URL query string and returns it

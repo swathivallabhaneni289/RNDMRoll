@@ -38,10 +38,11 @@ func mintToken(t *testing.T, userID uuid.UUID) string {
 }
 
 // newAuthedGroup returns a router with a "/v1" group already carrying
-// RequireAuth, mirroring the nested authenticated group plan 01-13 builds
-// in production (RequireAuth then RequireVerified). This plan's handlers
-// only assume RequireAuth ran -- Register itself applies no middleware, so
-// the caller (a real server or this test) controls what wraps the group.
+// RequireAuth. The production group also carries RequireUser; the profile
+// handler loads the account itself when that middleware did not run, so
+// these tests exercise it either way. Register itself applies no
+// middleware, so the caller (a real server or this test) controls what
+// wraps the group.
 func newAuthedGroup(t *testing.T, deps TestDeps) (*gin.Engine, *gin.RouterGroup) {
 	t.Helper()
 	router := newTestRouter(t, deps)
@@ -93,7 +94,7 @@ func TestProfile_GetMe_ReturnsCallerProfileWithOnboardingComplete(t *testing.T) 
 	}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+mintToken(t, created.ID))
@@ -124,7 +125,7 @@ func TestProfile_GetMe_ReturnsCallerProfileWithOnboardingComplete(t *testing.T) 
 func TestProfile_GetMe_NoBearerTokenReturns401(t *testing.T) {
 	users := newFakeUserRepo()
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
 	w := httptest.NewRecorder()
@@ -151,7 +152,7 @@ func TestProfile_PatchMe_IgnoresUserIDInBody(t *testing.T) {
 	}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 
 	// The request body carries another user's ID under both common field
 	// names an attacker might try. Neither UpdateProfileRequest field
@@ -196,7 +197,7 @@ func TestProfile_PatchMe_UpdatesFieldsIndependently(t *testing.T) {
 	}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 	token := "Bearer " + mintToken(t, caller.ID)
 
 	// Update only bio.
@@ -220,7 +221,8 @@ func TestProfile_PatchMe_UpdatesFieldsIndependently(t *testing.T) {
 	}
 
 	// Update only avatar_url; bio from the previous step must persist.
-	req = httptest.NewRequest(http.MethodPatch, "/v1/me", bytes.NewBufferString(`{"avatar_url":"https://cdn.example.test/a.jpg"}`))
+	ownAvatar := testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/a.jpg"
+	req = httptest.NewRequest(http.MethodPatch, "/v1/me", bytes.NewBufferString(`{"avatar_url":"`+ownAvatar+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", token)
 	w = httptest.NewRecorder()
@@ -229,7 +231,7 @@ func TestProfile_PatchMe_UpdatesFieldsIndependently(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	body = decodeBody(t, w)
-	if body["avatar_url"] != "https://cdn.example.test/a.jpg" {
+	if body["avatar_url"] != ownAvatar {
 		t.Errorf("expected avatar_url to update, got %v", body["avatar_url"])
 	}
 	if body["bio"] != "Updated bio only" {
@@ -256,7 +258,7 @@ func TestProfile_PatchMe_UsernameTakenReturns409WithAlternates(t *testing.T) {
 	}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 
 	req := httptest.NewRequest(http.MethodPatch, "/v1/me", bytes.NewBufferString(`{"username":"taken_handle"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -293,7 +295,7 @@ func TestProfile_PatchMe_BioOverLimitReturns400(t *testing.T) {
 	}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, &fakeAvatarStore{}).Register(group)
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
 
 	overLong := strings.Repeat("a", 161)
 	payload, err := json.Marshal(map[string]string{"bio": overLong})
@@ -324,7 +326,7 @@ func TestProfile_AvatarUploadURL_ReturnsTicketForCaller(t *testing.T) {
 	avatars := &fakeAvatarStore{}
 
 	router, group := newAuthedGroup(t, TestDeps{Users: users})
-	NewProfileHandler(users, avatars).Register(group)
+	NewProfileHandler(users, avatars, testAvatarBaseURL).Register(group)
 
 	payload := `{"content_type":"image/png","content_length":2048}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/me/avatar/upload-url", bytes.NewBufferString(payload))
@@ -354,5 +356,311 @@ func TestProfile_AvatarUploadURL_ReturnsTicketForCaller(t *testing.T) {
 	}
 	if avatars.lastContentLength != 2048 {
 		t.Errorf("expected content length to be forwarded, got %v", avatars.lastContentLength)
+	}
+}
+
+// --- avatar_url, birthday and name rules on PATCH /me ---
+
+// profileRig mounts the profile handler behind RequireAuth over a fake user
+// repo wired to a fake refresh-token repo, so a test can prove what happens
+// to sessions when an account is removed.
+type profileRig struct {
+	router *gin.Engine
+	users  *fakeUserRepo
+	tokens *fakeRefreshRepo
+	svc    *auth.RefreshService
+}
+
+func newProfileRig(t *testing.T) *profileRig {
+	t.Helper()
+	users := newFakeUserRepo()
+	tokens := newFakeRefreshRepo()
+	users.tokens = tokens
+	router, group := newAuthedGroup(t, TestDeps{Users: users})
+	NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL).Register(group)
+	return &profileRig{router: router, users: users, tokens: tokens, svc: auth.NewRefreshService(tokens, time.Hour)}
+}
+
+func (r *profileRig) do(t *testing.T, method, path string, id uuid.UUID, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return integrationDoAuthedRequest(t, r.router, method, path, mintToken(t, id), body)
+}
+
+// seedSocial stores an Apple/Google-shaped account: verified, no name, no
+// username, no birthday.
+func (r *profileRig) seedSocial(t *testing.T, email string) *user.User {
+	t.Helper()
+	via := user.VerifiedViaGoogle
+	u, err := r.users.Create(context.Background(), email, nil, true, &via)
+	if err != nil {
+		t.Fatalf("seed social account: %v", err)
+	}
+	return u
+}
+
+// seedLegacy stores an account like the three existing dev accounts:
+// complete, no birthday on file.
+func (r *profileRig) seedLegacy(t *testing.T, email, name, username string) *user.User {
+	t.Helper()
+	u, err := r.users.Create(context.Background(), email, nil, true, nil)
+	if err != nil {
+		t.Fatalf("seed legacy account: %v", err)
+	}
+	if _, err := r.users.UpdateProfile(context.Background(), u.ID, user.ProfilePatch{Name: &name, Username: &username}); err != nil {
+		t.Fatalf("complete legacy account: %v", err)
+	}
+	return u
+}
+
+func TestProfile_PatchMe_AvatarURLMustBeInTheCallersOwnFolder(t *testing.T) {
+	rig := newProfileRig(t)
+	caller := rig.seedLegacy(t, "av1@example.com", "Av One", "av_one")
+	other := rig.seedLegacy(t, "av2@example.com", "Av Two", "av_two")
+
+	own := testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/abc.jpg"
+	rec := rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"avatar_url": own})
+	if rec.Code != http.StatusOK || decodeBody(t, rec)["avatar_url"] != own {
+		t.Fatalf("own avatar: %d %s", rec.Code, rec.Body.String())
+	}
+
+	bad := map[string]string{
+		"another user's folder": testAvatarBaseURL + "/avatars/" + other.ID.String() + "/abc.jpg",
+		"external host":         "https://evil.example.org/avatars/" + caller.ID.String() + "/abc.jpg",
+		"wrong base path":       testAvatarBaseURL + "/uploads/" + caller.ID.String() + "/abc.jpg",
+		"empty file name":       testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/",
+		"path traversal":        testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/../" + other.ID.String() + "/abc.jpg",
+		"not a url":             "javascript:alert(1)",
+		"encoded dot segments":  testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/%2e%2e/" + other.ID.String() + "/abc.jpg",
+		"query string":          testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/abc.jpg?x=1",
+		"backslash":             testAvatarBaseURL + "/avatars/" + caller.ID.String() + "/a\\b.jpg",
+	}
+	for name, url := range bad {
+		rec := rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"avatar_url": url})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d: %s", name, rec.Code, rec.Body.String())
+			continue
+		}
+		if got := decodeBody(t, rec)["field"]; got != "avatar_url" {
+			t.Errorf("%s: field = %v, want avatar_url", name, got)
+		}
+	}
+	stored, _ := rig.users.GetByID(context.Background(), caller.ID)
+	if stored.AvatarURL == nil || *stored.AvatarURL != own {
+		t.Errorf("a rejected avatar_url changed the stored value: %v", stored.AvatarURL)
+	}
+}
+
+func TestProfile_PatchMe_NameIsTrimmedAndMustNotBeEmpty(t *testing.T) {
+	rig := newProfileRig(t)
+	caller := rig.seedLegacy(t, "nm@example.com", "Old Name", "nm_user")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"name": "   "})
+	assertFieldError(t, rec, "name")
+	rec = rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"name": strings.Repeat("n", 51)})
+	assertFieldError(t, rec, "name")
+
+	rec = rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"name": "  New Name  "})
+	if rec.Code != http.StatusOK || decodeBody(t, rec)["name"] != "New Name" {
+		t.Fatalf("trim: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProfile_PatchMe_InvalidUsernameNamesTheFieldWithoutEchoingIt(t *testing.T) {
+	rig := newProfileRig(t)
+	caller := rig.seedLegacy(t, "un@example.com", "Un User", "un_user")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", caller.ID, map[string]any{"username": "Not Valid!"})
+	assertFieldError(t, rec, "username")
+	if strings.Contains(rec.Body.String(), "Not Valid") {
+		t.Fatalf("error echoes the input: %s", rec.Body.String())
+	}
+}
+
+func TestProfile_PatchMe_NULInNameOrBioIs400NotA500(t *testing.T) {
+	rig := newProfileRig(t)
+	legacy := rig.seedLegacy(t, "nul@example.com", "Nul User", "nul_user")
+	rec := rig.do(t, http.MethodPatch, "/v1/me", legacy.ID, map[string]any{"name": "a\u0000b"})
+	assertFieldError(t, rec, "name")
+	rec = rig.do(t, http.MethodPatch, "/v1/me", legacy.ID, map[string]any{"bio": "a\u0000b"})
+	assertFieldError(t, rec, "bio")
+	rec = rig.do(t, http.MethodPatch, "/v1/me", legacy.ID, map[string]any{"bio": "line one\nline two"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a bio with a line break should be fine: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProfile_PatchMe_CompleteAccountWithNoBirthdayCanEditButNotSendOne(t *testing.T) {
+	rig := newProfileRig(t)
+	legacy := rig.seedLegacy(t, "legacy@example.com", "Legacy User", "legacy_user")
+	if legacy.HasBirthday {
+		t.Fatal("seed should have no birthday")
+	}
+
+	own := testAvatarBaseURL + "/avatars/" + legacy.ID.String() + "/x.png"
+	rec := rig.do(t, http.MethodPatch, "/v1/me", legacy.ID, map[string]any{"name": "Legacy Renamed", "bio": "new bio", "avatar_url": own})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit: %d %s", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	if body["name"] != "Legacy Renamed" || body["bio"] != "new bio" || body["avatar_url"] != own || body["onboarding_complete"] != true {
+		t.Fatalf("unexpected body %v", body)
+	}
+
+	rec = rig.do(t, http.MethodPatch, "/v1/me", legacy.ID, map[string]any{"birthday": validBirthday})
+	assertFieldError(t, rec, "birthday")
+	if rig.users.storedBirthday(legacy.ID) != "" {
+		t.Fatal("a complete account stored a birthday")
+	}
+}
+
+func TestProfile_PatchMe_SocialAccountSetsBirthdayOnceAndKeepsIt(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "social@example.com")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": "1995-05-05"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set birthday: %d %s", rec.Code, rec.Body.String())
+	}
+	if decodeBody(t, rec)["onboarding_complete"] != false {
+		t.Fatalf("a birthday alone must not complete the profile: %s", rec.Body.String())
+	}
+	if got := rig.users.storedBirthday(social.ID); got != "1995-05-05" {
+		t.Fatalf("stored birthday = %q", got)
+	}
+
+	// A second birthday is ignored: 200, value kept, even an under-13 one.
+	for _, again := range []string{"1990-01-01", birthdayYearsAgo(12), "not-a-date"} {
+		rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": again})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("second birthday %q: %d %s", again, rec.Code, rec.Body.String())
+		}
+		if got := rig.users.storedBirthday(social.ID); got != "1995-05-05" {
+			t.Fatalf("stored birthday changed to %q", got)
+		}
+	}
+	if _, err := rig.users.GetByID(context.Background(), social.ID); err != nil {
+		t.Fatalf("an ignored under-13 birthday must not delete the account: %v", err)
+	}
+}
+
+func TestProfile_PatchMe_SocialAccountCannotFinishWithoutABirthday(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "nobirthday@example.com")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"name": "No Birthday", "username": "no_birthday"})
+	assertFieldError(t, rec, "birthday")
+	stored, _ := rig.users.GetByID(context.Background(), social.ID)
+	if stored.Name != nil || stored.Username != nil {
+		t.Fatal("the refused patch was partly applied")
+	}
+
+	// One field at a time is fine until the second would complete it.
+	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"name": "No Birthday"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("name alone: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"username": "no_birthday"})
+	assertFieldError(t, rec, "birthday")
+
+	// With a birthday in the same patch it completes.
+	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"username": "no_birthday", "birthday": "1992-02-02"})
+	if rec.Code != http.StatusOK || decodeBody(t, rec)["onboarding_complete"] != true {
+		t.Fatalf("finish with a birthday: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProfile_PatchMe_SocialUnderThirteenDeletesTheAccountAndAppliesNothing(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "kid@example.com")
+	refreshToken, err := rig.svc.Issue(context.Background(), social.ID, nil)
+	if err != nil {
+		t.Fatalf("issue refresh token: %v", err)
+	}
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{
+		"birthday": birthdayYearsAgo(12),
+		"name":     "Kid Name",
+		"username": "kid_name",
+		"bio":      "should not be stored",
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeBody(t, rec)["error"]; got != "under_minimum_age" {
+		t.Fatalf("expected under_minimum_age, got %v", got)
+	}
+	if rig.users.count() != 0 {
+		t.Fatalf("account still stored (%d rows)", rig.users.count())
+	}
+	if _, _, err := rig.svc.Redeem(context.Background(), refreshToken, nil); err == nil {
+		t.Fatal("the refresh token still works after the account was deleted")
+	}
+	// The token for the deleted account is refused on the next call.
+	again := rig.do(t, http.MethodGet, "/v1/me", social.ID, nil)
+	if again.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /me after deletion: expected 401, got %d", again.Code)
+	}
+}
+
+func TestProfile_PatchMe_AgeIsJudgedBeforeAnyOtherField(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "order@example.com")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{
+		"birthday":   birthdayYearsAgo(10),
+		"username":   "BAD NAME",
+		"avatar_url": "https://evil.example.org/x.png",
+		"bio":        strings.Repeat("b", 500),
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 before the other fields are validated, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rig.users.count() != 0 {
+		t.Fatal("account should be gone")
+	}
+}
+
+func TestProfile_PatchMe_BadBirthdaysAreFieldErrorsOnIncompleteAccounts(t *testing.T) {
+	cases := map[string]string{
+		"nonexistent": "2001-02-29",
+		"before 1900": "1899-01-01",
+		"future":      "2999-01-01",
+		"wrong shape": "05/05/1995",
+		"empty":       "",
+	}
+	for name, value := range cases {
+		t.Run(name, func(t *testing.T) {
+			rig := newProfileRig(t)
+			social := rig.seedSocial(t, "bad@example.com")
+			rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": value})
+			assertFieldError(t, rec, "birthday")
+			if rig.users.count() != 1 {
+				t.Fatal("a malformed birthday must not delete the account")
+			}
+		})
+	}
+}
+
+func TestProfile_PatchMe_ExactlyThirteenTodayIsAccepted(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "thirteen@example.com")
+
+	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": birthdayYearsAgo(13)})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProfile_AvatarUploadURL_DeletedAccountGets401(t *testing.T) {
+	rig := newProfileRig(t)
+	social := rig.seedSocial(t, "gone2@example.com")
+	if deleted, err := rig.users.Delete(context.Background(), social.ID); err != nil || !deleted {
+		t.Fatalf("delete: %v %v", deleted, err)
+	}
+	rec := rig.do(t, http.MethodPost, "/v1/me/avatar/upload-url", social.ID, map[string]any{"content_type": "image/png", "content_length": 100})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

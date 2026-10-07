@@ -9,6 +9,7 @@ package user
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -66,11 +67,16 @@ func NormalizeUsername(displayName string) string {
 	return s
 }
 
+// ErrUsernameInvalid is the fixed error ValidateUsername returns. Its text
+// never contains the input, because this endpoint can be called with no
+// session and the text may be sent back to the caller or logged.
+var ErrUsernameInvalid = errors.New("user: username must be 3-20 characters of lowercase letters, digits, or underscores")
+
 // ValidateUsername enforces exactly the pattern the database check
 // constraint enforces.
 func ValidateUsername(s string) error {
 	if !usernamePattern.MatchString(s) {
-		return fmt.Errorf("user: username must be 3-20 characters of lowercase letters, digits, or underscores, got %q", s)
+		return ErrUsernameInvalid
 	}
 	return nil
 }

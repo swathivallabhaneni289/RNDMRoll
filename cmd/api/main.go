@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/config"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -53,23 +53,8 @@ func main() {
 
 	users := postgres.NewUserRepo(pool)
 	refreshTokens := postgres.NewRefreshTokenRepo(pool)
-	verifications := postgres.NewEmailVerificationRepo(pool)
 
 	refreshSvc := auth.NewRefreshService(refreshTokens, cfg.RefreshTokenTTL)
-
-	// Exactly one mail.Service instance is constructed here and handed to
-	// both AuthHandler and VerifyEmailHandler -- see the Mailer
-	// reconciliation note in internal/httpapi/auth.go and 01-13-SUMMARY.md.
-	// It is the single code path that issues, hashes, persists, and
-	// supersedes email verification tokens.
-	var sender mail.Sender
-	if cfg.MailDriver == "resend" {
-		sender = mail.NewResendSender(cfg.ResendAPIKey, cfg.MailFromAddress, cfg.MailFromName)
-	} else {
-		// config.Load already validated MailDriver is "resend" or "log".
-		sender = mail.NewLogSender(os.Stdout)
-	}
-	mailSvc := mail.NewService(verifications, sender, cfg.AppBaseURL, cfg.EmailTokenTTL)
 
 	googleVerifier := auth.NewGoogleVerifier([]string{
 		cfg.GoogleClientIDIOS,
@@ -104,28 +89,26 @@ func main() {
 		S3Bucket:          cfg.S3Bucket,
 		S3AccessKeyID:     cfg.S3AccessKeyID,
 		S3SecretAccessKey: cfg.S3SecretAccessKey,
-		S3PublicBaseURL:   cfg.S3PublicBaseURL,
+		S3PublicBaseURL:   strings.TrimRight(cfg.S3PublicBaseURL, "/"),
 	})
 	if err != nil {
 		logger.Error("failed to construct avatar store", "error", err)
 		os.Exit(1)
 	}
 
-	authHandler := httpapi.NewAuthHandler(users, refreshSvc, mailSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
-	verifyHandler := httpapi.NewVerifyEmailHandler(users, verifications, mailSvc, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.DeepLinkScheme)
+	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	oauthHandler := httpapi.NewOAuthHandler(users, appleVerifier, googleVerifier, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
-	profileHandler := httpapi.NewProfileHandler(users, avatarStore)
+	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
 	usernameHandler := httpapi.NewUsernameHandler(users)
 
 	server := httpapi.NewServer(httpapi.Deps{
-		Auth:        authHandler,
-		VerifyEmail: verifyHandler,
-		OAuth:       oauthHandler,
-		Profile:     profileHandler,
-		Username:    usernameHandler,
-		Users:       users,
-		JWTSecret:   cfg.JWTSecret,
-		Logger:      logger,
+		Auth:      authHandler,
+		OAuth:     oauthHandler,
+		Profile:   profileHandler,
+		Username:  usernameHandler,
+		Users:     users,
+		JWTSecret: cfg.JWTSecret,
+		Logger:    logger,
 	})
 
 	httpServer := &http.Server{

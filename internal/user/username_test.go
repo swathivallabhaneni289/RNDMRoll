@@ -55,7 +55,15 @@ func (f *fakeUsernameRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p Pr
 	return nil, ErrNotFound
 }
 
-func (f *fakeUsernameRepo) ClaimUnverifiedEmail(ctx context.Context, id uuid.UUID, via VerificationSource) (bool, error) {
+func (f *fakeUsernameRepo) CreateComplete(ctx context.Context, in NewAccount) (*User, error) {
+	return nil, ErrNotFound
+}
+
+func (f *fakeUsernameRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
+	return false, ErrNotFound
+}
+
+func (f *fakeUsernameRepo) ClaimAndRevoke(ctx context.Context, id uuid.UUID, via VerificationSource) (bool, error) {
 	return false, ErrNotFound
 }
 
@@ -104,11 +112,11 @@ func TestUsername_NormalizeTruncatesLongNamesRatherThanFailing(t *testing.T) {
 
 func TestUsername_ValidateRejectsUppercasePunctuationAndBadLengths(t *testing.T) {
 	cases := []string{
-		"Swathi",     // uppercase
-		"sw-athi",    // punctuation
-		"ab",         // too short
+		"Swathi",                // uppercase
+		"sw-athi",               // punctuation
+		"ab",                    // too short
 		strings.Repeat("a", 21), // too long
-		"",           // empty
+		"",                      // empty
 	}
 	for _, c := range cases {
 		if err := ValidateUsername(c); err == nil {
@@ -180,5 +188,16 @@ func TestUsername_SuggestAlternatesReturnsThreeDistinctFreeCandidates(t *testing
 		if taken, _ := repo.UsernameTaken(context.Background(), a); taken {
 			t.Errorf("alternate %q must be free, but the fake repo reports it taken", a)
 		}
+	}
+}
+
+func TestUsername_ValidateErrorNeverEchoesInput(t *testing.T) {
+	input := "Not-A-Valid-Handle!"
+	err := ValidateUsername(input)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(err.Error(), input) {
+		t.Errorf("error text %q echoes the input", err.Error())
 	}
 }
