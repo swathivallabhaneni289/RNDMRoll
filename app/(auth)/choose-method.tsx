@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BrandMark } from '@/components/brand/BrandMark';
-import { AppText } from '@/components/ui/AppText';
+import { AppText, TextLink } from '@/components/ui/AppText';
 import { MethodButton } from '@/components/ui/MethodButton';
 import { Screen } from '@/components/ui/Screen';
 import { space } from '@/lib/theme/tokens';
@@ -50,8 +50,9 @@ export default function ChooseMethodScreen() {
         return;
       }
       // Root layout's Stack.Protected guards route onward from here: a brand
-      // new social account has no username yet, so onboarding_complete is
-      // false and the guard lands on profile-setup, not (app).
+      // new social account has no name, username or birthday yet, so
+      // onboarding_complete is false and the (auth) layout sends it to the
+      // finish page (make-it-yours), not (app).
       await signIn(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
@@ -74,7 +75,7 @@ export default function ChooseMethodScreen() {
           <MethodButton
             provider="email"
             label="Continue with Email"
-            onPress={() => router.push('/email')}
+            onPress={() => router.push('/make-it-yours')}
             disabled={inFlight !== null}
           />
           {showApple ? (
@@ -102,6 +103,13 @@ export default function ChooseMethodScreen() {
             </AppText>
           </View>
         ) : null}
+
+        <View style={{ marginTop: space.lg, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+          <AppText role="body" tone="muted">
+            {'Already have an account? '}
+          </AppText>
+          <TextLink onPress={() => router.push('/login')}>Log in</TextLink>
+        </View>
       </View>
     </Screen>
   );

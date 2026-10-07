@@ -8,31 +8,19 @@ import { TextField } from '@/components/ui/TextField';
 import { space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
-import { clearDraft, setDraft } from '@/lib/onboarding/draft';
 import { useSession } from '@/lib/session/store';
 
 /**
- * The one screen in this phase without an approved UI-SPEC entry (see
- * UI-SPEC revision 9's Checker Sign-Off recommendation and 01-07-PLAN.md
- * Task 3). Built from already-approved tokens/primitives; every string
- * introduced here beyond the Copywriting Contract is planner-authored and
- * provisional pending review at the plan 01-15 UAT checkpoint (see
- * 01-07-SUMMARY.md for the full list).
- *
- * Single screen, two modes toggled in place: the Copywriting Contract's
- * "Log in instead" / "Sign up instead" links are a same-screen toggle pair,
- * not two routes.
+ * Log in with email and password. Sign-up is its own page now (make-it-yours); the two
+ * link to each other. An account that never verified its email logs in like any other.
  */
-
-type Mode = 'signup' | 'login';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function EmailScreen() {
+export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useSession();
 
-  const [mode, setMode] = useState<Mode>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string | undefined>();
@@ -51,18 +39,10 @@ export default function EmailScreen() {
     return EMAIL_PATTERN.test(value.trim()) ? undefined : 'Enter a valid email address.';
   }
 
+  // Only "not empty": a short wrong password must reach the server and come back as the
+  // one "That email or password isn't right." message.
   function validatePasswordValue(value: string): string | undefined {
-    if (mode === 'signup') {
-      return value.length >= 8 ? undefined : 'Password must be at least 8 characters.';
-    }
     return value.length > 0 ? undefined : 'Enter your password.';
-  }
-
-  function toggleMode() {
-    setMode((current) => (current === 'signup' ? 'login' : 'signup'));
-    setEmailError(undefined);
-    setPasswordError(undefined);
-    setFormError(null);
   }
 
   async function handleSubmit() {
@@ -79,40 +59,24 @@ export default function EmailScreen() {
 
     setFormError(null);
     setSubmitting(true);
-    // A keyboard's trailing space passes client validation but the server
-    // rejects it, so send the trimmed value everywhere.
-    const trimmedEmail = email.trim();
     try {
-      if (mode === 'signup') {
-        await api.post('/auth/signup', { email: trimmedEmail, password }, { auth: false });
-        // A name left by an earlier failed Apple attempt must not prefill this account.
-        clearDraft();
-        setDraft({ email: trimmedEmail, provider: 'email' });
-        router.push('/verify-email');
-      } else {
-        const result = await api.post<AuthResult>('/auth/login', { email: trimmedEmail, password }, { auth: false });
-        clearDraft();
-        // Root layout's guard routes onward from here (profile-setup or (app)).
-        await signIn(result);
-      }
+      // A keyboard's trailing space passes client validation but the server rejects it.
+      const result = await api.post<AuthResult>(
+        '/auth/login',
+        { email: email.trim(), password },
+        { auth: false }
+      );
+      // The root guard routes onward from here: the app, or the finish page for an unfinished account.
+      await signIn(result);
     } catch (err) {
-      if (mode === 'signup' && err instanceof ApiError && err.code === 'email_taken') {
-        setFormError("That email's already registered. Log in instead.");
-        return;
+      // One message for a wrong password and an unknown account (invalid_credentials): the
+      // server refuses to tell them apart and so does this screen.
+      if (err instanceof ApiError && err.code === 'validation_failed' && !err.field) {
+        // The server's address check is stricter than this screen's: name the email, not "went wrong".
+        setEmailError('Enter a valid email address.');
+      } else {
+        setFormError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
       }
-      if (mode === 'login' && err instanceof ApiError && err.code === 'email_not_verified') {
-        // Next action is opening mail, not retrying the form. Not an error.
-        clearDraft();
-        setDraft({ email: trimmedEmail, provider: 'email' });
-        router.push('/verify-email');
-        return;
-      }
-      // A 401 invalid_credentials falls through to ApiError's own generic
-      // fallback message here deliberately: the server refuses to
-      // distinguish "wrong password" from "unknown account", so this screen
-      // must render one message for both rather than inventing a second,
-      // more specific one that would leak that distinction back to the UI.
-      setFormError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -121,7 +85,7 @@ export default function EmailScreen() {
   return (
     <Screen>
       <View style={{ paddingTop: space.xxl }}>
-        <AppText role="heading">{mode === 'signup' ? 'Sign up with email' : 'Log in'}</AppText>
+        <AppText role="heading">Log in</AppText>
 
         <View style={{ marginTop: space.lg }}>
           <TextField
@@ -149,17 +113,10 @@ export default function EmailScreen() {
             error={passwordError}
             secureTextEntry
             maxLength={72}
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            textContentType={mode === 'signup' ? 'newPassword' : 'password'}
+            autoComplete="current-password"
+            textContentType="password"
             autoFocus={autoFocusField === 'password'}
           />
-          {mode === 'signup' ? (
-            <View style={{ marginTop: space.xs }}>
-              <AppText role="label" tone="muted">
-                At least 8 characters.
-              </AppText>
-            </View>
-          ) : null}
         </View>
 
         {formError ? (
@@ -171,16 +128,11 @@ export default function EmailScreen() {
         ) : null}
 
         <View style={{ marginTop: space.lg }}>
-          <PrimaryButton
-            label={mode === 'signup' ? 'Create account' : 'Log in'}
-            onPress={handleSubmit}
-            loading={submitting}
-            disabled={submitting}
-          />
+          <PrimaryButton label="Log in" onPress={handleSubmit} loading={submitting} disabled={submitting} />
         </View>
 
         <View style={{ marginTop: space.md, alignItems: 'center' }}>
-          <TextLink onPress={toggleMode}>{mode === 'signup' ? 'Log in instead' : 'Sign up instead'}</TextLink>
+          <TextLink onPress={() => router.replace('/make-it-yours')}>Sign up instead</TextLink>
         </View>
       </View>
     </Screen>

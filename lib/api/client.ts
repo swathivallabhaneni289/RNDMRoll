@@ -25,7 +25,14 @@ const API_PREFIX = '/v1';
 const USER_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   network_unavailable: "Couldn't connect. Check your connection and try again.",
   email_taken: "That email's already registered. Log in instead.",
+  rate_limited: 'Too many tries. Wait a minute and try again.',
+  invalid_credentials: "That email or password isn't right.",
+  photo_rejected: 'Use a JPG or PNG under 5 MB.',
+  photo_upload_failed: 'Photo upload failed. Please try again.',
 };
+
+/** A silent API host must not hold the splash or a sheet for a minute: abort and report offline. */
+const REQUEST_TIMEOUT_MS = 10_000;
 
 const GENERIC_FALLBACK_MESSAGE = 'Something went wrong. Please try again.';
 
@@ -33,13 +40,16 @@ export class ApiError extends Error {
   status: number;
   code: ApiErrorCode;
   suggestions?: string[];
+  /** The form field a 400 validation_failed names, when the server says which. */
+  field?: string;
 
-  constructor(status: number, code: ApiErrorCode, message?: string, suggestions?: string[]) {
+  constructor(status: number, code: ApiErrorCode, message?: string, suggestions?: string[], field?: string) {
     super(message ?? code);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.suggestions = suggestions;
+    this.field = field;
   }
 
   get userMessage(): string {
@@ -52,6 +62,12 @@ interface RequestOptions {
   auth?: boolean;
   /** Internal: set true on the single retry attempt after a refresh, to prevent looping. */
   retry?: boolean;
+  /**
+   * Send this access token instead of the stored one. Only for the instant after sign-up,
+   * before the session is saved (the photo upload). A request with an explicit token never
+   * triggers the refresh-and-retry path.
+   */
+  token?: string;
 }
 
 /**
@@ -71,22 +87,29 @@ async function request<T>(
     'Content-Type': 'application/json',
   };
 
-  if (opts.auth !== false) {
+  if (opts.token) {
+    headers.Authorization = `Bearer ${opts.token}`;
+  } else if (opts.auth !== false) {
     const token = getAccessToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${API_PREFIX}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
   } catch {
     throw new ApiError(0, 'network_unavailable');
+  } finally {
+    clearTimeout(timer);
   }
 
   if (response.ok) {
@@ -104,13 +127,13 @@ async function request<T>(
   }
 
   const code = errorBody.error as ApiErrorCode;
-  const apiError = new ApiError(response.status, code, errorBody.message, errorBody.suggestions);
+  const apiError = new ApiError(response.status, code, errorBody.message, errorBody.suggestions, errorBody.field);
 
   // /auth/refresh answers an expired REFRESH token with the same 401 token_expired. Taking
   // this branch for it (or for any unauthenticated call) would start a second refresh whose
   // own 401 awaits the first, so the two wait on each other forever and restore() never
   // settles. Those 401s must surface as the ApiError for the store to sign out on.
-  const isRefreshable = opts.auth !== false && path !== '/auth/refresh';
+  const isRefreshable = opts.auth !== false && !opts.token && path !== '/auth/refresh';
   if (response.status === 401 && code === 'token_expired' && !opts.retry && isRefreshable) {
     if (!refreshPromise) {
       refreshPromise = refreshSession().finally(() => {

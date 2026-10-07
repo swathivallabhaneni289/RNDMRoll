@@ -1,7 +1,6 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { api } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
-import { clearDraft, setDraft } from '@/lib/onboarding/draft';
 
 /**
  * Native Apple and Google sign-in wrappers. Both post only the raw provider
@@ -46,8 +45,9 @@ function joinFullName(fullName: AppleAuthentication.AppleAuthenticationFullName 
 /**
  * Apple returns `fullName`/`email` only on a user's very first authorization
  * for this Apple ID + bundle ID (RESEARCH.md Pitfall 1b); every later call
- * returns null for both. Whatever comes back this call is captured into the
- * onboarding draft immediately, since a second attempt would come back empty.
+ * returns null for both. The name rides along to the server in this one
+ * request. Accepted: if that request fails, the retry has no name to send and
+ * the finish page opens with an empty Name field.
  */
 export async function signInWithApple(): Promise<SocialSignInResult> {
   let credential: AppleAuthentication.AppleAuthenticationCredential;
@@ -66,14 +66,6 @@ export async function signInWithApple(): Promise<SocialSignInResult> {
   }
 
   const fullName = joinFullName(credential.fullName);
-
-  // Captured before the POST: Apple will not hand the name over again, so a
-  // failed request must not lose it for a retry within this process.
-  setDraft({
-    provider: 'apple',
-    ...(fullName ? { suggestedName: fullName } : {}),
-    ...(credential.email ? { email: credential.email } : {}),
-  });
 
   return api.post<AuthResult>(
     '/auth/oauth/apple',
@@ -127,11 +119,5 @@ export async function signInWithGoogle(): Promise<SocialSignInResult> {
     throw new Error('Google sign-in did not return an ID token');
   }
 
-  const result = await api.post<AuthResult>('/auth/oauth/google', { id_token: idToken }, { auth: false });
-
-  // A name left in the draft by an earlier failed Apple attempt must not prefill this account.
-  clearDraft();
-  setDraft({ provider: 'google' });
-
-  return result;
+  return api.post<AuthResult>('/auth/oauth/google', { id_token: idToken }, { auth: false });
 }

@@ -21,14 +21,15 @@ export interface SessionTokens {
   expires_in: number;
 }
 
+/**
+ * The session body POST /auth/login, /auth/signup and the oauth endpoints return.
+ * /auth/refresh returns only the three token fields (SessionTokens), no user.
+ * No user object anywhere carries a birthday.
+ */
 export type AuthResult = SessionTokens & {
   user: ApiUser;
   is_new_user?: boolean;
 };
-
-export interface SignupResult {
-  user_id: string;
-}
 
 export interface UsernameSuggestion {
   username: string;
@@ -50,21 +51,29 @@ export interface ApiErrorBody {
   error: string;
   message?: string;
   suggestions?: string[];
+  /** Set on a 400 validation_failed: which form field the server rejected. */
+  field?: string;
 }
 
 /**
  * Every error code the backend can return in an `ApiErrorBody.error` field.
- * `lib/api/client.ts` uses this union to type `ApiError.code`.
+ * `lib/api/client.ts` uses this union to type `ApiError.code`. `network_unavailable`,
+ * `photo_rejected` and `photo_upload_failed` are raised by the app itself, never sent by the server.
  */
 export type ApiErrorCode =
   | 'invalid_credentials'
   | 'email_taken'
   | 'username_taken'
-  | 'email_not_verified'
+  | 'under_minimum_age'
+  | 'payload_too_large'
   | 'token_invalid'
+  | 'not_found'
+  | 'subject_linked'
   | 'token_expired'
   | 'token_consumed'
   | 'rate_limited'
   | 'validation_failed'
   | 'network_unavailable'
+  | 'photo_rejected'
+  | 'photo_upload_failed'
   | 'server_error';

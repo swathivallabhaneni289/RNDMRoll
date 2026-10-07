@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Circle, Path, Svg } from 'react-native-svg';
 import { HUB_RING, WEDGE_OUT, WEDGES } from '@/components/brand/BrandMark';
+import { color } from '@/lib/theme/tokens';
 
 /**
  * The entrance-page background: a faint wheel illustration that is quietly alive. Two oversized
@@ -168,8 +169,8 @@ function Label({ word, x, y, active }: { word: string; x: number; y: number; act
   const ruleStyle = useAnimatedStyle(() => ({ width: 28 + 28 * k.value, opacity: 0.22 + 0.6 * k.value }));
   return (
     <View style={{ position: 'absolute', left: x, top: y, flexDirection: 'row', alignItems: 'center' }}>
-      <Animated.Text style={[{ fontFamily: 'WorkSans_400Regular', fontSize: 10, letterSpacing: 3, color: '#111111' }, textStyle]}>{word}</Animated.Text>
-      <Animated.View style={[{ height: 1, marginLeft: 8, backgroundColor: '#111111' }, ruleStyle]} />
+      <Animated.Text style={[{ fontFamily: 'WorkSans_400Regular', fontSize: 10, letterSpacing: 3, color: color.ink }, textStyle]}>{word}</Animated.Text>
+      <Animated.View style={[{ height: 1, marginLeft: 8, backgroundColor: color.ink }, ruleStyle]} />
     </View>
   );
 }

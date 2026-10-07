@@ -5,13 +5,12 @@ import { color } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
 
 /**
- * D-05 (revised 2026-10-04) sequence order. Welcome is the single pre-signup
- * page (UI-SPEC revision 11; it replaced the four-screen marketing sequence of
- * plan 01-16); the last is the consolidated create-profile screen (plan 01-12),
- * which replaces the prior separate name/username/photo routes. 'welcome' is the
- * file-system default entry (see unstable_settings below) for a first-ever cold
- * start; the effect below redirects away from it for the other two cases this
- * layout owns.
+ * The signed-out screens, in the order a person meets them. Welcome is the single
+ * pre-signup page (UI-SPEC revision 11); choose-method picks email, Apple or Google;
+ * make-it-yours is the one-page sign-up (and the finish page for an unfinished Apple or
+ * Google account, plan 01-19); login is the email log-in. 'welcome' is the file-system
+ * default entry (see unstable_settings below) for every cold start; the effect below
+ * redirects away from it for an unfinished signed-in account.
  */
 export const unstable_settings = {
   initialRouteName: 'welcome',
@@ -24,29 +23,33 @@ export default function AuthLayout() {
 
   const fadeTransition = { animation: 'fade' as const, animationDuration: 220 };
 
-  // A half-onboarded authenticated user always resumes at profile-setup. Everyone
-  // else starts on the default initial route, 'welcome', on every launch (UI-SPEC
-  // revision 11): there is no skip-after-first-time rule any more, so the first
-  // page is always the same and there is no flash of the sign-in page before it.
-  useEffect(() => {
-    if (status === 'authenticated' && user?.onboarding_complete === false) {
-      router.replace('/profile-setup');
-    }
-  }, [status, user?.onboarding_complete, router]);
+  const signedIn = status === 'authenticated';
+  const onMakeItYours = (segments as string[])[segments.length - 1] === 'make-it-yours';
 
-  // gestureEnabled covers the iOS swipe only; Android's hardware back ignores
-  // it. The user is already signed in here, so going back would land on signup
-  // or intro and drop everything typed. Treat this screen as a root: back
-  // leaves the app instead of popping the stack.
-  const onProfileSetup = (segments as string[])[segments.length - 1] === 'profile-setup';
+  // A signed-in account that is still unfinished always resumes at make-it-yours (finish
+  // mode). Everyone else starts on the default initial route, 'welcome', on every launch
+  // (UI-SPEC revision 11): there is no skip-after-first-time rule, so the first page is
+  // always the same. Already being on the page is not a reason to replace it: that would
+  // remount the form and drop what was typed.
   useEffect(() => {
-    if (!onProfileSetup) return;
+    if (signedIn && user?.onboarding_complete === false && !onMakeItYours) {
+      router.replace('/make-it-yours');
+    }
+  }, [signedIn, user?.onboarding_complete, onMakeItYours, router]);
+
+  // gestureEnabled covers the iOS swipe only; Android's hardware back ignores it. A
+  // signed-in person on make-it-yours must not back out to Welcome or choose-method
+  // (and drop what they typed), so there back leaves the app instead of popping the
+  // stack. Signed out, the sign-up form is an ordinary screen and back works as usual.
+  const trapBack = signedIn && onMakeItYours;
+  useEffect(() => {
+    if (!trapBack) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       BackHandler.exitApp();
       return true;
     });
     return () => subscription.remove();
-  }, [onProfileSetup]);
+  }, [trapBack]);
 
   return (
     <Stack
@@ -57,9 +60,8 @@ export default function AuthLayout() {
     >
       <Stack.Screen name="welcome" />
       <Stack.Screen name="choose-method" options={fadeTransition} />
-      <Stack.Screen name="email" />
-      <Stack.Screen name="verify-email" />
-      <Stack.Screen name="profile-setup" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="make-it-yours" options={{ gestureEnabled: !signedIn }} />
+      <Stack.Screen name="login" />
     </Stack>
   );
 }
