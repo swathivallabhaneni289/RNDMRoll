@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-06T09:09:42.750Z",
+  "timestamp": "2026-10-06T10:16:39.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
@@ -42,8 +42,8 @@
     },
     {
       "id": 6,
-      "name": "Write a new small plan (01-19) for the one-page sign-up and get the developer's go",
-      "status": "not_started"
+      "name": "Plan 01-19 for the one-page sign-up: written 2026-10-06 as .planning/phases/01-foundation-accounts/01-19-PLAN.md (uncommitted, checked by three skeptics, then edited by hand); waiting for the developer's a or b answer (Apple and Google birthday) and the word start",
+      "status": "written_waiting_for_go"
     },
     {
       "id": 7,
@@ -63,9 +63,9 @@
   ],
   "blockers": [
     {
-      "description": "No go yet from the developer for a new sign-up plan",
+      "description": "01-19-PLAN.md is written but the developer has not yet said start (and has not answered a or b for Apple and Google birthday)",
       "type": "human_action",
-      "workaround": "Write the plan, ask for an explicit 'start'"
+      "workaround": "Ask once, in plain words; never treat a background notification as the go"
     },
     {
       "description": "Steps 19 and 20 (Apple, Google) need real accounts, deferred to the end of the project",
@@ -82,7 +82,7 @@
   "human_actions_pending": [
     {
       "action": "Say 'start' after reading the new sign-up plan",
-      "context": "Plan 01-18 was superseded; nothing is built for the one-page sign-up",
+      "context": "Plan 01-18 was superseded; 01-19-PLAN.md is written (order: Task 1 server, 3A cutover, 2 app, 3B gates and docs, 4 walkthrough); nothing is built for the one-page sign-up",
       "blocking": true
     },
     {
@@ -119,6 +119,6 @@
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "Run /gsd-resume-work, offer to finish walkthrough steps 17 and 18, write the new small plan 01-19 for the one-page sign-up (first-time mode and edit mode), and ask for an explicit start before building. Do not push.",
+  "next_action": "Plan 01-19 is already written: do NOT rewrite it. Wait for the developer's answer (a or b for the Apple and Google birthday question) and the word start. Then build in the plan's order (Task 1, 3A, 2, 3B, 4), local commits with explicit paths, never push. Walkthrough steps 17 and 18 are folded into the plan's Task 4 walkthrough (after the build). The dev database has THREE accounts (smoke-test, ava.stone.1004 and the developer's own test1@gmail.com); never delete or edit them.",
   "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results. Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals. Plan 01-18 is superseded but its research is reusable."
 }
