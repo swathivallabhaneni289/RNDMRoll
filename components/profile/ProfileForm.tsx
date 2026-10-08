@@ -957,15 +957,18 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        <View style={{ marginTop: space.lg }}>
-          <PrimaryButton
-            label={edit ? 'Save changes' : 'Continue'}
-            arrow
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            loading={submitting}
-          />
-        </View>
+        {/* The edit page shows no button until something has changed, so a greyed button never looks pressed. */}
+        {edit && !hasChanges ? null : (
+          <View style={{ marginTop: space.lg }}>
+            <PrimaryButton
+              label={edit ? 'Save changes' : 'Continue'}
+              arrow
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              loading={submitting}
+            />
+          </View>
+        )}
 
         {signup ? (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>
