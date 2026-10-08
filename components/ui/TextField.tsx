@@ -22,7 +22,25 @@ type TextFieldProps = {
   clearable?: boolean;
   /** A short note on the label row, right-aligned, for example Optional. `soft` only. */
   hint?: string;
+  /** A short green note under the field when its value is good, for example "Looks good.". Hidden while an error shows. */
+  success?: string;
 } & Omit<TextInputProps, 'style'>;
+
+/** The green check and note shown under a field whose value is good (the look of the username's "Available"). */
+export function FieldSuccess({ text, label }: { text: string; label: string }) {
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${label}: ${text}`}
+      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
+    >
+      <Ionicons name="checkmark-circle" size={16} color={color.success} />
+      <AppText role="label" tone="success">
+        {` ${text}`}
+      </AppText>
+    </View>
+  );
+}
 
 /**
  * Labeled text input with the UI-SPEC rest/focus border step (1dp
@@ -49,6 +67,7 @@ export function TextField({
   prefix,
   clearable = false,
   hint,
+  success,
   onFocus,
   onBlur,
   ...rest
@@ -96,6 +115,7 @@ export function TextField({
           </AppText>
         </View>
       ) : null}
+      {success && !error && status === 'idle' ? <FieldSuccess text={success} label={label} /> : null}
       {error ? (
         <Text
           accessibilityLiveRegion="polite"

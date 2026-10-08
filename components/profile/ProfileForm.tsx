@@ -5,10 +5,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, TextLink } from '@/components/ui/AppText';
 import { DialAvatar } from '@/components/brand/DialAvatar';
+import { BirthdayPickerField, birthdayPickerAvailable } from '@/components/profile/BirthdayPickerField';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextButton } from '@/components/ui/TextButton';
-import { TextField } from '@/components/ui/TextField';
+import { FieldSuccess, TextField } from '@/components/ui/TextField';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import { fetchProfile, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
@@ -40,6 +41,7 @@ const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const LOOKS_GOOD_MESSAGE = 'Looks good.';
 const EMAIL_MESSAGE = 'Enter a valid email address.';
 const PASSWORD_SHORT_MESSAGE = 'Password must be at least 8 characters.';
 const PASSWORD_LONG_MESSAGE = 'That password is too long. Use 72 characters or fewer.';
@@ -126,6 +128,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   const [name, setName] = useState(initialName);
   const [nameError, setNameError] = useState<string | undefined>(undefined);
+  const [nameTouched, setNameTouched] = useState(false);
 
   const [username, setUsername] = useState(initialUsername);
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
@@ -280,6 +283,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   }
 
   function handleNameBlur() {
+    setNameTouched(true);
     setNameError(nameProblem(name));
     maybeSuggestUsername(name);
   }
@@ -301,6 +305,19 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     const filled = birthday.month !== '' && birthday.day !== '' && birthday.year !== '';
     if (key !== 'year' && !filled) return;
     const result = checkBirthday(birthday, new Date(), ageOptions);
+    setBirthdayError(result.ok ? undefined : result.error);
+  }
+
+  // The date scroller gives a real date every time, so the three parts are filled from it and
+  // checked by the same rules as typed boxes (a message for a date that is too young).
+  function handleBirthdayPicked(date: Date) {
+    const next: BirthdayParts = {
+      month: String(date.getMonth() + 1),
+      day: String(date.getDate()),
+      year: String(date.getFullYear()),
+    };
+    setBirthday(next);
+    const result = checkBirthday(next, new Date(), ageOptions);
     setBirthdayError(result.ok ? undefined : result.error);
   }
 
@@ -382,6 +399,13 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   const birthdayResult = joining ? checkBirthday(birthday, new Date(), ageOptions) : null;
   const birthdayValid = birthdayResult?.ok === true;
   const nameValid = nameProblem(name) === undefined;
+  // The green notes. Email and password speak as you type; the name after you leave the box (or
+  // at once when it came filled in); the birthday once a date is chosen. The birthday note
+  // always applies the 13+ rule, even on the finish page, which leaves that rule to the server.
+  const emailOk = signup && email.trim() !== '' && emailProblem(email) === undefined;
+  const passwordOk = signup && password !== '' && passwordProblem(password) === undefined;
+  const nameOk = joining && nameValid && (nameTouched || initialName.trim() !== '');
+  const birthdayOk = joining && checkBirthday(birthday, new Date(), { ignoreAge: false }).ok;
   const usernameValid =
     (initialUsername !== '' && username === initialUsername) || USERNAME_PATTERN.test(username);
   const usernameBlocking = usernameStatus === 'checking' || usernameStatus === 'taken';
@@ -688,6 +712,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
               onChangeText={handleEmailChange}
               onBlur={() => setEmailError(emailProblem(email))}
               error={emailError}
+              success={emailOk ? LOOKS_GOOD_MESSAGE : undefined}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -703,6 +728,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
                 onChangeText={handlePasswordChange}
                 onBlur={() => setPasswordError(passwordProblem(password))}
                 error={passwordError}
+                success={passwordOk ? LOOKS_GOOD_MESSAGE : undefined}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -721,7 +747,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
                   {showPassword ? 'Hide' : 'Show'}
                 </AppText>
               </Pressable>
-              {!passwordError ? (
+              {!passwordError && !passwordOk ? (
                 <View style={{ marginTop: space.xs }}>
                   <AppText role="label" tone="muted">
                     At least 8 characters.
@@ -734,55 +760,68 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
         {joining ? (
           <View style={{ marginTop: signup ? space.md : space.lg }}>
-            <Text style={labelStyle}>Birthday</Text>
-            <View style={{ flexDirection: 'row', gap: space.sm }}>
-              <View style={{ flex: 1 }}>
-                <TextField
-                  label="Month"
-                  variant="soft"
-                  value={birthday.month}
-                  onChangeText={(value) => setBirthdayPart('month', value)}
-                  onBlur={() => handleBirthdayBlur('month')}
-                  placeholder="MM"
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  autoComplete="off"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <TextField
-                  label="Day"
-                  variant="soft"
-                  value={birthday.day}
-                  onChangeText={(value) => setBirthdayPart('day', value)}
-                  onBlur={() => handleBirthdayBlur('day')}
-                  placeholder="DD"
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  autoComplete="off"
-                />
-              </View>
-              <View style={{ flex: 1.6 }}>
-                <TextField
-                  label="Year"
-                  variant="soft"
-                  value={birthday.year}
-                  onChangeText={(value) => setBirthdayPart('year', value)}
-                  onBlur={() => handleBirthdayBlur('year')}
-                  placeholder="YYYY"
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  autoComplete="off"
-                />
-              </View>
-            </View>
-            {birthdayError ? (
-              <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
-                <AppText role="label" tone="destructive">
-                  {birthdayError}
-                </AppText>
-              </View>
-            ) : null}
+            {birthdayPickerAvailable ? (
+              <BirthdayPickerField
+                value={birthday}
+                onPick={handleBirthdayPicked}
+                error={birthdayError}
+                success={birthdayOk ? LOOKS_GOOD_MESSAGE : undefined}
+              />
+            ) : (
+              <>
+                <Text style={labelStyle}>Birthday</Text>
+                <View style={{ flexDirection: 'row', gap: space.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      label="Month"
+                      variant="soft"
+                      value={birthday.month}
+                      onChangeText={(value) => setBirthdayPart('month', value)}
+                      onBlur={() => handleBirthdayBlur('month')}
+                      placeholder="MM"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      autoComplete="off"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      label="Day"
+                      variant="soft"
+                      value={birthday.day}
+                      onChangeText={(value) => setBirthdayPart('day', value)}
+                      onBlur={() => handleBirthdayBlur('day')}
+                      placeholder="DD"
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      autoComplete="off"
+                    />
+                  </View>
+                  <View style={{ flex: 1.6 }}>
+                    <TextField
+                      label="Year"
+                      variant="soft"
+                      value={birthday.year}
+                      onChangeText={(value) => setBirthdayPart('year', value)}
+                      onBlur={() => handleBirthdayBlur('year')}
+                      placeholder="YYYY"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      autoComplete="off"
+                    />
+                  </View>
+                </View>
+                {birthdayError ? (
+                  <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
+                    <AppText role="label" tone="destructive">
+                      {birthdayError}
+                    </AppText>
+                  </View>
+                ) : birthdayOk ? (
+                  <FieldSuccess text={LOOKS_GOOD_MESSAGE} label="Birthday" />
+                ) : null}
+              </>
+            )}
             <View style={{ marginTop: space.xs }}>
               <AppText role="label" tone="muted">
                 Used only to check your age. Never shown to anyone.
@@ -825,6 +864,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
                 onChangeText={handleNameChange}
                 onBlur={handleNameBlur}
                 error={nameError}
+                success={nameOk ? LOOKS_GOOD_MESSAGE : undefined}
                 autoCapitalize="words"
                 autoComplete="name"
                 textContentType="name"
