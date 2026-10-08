@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { api, ApiError } from '@/lib/api/client';
 import type { ApiUser, AvatarUploadTicket } from '@/lib/api/types';
 
@@ -21,7 +22,12 @@ export interface ProfilePatch {
   birthday?: string;
 }
 
-const UPLOAD_TIMEOUT_MS = 30_000;
+/** The size in bytes of a local file: the exact length the presigned upload signs. */
+export async function fileSize(localUri: string): Promise<number> {
+  const info = await FileSystem.getInfoAsync(localUri);
+  if (!info.exists) throw new ApiError(0, 'photo_upload_failed');
+  return info.size;
+}
 
 export async function fetchProfile(): Promise<ApiUser> {
   return api.get<ApiUser>('/me');
@@ -49,9 +55,9 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
 /**
  * Performs the same three-step upload the create-profile screen performs:
  * request a ticket from POST /me/avatar/upload-url, PUT the binary directly
- * to the returned `upload_url` with a matching Content-Type header (a raw
- * `fetch`, not the `api` client, since this request goes straight to object
- * storage and must not carry our Authorization header), and return the
+ * to the returned `upload_url` with a matching Content-Type header (with the
+ * phone's file uploader, not the `api` client, since this request goes straight
+ * to object storage and must not carry our Authorization header), and return the
  * `public_url`. Never calls PATCH /me itself; the caller decides when to
  * persist, which is what lets the edit screen batch an avatar change
  * together with a name/username/bio change into a single save.
@@ -75,25 +81,17 @@ export async function uploadAvatar(
     throw err;
   }
 
-  const fileResponse = await fetch(localUri);
-  const fileBlob = await fileResponse.blob();
-
-  // A hung storage host must not hold the page for the OS's minute-long default: abort
-  // after 30 s and report it like any other lost connection.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-  let putResponse: Response;
+  // The phone's own file uploader streams the file with its exact length (the length the ticket
+  // signed). A fetch with a Blob body did not reliably reach the storage from the phone.
+  let result: FileSystem.FileSystemUploadResult;
   try {
-    putResponse = await fetch(ticket.upload_url, {
-      method: 'PUT',
+    result = await FileSystem.uploadAsync(ticket.upload_url, localUri, {
+      httpMethod: 'PUT',
       headers: { 'Content-Type': contentType },
-      body: fileBlob,
-      signal: controller.signal,
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
     });
   } catch {
     throw new ApiError(0, 'network_unavailable');
-  } finally {
-    clearTimeout(timer);
   }
 
   // T-01-PRV-05's mitigation is the storage provider rejecting a
@@ -101,10 +99,10 @@ export async function uploadAvatar(
   // is only a real mitigation if this function actually checks the PUT's
   // outcome instead of returning a public_url for an object that was
   // never written.
-  if (!putResponse.ok) {
+  if (result.status < 200 || result.status >= 300) {
     // Storage refusing the bytes (4xx) is a type or size problem; anything else is a failed upload.
-    const rejected = putResponse.status >= 400 && putResponse.status < 500;
-    throw new ApiError(putResponse.status, rejected ? 'photo_rejected' : 'photo_upload_failed');
+    const rejected = result.status >= 400 && result.status < 500;
+    throw new ApiError(result.status, rejected ? 'photo_rejected' : 'photo_upload_failed');
   }
 
   return ticket.public_url;

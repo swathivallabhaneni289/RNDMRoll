@@ -14,9 +14,10 @@ import { color, elevation, minTouchTarget, radius, space, type } from '@/lib/the
  * into the dev client, so there is no new native module. iOS only: anywhere else (or if the
  * JavaScript side cannot be loaded) `birthdayPickerAvailable` is false and the form keeps its
  * three typed boxes. A dev client built WITHOUT the ExpoUI pod would not fall back: the sheet
- * would fail when it opens, so keep ExpoUI in every dev client build. The birthday cannot be
- * changed after sign-up, so Done stays off until the picker has moved: the starting date is
- * only a guess and must never be accepted by accident.
+ * would fail when it opens, so keep ExpoUI in every dev client build. Done is always available:
+ * the scroller starts on a guessed date, and someone whose birthday IS that date must be able
+ * to pick it. Whatever Done takes is shown in the box afterwards, because the birthday cannot
+ * be changed after sign-up.
  */
 
 type SwiftUi = typeof import('@expo/ui/swift-ui');
@@ -46,7 +47,7 @@ export const birthdayPickerAvailable = nativePicker !== null;
 const WHEEL_MODIFIERS = nativePicker ? [nativePicker.datePickerStyle('wheel')] : [];
 // The height of iOS's own date wheel.
 const WHEEL_HEIGHT = 216;
-// Where the picker starts. Only a guess; the person has to move it before Done works.
+// Where the picker starts. Only a guess; the date Done takes is shown in the box.
 const STARTING_AGE_YEARS = 25;
 
 const MONTH_NAMES = [
@@ -102,7 +103,6 @@ type BirthdayPickerFieldProps = {
 export function BirthdayPickerField({ value, onPick, error, success }: BirthdayPickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Date>(startingDate);
-  const [moved, setMoved] = useState(false);
   const range = useMemo(() => ({ start: atNoon(MIN_BIRTHDAY_YEAR, 0, 1), end: new Date() }), []);
 
   if (!nativePicker) return null;
@@ -113,17 +113,11 @@ export function BirthdayPickerField({ value, onPick, error, success }: BirthdayP
   function openSheet() {
     Keyboard.dismiss();
     setDraft(picked ?? startingDate());
-    setMoved(false);
     setOpen(true);
   }
 
   function closeSheet() {
     setOpen(false);
-  }
-
-  function handleChange(date: Date) {
-    setDraft(date);
-    setMoved(true);
   }
 
   function handleDone() {
@@ -199,12 +193,12 @@ export function BirthdayPickerField({ value, onPick, error, success }: BirthdayP
                 selection={draft}
                 range={range}
                 displayedComponents={['date']}
-                onDateChange={handleChange}
+                onDateChange={setDraft}
                 modifiers={WHEEL_MODIFIERS}
               />
             </Host>
             <View style={{ marginTop: space.md }}>
-              <PrimaryButton label="Done" onPress={handleDone} disabled={!moved} />
+              <PrimaryButton label="Done" onPress={handleDone} />
             </View>
           </View>
         </View>

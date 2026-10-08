@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,11 +20,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// maxAvatarBytes caps an avatar upload at 5 MiB. This bound is passed into
-// the presigned request itself (ContentLength), not merely checked in Go,
-// so the storage provider enforces it even if the uploading client ignores
-// what it was handed.
-const maxAvatarBytes = 5 * 1024 * 1024
+// maxAvatarBytes caps an avatar upload at 50 MiB: a safety ceiling far above
+// any phone photo, so in practice people can pick any photo (the developer
+// asked for no practical limit, 2026-10-08). This bound is passed into the
+// presigned request itself (ContentLength), not merely checked in Go, so the
+// storage provider enforces it even if the uploading client ignores what it
+// was handed.
+const maxAvatarBytes = 50 * 1024 * 1024
 
 // presignExpiry is how long a presigned avatar-upload URL remains valid.
 const presignExpiry = 300 * time.Second
@@ -39,12 +42,41 @@ var (
 	ErrIncompleteConfig = errors.New("storage: incomplete S3 configuration")
 )
 
-// allowedAvatarContentTypes maps each accepted content type to the file
-// extension used in the object key.
+// allowedAvatarContentTypes maps the common image content types to the file
+// extension used in the object key. Any other image type is accepted too
+// (see avatarExtension); only things that are not images are refused.
 var allowedAvatarContentTypes = map[string]string{
 	"image/jpeg": "jpg",
 	"image/png":  "png",
 	"image/webp": "webp",
+	"image/gif":  "gif",
+	"image/heic": "heic",
+	"image/heif": "heif",
+	"image/avif": "avif",
+}
+
+// avatarExtension returns the object-key extension for an image content type.
+// A type outside the map is accepted when it is image/ followed by up to ten
+// lowercase letters or digits, and that subtype becomes the extension; anything
+// else (a PDF, a path, an odd character) is refused so nothing unexpected ever
+// lands in an object key.
+func avatarExtension(contentType string) (string, bool) {
+	if ext, ok := allowedAvatarContentTypes[contentType]; ok {
+		return ext, true
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		return "", false
+	}
+	sub := contentType[len("image/"):]
+	if sub == "" || len(sub) > 10 {
+		return "", false
+	}
+	for _, r := range sub {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return "", false
+		}
+	}
+	return sub, true
 }
 
 // UploadTicket is what a client receives to perform a direct-to-storage
@@ -121,7 +153,7 @@ func NewAvatarStore(cfg Config) (AvatarStore, error) {
 // PresignAvatarUpload returns a short-lived presigned PUT URL scoped to
 // userID's own object-key prefix, bounded by content type and size.
 func (s *s3AvatarStore) PresignAvatarUpload(ctx context.Context, userID uuid.UUID, contentType string, contentLength int64) (*UploadTicket, error) {
-	ext, ok := allowedAvatarContentTypes[contentType]
+	ext, ok := avatarExtension(contentType)
 	if !ok {
 		return nil, ErrUnsupportedContentType
 	}

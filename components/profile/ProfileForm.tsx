@@ -12,7 +12,7 @@ import { TextButton } from '@/components/ui/TextButton';
 import { FieldSuccess, TextField } from '@/components/ui/TextField';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
-import { fetchProfile, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
+import { fetchProfile, fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
 import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
 import { useSession } from '@/lib/session/store';
@@ -43,6 +43,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LOOKS_GOOD_MESSAGE = 'Looks good.';
 const EMAIL_MESSAGE = 'Enter a valid email address.';
+const EMAIL_TAKEN_MESSAGE = 'That email is already in use.';
 const PASSWORD_SHORT_MESSAGE = 'Password must be at least 8 characters.';
 const PASSWORD_LONG_MESSAGE = 'That password is too long. Use 72 characters or fewer.';
 const NAME_EMPTY_MESSAGE = 'Enter your name.';
@@ -118,6 +119,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | undefined>(undefined);
+  // The address the server said is taken; the message shows only while the box still holds it.
+  const [takenEmail, setTakenEmail] = useState<string | null>(null);
 
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | undefined>(undefined);
@@ -144,6 +147,11 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
+
+  // A message from the last try goes away as soon as anything on the page is changed.
+  useEffect(() => {
+    setFormError(undefined);
+  }, [email, password, birthday, name, username, bio]);
 
   const submittingRef = useRef(false);
   const usernameRef = useRef(username);
@@ -342,6 +350,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.8,
+        // Hands back a standard JPEG even for a HEIC photo, so any picture works everywhere.
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       applyPickedAsset(result);
     } catch {
@@ -359,6 +369,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.8,
+        // Hands back a standard JPEG even for a HEIC photo, so any picture works everywhere.
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       applyPickedAsset(result);
     } catch {
@@ -378,9 +390,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   // uploaded, not the picker's asset.fileSize (which can differ after the picker
   // re-encodes at quality 0.8).
   async function resolveContentLength(uri: string): Promise<number> {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return blob.size;
+    return fileSize(uri);
   }
 
   /** Uploads the picked photo once. A repeat call for the same file returns the first URL. */
@@ -402,7 +412,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   // The green notes. Email and password speak as you type; the name after you leave the box (or
   // at once when it came filled in); the birthday once a date is chosen. The birthday note
   // always applies the 13+ rule, even on the finish page, which leaves that rule to the server.
-  const emailOk = signup && email.trim() !== '' && emailProblem(email) === undefined;
+  const emailTakenNow = signup && takenEmail !== null && email.trim().toLowerCase() === takenEmail;
+  const emailOk = signup && email.trim() !== '' && emailProblem(email) === undefined && !emailTakenNow;
   const passwordOk = signup && password !== '' && passwordProblem(password) === undefined;
   const nameOk = joining && nameValid && (nameTouched || initialName.trim() !== '');
   const birthdayOk = joining && checkBirthday(birthday, new Date(), { ignoreAge: false }).ok;
@@ -420,6 +431,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   if (signup) {
     canSubmit =
       emailProblem(email) === undefined &&
+      !emailTakenNow &&
       passwordProblem(password) === undefined &&
       birthdayValid &&
       nameValid &&
@@ -476,6 +488,12 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   function handleSubmitError(err: unknown) {
     if (!(err instanceof ApiError)) {
       setFormError(GENERIC_MESSAGE);
+      return;
+    }
+    if (err.code === 'email_taken') {
+      // An email problem: it shows under the Email box until the email is changed, and Continue
+      // waits for a different one. It does not tell the person to log in.
+      setTakenEmail(email.trim().toLowerCase());
       return;
     }
     if (err.code === 'under_minimum_age') {
@@ -711,7 +729,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
               value={email}
               onChangeText={handleEmailChange}
               onBlur={() => setEmailError(emailProblem(email))}
-              error={emailError}
+              error={emailError ?? (emailTakenNow ? EMAIL_TAKEN_MESSAGE : undefined)}
               success={emailOk ? LOOKS_GOOD_MESSAGE : undefined}
               keyboardType="email-address"
               autoCapitalize="none"
@@ -921,7 +939,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
               error={bioError}
               placeholder="Tell people what you're spinning for."
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
               maxLength={BIO_MAX_LENGTH}
               showCount
               clearable
