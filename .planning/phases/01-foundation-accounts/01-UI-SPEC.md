@@ -27,7 +27,7 @@ revision_reason: "Revision 10 (2026-10-04) is a scoped change requested by the d
 >
 > **Copy added:** Birthday, Month, Day, Year, MM, DD, YYYY, Show, Hide; the birthday hint; birthday errors ("Enter your birthday as month, day and year." / "Enter a four-digit year." / "That date doesn't exist. Check the day and month." / "That date is in the future."); "Enter your name." (replaces "Name is required."); "That password is too long. Use 72 characters or fewer."; "That email or password isn't right."; "Too many tries. Wait a minute and try again."; "Use a JPG or PNG under 5 MB."; "Already have an account? Log in" (choose-method link). All are pending the developer's keep-or-change answer in plan 01-19 Task 4. No legal text is written anywhere.
 >
-> **Login.** A separate small route, `app/(auth)/login.tsx`: Email, Password, "Log in", "Sign up instead". An account that never verified its email can log in.
+> **Login.** A separate small route, `app/(auth)/login.tsx`: a Back control at the top left (the chevron and "Back", the same as on the sign-up page), Email, Password, "Log in", "Sign up instead". Back and "Sign up instead" both return to choose-method, so a person who is not sure how they signed up can pick Email, Apple or Google (added 2026-10-07 at the developer's request; "Sign up instead" used to jump straight to the email form). An account that never verified its email can log in.
 >
 > **Unchanged:** the tokens, fonts, the `md` radius cap on every tappable element, the Welcome page and choose-method (which gains the "Log in" link).
 

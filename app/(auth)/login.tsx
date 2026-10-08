@@ -1,18 +1,21 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { AppText, TextLink } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
-import { space } from '@/lib/theme/tokens';
+import { color, space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
 import { useSession } from '@/lib/session/store';
 
 /**
- * Log in with email and password. Sign-up is its own page now (make-it-yours); the two
- * link to each other. An account that never verified its email logs in like any other.
+ * Log in with email and password. Sign-up is its own page now (make-it-yours). Back and
+ * "Sign up instead" both return to choose-method, where Email, Apple and Google are offered,
+ * so a person who is not sure how they signed up can pick. An account that never verified
+ * its email logs in like any other.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,6 +37,13 @@ export default function LoginScreen() {
   // the keyboard cursor there without needing TextField to expose a ref.
   const [attemptId, setAttemptId] = useState(0);
   const [autoFocusField, setAutoFocusField] = useState<'email' | 'password' | null>(null);
+
+  // This page is only pushed from choose-method (or swapped in for the sign-up form that was
+  // pushed from it), so one step back is the method chooser. The replace is a safety net.
+  function backToChooser() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/choose-method');
+  }
 
   function validateEmailValue(value: string): string | undefined {
     return EMAIL_PATTERN.test(value.trim()) ? undefined : 'Enter a valid email address.';
@@ -84,8 +94,21 @@ export default function LoginScreen() {
 
   return (
     <Screen>
-      <View style={{ paddingTop: space.xxl }}>
-        <AppText role="heading">Log in</AppText>
+      <View style={{ paddingTop: space.lg }}>
+        <Pressable
+          onPress={backToChooser}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={12}
+          style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
+        >
+          <Ionicons name="chevron-back" size={22} color={color.ink} />
+          <AppText role="body">Back</AppText>
+        </Pressable>
+
+        <View style={{ marginTop: space.xl }}>
+          <AppText role="heading">Log in</AppText>
+        </View>
 
         <View style={{ marginTop: space.lg }}>
           <TextField
@@ -132,7 +155,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={{ marginTop: space.md, alignItems: 'center' }}>
-          <TextLink onPress={() => router.replace('/make-it-yours')}>Sign up instead</TextLink>
+          <TextLink onPress={backToChooser}>Sign up instead</TextLink>
         </View>
       </View>
     </Screen>
