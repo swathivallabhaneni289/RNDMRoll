@@ -62,12 +62,6 @@ interface RequestOptions {
   auth?: boolean;
   /** Internal: set true on the single retry attempt after a refresh, to prevent looping. */
   retry?: boolean;
-  /**
-   * Send this access token instead of the stored one. Only for the instant after sign-up,
-   * before the session is saved (the photo upload). A request with an explicit token never
-   * triggers the refresh-and-retry path.
-   */
-  token?: string;
 }
 
 /**
@@ -87,9 +81,7 @@ async function request<T>(
     'Content-Type': 'application/json',
   };
 
-  if (opts.token) {
-    headers.Authorization = `Bearer ${opts.token}`;
-  } else if (opts.auth !== false) {
+  if (opts.auth !== false) {
     const token = getAccessToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -133,7 +125,7 @@ async function request<T>(
   // this branch for it (or for any unauthenticated call) would start a second refresh whose
   // own 401 awaits the first, so the two wait on each other forever and restore() never
   // settles. Those 401s must surface as the ApiError for the store to sign out on.
-  const isRefreshable = opts.auth !== false && !opts.token && path !== '/auth/refresh';
+  const isRefreshable = opts.auth !== false && path !== '/auth/refresh';
   if (response.status === 401 && code === 'token_expired' && !opts.retry && isRefreshable) {
     if (!refreshPromise) {
       refreshPromise = refreshSession().finally(() => {

@@ -17,16 +17,19 @@ import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } 
 import { useSession } from '@/lib/session/store';
 
 /**
- * The one profile page, in three modes (plan 01-19):
- *   signup: signed out. Email, password, birthday, photo, name, username, bio. Continue.
- *   finish: signed in with an unfinished account (Apple or Google). Birthday, photo, name,
- *           username, bio. Continue, plus Log out.
+ * The one profile page, in four modes (plans 01-19 and 01-20):
+ *   signup: signed out. Email, password, birthday, name, username. Continue.
+ *   finish: signed in with an unfinished account (Apple or Google). Birthday, name, username.
+ *           Continue, plus Log out.
+ *   extras: signed in, right after signup or finish. Photo and bio, both optional. Continue
+ *           or Skip for now. Shown once, in place of the landing page.
  *   edit:   signed in and complete. Photo, name, username, bio. Save changes, Log out.
- * The caller picks the mode once on mount and never changes it, so the signIn or signOut
- * that ends a submit cannot make this page show anything new while the screen swaps.
+ * The caller picks the mode once on mount and never changes it (the landing route remounts
+ * the form with a new key when its page changes), so the signIn or signOut that ends a
+ * submit cannot make this page show anything new while the screen swaps.
  * The look is the "Make it yours." edit page built in 6054474.
  */
-export type ProfileFormMode = 'signup' | 'finish' | 'edit';
+export type ProfileFormMode = 'signup' | 'finish' | 'extras' | 'edit';
 
 const BIO_MAX_LENGTH = 160;
 const NAME_MAX_LENGTH = 50;
@@ -48,8 +51,6 @@ const USERNAME_TAKEN_MESSAGE = "That username's taken. Try one of these:";
 const USERNAME_TAKEN_NO_ALTERNATES_MESSAGE = "That username's taken.";
 const USERNAME_CHECK_FAILED_MESSAGE = "Couldn't check that username. Try again.";
 const GENERIC_MESSAGE = 'Something went wrong. Please try again.';
-const PHOTO_FAILED_TITLE = "Couldn't upload your photo.";
-const PHOTO_FAILED_MESSAGE = 'You can add one later from your profile.';
 const REFUSAL_TITLE = 'RNDMRoll is for ages 13 and up.';
 const REFUSAL_MESSAGE = "We can't make an account for you. We didn't keep your birthday.";
 
@@ -93,12 +94,15 @@ type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   const router = useRouter();
-  const { user, signIn, signOut, reloadUser } = useSession();
+  const { user, signIn, signOut, reloadUser, startExtras, finishExtras } = useSession();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const signup = mode === 'signup';
   const edit = mode === 'edit';
+  const extras = mode === 'extras';
+  // Signup and finish ask who the person is; extras and edit are the profile pages.
+  const joining = signup || mode === 'finish';
   // Finish mode leaves the 13+ rule to the server: an under-13 birthday must be sent so the
   // server can delete the unfinished account and the refusal path runs (plan step 18).
   const ageOptions = { ignoreAge: mode === 'finish' };
@@ -157,7 +161,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   }, [username]);
 
   useEffect(() => {
-    if (!edit && name.trim().length > 0 && username === '') {
+    if (joining && name.trim().length > 0 && username === '') {
       maybeSuggestUsername(name);
     }
     return () => {
@@ -226,7 +230,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   function maybeSuggestUsername(fromName: string) {
     const trimmed = fromName.trim();
-    if (edit || suggestionFetchedRef.current || usernameEditedRef.current || trimmed.length === 0) return;
+    if (!joining || suggestionFetchedRef.current || usernameEditedRef.current || trimmed.length === 0) return;
     suggestionFetchedRef.current = true;
     void fetchSuggestion(trimmed);
   }
@@ -363,11 +367,11 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   }
 
   /** Uploads the picked photo once. A repeat call for the same file returns the first URL. */
-  async function ensureAvatarUploaded(token?: string): Promise<string | undefined> {
+  async function ensureAvatarUploaded(): Promise<string | undefined> {
     if (!pendingAvatarUri) return undefined;
     if (uploadedRef.current?.uri === pendingAvatarUri) return uploadedRef.current.url;
     const contentLength = await resolveContentLength(pendingAvatarUri);
-    const url = await uploadAvatar(pendingAvatarUri, pendingAvatarMimeType, contentLength, token);
+    const url = await uploadAvatar(pendingAvatarUri, pendingAvatarMimeType, contentLength);
     uploadedRef.current = { uri: pendingAvatarUri, url };
     return url;
   }
@@ -375,7 +379,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   const trimmedName = name.trim();
   const trimmedBio = bio.trim();
 
-  const birthdayResult = edit ? null : checkBirthday(birthday, new Date(), ageOptions);
+  const birthdayResult = joining ? checkBirthday(birthday, new Date(), ageOptions) : null;
   const birthdayValid = birthdayResult?.ok === true;
   const nameValid = nameProblem(name) === undefined;
   const usernameValid =
@@ -400,16 +404,15 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       !submitting;
   } else if (mode === 'finish') {
     canSubmit = birthdayValid && nameValid && usernameValid && !usernameBlocking && !submitting;
+  } else if (extras) {
+    // Photo and bio are both optional, so Continue with neither filled in simply moves on.
+    canSubmit = !submitting;
   } else {
     canSubmit = hasChanges && nameValid && usernameValid && !usernameBlocking && !submitting;
   }
 
   function showRefusal() {
     Alert.alert(REFUSAL_TITLE, REFUSAL_MESSAGE);
-  }
-
-  function showPhotoFailed() {
-    Alert.alert(PHOTO_FAILED_TITLE, PHOTO_FAILED_MESSAGE);
   }
 
   // The server named a field: show this page's own message under it.
@@ -484,29 +487,11 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       name: trimmedName,
       username,
     };
-    if (trimmedBio.length > 0) body.bio = trimmedBio;
 
     const result = await api.post<AuthResult>('/auth/signup', body, { auth: false });
 
-    // The photo goes up with the NEW account's token and is saved on the account; the
-    // session is stored last, so this page stays up through the upload. A failed photo
-    // never undoes the account.
-    let session: AuthResult = result;
-    let photoFailed = false;
-    if (pendingAvatarUri) {
-      try {
-        const url = await ensureAvatarUploaded(result.access_token);
-        if (url) {
-          const updated = await updateProfile({ avatar_url: url }, result.access_token);
-          session = { ...result, user: updated };
-        }
-      } catch {
-        photoFailed = true;
-      }
-    }
-
-    await signIn(session);
-    if (photoFailed) showPhotoFailed();
+    // The landing route opens on the photo-and-bio page for this one sign-in.
+    await signIn(result, { extras: true });
   }
 
   async function submitFinish() {
@@ -517,7 +502,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     }
 
     // The birthday goes ALONE first. An age under 13 deletes the account, so nothing else
-    // (no photo, no name) may be sent before the server has accepted it.
+    // (no name, no username) may be sent before the server has accepted it.
     if (!birthdaySavedRef.current) {
       try {
         await updateProfile({ birthday: check.iso });
@@ -536,6 +521,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           try {
             const fresh = await fetchProfile();
             if (fresh.onboarding_complete) {
+              startExtras();
               await reloadUser();
               return;
             }
@@ -547,22 +533,33 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       }
     }
 
-    let avatarUrl: string | undefined;
-    let photoFailed = false;
-    try {
-      avatarUrl = await ensureAvatarUploaded();
-    } catch {
-      photoFailed = true;
-    }
-
-    const patch: ProfilePatch = { name: trimmedName, username };
-    if (trimmedBio !== initialBio.trim()) patch.bio = trimmedBio;
-    if (avatarUrl) patch.avatar_url = avatarUrl;
-
-    await updateProfile(patch);
+    await updateProfile({ name: trimmedName, username });
+    // Up before the user reads as complete, so the landing route opens on the photo-and-bio page.
+    startExtras();
     // The root guard swaps this screen for the app once the user reads as complete.
     await reloadUser();
-    if (photoFailed) showPhotoFailed();
+  }
+
+  async function submitExtras() {
+    let avatarUrl: string | undefined;
+    try {
+      avatarUrl = await ensureAvatarUploaded();
+    } catch (err) {
+      // Stay on the page: nothing was saved, so the person can try the photo again or skip it.
+      setAvatarError(err instanceof ApiError ? err.userMessage : GENERIC_MESSAGE);
+      return;
+    }
+
+    const patch: ProfilePatch = {};
+    if (trimmedBio.length > 0) patch.bio = trimmedBio;
+    if (avatarUrl) patch.avatar_url = avatarUrl;
+
+    if (Object.keys(patch).length > 0) {
+      await updateProfile(patch);
+      await reloadUser();
+    }
+    // The landing route swaps this page for the edit page once the flag clears.
+    finishExtras();
   }
 
   async function submitEdit() {
@@ -588,10 +585,13 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     submittingRef.current = true;
     setSubmitting(true);
     setFormError(undefined);
+    // A photo message from the last try would otherwise sit on the page while this one runs.
+    setAvatarError(undefined);
 
     try {
       if (signup) await submitSignup();
       else if (mode === 'finish') await submitFinish();
+      else if (extras) await submitExtras();
       else await submitEdit();
     } catch (err) {
       handleSubmitError(err);
@@ -602,6 +602,11 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   }
 
   const avatarPreviewUri = pendingAvatarUri ?? initialAvatarUrl;
+
+  // Skip for now: leave the photo and bio for later; the landing route shows the edit page.
+  function handleSkipExtras() {
+    finishExtras();
+  }
 
   async function handleConfirmSignOut() {
     setSigningOut(true);
@@ -629,7 +634,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     <Screen wheels="corner">
       <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          {mode !== 'finish' && router.canGoBack() ? (
+          {(signup || edit) && router.canGoBack() ? (
             <Pressable
               onPress={() => router.back()}
               accessibilityRole="button"
@@ -659,14 +664,20 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         </View>
 
-        <View style={{ marginTop: space.xl }}>
-          <AppText role="display">Make it yours.</AppText>
-          <View style={{ marginTop: space.sm }}>
-            <AppText role="body" tone="muted">
-              This is where your daily spins will live.
-            </AppText>
+        {joining ? (
+          <View style={{ marginTop: space.xl }}>
+            <AppText role="heading">Create your account.</AppText>
           </View>
-        </View>
+        ) : (
+          <View style={{ marginTop: space.xl }}>
+            <AppText role="display">Make it yours.</AppText>
+            <View style={{ marginTop: space.sm }}>
+              <AppText role="body" tone="muted">
+                This is where your daily spins will live.
+              </AppText>
+            </View>
+          </View>
+        )}
 
         {signup ? (
           <View style={{ marginTop: space.lg }}>
@@ -721,7 +732,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        {!edit ? (
+        {joining ? (
           <View style={{ marginTop: signup ? space.md : space.lg }}>
             <Text style={labelStyle}>Birthday</Text>
             <View style={{ flexDirection: 'row', gap: space.sm }}>
@@ -780,97 +791,105 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        <View style={{ marginTop: space.lg, alignItems: 'center' }}>
-          <DialAvatar
-            name={name}
-            uri={avatarPreviewUri}
-            placeholder="camera"
-            ring={false}
-            badge
-            onPress={handleChangePhoto}
-            accessibilityLabel="Change profile photo"
-          />
-          <View style={{ marginTop: space.sm }}>
-            <TextButton label={avatarPreviewUri ? 'Change photo' : 'Add photo'} tone="muted" onPress={handleChangePhoto} />
+        {!joining ? (
+          <View style={{ marginTop: space.lg, alignItems: 'center' }}>
+            <DialAvatar
+              name={name}
+              uri={avatarPreviewUri}
+              placeholder="camera"
+              ring={false}
+              badge
+              onPress={handleChangePhoto}
+              accessibilityLabel="Change profile photo"
+            />
+            <View style={{ marginTop: space.sm }}>
+              <TextButton label={avatarPreviewUri ? 'Change photo' : 'Add photo'} tone="muted" onPress={handleChangePhoto} />
+            </View>
+            {avatarError ? (
+              <View style={{ marginTop: space.xs }}>
+                <AppText role="label" tone="destructive">
+                  {avatarError}
+                </AppText>
+              </View>
+            ) : null}
           </View>
-          {avatarError ? (
-            <View style={{ marginTop: space.xs }}>
-              <AppText role="label" tone="destructive">
-                {avatarError}
-              </AppText>
+        ) : null}
+
+        {!extras ? (
+          <>
+            <View style={{ marginTop: space.lg }}>
+              <TextField
+                label="Name"
+                variant="soft"
+                value={name}
+                onChangeText={handleNameChange}
+                onBlur={handleNameBlur}
+                error={nameError}
+                autoCapitalize="words"
+                autoComplete="name"
+                textContentType="name"
+              />
             </View>
-          ) : null}
-        </View>
 
-        <View style={{ marginTop: space.lg }}>
-          <TextField
-            label="Name"
-            variant="soft"
-            value={name}
-            onChangeText={handleNameChange}
-            onBlur={handleNameBlur}
-            error={nameError}
-            autoCapitalize="words"
-            autoComplete="name"
-            textContentType="name"
-          />
-        </View>
-
-        <View style={{ marginTop: space.md }}>
-          <TextField
-            label="Username"
-            variant="soft"
-            prefix="@"
-            value={username}
-            onChangeText={handleUsernameChange}
-            onBlur={handleUsernameBlur}
-            status={usernameStatus}
-            error={usernameError}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {usernameStatus === 'taken' && usernameAlternates.length > 0 ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: space.xs, gap: space.xs }}>
-              {usernameAlternates.map((alternate) => (
-                <Pressable
-                  key={alternate}
-                  onPress={() => handleAlternatePress(alternate)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use username ${alternate}`}
-                  style={{
-                    ...elevation.subtle,
-                    borderRadius: radius.sm,
-                    paddingHorizontal: space.sm,
-                    paddingVertical: space.xs,
-                  }}
-                >
-                  <AppText role="label">{alternate}</AppText>
-                </Pressable>
-              ))}
+            <View style={{ marginTop: space.md }}>
+              <TextField
+                label="Username"
+                variant="soft"
+                prefix="@"
+                value={username}
+                onChangeText={handleUsernameChange}
+                onBlur={handleUsernameBlur}
+                status={usernameStatus}
+                error={usernameError}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {usernameStatus === 'taken' && usernameAlternates.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: space.xs, gap: space.xs }}>
+                  {usernameAlternates.map((alternate) => (
+                    <Pressable
+                      key={alternate}
+                      onPress={() => handleAlternatePress(alternate)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use username ${alternate}`}
+                      style={{
+                        ...elevation.subtle,
+                        borderRadius: radius.sm,
+                        paddingHorizontal: space.sm,
+                        paddingVertical: space.xs,
+                      }}
+                    >
+                      <AppText role="label">{alternate}</AppText>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
             </View>
-          ) : null}
-        </View>
+          </>
+        ) : null}
 
-        <View style={{ marginTop: space.md }}>
-          <TextField
-            label="Bio"
-            variant="soft"
-            value={bio}
-            onChangeText={(value) => {
-              setBio(value);
-              if (bioError) setBioError(undefined);
-            }}
-            error={bioError}
-            placeholder="Tell people what you're spinning for."
-            multiline
-            numberOfLines={3}
-            maxLength={BIO_MAX_LENGTH}
-            showCount
-            clearable
-            hint="Optional"
-            textAlignVertical="top"
-          />
-        </View>
+        {!joining ? (
+          <View style={{ marginTop: space.md }}>
+            <TextField
+              label="Bio"
+              variant="soft"
+              value={bio}
+              onChangeText={(value) => {
+                setBio(value);
+                if (bioError) setBioError(undefined);
+              }}
+              error={bioError}
+              placeholder="Tell people what you're spinning for."
+              multiline
+              numberOfLines={3}
+              maxLength={BIO_MAX_LENGTH}
+              showCount
+              clearable
+              hint="Optional"
+              textAlignVertical="top"
+            />
+          </View>
+        ) : null}
 
         {formError ? (
           <View style={{ marginTop: space.md }}>
@@ -893,6 +912,10 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
         {signup ? (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>
             <TextLink onPress={() => router.replace('/login')}>Log in instead</TextLink>
+          </View>
+        ) : extras ? (
+          <View style={{ marginTop: space.lg, alignItems: 'center' }}>
+            <TextButton label="Skip for now" tone="muted" disabled={submitting} onPress={handleSkipExtras} />
           </View>
         ) : (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>

@@ -36,14 +36,14 @@ export async function fetchProfile(): Promise<ApiUser> {
  * catch or reshape that error, so the caller (the edit screen) can render
  * the same taken state the create-profile screen renders.
  */
-export async function updateProfile(patch: ProfilePatch, token?: string): Promise<ApiUser> {
+export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
   const body: ProfilePatch = {};
   if (patch.name !== undefined) body.name = patch.name;
   if (patch.username !== undefined) body.username = patch.username;
   if (patch.bio !== undefined) body.bio = patch.bio;
   if (patch.avatar_url !== undefined) body.avatar_url = patch.avatar_url;
   if (patch.birthday !== undefined) body.birthday = patch.birthday;
-  return api.patch<ApiUser>('/me', body, token ? { token } : {});
+  return api.patch<ApiUser>('/me', body);
 }
 
 /**
@@ -59,21 +59,14 @@ export async function updateProfile(patch: ProfilePatch, token?: string): Promis
 export async function uploadAvatar(
   localUri: string,
   contentType: string,
-  contentLength: number,
-  token?: string
+  contentLength: number
 ): Promise<string> {
-  // `token` is for the one moment the session is not stored yet: sign-up uploads the
-  // photo with the new account's access token before signing in.
   let ticket: AvatarUploadTicket;
   try {
-    ticket = await api.post<AvatarUploadTicket>(
-      '/me/avatar/upload-url',
-      {
-        content_type: contentType,
-        content_length: contentLength,
-      },
-      token ? { token } : {}
-    );
+    ticket = await api.post<AvatarUploadTicket>('/me/avatar/upload-url', {
+      content_type: contentType,
+      content_length: contentLength,
+    });
   } catch (err) {
     // A refused ticket means the file itself is the problem (type or size).
     if (err instanceof ApiError && (err.code === 'validation_failed' || err.code === 'payload_too_large')) {

@@ -101,7 +101,14 @@ export async function signOut(): Promise<void> {
 interface SessionContextValue {
   status: SessionStatus;
   user: ApiUser | null;
-  signIn: (result: AuthResult) => Promise<void>;
+  /**
+   * True from a finished sign-up (or a finished Apple or Google account) until the person
+   * finishes or skips the photo-and-bio page. In memory only: a relaunch never shows it.
+   */
+  extrasPending: boolean;
+  signIn: (result: AuthResult, options?: { extras?: boolean }) => Promise<void>;
+  startExtras: () => void;
+  finishExtras: () => void;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
   reloadUser: () => Promise<void>;
@@ -112,6 +119,7 @@ const SessionContext = createContext<SessionContextValue | undefined>(undefined)
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [user, setUser] = useState<ApiUser | null>(null);
+  const [extrasPending, setExtrasPending] = useState(false);
 
   // Refs, not state: the foreground retry reads these from an AppState callback that
   // must not re-subscribe on every change.
@@ -123,19 +131,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Bumped by signIn so a restore that started earlier cannot overwrite a newer sign-in.
   const signInEpochRef = useRef(0);
 
-  const signIn = useCallback(async (result: AuthResult) => {
+  const signIn = useCallback(async (result: AuthResult, options?: { extras?: boolean }) => {
     authBusyRef.current += 1;
     signInEpochRef.current += 1;
     try {
       await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, result.access_token, KEYCHAIN_OPTIONS);
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
       setAccessToken(result.access_token);
+      // Set before the status flips, so the landing page never draws once as the edit page.
+      // A plain log in or social sign-in clears it.
+      setExtrasPending(options?.extras === true);
       setUser(result.user);
       setStatus('authenticated');
     } finally {
       authBusyRef.current -= 1;
     }
   }, []);
+
+  const startExtras = useCallback(() => setExtrasPending(true), []);
+  const finishExtras = useCallback(() => setExtrasPending(false), []);
 
   const doSignOut = useCallback(async () => {
     authBusyRef.current += 1;
@@ -151,6 +165,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
       setAccessToken(null);
+      setExtrasPending(false);
       setUser(null);
       setStatus('unauthenticated');
     } finally {
@@ -258,7 +273,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value: SessionContextValue = {
     status,
     user,
+    extrasPending,
     signIn,
+    startExtras,
+    finishExtras,
     signOut: doSignOut,
     refreshSession: doRefreshSession,
     reloadUser,
