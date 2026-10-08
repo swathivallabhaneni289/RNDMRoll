@@ -10,6 +10,7 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.dominant } }}>
       <Stack.Screen name="profile" />
+      <Stack.Screen name="home" />
     </Stack>
   );
 }

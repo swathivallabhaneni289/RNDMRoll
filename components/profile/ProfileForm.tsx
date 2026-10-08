@@ -957,9 +957,11 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        {/* The edit page shows no button until something has changed, so a greyed button never looks pressed. */}
-        {edit && !hasChanges ? null : (
-          <View style={{ marginTop: space.lg }}>
+        <View style={{ marginTop: space.lg }}>
+          {edit && !hasChanges ? (
+            // Nothing to save, so the one button moves on to the next page (no greyed button at rest).
+            <PrimaryButton label="Continue" arrow onPress={() => router.push('/home')} />
+          ) : (
             <PrimaryButton
               label={edit ? 'Save changes' : 'Continue'}
               arrow
@@ -967,8 +969,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
               disabled={!canSubmit}
               loading={submitting}
             />
-          </View>
-        )}
+          )}
+        </View>
 
         {signup ? (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>
