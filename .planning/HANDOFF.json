@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-07T16:45:00.000Z",
+  "timestamp": "2026-10-08T09:50:00.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
-  "plan": 19,
-  "task": 4,
-  "total_tasks": 5,
+  "plan": 20,
+  "task": 3,
+  "total_tasks": 3,
   "status": "executing",
   "completed_tasks": [
     {
@@ -54,22 +54,39 @@
       "id": 8,
       "name": "Cold launch of the dev client as a complete account (Ava): landing page, checked by screenshot",
       "status": "done"
+    },
+    {
+      "id": 9,
+      "name": "Login page Back, and Sign up instead returns to choose-method (developer: looks good)",
+      "status": "done",
+      "commit": "b00cbf0"
+    },
+    {
+      "id": 10,
+      "name": "01-20 two-page sign-up built: page 1 'Create your account.' (email, password, birthday, name, username), page 2 'Make it yours.' (photo and bio, Continue or Skip for now) shown once through the in-memory extrasPending session flag and the landing route app/(app)/profile/index.tsx; server unchanged; tsc exit 0; cold launch to Welcome checked by screenshot",
+      "status": "done",
+      "commit": "255c8ad (independent review wf_76cca644-4a2: no confirmed defects; two small cleanups applied before the commit)"
+    },
+    {
+      "id": 11,
+      "name": "Walkthrough Group 1 done with the developer; Claude's under-13 curl passed (403 under_minimum_age, users 3 to 3)",
+      "status": "done"
     }
   ],
   "remaining_tasks": [
     {
-      "id": 9,
-      "name": "01-19 Task 4: the developer's walkthrough, Groups 1 to 5 in small steps (Group 1 starts with Log out on the phone, then Claude relaunches to confirm Welcome)",
+      "id": 12,
+      "name": "01-19 Task 4 walkthrough as rewritten by 01-20: Group 2 (page 1 field checks) handed out 2026-10-08, then Groups 3 to 5 one at a time",
+      "status": "in_progress"
+    },
+    {
+      "id": 13,
+      "name": "Approve strings: 'Create your account.' and 'Skip for now' (new in 01-20), the 01-19 table and the surviving ones in 01-15-PRETRACE sections 5 and 6; answer the open decision (a assumed)",
       "status": "not_started"
     },
     {
-      "id": 10,
-      "name": "Approve strings: the 01-19 table plus the surviving ones in 01-15-PRETRACE sections 5 and 6, and answer the open decision (a assumed)",
-      "status": "not_started"
-    },
-    {
-      "id": 11,
-      "name": "Write 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command; one close-out commit; only after the developer types approved",
+      "id": 14,
+      "name": "Write 01-20-SUMMARY.md, 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command; one close-out commit; only after the developer types approved",
       "status": "not_started"
     }
   ],
@@ -80,7 +97,7 @@
       "workaround": "Give one small group at a time and wait for ok or what looked wrong"
     },
     {
-      "description": "Steps 19 and 20 (Apple, Google) need real accounts, deferred to the end of the project",
+      "description": "Steps for Apple and Google need real accounts, deferred to the end of the project",
       "type": "external",
       "workaround": "Finish mode with a test-only account stands in"
     }
@@ -91,11 +108,6 @@
       "action": "Walk the 01-19 Task 4 groups on the phone and say ok or what looked off; later type approved",
       "context": "Everything is built, committed locally and live on the dev API",
       "blocking": true
-    },
-    {
-      "action": "Find the password of the developer's own test1@gmail.com account (needed in Group 4, step 21)",
-      "context": "Old account made before 01-19, no birthday on file",
-      "blocking": false
     },
     {
       "action": "Supply real Terms and Privacy text, set up Google, Apple, S3 and Resend accounts, domain, favicon, remove AI tag",
@@ -110,8 +122,8 @@
   ],
   "decisions": [
     {
-      "decision": "Sign-up is one page: email, password (8+), birthday (13+), photo, name, username, bio; first-time button Continue, edit button Save changes; no code, no email verification; bio and photo optional",
-      "rationale": "Developer decision 2026-10-06 replacing the Instagram-style multi-screen flow",
+      "decision": "Sign-up is TWO pages. Page 1 'Create your account.': email, password (8+), birthday (13+), name, username, Continue (the account is made there). Page 2 'Make it yours.': photo and bio, both optional, Continue or Skip for now, shown once right after sign-up and after an Apple or Google finish. The landing and edit page afterwards is unchanged (Save changes, Log out). No code, no email verification.",
+      "rationale": "Developer decision 2026-10-08 during the 01-19 walkthrough (bio and photo on a different page after signing up), after comparing Instagram's flow; picked option a. Replaces the one-page form of 2026-10-06",
       "phase": "01"
     },
     {
@@ -131,6 +143,6 @@
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "01-19 is built and live on the dev API. Give the developer Task 4 Group 1 (plain words): on the phone tap Log out and confirm, land on Welcome; Claude then relaunches (xcrun simctl terminate booted com.rndmroll.app; xcrun simctl launch booted com.rndmroll.app) and screenshots to confirm Welcome shows first; then Get started shows Continue with Email, Google, Log in link. Then Groups 2 to 5 one at a time (Claude-run steps: 5 under-13 curl, 10 optional stopped storage, 17 to 19 test-only incomplete account in rndmroll_dev, deleted by exact email afterwards; never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com). Rollback if needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
-  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results. Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals. Plan 01-18 is superseded but its research is reusable."
+  "next_action": "01-19 and 01-20 are built and live: do NOT rebuild them. Group 1 is done and Group 2 (page 1: Get started, Continue with Email, 'Create your account.' with Email, Password, Birthday, Name, Username and a greyed Continue, then the six bad-input tries) was handed to the developer on 2026-10-08; Claude's under-13 curl is done. Wait for their reply, then give the next group in plain words, one small group at a time (Group 3: username check, email already registered, a new account lands on page 2 with photo, Bio, Continue and Skip for now, optional stopped-storage test). Claude-run steps are in 01-19-PLAN.md Task 4 (stopped storage, the test-only incomplete account in rndmroll_dev deleted by exact email afterwards; never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com). The review of 01-20 (wf_76cca644-4a2) found no confirmed defects and the code is committed (255c8ad). The phone was started before two small cleanups (a stale photo message kept across a retry; unused token plumbing removed), so relaunch it with simctl at the Group 2 to 3 boundary and say so. Commit with explicit paths only (never git add -A). Rollback of the server if ever needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
+  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results; they iterate fast and ask for small fixes mid-walkthrough (the login Back, then this split). Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals; a plain pick such as 'a' of an option Claude offered counts as the go for that option. Plan 01-18 is superseded but its research is reusable."
 }

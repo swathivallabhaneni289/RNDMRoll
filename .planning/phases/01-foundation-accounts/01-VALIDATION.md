@@ -29,7 +29,7 @@ created: 2026-09-15
 
 - **After every task commit:** Run `go test ./internal/... -run <relevant test> -v`
 - **After every plan wave:** Run `go test ./...`
-- **Before `/gsd-verify-work`:** Full backend suite must be green; manual UAT walkthrough of the one-page sign-up (01-19 Task 4) on device/simulator
+- **Before `/gsd-verify-work`:** Full backend suite must be green; manual UAT walkthrough of the two-page sign-up (01-19 Task 4 as rewritten by 01-20) on device/simulator
 - **Max feedback latency:** 15 seconds
 
 ---
@@ -68,7 +68,7 @@ Task IDs are assigned during planning (step 8) — this table maps requirements 
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| One-page sign-up ("Make it yours.": email, password, birthday, photo, name, username, bio, one Continue, then land in the app with no code and no email check), the finish mode for a social account, relaunch, and edit | ACCT-01, ACCT-03 | No mobile test framework set up in Phase 1 (RESEARCH.md flags this as an accepted gap given small scope) | Walk plan 01-19 Task 4 (groups 1 to 5) on the iOS simulator; confirm each step and the PROJECT.md design constraints (no purple gradients, pill buttons, emoji icons, em dashes, etc.) |
+| Two-page sign-up (page 1 "Create your account.": email, password, birthday, name, username, one Continue, no code and no email check; page 2 "Make it yours.": photo and bio, Continue or Skip for now, shown once, then the landing page), the finish mode for a social account, relaunch, and edit | ACCT-01, ACCT-03 | No mobile test framework set up in Phase 1 (RESEARCH.md flags this as an accepted gap given small scope) | Walk plan 01-19 Task 4 as rewritten by 01-20 (groups 1 to 5) on the iOS simulator; confirm each step and the PROJECT.md design constraints (no purple gradients, pill buttons, emoji icons, em dashes, etc.) |
 | Apple Sign In first-authorization name/email capture | ACCT-01 | Requires a real Apple ID and device-level Apple auth flow; name/email are only returned on the FIRST authorization and must be persisted immediately | Sign in with a fresh Apple test account, confirm name/email are captured and stored on first auth; sign out and back in, confirm subsequent logins still work without needing that data again |
 | Google Sign In flow | ACCT-01 | Requires real Google OAuth consent flow on-device | Sign in with a Google test account on device/simulator, confirm profile is created/linked correctly |
 | Profile edit (name/username/bio/photo) | ACCT-03 | UI-level interaction, no mobile test framework yet | Edit each field from the profile screen, confirm changes persist after app restart |
