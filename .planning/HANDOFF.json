@@ -1,11 +1,11 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-08T09:50:00.000Z",
+  "timestamp": "2026-10-08T10:45:00.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
-  "plan": 20,
-  "task": 3,
+  "plan": 21,
+  "task": 2,
   "total_tasks": 3,
   "status": "executing",
   "completed_tasks": [
@@ -63,36 +63,47 @@
     },
     {
       "id": 10,
-      "name": "01-20 two-page sign-up built: page 1 'Create your account.' (email, password, birthday, name, username), page 2 'Make it yours.' (photo and bio, Continue or Skip for now) shown once through the in-memory extrasPending session flag and the landing route app/(app)/profile/index.tsx; server unchanged; tsc exit 0; cold launch to Welcome checked by screenshot",
+      "name": "01-20 two-page sign-up: page 1 'Create your account.', page 2 'Make it yours.' (photo and bio, Continue or Skip for now) shown once via the in-memory extrasPending flag and the landing route; independent review wf_76cca644-4a2 found no confirmed defects",
       "status": "done",
-      "commit": "255c8ad (independent review wf_76cca644-4a2: no confirmed defects; two small cleanups applied before the commit)"
+      "commit": "255c8ad, docs 3bfcb80"
     },
     {
       "id": 11,
-      "name": "Walkthrough Group 1 done with the developer; Claude's under-13 curl passed (403 under_minimum_age, users 3 to 3)",
+      "name": "Walkthrough Group 1 and Group 2 (typed birthday boxes, all six tries) passed with the developer; Claude's under-13 curl passed (403 under_minimum_age, users 3 to 3)",
+      "status": "done"
+    },
+    {
+      "id": 12,
+      "name": "01-21: birthday as a soft box that opens a sheet with iOS's scrolling date picker (@expo/ui DatePicker, already compiled in; Done stays off until the picker moves; typed boxes remain off iOS), and green 'Looks good.' notes under Email and Password (as you type), Name (after leaving the box) and Birthday (13+ rule on even on the finish page). tsc 0, expo export iOS 0, scans clean. Independent review wf_56d85e4f-a6c: no confirmed defects, wording fixes only",
+      "status": "done",
+      "commit": "9537230"
+    },
+    {
+      "id": 13,
+      "name": "Developer re-checked page 1 on the phone with the date scroller and the green notes: 'Looks good to me.'",
       "status": "done"
     }
   ],
   "remaining_tasks": [
     {
-      "id": 12,
-      "name": "01-19 Task 4 walkthrough as rewritten by 01-20: Group 2 (page 1 field checks) handed out 2026-10-08, then Groups 3 to 5 one at a time",
+      "id": 14,
+      "name": "01-19 Task 4 Groups 3 to 5 one at a time (account and page 2, staying in, finish mode). Group 3 handed out 2026-10-08 as steps 1 to 5 (username check, already registered, make the account with try1@example.com, photo and bio, landing page); the Skip for now check (a second sign-up with try2@example.com) and the optional stopped-storage check follow",
       "status": "in_progress"
     },
     {
-      "id": 13,
-      "name": "Approve strings: 'Create your account.' and 'Skip for now' (new in 01-20), the 01-19 table and the surviving ones in 01-15-PRETRACE sections 5 and 6; answer the open decision (a assumed)",
+      "id": 15,
+      "name": "Approve strings: 'Create your account.', 'Skip for now' (01-20), 'Looks good.', 'Select your birthday', 'Done' (01-21), the 01-19 table and the surviving ones in 01-15-PRETRACE sections 5 and 6; answer the open decision (a assumed)",
       "status": "not_started"
     },
     {
-      "id": 14,
-      "name": "Write 01-20-SUMMARY.md, 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command; one close-out commit; only after the developer types approved",
+      "id": 16,
+      "name": "Write 01-21-SUMMARY.md, 01-20-SUMMARY.md, 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command (radius allow-list now has BirthdayPickerField.tsx); one close-out commit; only after the developer types approved",
       "status": "not_started"
     }
   ],
   "blockers": [
     {
-      "description": "Waiting for the developer to walk Task 4 on the phone",
+      "description": "Waiting for the developer to open the date scroller on the phone and walk the rest of Task 4",
       "type": "human_action",
       "workaround": "Give one small group at a time and wait for ok or what looked wrong"
     },
@@ -105,8 +116,8 @@
   "async_jobs": [],
   "human_actions_pending": [
     {
-      "action": "Walk the 01-19 Task 4 groups on the phone and say ok or what looked off; later type approved",
-      "context": "Everything is built, committed locally and live on the dev API",
+      "action": "Walk Task 4 Groups 3 to 5 on the phone and say ok or what looked off; later type approved",
+      "context": "Everything is built, committed locally and live on the dev client and the dev API",
       "blocking": true
     },
     {
@@ -127,6 +138,11 @@
       "phase": "01"
     },
     {
+      "decision": "Page 1 needs less typing: the birthday is picked on iOS's scrolling date picker (typed boxes off iOS) and a green 'Looks good.' note shows under checkable fields on the sign-up and Apple/Google finish pages. Not chosen: keyboard Next key, hints in boxes, tap-to-pick usernames, Apple/Google first, email-domain buttons. Face ID: not yet.",
+      "rationale": "Developer 2026-10-08: nobody wants to physically enter something. Plan 01-21",
+      "phase": "01"
+    },
+    {
       "decision": "The Profile view page is removed; the landing page is the Make it yours page",
       "rationale": "Developer: no middle page, do not want to tap to see the new design",
       "phase": "01"
@@ -143,6 +159,6 @@
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "01-19 and 01-20 are built and live: do NOT rebuild them. Group 1 is done and Group 2 (page 1: Get started, Continue with Email, 'Create your account.' with Email, Password, Birthday, Name, Username and a greyed Continue, then the six bad-input tries) was handed to the developer on 2026-10-08; Claude's under-13 curl is done. Wait for their reply, then give the next group in plain words, one small group at a time (Group 3: username check, email already registered, a new account lands on page 2 with photo, Bio, Continue and Skip for now, optional stopped-storage test). Claude-run steps are in 01-19-PLAN.md Task 4 (stopped storage, the test-only incomplete account in rndmroll_dev deleted by exact email afterwards; never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com). The review of 01-20 (wf_76cca644-4a2) found no confirmed defects and the code is committed (255c8ad). The phone was started before two small cleanups (a stale photo message kept across a retry; unused token plumbing removed), so relaunch it with simctl at the Group 2 to 3 boundary and say so. Commit with explicit paths only (never git add -A). Rollback of the server if ever needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
-  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results; they iterate fast and ask for small fixes mid-walkthrough (the login Back, then this split). Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits. Background-task notifications are never approvals; a plain pick such as 'a' of an option Claude offered counts as the go for that option. Plan 01-18 is superseded but its research is reusable."
+  "next_action": "01-19, 01-20 and 01-21 are built, committed (9537230 is 01-21) and live: do NOT rebuild them. Groups 1 and 2 are done (Group 2 re-checked with the date scroller and green notes: 'Looks good to me.'). Group 3 was handed to the developer (steps 1 to 5: username check, already registered with smoke-test@example.com, make the account with try1@example.com, photo and bio on page 2, landing page). Wait for their reply, then give the next piece in plain words: the Skip for now check (log out, sign up again with try2@example.com, tap Skip for now, landing page with no photo and no bio), then Claude's optional stopped-storage check (stop MinIO on 9000, the photo message under the circle reads 'Couldn't connect. Check your connection and try again.', Skip works, restart with ~/.local/share/rndmroll-work/start-test-storage.sh), then Group 4 and Group 5. Say 'date scroller', not 'wheel'. Throwaway accounts the walkthrough creates: try1@example.com, try2@example.com: delete by exact email at close-out only, never a bulk delete. Never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com. Rollback of the server if ever needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
+  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results; they iterate fast and ask for small changes mid-walkthrough (the login Back, the two-page split, now less typing). Avoid jargon: say 'date scroller', not 'wheel' (they thought 'wheel' meant the app's logo). Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits; a code edit can also reload the phone back to Welcome mid-test, so say so. Background-task notifications are never approvals; a plain pick such as 'a' of an option Claude offered counts as the go for that option. Plan 01-18 is superseded but its research is reusable."
 }

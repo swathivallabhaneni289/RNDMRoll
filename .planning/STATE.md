@@ -71,6 +71,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Defects from the static walkthrough review are fixed in plan 01-17 before the device walkthrough; branch stays lab/frosted-editorial — Developer: do not skip anything. Isolated copy, review, apply at a boundary.
 - [Phase 01]: Plan 01-18 (code-flow sign-up) is superseded by 01-19 (2026-10-07): one-page sign-up with a birthday (13+), no code, no email check; Apple and Google also enter a birthday (open decision a). Developer said start.
 - [Phase 01]: Sign-up is two pages (2026-10-08): page 1 account details (email, password, birthday, name, username), page 2 photo and bio once with Skip for now; replaces the one-page form; plan 01-20, built the same day. Developer picked option a after asking how Instagram does it.
+- [Phase 01]: Less typing on page 1 (2026-10-08): the birthday is picked on iOS's scrolling date picker (typed boxes off iOS) and a green "Looks good." note shows under checkable fields on the sign-up and Apple/Google finish pages; plan 01-21. Face ID, Next key, box hints, username choices, Apple/Google first: not chosen.
 
 ### Pending Todos
 
