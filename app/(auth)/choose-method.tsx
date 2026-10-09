@@ -21,12 +21,12 @@ import {
  * Background Texture sections). D-01/D-02/D-03: exactly three methods,
  * Apple gated to iOS, and no fourth SMS-based method of any kind.
  */
-// Apple is hidden until its real account exists (developer, 2026-10-09). Google is shown again so
-// the developer can try it (the real setup is still to do, so expect an error until it is done).
-// Set a constant to true or false to show or hide that button; the code and the server stay as
-// they are.
+// Apple and Google are hidden until their real accounts exist (developer, 2026-10-09: "let's
+// hide it ... keep the email part"). Google without its client IDs shows a red error screen
+// here and could crash a finished app. Set a constant to true to show that button; the code and
+// the server stay as they are.
 const APPLE_SIGN_IN_ENABLED = false;
-const GOOGLE_SIGN_IN_ENABLED = true;
+const GOOGLE_SIGN_IN_ENABLED = false;
 
 export default function ChooseMethodScreen() {
   const router = useRouter();
