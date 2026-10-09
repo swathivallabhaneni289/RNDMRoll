@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-09T07:45:22.000Z",
+  "timestamp": "2026-10-09T08:05:00.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
@@ -16,11 +16,11 @@
     {"id": 5, "name": "Walkthrough fixes: Done always on, email already in use message under the Email box, Bio box 2 lines, any photo up to 50 MiB, native uploadAsync upload (confirmed on phone and server)", "status": "done", "commit": "fdb457a"},
     {"id": 6, "name": "Main page button: Continue (placeholder page home.tsx) or Save changes, no greyed button", "status": "done", "commit": "a563b5f"},
     {"id": 7, "name": "Apple and Google buttons hidden by two constants in choose-method.tsx (email only first screen)", "status": "done", "commit": "2b4ddd7"},
-    {"id": 8, "name": "Walkthrough passed with the developer: Group 1, Group 2 (twice), already-in-use message, photo upload, check 4 (photo and bio page), staying signed in", "status": "done"}
+    {"id": 8, "name": "Walkthrough passed with the developer: Group 1, Group 2 (twice), already-in-use message, photo upload, check 4 (photo and bio page), staying signed in", "status": "done"},
+    {"id": 9, "name": "Sign up (black) and Log in (outlined) buttons on the first screen: PrimaryButton variant outline, UI-SPEC revision 15 and PRETRACE updated; phone relaunched with simctl, the cold start landed on Welcome", "status": "done", "commit": "c864e16"}
   ],
   "remaining_tasks": [
-    {"id": 9, "name": "Build the Sign up (black) and Log in (outlined) buttons on the first screen (developer said yes), swipe-away restart, developer looks", "status": "not_started"},
-    {"id": 10, "name": "Developer runs check 5 (finish-a and finish-b through the email Log in) and looks at the Continue page and Skip for now; answers: keep or remove the Log in instead link, phone numbers (Claude: not now), email code (Claude: before launch)", "status": "not_started"},
+    {"id": 10, "name": "Developer looks at the new Sign up and Log in buttons on the first screen, runs check 5 (finish-a and finish-b through the email Log in) and looks at the Continue page and Skip for now; answers: keep or remove the Log in instead link, phone numbers (Claude: not now), email code (Claude: before launch)", "status": "not_started"},
     {"id": 11, "name": "Optional: real Google setup (free Google Cloud project, test user, iOS and web client IDs, plugin in app.json, dev client rebuild, web ID into server config), then set GOOGLE_SIGN_IN_ENABLED true", "status": "not_started"},
     {"id": 12, "name": "Show all new words in one list for keep all or changes; confirm decision a (Apple and Google accounts also enter a birthday)", "status": "not_started"},
     {"id": 13, "name": "After approved: 01-21, 01-20, 01-19, 01-15, 01-17 SUMMARY files; close ROADMAP and STATE; re-run the 01-15 Task 1 gate; declare expo-file-system in package.json; delete throwaway accounts by exact email; one close-out commit; no push", "status": "not_started"}
@@ -32,7 +32,7 @@
   ],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Run check 5 and the Continue page; answer the open questions; type approved when happy", "context": "Everything is built, committed locally and live", "blocking": true},
+    {"action": "Look at the new Sign up and Log in buttons, run check 5 and the Continue page; answer the open questions; type approved when happy", "context": "Everything is built, committed locally and live; the phone was relaunched at Welcome", "blocking": true},
     {"action": "Decide on real Google (and later Apple) setup, domain, favicon, remove AI tag, Terms and Privacy text, Resend and S3 accounts", "context": "Launch list in PROJECT.md", "blocking": false},
     {"action": "Decide whether to push the local commits to GitHub", "context": "The repo is public; nothing is pushed", "blocking": false}
   ],
@@ -49,6 +49,6 @@
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "Run /gsd-resume-work, read .planning/phases/01-foundation-accounts/.continue-here.md, then build the Sign up (black) and Log in (outlined) buttons in app/(auth)/choose-method.tsx, tsc, commit with explicit paths, relaunch the phone with simctl and say so, and give the developer check 5 plus the Continue page as one numbered list. Never touch the three real dev accounts smoke-test, ava.stone.1004, test1@gmail.com. Do not push.",
-  "context_notes": "The developer dictates by voice and wants short plain messages and complete numbered test steps. Say date scroller, not wheel. Never restart the phone app mid-flow after a sign-up (page 2 is in memory only); a Home-and-tap does not reload the app, only a swipe-away or simctl relaunch does. Use single quotes in prose here and validate this file with python3 -I. The previous session ended at about 90 percent of its working memory; all state is in this file, .continue-here.md, PRETRACE section 6 and the memory folder."
+  "next_action": "Run /gsd-resume-work and read .planning/phases/01-foundation-accounts/.continue-here.md. The Sign up and Log in buttons are built (c864e16) and the phone was relaunched at Welcome. Wait for the developer's report on the first screen, check 5 (finish-a, finish-b) and the Continue page, and fix what they flag. Then the optional Google setup, the new-words list and the close-out. Never touch the three real dev accounts smoke-test, ava.stone.1004, test1@gmail.com. Do not push.",
+  "context_notes": "The developer dictates by voice and wants short plain messages and complete numbered test steps. Say date scroller, not wheel. Never restart the phone app mid-flow after a sign-up (page 2 is in memory only); a Home-and-tap does not reload the app, only a swipe-away or simctl relaunch does. Use single quotes in prose here and validate this file with python3 -I. Edit a screen in ONE write when you can: on 2026-10-09 separate edits to choose-method.tsx and PrimaryButton.tsx made the dev client reload itself to Welcome (an in-between state still used an import that was gone). A cold start of the dev client takes about 14 seconds (blank white for the first 6); a yellow dev-only warning bar can cover Get started (its X dismisses it). The previous session ended at about 90 percent of its working memory; all state is in this file, .continue-here.md, PRETRACE section 6 and the memory folder."
 }
