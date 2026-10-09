@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BrandMark } from '@/components/brand/BrandMark';
-import { AppText, TextLink } from '@/components/ui/AppText';
+import { AppText } from '@/components/ui/AppText';
 import { MethodButton } from '@/components/ui/MethodButton';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { space } from '@/lib/theme/tokens';
 import { useSession } from '@/lib/session/store';
@@ -16,15 +17,16 @@ import {
 } from '@/lib/auth/social';
 
 /**
- * D-05 step 1: the method chooser. This is the phase's one screen carrying
+ * D-05 step 1: the first screen. This is the phase's one screen carrying
  * the Brand Mark + texture moment (UI-SPEC's Focal Points / Brand Mark /
- * Background Texture sections). D-01/D-02/D-03: exactly three methods,
- * Apple gated to iOS, and no fourth SMS-based method of any kind.
+ * Background Texture sections). It offers a black Sign up button (straight to
+ * the email form) and an outlined Log in button (developer, 2026-10-09). D-03:
+ * no SMS-based method of any kind.
  */
 // Apple and Google are hidden until their real accounts exist (developer, 2026-10-09: "let's
 // hide it ... keep the email part"). Google without its client IDs shows a red error screen
-// here and could crash a finished app. Set a constant to true to show that button; the code and
-// the server stay as they are.
+// here and could crash a finished app. Set a constant to true to show that button below the
+// Sign up and Log in pair; the code and the server stay as they are.
 const APPLE_SIGN_IN_ENABLED = false;
 const GOOGLE_SIGN_IN_ENABLED = false;
 
@@ -79,10 +81,15 @@ export default function ChooseMethodScreen() {
         </View>
 
         <View style={{ marginTop: space.xxl, gap: space.md }}>
-          <MethodButton
-            provider="email"
-            label="Continue with Email"
+          <PrimaryButton
+            label="Sign up"
             onPress={() => router.push('/make-it-yours')}
+            disabled={inFlight !== null}
+          />
+          <PrimaryButton
+            variant="outline"
+            label="Log in"
+            onPress={() => router.push('/login')}
             disabled={inFlight !== null}
           />
           {showApple ? (
@@ -112,13 +119,6 @@ export default function ChooseMethodScreen() {
             </AppText>
           </View>
         ) : null}
-
-        <View style={{ marginTop: space.lg, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
-          <AppText role="body" tone="muted">
-            {'Already have an account? '}
-          </AppText>
-          <TextLink onPress={() => router.push('/login')}>Log in</TextLink>
-        </View>
       </View>
     </Screen>
   );

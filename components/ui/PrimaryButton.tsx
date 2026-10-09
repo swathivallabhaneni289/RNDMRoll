@@ -9,7 +9,7 @@ type PrimaryButtonProps = {
   onPress?: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: 'standard' | 'onPhoto';
+  variant?: 'standard' | 'onPhoto' | 'outline';
   /** A small arrow after the label (the profile form's Continue and Save). */
   arrow?: boolean;
 };
@@ -19,7 +19,10 @@ type PrimaryButtonProps = {
  * revision 9's single-use inversion for the Welcome cover screen's
  * "Get started" button: same shadow spec and `md` radius cap, fill and
  * label colors inverted so the button separates from the dark Ink scrim
- * behind it rather than merging into it. Both variants stay strictly
+ * behind it rather than merging into it. `variant="outline"` is the first
+ * screen's Log in button beside the black Sign up (UI-SPEC revision 15,
+ * 2026-10-09 follow-up): Dominant fill, a 1px Ink border and no shadow, with
+ * the same `md` radius cap and press feedback. All variants stay strictly
  * inside the existing Ink/Dominant pair.
  */
 export function PrimaryButton({
@@ -32,12 +35,17 @@ export function PrimaryButton({
 }: PrimaryButtonProps) {
   const isInert = disabled || loading;
   const isOnPhoto = variant === 'onPhoto';
+  const isOutline = variant === 'outline';
+  // Both inverted looks put Ink text on a light fill.
+  const inkOnLight = isOnPhoto || isOutline;
 
-  const containerStyle = isInert
-    ? { ...elevation.subtle, backgroundColor: color.inkDisabled }
-    : isOnPhoto
-      ? { ...elevation.raised, backgroundColor: color.dominant }
-      : { ...elevation.raised };
+  const containerStyle = isOutline
+    ? { backgroundColor: color.dominant, borderWidth: 1, borderColor: isInert ? color.inkDisabled : color.ink }
+    : isInert
+      ? { ...elevation.subtle, backgroundColor: color.inkDisabled }
+      : isOnPhoto
+        ? { ...elevation.raised, backgroundColor: color.dominant }
+        : { ...elevation.raised };
 
   // docs/motion-interaction-direction.md Section 10: "subtle press feedback
   // on interactive elements", built once here rather than per screen since
@@ -76,7 +84,7 @@ export function PrimaryButton({
         }}
       >
         {loading ? (
-          <ActivityIndicator color={isOnPhoto ? color.ink : color.dominant} />
+          <ActivityIndicator color={inkOnLight ? color.ink : color.dominant} />
         ) : disabled ? (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text
@@ -84,20 +92,27 @@ export function PrimaryButton({
                 fontSize: type.button.fontSize,
                 lineHeight: type.button.lineHeight,
                 fontFamily: type.button.fontFamily,
-                color: color.onInkDisabled,
+                color: isOutline ? color.inkDisabled : color.onInkDisabled,
               }}
             >
               {label}
             </Text>
-            {arrow ? <Ionicons name="arrow-forward" size={18} color={color.onInkDisabled} style={{ marginLeft: 8 }} /> : null}
+            {arrow ? (
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={isOutline ? color.inkDisabled : color.onInkDisabled}
+                style={{ marginLeft: 8 }}
+              />
+            ) : null}
           </View>
         ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <AppText role="button" tone={isOnPhoto ? 'default' : 'onInk'}>
+            <AppText role="button" tone={inkOnLight ? 'default' : 'onInk'}>
               {label}
             </AppText>
             {arrow ? (
-              <Ionicons name="arrow-forward" size={18} color={isOnPhoto ? color.ink : color.dominant} style={{ marginLeft: 8 }} />
+              <Ionicons name="arrow-forward" size={18} color={inkOnLight ? color.ink : color.dominant} style={{ marginLeft: 8 }} />
             ) : null}
           </View>
         )}
