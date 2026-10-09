@@ -21,9 +21,12 @@ import {
  * Background Texture sections). D-01/D-02/D-03: exactly three methods,
  * Apple gated to iOS, and no fourth SMS-based method of any kind.
  */
-// Apple and Google are hidden until their real accounts exist (developer, 2026-10-09: "hide
-// both"). Set this to true to bring both buttons back; the code and the server stay as they are.
-const SOCIAL_SIGN_IN_ENABLED = false;
+// Apple is hidden until its real account exists (developer, 2026-10-09). Google is shown again so
+// the developer can try it (the real setup is still to do, so expect an error until it is done).
+// Set a constant to true or false to show or hide that button; the code and the server stay as
+// they are.
+const APPLE_SIGN_IN_ENABLED = false;
+const GOOGLE_SIGN_IN_ENABLED = true;
 
 export default function ChooseMethodScreen() {
   const router = useRouter();
@@ -33,7 +36,7 @@ export default function ChooseMethodScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!SOCIAL_SIGN_IN_ENABLED || Platform.OS !== 'ios') return;
+    if (!APPLE_SIGN_IN_ENABLED || Platform.OS !== 'ios') return;
     let cancelled = false;
     isAppleSignInAvailable().then((available) => {
       if (!cancelled) setAppleAvailable(available);
@@ -43,7 +46,7 @@ export default function ChooseMethodScreen() {
     };
   }, []);
 
-  const showApple = SOCIAL_SIGN_IN_ENABLED && Platform.OS === 'ios' && appleAvailable;
+  const showApple = APPLE_SIGN_IN_ENABLED && Platform.OS === 'ios' && appleAvailable;
 
   async function handleSocial(provider: 'apple' | 'google') {
     setError(null);
@@ -91,7 +94,7 @@ export default function ChooseMethodScreen() {
               disabled={inFlight !== null && inFlight !== 'apple'}
             />
           ) : null}
-          {SOCIAL_SIGN_IN_ENABLED ? (
+          {GOOGLE_SIGN_IN_ENABLED ? (
             <MethodButton
               provider="google"
               label="Continue with Google"
