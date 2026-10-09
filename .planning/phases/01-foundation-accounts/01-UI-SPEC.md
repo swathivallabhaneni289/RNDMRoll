@@ -194,7 +194,7 @@ All eight values are unchanged in hex and in contrast-verification from revision
 
 **Muted text**, **Divider/Border**, **CTA fill states** (default/enabled vs. disabled), and **Status colors** (Success/Destructive): all unchanged in value and reasoning from revision 8. Disabled/blocked CTA state (e.g. Create your profile's "Finish setup" while a username check is in flight) uses the same Ink-at-35%-opacity-fill / Dominant-at-70%-opacity-label / `subtle`-elevation treatment as revision 8 declared for the equivalent prior-step CTA.
 
-**Coordination with Phase 2:** unchanged from revision 8 — see that revision's record for the full wheel-color coordination note.
+**Coordination with Phase 2:** SUPERSEDED 2026-10-07 (Phase 2 decision 6): wedges use ink-and-light grey tones only, from tokens.
 
 ---
 

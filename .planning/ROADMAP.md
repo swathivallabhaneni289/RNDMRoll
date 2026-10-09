@@ -92,10 +92,21 @@ Plans:
   4. User can customize their wheel's categories and relative weights
   5. Wheel spin screen uses a flat, muted, restrained-motion visual treatment (no prize-wheel/gambling aesthetic)
 
-**Plans**: TBD
+**Plans**: 0/3 plans executed
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md: The spin server: wheel, time zone, one spin a day, weekly bonus reroll, and test-only clock tools
+- [ ] 02-02-PLAN.md: The spin app: Today screen, wheel, countdown, weekly card, Edit wheel, and the bottom bar
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-03-PLAN.md: Cutover, gates, device walkthrough, and phase close-out
+
 **UI hint**: yes
 
-**Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. Exact window/late-badge grace-period cutoff (feeding Phase 5's FEED-02 "late" badge logic) remains a minor tuning parameter to set during Phase 2 planning.
+**Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
 
 ### Phase 3: Daily Entry
 
@@ -107,12 +118,12 @@ Plans:
   1. User can see today's rolled category before logging an entry
   2. User can log an entry with a photo (camera or library), title, half-star rating, and optional reaction
   3. Logging a repeat title creates a new dated entry rather than overwriting the prior one
-  4. User can resolve a day when the rolled category isn't satisfiable and sees the streak consequence of that resolution
+  4. User can skip a day when the rolled category isn't satisfiable and sees how it changes the week count (for example, 2 of 4 this week)
 
 **Plans**: TBD
 **UI hint**: yes
 
-**Resolved**: Unsatisfiable-category days use a capped streak-freeze — no entry required, streak preserved, distinct from the ROLL-02 reroll token. Exact freeze cap remains a minor tuning parameter to set during Phase 3 planning.
+**Resolved**: Unsatisfiable-category days use a free skip: no entry required, visible in the diary, and it shows its effect on the weekly goal count. Distinct from the ROLL-02 reroll.
 
 ### Phase 4: Personal Diary
 

@@ -13,8 +13,8 @@
 
 ### Roll & Wheel
 
-- [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. Exact window/late-badge grace-period cutoff (which also governs FEED-02's "late" badge) is a minor tuning parameter to set during Phase 2 planning, not a blocking unknown.
-- [ ] **ROLL-02**: User can earn one extra reroll token per week via streak milestones, and can spend a token to re-spin within the same day
+- [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
+- [ ] **ROLL-02**: User can earn one bonus reroll each week the weekly goal is met (an entry posted on at least 4 days, Monday to Sunday), keep one at a time, and spend it to re-spin within the same day
 - [ ] **ROLL-03**: User can customize their wheel by adding, removing, and reweighting categories (bigger wedge = higher probability), starting from a small default set (6-8 categories)
 - [ ] **ROLL-04**: Wheel spin screen shows every category wedge with a deceleration/landing moment, in a flat/muted, typography-led, restrained-motion style (no prize-wheel/gambling aesthetics: no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart wedge icons)
 
@@ -23,7 +23,7 @@
 - [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction, and an optional comment (a short free-text thought), logged against the day's rolled category
 - [ ] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
 - [ ] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
-- [ ] **ENTRY-04**: User can freeze a day when the rolled category isn't satisfiable (e.g., wheel says "book," nothing was read that day) — no entry is required that day and the streak is preserved, distinct from a reroll (ROLL-02, which swaps the category and still requires posting). Freezes are capped, not unlimited, to preserve daily scarcity; exact cap count is a minor tuning parameter for Phase 3 planning. A frozen day must be visibly distinguishable in the diary (DIARY-01), not a silent gap.
+- [ ] **ENTRY-04**: User can skip a day when the spun category isn't satisfiable (e.g., wheel says "book," nothing was read that day). No entry is required that day. The skip is visible in the diary (DIARY-01), not a silent gap, and shows its effect on the week (e.g., "2 of 4 this week"). A skip is distinct from a reroll (ROLL-02, which swaps the category and still requires posting).
 
 ### Personal Diary
 
