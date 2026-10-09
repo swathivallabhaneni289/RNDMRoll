@@ -5,7 +5,7 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: daily-roll
 status: planning
-stopped_at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents written on paper in ~/.local/share/rndmroll-phase2, to be merged into this tree, waiting for the developer's go
+stopped_at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents merged (2ad9220, nothing built); PAUSED at the developer's request; next session first removes Apple and Google sign-in completely, then asks for go
 last_updated: "2026-10-09T17:30:00.000Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 01 approved and closed
@@ -96,5 +96,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-09T17:30:00.000Z
-Stopped at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents to be merged into this tree, waiting for the developer's go
+Stopped at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents merged (2ad9220, nothing built); PAUSED; next session: remove Apple and Google completely, then ask for go
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md
