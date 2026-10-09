@@ -133,12 +133,10 @@ func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 }
 
 // buildIntegrationServer wires the real Server -- real pgx repositories --
-// over pool. OAuth and avatar-upload dependencies are package-local fakes
-// (fakeAppleVerifier, fakeGoogleVerifier, fakeAvatarStore -- declared in
-// oauth_test.go and profile_test.go, same package) since this environment
-// holds non-functional placeholder credentials for all three. The Google
-// fake is returned so a test can arm an identity.
-func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) (*Server, *fakeGoogleVerifier) {
+// over pool. The avatar-upload dependency is a package-local fake
+// (fakeAvatarStore, declared in profile_test.go, same package) since this
+// environment holds no real storage credentials.
+func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -146,10 +144,8 @@ func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) (*Server, *fakeGoo
 	refreshTokens := postgres.NewRefreshTokenRepo(pool)
 
 	refreshSvc := auth.NewRefreshService(refreshTokens, 30*24*time.Hour)
-	google := &fakeGoogleVerifier{}
 
 	authHandler := NewAuthHandler(users, refreshSvc, integrationJWTSecret, 15*time.Minute)
-	oauthHandler := NewOAuthHandler(users, &fakeAppleVerifier{}, google, refreshSvc, integrationJWTSecret, 15*time.Minute)
 	profileHandler := NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL)
 	usernameHandler := NewUsernameHandler(users)
 
@@ -157,7 +153,6 @@ func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) (*Server, *fakeGoo
 
 	server := NewServer(Deps{
 		Auth:      authHandler,
-		OAuth:     oauthHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
 		Users:     users,
@@ -165,7 +160,7 @@ func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) (*Server, *fakeGoo
 		Logger:    logger,
 	})
 
-	return server, google
+	return server
 }
 
 // integrationDoAuthedRequest mirrors auth_test.go's doJSONRequest but also
@@ -279,7 +274,7 @@ func integrationUserCount(t *testing.T, pool *pgxpool.Pool) int {
 // handler and both cross-cutting middlewares over the real Server.
 func TestFullOnboardingFlow(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	suggestRec := integrationDo(t, engine, http.MethodGet, "/v1/usernames/suggest?name=Onboarding+Flow+Tester", "", nil)
@@ -341,7 +336,7 @@ func TestFullOnboardingFlow(t *testing.T) {
 // token from just that and immediately use it.
 func TestSessionSurvivesRelaunch(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	session := integrationOnboardAccount(t, engine, "relaunch@example.com", "correct-horse-battery-staple", "Relaunch Tester", "relaunch_user")
@@ -373,7 +368,7 @@ func TestSessionSurvivesRelaunch(t *testing.T) {
 // never verified logs in, refreshes (Redeem), and reaches /me complete.
 func TestUnverifiedAccountCanLogInRefreshAndUseTheApp(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	integrationOnboardAccount(t, engine, "unverified-profile@example.com", "correct-horse-battery-staple", "Unverified Person", "unverified_person")
@@ -419,7 +414,7 @@ func TestUnverifiedAccountCanLogInRefreshAndUseTheApp(t *testing.T) {
 // and a wrong password or an unknown username is the same 401.
 func TestLoginWithAUsernameReachesTheSameAccountAsTheEmail(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	const password = "correct-horse-battery-staple"
@@ -464,7 +459,7 @@ func TestLoginWithAUsernameReachesTheSameAccountAsTheEmail(t *testing.T) {
 // authenticated as B.
 func TestCrossAccountIsolation(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	sessionA := integrationOnboardAccount(t, engine, "account-a@example.com", "correct-horse-battery-staple", "Account A", "account_a_user")
@@ -524,7 +519,7 @@ func TestCrossAccountIsolation(t *testing.T) {
 // only at the service layer.
 func TestRefreshTokenSingleUse(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	session := integrationOnboardAccount(t, engine, "single-use-refresh@example.com", "correct-horse-battery-staple", "Single Use", "single_use_user")
@@ -551,7 +546,7 @@ func TestRefreshTokenSingleUse(t *testing.T) {
 
 func TestIntegrationSignup_UnderThirteenStoresNothing(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 
 	rec := integrationDo(t, server.Engine(), http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{"birthday": birthdayYearsAgo(12)}))
 
@@ -565,7 +560,7 @@ func TestIntegrationSignup_UnderThirteenStoresNothing(t *testing.T) {
 
 func TestIntegrationSignup_EmailTakenStoresNothingNew(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 	integrationOnboardAccount(t, engine, "taken@example.com", "correct-horse-battery-staple", "First Person", "first_person")
 
@@ -583,7 +578,7 @@ func TestIntegrationSignup_EmailTakenStoresNothingNew(t *testing.T) {
 
 func TestIntegrationSignup_UsernameTakenStoresNothingNew(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 	integrationOnboardAccount(t, engine, "holder@example.com", "correct-horse-battery-staple", "Holder", "held_name")
 
@@ -618,7 +613,7 @@ func TestIntegrationSignup_UsernameTakenStoresNothingNew(t *testing.T) {
 // leaves no row behind.
 func TestIntegrationSignup_UsernameRaceLeavesExactlyOneAccount(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	const racers = 6
@@ -666,7 +661,7 @@ func TestIntegrationSignup_UsernameRaceLeavesExactlyOneAccount(t *testing.T) {
 // birthday, against the real repositories.
 func TestIntegrationNoResponseCarriesABirthdayKey(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, google := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	session := integrationOnboardAccount(t, engine, "privacy@example.com", "correct-horse-battery-staple", "Privacy Person", "privacy_person")
@@ -688,120 +683,6 @@ func TestIntegrationNoResponseCarriesABirthdayKey(t *testing.T) {
 	for _, st := range steps {
 		integrationDo(t, engine, st.method, st.path, st.token, st.body)
 	}
-
-	// A social account sets its birthday, then finishes.
-	google.identity = &auth.GoogleIdentity{Subject: "g-int-privacy", Email: "social-privacy@example.com", EmailVerified: true}
-	oauth := integrationDo(t, engine, http.MethodPost, "/v1/auth/oauth/google", "", map[string]any{"id_token": "t"})
-	if oauth.Code != http.StatusOK {
-		t.Fatalf("oauth: %d %s", oauth.Code, oauth.Body.String())
-	}
-	socialToken, _ := decodeBody(t, oauth)["access_token"].(string)
-	for _, body := range []map[string]any{
-		{"birthday": "1995-05-05"},
-		{"birthday": "1996-06-06"},
-		{"name": "Social Privacy", "username": "social_privacy"},
-	} {
-		rec := integrationDo(t, engine, http.MethodPatch, "/v1/me", socialToken, body)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("social patch %v: %d %s", body, rec.Code, rec.Body.String())
-		}
-	}
-	var stored string
-	if err := pool.QueryRow(context.Background(), `select birthday::text from users where email = 'social-privacy@example.com'`).Scan(&stored); err != nil || stored != "1995-05-05" {
-		t.Fatalf("social birthday stored = %q (err %v), want the first value 1995-05-05", stored, err)
-	}
-}
-
-// --- Apple and Google accounts: the birthday and the under-13 delete ---
-
-func integrationSocialSession(t *testing.T, engine *gin.Engine, google *fakeGoogleVerifier, subject, email string) integrationSession {
-	t.Helper()
-	google.identity = &auth.GoogleIdentity{Subject: subject, Email: email, EmailVerified: true}
-	rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/oauth/google", "", map[string]any{"id_token": "t"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("oauth: %d %s", rec.Code, rec.Body.String())
-	}
-	body := decodeBody(t, rec)
-	access, _ := body["access_token"].(string)
-	refresh, _ := body["refresh_token"].(string)
-	return integrationSession{AccessToken: access, RefreshToken: refresh}
-}
-
-func TestIntegrationSocial_UnderThirteenDeletesTheAccountAndItsSessions(t *testing.T) {
-	pool := requireIntegrationPool(t)
-	server, google := buildIntegrationServer(t, pool)
-	engine := server.Engine()
-	session := integrationSocialSession(t, engine, google, "g-kid", "kid@example.com")
-
-	rec := integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{
-		"birthday": birthdayYearsAgo(12), "name": "Kid", "username": "kid_user", "bio": "nope",
-	})
-
-	if rec.Code != http.StatusForbidden || decodeBody(t, rec)["error"] != "under_minimum_age" {
-		t.Fatalf("expected 403 under_minimum_age, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if n := integrationUserCount(t, pool); n != 0 {
-		t.Fatalf("account count = %d, want 0", n)
-	}
-	var tokens int
-	if err := pool.QueryRow(context.Background(), `select count(*) from refresh_tokens`).Scan(&tokens); err != nil || tokens != 0 {
-		t.Fatalf("refresh tokens left = %d (err %v), want 0", tokens, err)
-	}
-	refresh := integrationDo(t, engine, http.MethodPost, "/v1/auth/refresh", "", map[string]any{"refresh_token": session.RefreshToken})
-	if refresh.Code != http.StatusUnauthorized {
-		t.Fatalf("refresh after deletion: expected 401, got %d: %s", refresh.Code, refresh.Body.String())
-	}
-	for _, p := range []struct{ method, path string }{{http.MethodGet, "/v1/me"}, {http.MethodPost, "/v1/me/avatar/upload-url"}} {
-		var body any
-		if p.method == http.MethodPost {
-			body = map[string]any{"content_type": "image/png", "content_length": 100}
-		}
-		got := integrationDo(t, engine, p.method, p.path, session.AccessToken, body)
-		if got.Code != http.StatusUnauthorized || decodeBody(t, got)["error"] != "token_invalid" {
-			t.Fatalf("%s %s with a deleted account's token: expected 401 token_invalid, got %d: %s", p.method, p.path, got.Code, got.Body.String())
-		}
-	}
-}
-
-func TestIntegrationSocial_BirthdayIsSetOnceAndGatesFinishing(t *testing.T) {
-	pool := requireIntegrationPool(t)
-	server, google := buildIntegrationServer(t, pool)
-	engine := server.Engine()
-	session := integrationSocialSession(t, engine, google, "g-once", "once@example.com")
-
-	// Cannot finish without a birthday.
-	rec := integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"name": "Once Person", "username": "once_person"})
-	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["field"] != "birthday" {
-		t.Fatalf("finish without a birthday: expected 400 birthday, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// Birthday alone: 200 and still incomplete.
-	rec = integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"birthday": "1994-04-04"})
-	if rec.Code != http.StatusOK || decodeBody(t, rec)["onboarding_complete"] != false {
-		t.Fatalf("birthday alone: %d %s", rec.Code, rec.Body.String())
-	}
-
-	// A different birthday later is ignored (even an under-13 one).
-	for _, again := range []string{"1980-01-01", birthdayYearsAgo(10)} {
-		rec = integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"birthday": again})
-		if rec.Code != http.StatusOK {
-			t.Fatalf("second birthday %q: %d %s", again, rec.Code, rec.Body.String())
-		}
-	}
-	var stored string
-	if err := pool.QueryRow(context.Background(), `select birthday::text from users where email = 'once@example.com'`).Scan(&stored); err != nil || stored != "1994-04-04" {
-		t.Fatalf("stored birthday = %q (err %v), want 1994-04-04", stored, err)
-	}
-
-	// Now it can finish, and a finished account takes no birthday.
-	rec = integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"name": "Once Person", "username": "once_person"})
-	if rec.Code != http.StatusOK || decodeBody(t, rec)["onboarding_complete"] != true {
-		t.Fatalf("finish: %d %s", rec.Code, rec.Body.String())
-	}
-	rec = integrationDo(t, engine, http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"birthday": "1990-01-01"})
-	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["field"] != "birthday" {
-		t.Fatalf("birthday on a finished account: expected 400 birthday, got %d: %s", rec.Code, rec.Body.String())
-	}
 }
 
 // A finished account with no birthday on file (like the three accounts that
@@ -809,7 +690,7 @@ func TestIntegrationSocial_BirthdayIsSetOnceAndGatesFinishing(t *testing.T) {
 // only when it sends a birthday.
 func TestIntegrationLegacyAccountWithNullBirthdayCanStillEdit(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server, _ := buildIntegrationServer(t, pool)
+	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	hash, err := auth.HashPassword("legacy-password-1")

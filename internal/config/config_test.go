@@ -13,21 +13,17 @@ import (
 func setRequiredEnv(t *testing.T) {
 	t.Helper()
 	vars := map[string]string{
-		"DATABASE_URL":             "postgres://localhost:5432/rndmroll_dev?sslmode=disable",
-		"JWT_SECRET":               strings.Repeat("a", 32),
-		"APP_BASE_URL":             "https://rndmroll.example.com",
-		"MAIL_DRIVER":              "resend",
-		"RESEND_API_KEY":           "re_test_key",
-		"MAIL_FROM_ADDRESS":        "onboarding@resend.dev",
-		"GOOGLE_CLIENT_ID_IOS":     "ios-client-id",
-		"GOOGLE_CLIENT_ID_ANDROID": "android-client-id",
-		"GOOGLE_CLIENT_ID_WEB":     "web-client-id",
-		"APPLE_BUNDLE_ID":          "com.rndmroll.app",
-		"S3_ENDPOINT":              "https://s3.example.com",
-		"S3_BUCKET":                "rndmroll-avatars",
-		"S3_ACCESS_KEY_ID":         "test-access-key",
-		"S3_SECRET_ACCESS_KEY":     "test-secret-key",
-		"S3_PUBLIC_BASE_URL":       "https://cdn.example.com",
+		"DATABASE_URL":         "postgres://localhost:5432/rndmroll_dev?sslmode=disable",
+		"JWT_SECRET":           strings.Repeat("a", 32),
+		"APP_BASE_URL":         "https://rndmroll.example.com",
+		"MAIL_DRIVER":          "resend",
+		"RESEND_API_KEY":       "re_test_key",
+		"MAIL_FROM_ADDRESS":    "onboarding@resend.dev",
+		"S3_ENDPOINT":          "https://s3.example.com",
+		"S3_BUCKET":            "rndmroll-avatars",
+		"S3_ACCESS_KEY_ID":     "test-access-key",
+		"S3_SECRET_ACCESS_KEY": "test-secret-key",
+		"S3_PUBLIC_BASE_URL":   "https://cdn.example.com",
 		// Optional/defaulted keys explicitly cleared.
 		"PORT":                 "",
 		"TEST_DATABASE_URL":    "",
@@ -36,7 +32,6 @@ func setRequiredEnv(t *testing.T) {
 		"EMAIL_TOKEN_TTL":      "",
 		"APP_DEEP_LINK_SCHEME": "",
 		"MAIL_FROM_NAME":       "",
-		"APPLE_SERVICE_ID":     "",
 		"S3_REGION":            "",
 	}
 	for k, v := range vars {
@@ -66,9 +61,6 @@ func TestLoad_SucceedsWhenAllRequiredPresent(t *testing.T) {
 	if cfg.S3Region != "auto" {
 		t.Errorf("S3Region default = %q, want auto", cfg.S3Region)
 	}
-	if cfg.AppleServiceID != cfg.AppleBundleID {
-		t.Errorf("AppleServiceID = %q, want it to default to AppleBundleID %q", cfg.AppleServiceID, cfg.AppleBundleID)
-	}
 }
 
 func TestLoad_AccumulatesAllMissingRequiredVars(t *testing.T) {
@@ -78,9 +70,7 @@ func TestLoad_AccumulatesAllMissingRequiredVars(t *testing.T) {
 		"PORT", "DATABASE_URL", "TEST_DATABASE_URL", "JWT_SECRET",
 		"ACCESS_TOKEN_TTL", "REFRESH_TOKEN_TTL", "EMAIL_TOKEN_TTL",
 		"APP_BASE_URL", "APP_DEEP_LINK_SCHEME", "MAIL_DRIVER", "RESEND_API_KEY",
-		"MAIL_FROM_ADDRESS", "MAIL_FROM_NAME", "GOOGLE_CLIENT_ID_IOS",
-		"GOOGLE_CLIENT_ID_ANDROID", "GOOGLE_CLIENT_ID_WEB", "APPLE_BUNDLE_ID",
-		"APPLE_SERVICE_ID", "S3_ENDPOINT", "S3_REGION", "S3_BUCKET",
+		"MAIL_FROM_ADDRESS", "MAIL_FROM_NAME", "S3_ENDPOINT", "S3_REGION", "S3_BUCKET",
 		"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PUBLIC_BASE_URL",
 	}
 	for _, k := range allKeys {

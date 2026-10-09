@@ -38,8 +38,8 @@ func HashPassword(plain string) (string, error) {
 }
 
 // ComparePassword reports whether plain matches hash. Any mismatch --
-// wrong password, or an empty/malformed stored hash (the social-only
-// account case, where no password was ever set) -- maps to the single
+// wrong password, or an empty/malformed stored hash (an account with no
+// password set) -- maps to the single
 // user.ErrInvalidCredentials, so a login attempt against a passwordless
 // account is indistinguishable from a wrong password. Returning a distinct
 // error for either case would let the login endpoint be used to enumerate

@@ -12,14 +12,11 @@ import (
 
 // VerificationSource records how a user's email was verified: through the
 // old password-signup verification email (no longer sent; kept so existing
-// rows and the check constraint stay valid), or implicitly by an
-// already-verifying OAuth provider.
+// rows and the check constraint stay valid).
 type VerificationSource string
 
 const (
 	VerifiedViaPasswordFlow VerificationSource = "password_flow"
-	VerifiedViaApple        VerificationSource = "apple"
-	VerifiedViaGoogle       VerificationSource = "google"
 )
 
 // User is the domain representation of an account row. Nullable columns are
@@ -35,8 +32,6 @@ type User struct {
 	AvatarURL        *string
 	EmailVerified    bool
 	EmailVerifiedVia *VerificationSource
-	AppleSubject     *string
-	GoogleSubject    *string
 	// HasBirthday reports whether a birthday is on file. The date itself is
 	// deliberately not part of this struct: no query selects it, so no code
 	// path can return or log it.
@@ -46,10 +41,8 @@ type User struct {
 }
 
 // OnboardingComplete reports whether the account has a name and a username.
-// Email verification is not part of it: sign-up is one page with no email
-// check, so an unverified account is complete once those two are set. A
-// social (Apple or Google) account starts without them, and the server only
-// lets it set both once a birthday is on file (see the PATCH /me handler).
+// Email verification is not part of it: sign-up is one request with no email
+// check, so an unverified account is complete once those two are set.
 // This is the sole authority for the "land in the app" condition: the API
 // exposes it and the mobile root layout routes on it.
 func (u *User) OnboardingComplete() bool {
@@ -66,16 +59,14 @@ func (u *User) OnboardingComplete() bool {
 // error for a failed login: returning a distinct "no such user" error would
 // let the login endpoint be used to enumerate registered emails.
 var (
-	ErrNotFound                    = errors.New("user: not found")
-	ErrEmailTaken                  = errors.New("user: email already registered")
-	ErrUsernameTaken               = errors.New("user: username already taken")
-	ErrInvalidCredentials          = errors.New("user: invalid credentials")
-	ErrEmailNotVerified            = errors.New("user: email not verified")
-	ErrTokenInvalid                = errors.New("user: token invalid")
-	ErrTokenExpired                = errors.New("user: token expired")
-	ErrTokenConsumed               = errors.New("user: token already consumed")
-	ErrSubjectLinkedToOtherAccount = errors.New("user: provider subject already linked to another account")
-	ErrProviderEmailMissing        = errors.New("user: provider returned no email address")
+	ErrNotFound           = errors.New("user: not found")
+	ErrEmailTaken         = errors.New("user: email already registered")
+	ErrUsernameTaken      = errors.New("user: username already taken")
+	ErrInvalidCredentials = errors.New("user: invalid credentials")
+	ErrEmailNotVerified   = errors.New("user: email not verified")
+	ErrTokenInvalid       = errors.New("user: token invalid")
+	ErrTokenExpired       = errors.New("user: token expired")
+	ErrTokenConsumed      = errors.New("user: token already consumed")
 )
 
 // FieldError reports that a stored value broke a database check constraint,

@@ -14,10 +14,6 @@ type ProfilePatch struct {
 	Username  *string
 	Bio       *string
 	AvatarURL *string
-	// Birthday is a validated "YYYY-MM-DD" date. It is written only while no
-	// birthday is on file, so the first write wins and a later one is a
-	// no-op at the SQL level.
-	Birthday *string
 }
 
 // NewAccount is everything a one-request sign-up stores. Birthday is a
@@ -41,8 +37,6 @@ type Repository interface {
 	// Log in page can take a username as well as an email. It returns
 	// ErrNotFound when no account holds that username.
 	GetByUsernameCI(ctx context.Context, username string) (*User, error)
-	GetByProviderSubject(ctx context.Context, provider VerificationSource, subject string) (*User, error)
-	LinkProviderSubject(ctx context.Context, id uuid.UUID, provider VerificationSource, subject string) error
 	UsernameTaken(ctx context.Context, username string) (bool, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID, via VerificationSource) error
 	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfilePatch) (*User, error)
@@ -51,19 +45,6 @@ type Repository interface {
 	// violations map to ErrEmailTaken and ErrUsernameTaken; a check
 	// violation maps to *FieldError.
 	CreateComplete(ctx context.Context, in NewAccount) (*User, error)
-	// Delete removes the account only while it has no birthday on file (the
-	// under-13 refusal of a social account); its refresh tokens cascade. It
-	// reports whether a row was deleted.
-	Delete(ctx context.Context, id uuid.UUID) (bool, error)
-	// ClaimAndRevoke is for a provider that has just proved ownership of the
-	// account's address. In ONE transaction, and only while the account is
-	// still unverified, it marks the email verified via the provider,
-	// discards the password credential and revokes every refresh token,
-	// since whoever pre-registered the address with a password never proved
-	// they own it. It reports whether it claimed the account; false means
-	// the account was already verified (or does not exist) and nothing was
-	// touched.
-	ClaimAndRevoke(ctx context.Context, id uuid.UUID, via VerificationSource) (bool, error)
 }
 
 // RefreshToken is the domain representation of a refresh_tokens row.

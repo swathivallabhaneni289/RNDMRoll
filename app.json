@@ -8,8 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.rndmroll.app",
-      "userInterfaceStyle": "light",
-      "usesAppleSignIn": true
+      "userInterfaceStyle": "light"
     },
     "android": {
       "package": "com.rndmroll.app",
@@ -18,7 +17,6 @@
     "plugins": [
       "expo-router",
       "expo-splash-screen",
-      "expo-apple-authentication",
       "expo-image-picker",
       "expo-secure-store",
       "expo-image",

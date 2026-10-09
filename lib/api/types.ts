@@ -22,13 +22,12 @@ export interface SessionTokens {
 }
 
 /**
- * The session body POST /auth/login, /auth/signup and the oauth endpoints return.
+ * The session body POST /auth/login and /auth/signup return.
  * /auth/refresh returns only the three token fields (SessionTokens), no user.
  * No user object anywhere carries a birthday.
  */
 export type AuthResult = SessionTokens & {
   user: ApiUser;
-  is_new_user?: boolean;
 };
 
 export interface UsernameSuggestion {
@@ -68,7 +67,6 @@ export type ApiErrorCode =
   | 'payload_too_large'
   | 'token_invalid'
   | 'not_found'
-  | 'subject_linked'
   | 'token_expired'
   | 'token_consumed'
   | 'rate_limited'

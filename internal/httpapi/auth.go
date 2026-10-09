@@ -357,9 +357,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	default:
 		err = user.ErrNotFound
 	}
-	// No such account, or an account without a password (an Apple or Google
-	// account): the same dummy comparison and the same answer as a wrong
-	// password. The dummy hash is never used as if it were the account's own.
+	// No such account, or an account without a password: the same dummy
+	// comparison and the same answer as a wrong password. The dummy hash is
+	// never used as if it were the account's own.
 	var hash *string
 	if err == nil {
 		hash = u.PasswordHash

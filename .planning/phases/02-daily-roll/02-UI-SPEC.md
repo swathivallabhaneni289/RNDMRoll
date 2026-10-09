@@ -3,13 +3,13 @@ phase: 2
 slug: daily-roll
 status: draft
 created: 2026-10-07
-revision: 3
+revision: 4
 approval_word: go
 ---
 
 # Phase 2 - UI Design Contract (Daily Roll, "the spin")
 
-> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's picture (`today-screen-mockup-2026-10-07.png`) is the layout source, minus every doodle, photograph, the bell and the friends card. Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed.
+> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's picture (`today-screen-mockup-2026-10-07.png`) is the layout source, minus every doodle, photograph, the bell and the friends card. Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed. Revision 4 (2026-10-09, later that day): Phase 1 removed Apple and Google sign-in completely, so the one-time photo-and-bio page follows a sign-up only (sections 1 and 9). No decision changed.
 
 ## 1. What this phase puts on screen
 
@@ -22,7 +22,7 @@ approval_word: go
 | Bottom bar | Home, Spin, Profile | New. Diary and Board do not exist yet and get no placeholder tabs. |
 | Phase 1 placeholder page | `app/(app)/home.tsx`: "You're in." / "Your daily spin will appear here." | Removed. Today replaces it. |
 
-**Landing (no decision named it):** a signed-in, finished account lands on Today, with one exception: right after a sign-up (or after an Apple or Google account is finished) it lands once on the photo-and-bio page (section 9), and Continue or Skip for now then end on Today. Signed-out flow unchanged.
+**Landing (no decision named it):** a signed-in, finished account lands on Today, with one exception: right after a sign-up it lands once on the photo-and-bio page (section 9), and Continue or Skip for now then end on Today. Signed-out flow unchanged.
 
 ## 2. Tokens added (the only new design values)
 
@@ -235,7 +235,7 @@ The Profile tab shows Phase 1's "Make it yours." page in edit mode (Name, Userna
 
 Log out, its sheet, the username check and the photo picker are unchanged.
 
-**First run (the same page in extras mode).** Right after a sign-up, and after an Apple or Google account is finished, the Profile route shows Phase 1's page 2 once: "Make it yours." with its sub-line, the camera circle, the Bio box, Continue and "Skip for now". Phase 2 changes only what is around it:
+**First run (the same page in extras mode).** Right after a sign-up, the Profile route shows Phase 1's page 2 once: "Make it yours." with its sub-line, the camera circle, the Bio box, Continue and "Skip for now". Phase 2 changes only what is around it:
 - The bottom bar is hidden on it (section 8). The page keeps the default safe-area insets, because no bar adds the bottom one.
 - Continue (after its save) and Skip for now both take the person to Today, and the bar appears. If the photo upload fails the person stays on the page with Phase 1's message under the circle, and can retry or skip.
 - It is shown once. The flag behind it lives in memory only, so a relaunch goes straight to Today and the page never comes back. A returning person who logs in, and an expired session that refreshes, also go straight to Today.

@@ -16,8 +16,10 @@ Users can create an account, log in (staying logged in across app sessions), and
 ## Implementation Decisions
 
 ### Login Method
-- **D-01:** Authentication mirrors Instagram's real signup options: email/phone number + password, PLUS Apple and Google sign-in.
-- **D-02:** Apple sign-in is required alongside Google/other third-party social login per Apple App Store guideline 4.8 — not optional once Google sign-in is offered.
+- **D-01 (superseded 2026-10-09, see the REVISED note under it):** Authentication mirrors Instagram's real signup options: email/phone number + password, PLUS Apple and Google sign-in.
+  - **REVISED 2026-10-09:** Sign-in is email and password only. A person logs in with an email OR a username plus the account's one password (plan 01-22). There is no Apple, Google or other social login, shown or hidden: the developer removed them from the project completely ('We're not going to have that'). The first screen offers a black 'Sign up' button and an outlined 'Log in' button, and in D-05 step (1), 'choose signup method', now means just that pair.
+- **D-02 (superseded 2026-10-09, see the REVISED note under it):** Apple sign-in is required alongside Google/other third-party social login per Apple App Store guideline 4.8 — not optional once Google sign-in is offered.
+  - **REVISED 2026-10-09:** Does not apply any more. Apple App Store guideline 4.8 only comes into play when an app offers a third-party login, and this app now offers none, so there is nothing to require alongside it.
 - **D-03:** Phone-number signup/SMS verification is not required for MVP — default to email-based signup to avoid needing SMS provider infrastructure (Claude's discretion, not explicitly asked).
 
 ### Signup Friction / Onboarding Sequence

@@ -9,7 +9,7 @@ created: 2026-10-08
 
 # Phase 2: Validation Map (Daily Roll, "the spin")
 
-> How each behaviour is proven. Nothing is built yet. Rebased on the final Phase 1 code (main tree commit ead0c70) on 2026-10-09. Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (a throwaway node script checks the pure wheel logic), so screen checks are device steps in `02-03-PLAN.md` Task 3 ("group done" or what looked wrong).
+> How each behaviour is proven. Nothing is built yet. Rebased on the final Phase 1 code (main tree commit ead0c70) on 2026-10-09. Revised later that day: Phase 1 removed Apple and Google sign-in completely, so the database is at version 3 before Phase 2 starts and Phase 2's migration is 0004. Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (a throwaway node script checks the pure wheel logic), so screen checks are device steps in `02-03-PLAN.md` Task 3 ("group done" or what looked wrong).
 
 ## Commands
 
@@ -54,12 +54,11 @@ Never run `expo lint`. Never run Go tests on `rndmroll_dev`.
 | ROLL-04 | Reduce Motion: no turning, word at once, right wedge under the pointer | Walkthrough step 12 | 02-03 Task 3 |
 | Safety | Test tools exist only in test mode | Config test, 404 test, start refusal on port 9091 (tools message in the output) | 02-01 Task 1, 3; 02-03 Task 1 |
 | Safety | Test tools answer 404 for a caller not on the allow-list; one account's clock move changes no other | HTTP tests | 02-01 Task 3 |
-| Safety | Every Phase 2 route refuses no token (401), deleted user (401), unfinished account (403), body over 16 KB (413), 11th spin in a minute (429); no response carries birthday, email or password hash | HTTP tests | 02-01 Task 3 |
-| Safety | Migration 0003 is reversible and the 0002 test starts and restores at the latest version | `TestMigrations_0003IsReversible`, 0002 test | 02-01 Task 2 |
+| Safety | Every Phase 2 route refuses no token (401), deleted user (401), unfinished account with no name or username (403), body over 16 KB (413), 11th spin in a minute (429); no response carries birthday, email or password hash | HTTP tests | 02-01 Task 3 |
+| Safety | Migration 0004 is reversible, and the older migration tests (0002 and 0003) still pass because they start and restore at the latest version read from the files | `TestMigrations_0004IsReversible`, the 0002 and 0003 tests | 02-01 Task 2 |
 | Safety | Users table and three real accounts untouched | `git diff --stat` on user files, user count before and after | 02-03 Tasks 1, 3 |
 | Launch | First screen is Today, no Unmatched Route, no Welcome flash, in these cases: signed out, signed in, expired token, log out then in | Cold launches with recorded first frames, right after 02-02 Task 3 and after the cutover | 02-02 Task 3, 02-03 Task 2 |
-| Launch | Just signed up: the photo-and-bio page comes first with no bottom bar and no flash of Today; Continue or Skip for now ends on Today with the bar; a relaunch there shows Today | Recorded first frames (02-02 Task 3 case (c), 02-03 case (f)) and walkthrough Group 8b | 02-02 Task 3, 02-03 Tasks 2, 3 |
-| Launch | An unfinished account lands on the finish page, and a just finished Apple or Google account goes finish page, photo-and-bio page, Today | DEFERRED with Phase 1 check 5 (the Apple and Google buttons are hidden until the real accounts exist). Static checks now: the auth layout and the signed-out branch of `app/index.tsx` unchanged, and `submitFinish` calls `startExtras()` before `reloadUser()` | 02-03 Task 2 |
+| Launch | Just signed up: the photo-and-bio page comes first with no bottom bar and no flash of Today; Continue or Skip for now ends on Today with the bar; a relaunch there shows Today | Recorded first frames (02-02 Task 3 case (c), 02-03 case (e)) and walkthrough Group 8b | 02-02 Task 3, 02-03 Tasks 2, 3 |
 | Launch | Phase 1's placeholder page is gone: the bar shows exactly three items and nothing links to `/home` | `ls "app/(app)"` and a grep | 02-02 Task 3, 02-03 Task 2 |
 | Launch | A second account never sees the first one's wheel | Cold launch case (d), walkthrough Group 9 | 02-03 Tasks 2, 3 |
 | Launch | Time zone reaches the server from the phone | `select tz_name from user_time_zones` equals the Mac zone | 02-03 Task 2 |

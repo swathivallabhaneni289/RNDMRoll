@@ -28,7 +28,6 @@ const (
 	CodeTokenInvalid       ErrorCode = "token_invalid"
 	CodeTokenExpired       ErrorCode = "token_expired"
 	CodeTokenConsumed      ErrorCode = "token_consumed"
-	CodeSubjectLinked      ErrorCode = "subject_linked"
 	CodeRateLimited        ErrorCode = "rate_limited"
 	CodeValidationFailed   ErrorCode = "validation_failed"
 	CodeServerError        ErrorCode = "server_error"
@@ -84,12 +83,8 @@ func RespondError(c *gin.Context, err error) {
 		Respond(c, http.StatusUnauthorized, gin.H{"error": string(CodeTokenExpired)})
 	case errors.Is(err, user.ErrTokenConsumed):
 		Respond(c, http.StatusConflict, gin.H{"error": string(CodeTokenConsumed)})
-	case errors.Is(err, user.ErrSubjectLinkedToOtherAccount):
-		Respond(c, http.StatusConflict, gin.H{"error": string(CodeSubjectLinked)})
 	case errors.As(err, &fieldErr):
 		RespondFieldError(c, fieldErr.Field, reasonInvalid)
-	case errors.Is(err, user.ErrProviderEmailMissing):
-		Respond(c, http.StatusBadRequest, gin.H{"error": string(CodeValidationFailed), "message": "The sign-in provider did not share an email address."})
 	default:
 		log.Printf("httpapi: unmapped error: %v", err)
 		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})

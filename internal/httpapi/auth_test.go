@@ -656,18 +656,18 @@ func TestLogin_LoginFieldWinsOverTheOlderEmailField(t *testing.T) {
 	assertLoggedInAs(t, rec, "try5@example.com")
 }
 
-// An account with no password (an Apple or Google account) cannot log in by
+// An account with no password cannot log in by
 // username or by email, whatever is typed, including the fixed string the dummy
 // hash was made from.
 func TestLogin_AccountWithoutAPasswordCannotLogIn(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
 	if _, err := deps.Users.CreateComplete(context.Background(), user.NewAccount{
-		Email: "social@example.com", PasswordHash: "", Birthday: validBirthday, Name: "Social Account", Username: "social_account",
+		Email: "nopassword@example.com", PasswordHash: "", Birthday: validBirthday, Name: "No Password", Username: "no_password",
 	}); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
 
-	for name, login := range map[string]string{"username": "social_account", "email": "social@example.com"} {
+	for name, login := range map[string]string{"username": "no_password", "email": "nopassword@example.com"} {
 		for pwName, password := range map[string]string{
 			"the dummy hash's input": "dummy-password-for-constant-time-comparison",
 			"blank spaces":           "        ",

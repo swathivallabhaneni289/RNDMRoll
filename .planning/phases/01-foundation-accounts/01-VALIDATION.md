@@ -11,6 +11,8 @@ created: 2026-09-15
 
 > Per-phase validation contract for feedback sampling during execution.
 
+> **Revised 2026-10-09:** Apple and Google sign-in were removed from the project completely. The rows below about a social account under 13 being deleted, the oauth body cap, the Apple and Google claim (`ClaimAndRevoke`) and the manual Apple and Google sign-in checks describe tests and checks that were deleted with the feature; they stay here as history. Still true: sign-up under 13 is refused and nothing is stored, the 16 KB body cap on signup, login and `PATCH /me`, and `PATCH /me` always refuses a birthday (it is set once, at sign-up). New: `TestMigrations_0003IsReversible` covers migration 0003, which drops the two provider columns.
+
 ---
 
 ## Test Infrastructure

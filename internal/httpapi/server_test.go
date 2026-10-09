@@ -40,7 +40,6 @@ type panicIfTouchedUserRepo struct {
 type fullTestRig struct {
 	srv     *Server
 	users   user.Repository
-	google  *fakeGoogleVerifier
 	refresh *auth.RefreshService
 }
 
@@ -52,10 +51,8 @@ func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
 		fake.tokens = tokens
 	}
 	refreshSvc := auth.NewRefreshService(tokens, 30*24*time.Hour)
-	google := &fakeGoogleVerifier{}
 
 	authHandler := NewAuthHandler(usersRepo, refreshSvc, testServerJWTSecret, 15*time.Minute)
-	oauthHandler := NewOAuthHandler(usersRepo, &fakeAppleVerifier{}, google, refreshSvc, testServerJWTSecret, 15*time.Minute)
 	profileHandler := NewProfileHandler(usersRepo, &fakeAvatarStore{}, testAvatarBaseURL)
 	usernameHandler := NewUsernameHandler(usersRepo)
 
@@ -64,7 +61,6 @@ func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
 	return &fullTestRig{
 		srv: NewServer(Deps{
 			Auth:      authHandler,
-			OAuth:     oauthHandler,
 			Profile:   profileHandler,
 			Username:  usernameHandler,
 			Users:     usersRepo,
@@ -72,7 +68,6 @@ func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
 			Logger:    logger,
 		}),
 		users:   usersRepo,
-		google:  google,
 		refresh: refreshSvc,
 	}
 }
@@ -223,9 +218,7 @@ func TestServer_DeletedUsersTokenGets401OnMeAndAvatarUpload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue access token: %v", err)
 	}
-	if deleted, err := users.Delete(context.Background(), u.ID); err != nil || !deleted {
-		t.Fatalf("delete user: deleted=%v err=%v", deleted, err)
-	}
+	users.remove(t, u.ID)
 
 	paths := []struct{ method, path string }{
 		{http.MethodGet, "/v1/me"},
@@ -249,7 +242,7 @@ func TestServer_DeletedUsersTokenGets401OnMeAndAvatarUpload(t *testing.T) {
 
 // --- request size cap ---
 
-func TestServer_OversizeBodiesAre413OnSignupLoginOAuthAndPatchMe(t *testing.T) {
+func TestServer_OversizeBodiesAre413OnSignupLoginAndPatchMe(t *testing.T) {
 	users := newFakeUserRepo()
 	u := users.seedComplete(t, "big@example.com", "Big Body", "big_body", validBirthday)
 	srv := newFullTestServer(t, users)
@@ -264,7 +257,6 @@ func TestServer_OversizeBodiesAre413OnSignupLoginOAuthAndPatchMe(t *testing.T) {
 	}{
 		{http.MethodPost, "/v1/auth/signup", ""},
 		{http.MethodPost, "/v1/auth/login", ""},
-		{http.MethodPost, "/v1/auth/oauth/google", ""},
 		{http.MethodPatch, "/v1/me", token},
 	}
 	for i, tg := range targets {
@@ -543,20 +535,6 @@ func TestServer_NoResponseBodyCarriesABirthdayKey(t *testing.T) {
 	}
 	check("400 birthday", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{"birthday": "2001-02-29"})))
 	check("403 under 13", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{"birthday": birthdayYearsAgo(12)})))
-
-	// A social account: finish with a birthday, then refuse a second one.
-	rig.google.identity = &auth.GoogleIdentity{Subject: "g-privacy", Email: "social@example.com", EmailVerified: true}
-	oauth := check("oauth", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/oauth/google", "", map[string]any{"id_token": "t"}))
-	if oauth.Code != http.StatusOK {
-		t.Fatalf("oauth: %d %s", oauth.Code, oauth.Body.String())
-	}
-	socialAccess, _ := decodeBody(t, oauth)["access_token"].(string)
-	set := check("social birthday set", serveFrom(t, rig.srv, next(), http.MethodPatch, "/v1/me", socialAccess, map[string]any{"birthday": "1995-05-05"}))
-	if set.Code != http.StatusOK {
-		t.Fatalf("social birthday: %d %s", set.Code, set.Body.String())
-	}
-	check("social birthday again", serveFrom(t, rig.srv, next(), http.MethodPatch, "/v1/me", socialAccess, map[string]any{"birthday": "1996-06-06"}))
-	check("social finish", serveFrom(t, rig.srv, next(), http.MethodPatch, "/v1/me", socialAccess, map[string]any{"name": "Social Person", "username": "social_person"}))
 
 	// Username endpoints and a 413.
 	check("suggest", serveFrom(t, rig.srv, next(), http.MethodGet, "/v1/usernames/suggest?name=Ada", "", nil))

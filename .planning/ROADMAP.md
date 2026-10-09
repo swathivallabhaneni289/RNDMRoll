@@ -55,7 +55,7 @@ Plans:
 
 - [x] 01-08-PLAN.md — Password auth endpoints: signup, login, refresh, logout
 - [x] 01-09-PLAN.md — Email verification flow, mailer, and the verified-only gate
-- [x] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification
+- [x] 01-10-PLAN.md — Apple and Google sign-in with server-side token verification (removed 2026-10-09)
 - [x] 01-11-PLAN.md — Profile, username suggestion, and avatar upload endpoints
 
 **Wave 5** *(blocked on Wave 4 completion)*

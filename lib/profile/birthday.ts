@@ -29,14 +29,6 @@ function pad(value: number, width: number): string {
   return String(value).padStart(width, '0');
 }
 
-export interface BirthdayOptions {
-  /**
-   * Skip the 13+ rule. Finish mode sets this so an under-13 birthday still reaches the
-   * server, which deletes the unfinished account and answers under_minimum_age.
-   */
-  ignoreAge?: boolean;
-}
-
 /**
  * Checks the three fields against `now` (the device clock) and returns the YYYY-MM-DD string
  * the server expects, or the message to show. A year before 1900 gets the year message.
@@ -45,8 +37,7 @@ export interface BirthdayOptions {
  */
 export function checkBirthday(
   parts: BirthdayParts,
-  now: Date = new Date(),
-  options: BirthdayOptions = {}
+  now: Date = new Date()
 ): BirthdayCheck {
   const month = parts.month.trim();
   const day = parts.day.trim();
@@ -89,7 +80,7 @@ export function checkBirthday(
   const utcD = now.getUTCDate();
   let age = utcY - y;
   if (utcM < m || (utcM === m && utcD < d)) age -= 1;
-  if (!options.ignoreAge && age < MIN_AGE) {
+  if (age < MIN_AGE) {
     return { ok: false, error: BIRTHDAY_MESSAGES.underAge };
   }
 

@@ -21,7 +21,6 @@ import (
 // and a logger shared by the two cross-cutting middlewares.
 type Deps struct {
 	Auth     *AuthHandler
-	OAuth    *OAuthHandler
 	Profile  *ProfileHandler
 	Username *UsernameHandler
 
@@ -48,9 +47,9 @@ type Server struct {
 //     blip rather than cascading a restart (T-01-SRV-07).
 //   - /v1: BodyLimit is the FIRST thing registered here (gin applies Use
 //     only to routes added later), so every route below, public or signed
-//     in, refuses a body over 16 KB. AuthHandler and OAuthHandler mount
-//     directly on it -- both write their own "/auth/..." route strings
-//     (POST /auth/signup, POST /auth/oauth/apple, etc.).
+//     in, refuses a body over 16 KB. AuthHandler mounts directly on it and
+//     writes its own "/auth/..." route strings (POST /auth/signup,
+//     POST /auth/login, etc.).
 //   - /v1 (public subgroup): the username suggest and availability checks.
 //     The sign-up page calls them before any account exists, so they need
 //     no token; they are limited per IP instead.
@@ -59,8 +58,6 @@ type Server struct {
 //     applied at this group -- not per route -- so ProfileHandler inherits
 //     both by construction, and so does any future route mounted here
 //     (T-01-SRV-03). There is no verified check: sign-up has no email step.
-//     An unfinished Apple or Google account passes this gate, so a route
-//     that needs a finished profile must also check OnboardingComplete().
 func NewServer(deps Deps) *Server {
 	engine := gin.New()
 	// A nil list is valid and never errors; handle the error anyway.
@@ -76,7 +73,6 @@ func NewServer(deps Deps) *Server {
 	v1 := engine.Group("/v1")
 	v1.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
 	deps.Auth.Register(v1)
-	deps.OAuth.Register(v1)
 
 	public := v1.Group("")
 	deps.Username.Register(public)

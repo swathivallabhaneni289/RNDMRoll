@@ -18,8 +18,6 @@ export interface ProfilePatch {
   username?: string;
   bio?: string;
   avatar_url?: string;
-  /** YYYY-MM-DD. Accepted once, only for an unfinished account with no birthday on file. */
-  birthday?: string;
 }
 
 /** The size in bytes of a local file: the exact length the presigned upload signs. */
@@ -48,7 +46,6 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
   if (patch.username !== undefined) body.username = patch.username;
   if (patch.bio !== undefined) body.bio = patch.bio;
   if (patch.avatar_url !== undefined) body.avatar_url = patch.avatar_url;
-  if (patch.birthday !== undefined) body.birthday = patch.birthday;
   return api.patch<ApiUser>('/me', body);
 }
 

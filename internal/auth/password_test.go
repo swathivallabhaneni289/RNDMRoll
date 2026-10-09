@@ -47,7 +47,7 @@ func TestPassword_CompareTreatsMissingHashSameAsWrongPassword(t *testing.T) {
 		t.Fatalf("HashPassword returned error: %v", err)
 	}
 	wrongPasswordErr := ComparePassword(hash, "wrong password")
-	// An empty/malformed stored hash is the social-only account case: a
+	// An empty/malformed stored hash is an account with no password: a
 	// login attempt against it must be indistinguishable from a wrong
 	// password, never a distinct "no password set" error.
 	noPasswordErr := ComparePassword("", "any password")

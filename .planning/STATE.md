@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: daily-roll
 status: planning
-stopped_at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents merged (2ad9220, nothing built); PAUSED at the developer's request; next session first removes Apple and Google sign-in completely, then asks for go
-last_updated: "2026-10-09T17:30:00.000Z"
+stopped_at: Apple and Google sign-in removed completely 2026-10-09 (one local commit, not pushed); Phase 2 documents renumbered and waiting for the developer's go; Phase 3 documents written on paper (nothing built)
+last_updated: "2026-10-09T18:21:00.000Z"
 last_activity: 2026-10-09
-last_activity_desc: Phase 01 approved and closed
+last_activity_desc: Apple and Google sign-in removed; Phase 3 planned on paper
 progress:
   total_phases: 5
   completed_phases: 1
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** A working daily habit loop — roll, log, diary, gated friend feed — used reliably every day by the developer and a small friend group.
-**Current focus:** Phase 01 — foundation-accounts
+**Current focus:** Phase 02 — daily-roll (planned on paper, waiting for go)
 
 ## Current Position
 
-Phase: 02 (daily-roll) — PLANNED ON PAPER (Phase 01 closed 2026-10-09)
+Phase: 02 (daily-roll) — PLANNED ON PAPER (Phase 01 closed 2026-10-09); 03 (daily-entry) — PLANNED ON PAPER (2026-10-09)
 Plan: 0 of 3
-Status: Waiting for the developer's go
-Last activity: 2026-10-09 — Phase 01 approved and closed
+Status: Waiting for the developer's go on Phase 2
+Last activity: 2026-10-09 — Apple and Google sign-in removed; Phase 3 planned on paper
 
 Progress: [██░░░░░░░░] 20%
 
@@ -73,16 +73,20 @@ Recent decisions affecting current work:
 - [Phase 01]: Sign-up is two pages (2026-10-08): page 1 account details (email, password, birthday, name, username), page 2 photo and bio once with Skip for now; replaces the one-page form; plan 01-20, built the same day. Developer picked option a after asking how Instagram does it.
 - [Phase 01]: Less typing on page 1 (2026-10-08): the birthday is picked on iOS's scrolling date picker (typed boxes off iOS) and a green "Looks good." note shows under checkable fields on the sign-up and Apple/Google finish pages; plan 01-21. Face ID, Next key, box hints, username choices, Apple/Google first: not chosen.
 - [Phase 01]: Phase 1 closed 2026-10-09 (the developer typed approve). ONE password per account, typed once on sign-up and used with the email and the username (a confirmation box and then two separate passwords were built and removed the same evening); Log in takes an email or a username in one box (plan 01-22); the sign-up page order follows the Instagram photo (email, password, birthday, name, username); text boxes never clip what is typed. Launch list unchanged (domain, favicon, remove the AI tag, real Terms and Privacy, Forgot password, real Google, Apple, S3 and Resend accounts).
+- [Phase 01]: Apple and Google sign-in removed completely (2026-10-09, developer: 'We're not going to have that'). Email and password only; Log in takes an email or a username. Server endpoints, verifiers, settings, repository methods, app buttons, finish mode, the two native packages and the database columns users.apple_subject and users.google_subject are gone (migration 0003). Phase 2's migration is 0004 and Phase 3's is 0005. The launch list no longer has real Google or Apple sign-in accounts.
+- [Phase 03]: Entry rules (2026-10-09, all three suggestions taken): movie and book days may log anything watched or read lately (no date asked); an entry carries one tap-reaction from six emoji (heart, laughing, wow, fire, clap, yum), the same set friends use later; the author can edit and delete any time and a deleted post still counts the day as posted. Documents in .planning/phases/03-daily-entry, nothing built.
 - [Whole project]: the developer wants everything finished by 2026-10-10; parallelize, keep device checks short.
 
 ### Pending Todos
 
-None yet.
+- Phase 2 build waits for the developer's word 'go': build 02-01 (server) and 02-02 (app) in parallel with agents, then 02-03 (cutover, scans, a SHORT device walkthrough).
+- Ask the Phase 4 and Phase 5 design questions as ONE message while Phase 2 builds (files in ~/.local/share/rndmroll-phase2/questions/: PHASE4-QUESTIONS.md and PHASE5-QUESTIONS.md), labelled PHASE 4 and PHASE 5, nothing built.
+- Developer: delete the unused GOOGLE_CLIENT_ID_* and APPLE_* lines in .env and .env.example (Claude's permissions deny editing env files); harmless if they stay.
+- Developer: the launch list (custom domain, favicon, remove the AI tag, real Terms and Privacy text, Forgot password, the S3 and Resend accounts).
 
 ### Blockers/Concerns
 
-- ROLL-01: exact daily roll-window duration, timezone handling, and day-boundary semantics not yet locked — resolve during Phase 2 discussion (affects streak counting and FEED-02's "late" badge in Phase 5)
-- ENTRY-04: unsatisfiable rolled-category resolution mechanic not yet locked — resolve during Phase 3 discussion (skip vs. reroll vs. other tradeoffs)
+- ROLL-01 and ENTRY-04 are resolved on paper (Phase 2 CONTEXT D-01 to D-03: local 8:00 PM to midnight window, late until the next 8:00 PM; ENTRY-04 is a free skip plus a weekly goal of 4 posted days). Nothing of either is built yet.
 - Photo authenticity enforcement beyond allowing camera+library choice remains an explicitly open, unsolved question (see PROJECT.md Context)
 
 ## Deferred Items
@@ -95,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T17:30:00.000Z
-Stopped at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents merged (2ad9220, nothing built); PAUSED; next session: remove Apple and Google completely, then ask for go
+Last session: 2026-10-09T18:21:00.000Z
+Stopped at: Apple and Google sign-in removed completely (one local commit, not pushed); Phase 2 documents renumbered, waiting for the developer's go; Phase 3 documents written on paper
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md

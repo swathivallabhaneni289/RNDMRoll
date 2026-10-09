@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -30,11 +29,10 @@ const maxAvatarURLLength = 2048
 // nil (omitted) field means "leave unchanged" -- this is what lets each
 // step, and later the standalone edit screen, send only the field it
 // actually changed. There are no binding tags on purpose: patchMe validates
-// each field by hand so every rejection names its field, and so the
-// birthday (the age rule) is judged before any other field.
+// each field by hand so every rejection names its field.
 //
-// Birthday is accepted only for an account that is still incomplete and has
-// no birthday on file (an Apple or Google account finishing its profile).
+// Birthday is never accepted: it is set once, at sign-up, and cannot change.
+// The field exists only so a request that sends one is refused by name.
 type UpdateProfileRequest struct {
 	Name      *string `json:"name"`
 	Username  *string `json:"username"`
@@ -147,11 +145,9 @@ func (h *ProfileHandler) avatarURLAllowed(url string, id string) bool {
 // slashes, backslashes, queries and fragments, is refused.
 var avatarFileName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// patchMe applies a partial profile update. Order: bind; the birthday (only
-// for an incomplete account with none on file: age first, under 13 deletes
-// the account and answers 403, so no other field is applied); each other
-// field by hand; a patch that would complete a profile with no birthday on
-// file is refused; then one UpdateProfile.
+// patchMe applies a partial profile update. Order: bind; a birthday is
+// refused (it never changes after sign-up); each other field by hand; then
+// one UpdateProfile.
 func (h *ProfileHandler) patchMe(c *gin.Context) {
 	cur, ok := h.currentUser(c)
 	if !ok {
@@ -164,51 +160,13 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 		return
 	}
 
-	incomplete := !cur.OnboardingComplete()
-	patch := user.ProfilePatch{}
-
 	if req.Birthday != nil {
-		switch {
-		case !incomplete:
-			// A finished account never takes a birthday: it cannot be
-			// changed after the profile is complete.
-			RespondFieldError(c, "birthday", reasonNotAllow)
-			return
-		case cur.HasBirthday:
-			// Already on file: ignore the new value, keep the stored one.
-		default:
-			now := time.Now()
-			birth, err := user.ValidateBirthdate(*req.Birthday, now)
-			if err != nil {
-				if errors.Is(err, user.ErrBirthdateFuture) {
-					RespondFieldError(c, "birthday", reasonFuture)
-					return
-				}
-				RespondFieldError(c, "birthday", reasonInvalid)
-				return
-			}
-			if user.AgeOn(birth, now) < user.MinimumAge {
-				// Refused before any other field is read: the account is
-				// removed (its tokens go with it) and nothing else is applied
-				// or logged.
-				deleted, err := h.users.Delete(c.Request.Context(), cur.ID)
-				if err != nil {
-					RespondError(c, err)
-					return
-				}
-				if !deleted {
-					// A racing request wrote a birthday first, so the account
-					// still exists: do not tell the app to sign it out.
-					RespondFieldError(c, "birthday", reasonNotAllow)
-					return
-				}
-				RespondUnderMinimumAge(c)
-				return
-			}
-			day := birth.Format("2006-01-02")
-			patch.Birthday = &day
-		}
+		// The birthday is set once, at sign-up, and cannot be changed.
+		RespondFieldError(c, "birthday", reasonNotAllow)
+		return
 	}
+
+	patch := user.ProfilePatch{}
 
 	if req.Name != nil {
 		name, reason := cleanName(*req.Name)
@@ -242,17 +200,6 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 			return
 		}
 		patch.AvatarURL = req.AvatarURL
-	}
-
-	// An incomplete account with no birthday on file may not finish its
-	// profile: that is the only way a social account is held to the age rule.
-	if incomplete && !cur.HasBirthday && patch.Birthday == nil {
-		hasName := patch.Name != nil || (cur.Name != nil && *cur.Name != "")
-		hasUsername := patch.Username != nil || (cur.Username != nil && *cur.Username != "")
-		if hasName && hasUsername {
-			RespondFieldError(c, "birthday", reasonRequired)
-			return
-		}
 	}
 
 	updated, err := h.users.UpdateProfile(c.Request.Context(), cur.ID, patch)

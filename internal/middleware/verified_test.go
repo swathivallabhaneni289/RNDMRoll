@@ -59,14 +59,6 @@ func (f *fakeVerifiedRepo) GetByUsernameCI(ctx context.Context, username string)
 	return nil, user.ErrNotFound
 }
 
-func (f *fakeVerifiedRepo) GetByProviderSubject(ctx context.Context, provider user.VerificationSource, subject string) (*user.User, error) {
-	return nil, user.ErrNotFound
-}
-
-func (f *fakeVerifiedRepo) LinkProviderSubject(ctx context.Context, id uuid.UUID, provider user.VerificationSource, subject string) error {
-	return nil
-}
-
 func (f *fakeVerifiedRepo) UsernameTaken(ctx context.Context, username string) (bool, error) {
 	return false, nil
 }
@@ -81,14 +73,6 @@ func (f *fakeVerifiedRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p us
 
 func (f *fakeVerifiedRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*user.User, error) {
 	return nil, user.ErrNotFound
-}
-
-func (f *fakeVerifiedRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
-	return false, nil
-}
-
-func (f *fakeVerifiedRepo) ClaimAndRevoke(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
-	return false, nil
 }
 
 var _ user.Repository = (*fakeVerifiedRepo)(nil)

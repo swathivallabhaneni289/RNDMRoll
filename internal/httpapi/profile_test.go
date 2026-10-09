@@ -386,18 +386,6 @@ func (r *profileRig) do(t *testing.T, method, path string, id uuid.UUID, body an
 	return integrationDoAuthedRequest(t, r.router, method, path, mintToken(t, id), body)
 }
 
-// seedSocial stores an Apple/Google-shaped account: verified, no name, no
-// username, no birthday.
-func (r *profileRig) seedSocial(t *testing.T, email string) *user.User {
-	t.Helper()
-	via := user.VerifiedViaGoogle
-	u, err := r.users.Create(context.Background(), email, nil, true, &via)
-	if err != nil {
-		t.Fatalf("seed social account: %v", err)
-	}
-	return u
-}
-
 // seedLegacy stores an account like the three existing dev accounts:
 // complete, no birthday on file.
 func (r *profileRig) seedLegacy(t *testing.T, email, name, username string) *user.User {
@@ -513,153 +501,41 @@ func TestProfile_PatchMe_CompleteAccountWithNoBirthdayCanEditButNotSendOne(t *te
 	}
 }
 
-func TestProfile_PatchMe_SocialAccountSetsBirthdayOnceAndKeepsIt(t *testing.T) {
-	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "social@example.com")
-
-	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": "1995-05-05"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("set birthday: %d %s", rec.Code, rec.Body.String())
-	}
-	if decodeBody(t, rec)["onboarding_complete"] != false {
-		t.Fatalf("a birthday alone must not complete the profile: %s", rec.Body.String())
-	}
-	if got := rig.users.storedBirthday(social.ID); got != "1995-05-05" {
-		t.Fatalf("stored birthday = %q", got)
-	}
-
-	// A second birthday is ignored: 200, value kept, even an under-13 one.
-	for _, again := range []string{"1990-01-01", birthdayYearsAgo(12), "not-a-date"} {
-		rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": again})
-		if rec.Code != http.StatusOK {
-			t.Fatalf("second birthday %q: %d %s", again, rec.Code, rec.Body.String())
-		}
-		if got := rig.users.storedBirthday(social.ID); got != "1995-05-05" {
-			t.Fatalf("stored birthday changed to %q", got)
-		}
-	}
-	if _, err := rig.users.GetByID(context.Background(), social.ID); err != nil {
-		t.Fatalf("an ignored under-13 birthday must not delete the account: %v", err)
-	}
-}
-
-func TestProfile_PatchMe_SocialAccountCannotFinishWithoutABirthday(t *testing.T) {
-	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "nobirthday@example.com")
-
-	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"name": "No Birthday", "username": "no_birthday"})
-	assertFieldError(t, rec, "birthday")
-	stored, _ := rig.users.GetByID(context.Background(), social.ID)
-	if stored.Name != nil || stored.Username != nil {
-		t.Fatal("the refused patch was partly applied")
-	}
-
-	// One field at a time is fine until the second would complete it.
-	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"name": "No Birthday"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("name alone: %d %s", rec.Code, rec.Body.String())
-	}
-	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"username": "no_birthday"})
-	assertFieldError(t, rec, "birthday")
-
-	// With a birthday in the same patch it completes.
-	rec = rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"username": "no_birthday", "birthday": "1992-02-02"})
-	if rec.Code != http.StatusOK || decodeBody(t, rec)["onboarding_complete"] != true {
-		t.Fatalf("finish with a birthday: %d %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestProfile_PatchMe_SocialUnderThirteenDeletesTheAccountAndAppliesNothing(t *testing.T) {
-	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "kid@example.com")
-	refreshToken, err := rig.svc.Issue(context.Background(), social.ID, nil)
-	if err != nil {
-		t.Fatalf("issue refresh token: %v", err)
-	}
-
-	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{
-		"birthday": birthdayYearsAgo(12),
-		"name":     "Kid Name",
-		"username": "kid_name",
-		"bio":      "should not be stored",
-	})
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if got := decodeBody(t, rec)["error"]; got != "under_minimum_age" {
-		t.Fatalf("expected under_minimum_age, got %v", got)
-	}
-	if rig.users.count() != 0 {
-		t.Fatalf("account still stored (%d rows)", rig.users.count())
-	}
-	if _, _, err := rig.svc.Redeem(context.Background(), refreshToken, nil); err == nil {
-		t.Fatal("the refresh token still works after the account was deleted")
-	}
-	// The token for the deleted account is refused on the next call.
-	again := rig.do(t, http.MethodGet, "/v1/me", social.ID, nil)
-	if again.Code != http.StatusUnauthorized {
-		t.Fatalf("GET /me after deletion: expected 401, got %d", again.Code)
-	}
-}
-
-func TestProfile_PatchMe_AgeIsJudgedBeforeAnyOtherField(t *testing.T) {
-	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "order@example.com")
-
-	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{
-		"birthday":   birthdayYearsAgo(10),
-		"username":   "BAD NAME",
-		"avatar_url": "https://evil.example.org/x.png",
-		"bio":        strings.Repeat("b", 500),
-	})
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 before the other fields are validated, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if rig.users.count() != 0 {
-		t.Fatal("account should be gone")
-	}
-}
-
-func TestProfile_PatchMe_BadBirthdaysAreFieldErrorsOnIncompleteAccounts(t *testing.T) {
-	cases := map[string]string{
+func TestProfile_PatchMe_ABirthdayIsAlwaysRefusedAndNothingElseIsApplied(t *testing.T) {
+	values := map[string]string{
+		"valid date":  "1995-05-05",
+		"under 13":    birthdayYearsAgo(12),
 		"nonexistent": "2001-02-29",
-		"before 1900": "1899-01-01",
-		"future":      "2999-01-01",
 		"wrong shape": "05/05/1995",
 		"empty":       "",
 	}
-	for name, value := range cases {
+	for name, value := range values {
 		t.Run(name, func(t *testing.T) {
 			rig := newProfileRig(t)
-			social := rig.seedSocial(t, "bad@example.com")
-			rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": value})
+			account := rig.users.seedComplete(t, "set-once@example.com", "Set Once", "set_once", "1990-01-01")
+
+			rec := rig.do(t, http.MethodPatch, "/v1/me", account.ID, map[string]any{"birthday": value, "name": "Changed Name"})
+
 			assertFieldError(t, rec, "birthday")
+			stored, _ := rig.users.GetByID(context.Background(), account.ID)
+			if stored.Name == nil || *stored.Name != "Set Once" {
+				t.Fatalf("the refused patch was partly applied: name = %v", stored.Name)
+			}
+			if got := rig.users.storedBirthday(account.ID); got != "1990-01-01" {
+				t.Fatalf("stored birthday changed to %q", got)
+			}
 			if rig.users.count() != 1 {
-				t.Fatal("a malformed birthday must not delete the account")
+				t.Fatal("a refused birthday must never delete the account")
 			}
 		})
 	}
 }
 
-func TestProfile_PatchMe_ExactlyThirteenTodayIsAccepted(t *testing.T) {
-	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "thirteen@example.com")
-
-	rec := rig.do(t, http.MethodPatch, "/v1/me", social.ID, map[string]any{"birthday": birthdayYearsAgo(13)})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
 func TestProfile_AvatarUploadURL_DeletedAccountGets401(t *testing.T) {
 	rig := newProfileRig(t)
-	social := rig.seedSocial(t, "gone2@example.com")
-	if deleted, err := rig.users.Delete(context.Background(), social.ID); err != nil || !deleted {
-		t.Fatalf("delete: %v %v", deleted, err)
-	}
-	rec := rig.do(t, http.MethodPost, "/v1/me/avatar/upload-url", social.ID, map[string]any{"content_type": "image/png", "content_length": 100})
+	gone := rig.seedLegacy(t, "gone2@example.com", "Gone Two", "gone_two")
+	rig.users.remove(t, gone.ID)
+	rec := rig.do(t, http.MethodPost, "/v1/me/avatar/upload-url", gone.ID, map[string]any{"content_type": "image/png", "content_length": 100})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}

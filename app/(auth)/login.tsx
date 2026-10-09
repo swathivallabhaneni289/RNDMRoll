@@ -13,9 +13,8 @@ import { useSession } from '@/lib/session/store';
 
 /**
  * Log in with an email or a username, plus a password. Sign-up is its own page now
- * (make-it-yours). Back and "Sign up instead" both return to choose-method, where Email, Apple
- * and Google are offered, so a person who is not sure how they signed up can pick. An account
- * that never verified its email logs in like any other.
+ * (make-it-yours). Back and "Sign up instead" both return to choose-method, which offers Sign up
+ * and Log in. An account that never verified its email logs in like any other.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -82,7 +81,7 @@ export default function LoginScreen() {
         { login: login.trim(), password },
         { auth: false }
       );
-      // The root guard routes onward from here: the app, or the finish page for an unfinished account.
+      // The root guard routes a signed-in account to the app.
       await signIn(result);
     } catch (err) {
       // One message for a wrong password, an unknown email and an unknown username

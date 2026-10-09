@@ -314,83 +314,7 @@ func TestEmailVerificationRepo_ConsumeByHash_SecondCallReturnsErrTokenConsumed(t
 	}
 }
 
-func TestUserRepo_ClaimAndRevoke_VerifiesDropsPasswordAndRevokesTokensTogether(t *testing.T) {
-	pool := requireTestPool(t)
-	repo := postgres.NewUserRepo(pool)
-	tokenRepo := postgres.NewRefreshTokenRepo(pool)
-	ctx := context.Background()
-
-	hash := "bcrypt-hash"
-	created, err := repo.Create(ctx, "claim@example.com", &hash, false, nil)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	liveHash := []byte("claim-live-token-hash-00000001")
-	if _, err := tokenRepo.Insert(ctx, created.ID, liveHash, time.Now().Add(time.Hour), nil); err != nil {
-		t.Fatalf("Insert token: %v", err)
-	}
-
-	claimed, err := repo.ClaimAndRevoke(ctx, created.ID, user.VerifiedViaGoogle)
-	if err != nil || !claimed {
-		t.Fatalf("ClaimAndRevoke: claimed = %v, err = %v, want true, nil", claimed, err)
-	}
-
-	got, err := repo.GetByID(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if !got.EmailVerified {
-		t.Error("EmailVerified = false, want true")
-	}
-	if got.EmailVerifiedVia == nil || *got.EmailVerifiedVia != user.VerifiedViaGoogle {
-		t.Errorf("EmailVerifiedVia = %v, want google", got.EmailVerifiedVia)
-	}
-	if got.PasswordHash != nil {
-		t.Errorf("PasswordHash = %q, want NULL", *got.PasswordHash)
-	}
-	if _, err := tokenRepo.GetActiveByHash(ctx, liveHash); !errors.Is(err, user.ErrTokenInvalid) {
-		t.Errorf("GetActiveByHash(token issued before the claim) = %v, want ErrTokenInvalid", err)
-	}
-}
-
-func TestUserRepo_ClaimAndRevoke_LeavesVerifiedAccountAndItsSessionsUntouched(t *testing.T) {
-	pool := requireTestPool(t)
-	repo := postgres.NewUserRepo(pool)
-	tokenRepo := postgres.NewRefreshTokenRepo(pool)
-	ctx := context.Background()
-
-	hash := "bcrypt-hash"
-	via := user.VerifiedViaPasswordFlow
-	created, err := repo.Create(ctx, "verified@example.com", &hash, true, &via)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	liveHash := []byte("verified-live-token-hash-00001")
-	if _, err := tokenRepo.Insert(ctx, created.ID, liveHash, time.Now().Add(time.Hour), nil); err != nil {
-		t.Fatalf("Insert token: %v", err)
-	}
-
-	claimed, err := repo.ClaimAndRevoke(ctx, created.ID, user.VerifiedViaApple)
-	if err != nil || claimed {
-		t.Fatalf("ClaimAndRevoke: claimed = %v, err = %v, want false, nil", claimed, err)
-	}
-
-	got, err := repo.GetByID(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if got.PasswordHash == nil || *got.PasswordHash != hash {
-		t.Errorf("PasswordHash = %v, want %q (unchanged)", got.PasswordHash, hash)
-	}
-	if got.EmailVerifiedVia == nil || *got.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
-		t.Errorf("EmailVerifiedVia = %v, want password_flow (unchanged)", got.EmailVerifiedVia)
-	}
-	if _, err := tokenRepo.GetActiveByHash(ctx, liveHash); err != nil {
-		t.Errorf("a verified account's session was revoked: %v", err)
-	}
-}
-
-// --- one-request sign-up, birthday, delete ---
+// --- one-request sign-up and the birthday ---
 
 func countUsers(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
@@ -489,35 +413,33 @@ func TestUserRepo_CreateComplete_FailuresStoreNothing(t *testing.T) {
 	}
 }
 
-func TestUserRepo_UpdateProfile_BirthdayIsWriteOnce(t *testing.T) {
+func TestUserRepo_UpdateProfile_LeavesTheBirthdayAlone(t *testing.T) {
 	pool := requireTestPool(t)
 	repo := postgres.NewUserRepo(pool)
 	ctx := context.Background()
-	created := mustCreateUser(t, repo, "once@example.com")
-	if created.HasBirthday {
-		t.Fatal("a Create'd account must have no birthday")
+	created, err := repo.CreateComplete(ctx, newAccount("keeps@example.com", "keeps_birthday"))
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
 	}
 
-	first, second := "1994-04-04", "1980-01-01"
-	u, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Birthday: &first})
-	if err != nil || !u.HasBirthday {
-		t.Fatalf("first write: %v, has = %v", err, u != nil && u.HasBirthday)
-	}
-	if _, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Birthday: &second}); err != nil {
-		t.Fatalf("second write: %v", err)
+	name, bio := "Renamed", "a new bio"
+	if _, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Name: &name, Bio: &bio}); err != nil {
+		t.Fatalf("patch: %v", err)
 	}
 	var stored string
-	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != first {
-		t.Fatalf("stored birthday = %q (err %v), want the first value %q", stored, err, first)
+	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != "1990-06-15" {
+		t.Fatalf("birthday after a profile patch = %q (err %v), want 1990-06-15", stored, err)
 	}
 
-	// A patch without a birthday leaves it alone.
-	name := "Someone"
-	if _, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Name: &name}); err != nil {
-		t.Fatalf("name-only patch: %v", err)
+	// An account with no birthday on file (made before sign-up asked for one)
+	// stays that way: a profile patch cannot add one.
+	legacy := mustCreateUser(t, repo, "legacy@example.com")
+	if _, err := repo.UpdateProfile(ctx, legacy.ID, user.ProfilePatch{Name: &name}); err != nil {
+		t.Fatalf("legacy patch: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `select birthday::text from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != first {
-		t.Fatalf("birthday after a name-only patch = %q (err %v)", stored, err)
+	got, err := repo.GetByID(ctx, legacy.ID)
+	if err != nil || got.HasBirthday {
+		t.Fatalf("legacy account has a birthday after a patch (has = %v, err %v)", got != nil && got.HasBirthday, err)
 	}
 }
 
@@ -531,47 +453,6 @@ func TestUserRepo_UpdateProfile_CheckViolationsAreFieldErrors(t *testing.T) {
 	var fieldErr *user.FieldError
 	if !errors.As(err, &fieldErr) || fieldErr.Field != "username" {
 		t.Fatalf("got %v, want FieldError for username", err)
-	}
-	old := "1899-01-01"
-	_, err = repo.UpdateProfile(context.Background(), created.ID, user.ProfilePatch{Birthday: &old})
-	if !errors.As(err, &fieldErr) || fieldErr.Field != "birthday" {
-		t.Fatalf("got %v, want FieldError for birthday", err)
-	}
-}
-
-func TestUserRepo_Delete_OnlyWhileNoBirthdayAndTokensGoWithIt(t *testing.T) {
-	pool := requireTestPool(t)
-	repo := postgres.NewUserRepo(pool)
-	tokenRepo := postgres.NewRefreshTokenRepo(pool)
-	ctx := context.Background()
-
-	social := mustCreateUser(t, repo, "social-kid@example.com")
-	tokenHash := []byte("delete-token-hash-000000000001")
-	if _, err := tokenRepo.Insert(ctx, social.ID, tokenHash, time.Now().Add(time.Hour), nil); err != nil {
-		t.Fatalf("Insert token: %v", err)
-	}
-	deleted, err := repo.Delete(ctx, social.ID)
-	if err != nil || !deleted {
-		t.Fatalf("Delete: deleted = %v, err = %v, want true, nil", deleted, err)
-	}
-	if _, err := repo.GetByID(ctx, social.ID); !errors.Is(err, user.ErrNotFound) {
-		t.Fatalf("GetByID after delete: %v, want ErrNotFound", err)
-	}
-	if _, err := tokenRepo.GetActiveByHash(ctx, tokenHash); !errors.Is(err, user.ErrTokenInvalid) {
-		t.Fatalf("token after delete: %v, want ErrTokenInvalid (cascade)", err)
-	}
-
-	// An account with a birthday on file is never deleted through this path.
-	real, err := repo.CreateComplete(ctx, newAccount("real@example.com", "real_person"))
-	if err != nil {
-		t.Fatalf("CreateComplete: %v", err)
-	}
-	deleted, err = repo.Delete(ctx, real.ID)
-	if err != nil || deleted {
-		t.Fatalf("Delete of an account with a birthday: deleted = %v, err = %v, want false, nil", deleted, err)
-	}
-	if _, err := repo.GetByID(ctx, real.ID); err != nil {
-		t.Fatalf("the account was deleted: %v", err)
 	}
 }
 
@@ -606,48 +487,94 @@ func TestCheckTestDatabaseURL(t *testing.T) {
 	}
 }
 
-// TestMigrations_0002IsReversible walks the test database down to version 1
-// and back up to 2 with explicit `goto` steps (never `down 2`, which would
-// drop 0001 and every table). It restores version 2 in a defer so a failure
-// cannot leave the shared test database behind the schema other tests need.
-// It runs under -p 1 with the rest of the suite and only on a *_test database.
-// The whole suite MUST run with -p 1: this test drops the birthday column
+// latestMigration returns the highest migration number on disk, which is the
+// version the shared test database sits at once TestMain has run `migrate up`.
+// Reading it from the files means a new migration needs no edit to the tests
+// below. They walk away from the latest version with explicit `goto` steps
+// (never `down N`, which would drop 0001 and every table) and always restore
+// it in a cleanup, so a failure cannot leave the shared test database behind
+// the schema the other tests need. They run only on a *_test database. The
+// whole suite MUST run with -p 1: these tests drop and re-add columns
 // mid-run, so any other package using the same database in parallel would
 // fail.
-func TestMigrations_0002IsReversible(t *testing.T) {
+func latestMigration(t *testing.T) int {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(repoRoot(), "migrations", "*.up.sql"))
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	highest := 0
+	for _, f := range files {
+		var n int
+		if _, err := fmt.Sscanf(filepath.Base(f), "%d_", &n); err == nil && n > highest {
+			highest = n
+		}
+	}
+	if highest == 0 {
+		t.Fatal("no migration files found")
+	}
+	return highest
+}
+
+// requireMigrationDatabase skips when no test database is configured, refuses
+// anything that is not a *_test database, and registers the restore of the
+// latest version.
+func requireMigrationDatabase(t *testing.T) {
+	t.Helper()
 	if testDatabaseURL == "" {
 		t.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
 	}
 	if err := postgres.CheckTestDatabaseURL(testDatabaseURL); err != nil {
 		t.Fatalf("%v", err)
 	}
-	ctx := context.Background()
-	migrationsDir := filepath.Join(repoRoot(), "migrations")
-	goTo := func(version int) {
-		t.Helper()
-		cmd := exec.Command("migrate", "-path", migrationsDir, "-database", testDatabaseURL, "goto", fmt.Sprint(version))
+	latest := latestMigration(t)
+	t.Cleanup(func() {
+		cmd := exec.Command("migrate", "-path", filepath.Join(repoRoot(), "migrations"), "-database", testDatabaseURL, "goto", fmt.Sprint(latest))
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("migrate goto %d: %v: %s", version, err, out)
+			t.Errorf("restoring migration version %d failed: %v: %s", latest, err, out)
 		}
-	}
-	defer func() {
-		cmd := exec.Command("migrate", "-path", migrationsDir, "-database", testDatabaseURL, "goto", "2")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Errorf("restoring migration version 2 failed: %v: %s", err, out)
-		}
-	}()
+	})
+}
 
-	// A fresh pool for each phase, so no connection holds a statement cached
-	// against the other schema.
-	withPool := func(fn func(pool *pgxpool.Pool)) {
-		t.Helper()
-		pool, err := postgres.NewPool(ctx, testDatabaseURL)
-		if err != nil {
-			t.Fatalf("NewPool: %v", err)
-		}
-		defer pool.Close()
-		fn(pool)
+func migrateGoTo(t *testing.T, version int) {
+	t.Helper()
+	cmd := exec.Command("migrate", "-path", filepath.Join(repoRoot(), "migrations"), "-database", testDatabaseURL, "goto", fmt.Sprint(version))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("migrate goto %d: %v: %s", version, err, out)
 	}
+}
+
+// withFreshPool gives fn a new pool, so no connection holds a statement cached
+// against the other schema.
+func withFreshPool(t *testing.T, fn func(pool *pgxpool.Pool)) {
+	t.Helper()
+	pool, err := postgres.NewPool(context.Background(), testDatabaseURL)
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	defer pool.Close()
+	fn(pool)
+}
+
+func schemaVersion(t *testing.T, pool *pgxpool.Pool) (int, bool) {
+	t.Helper()
+	var v int
+	var dirty bool
+	if err := pool.QueryRow(context.Background(), `select version, dirty from schema_migrations`).Scan(&v, &dirty); err != nil {
+		t.Fatalf("read schema_migrations: %v", err)
+	}
+	return v, dirty
+}
+
+// TestMigrations_0002IsReversible walks the test database from the latest
+// version down to 1 and back up to 2. Going down must drop the birthday column
+// and its constraint without losing rows; going up must restore both and leave
+// every existing row NULL.
+func TestMigrations_0002IsReversible(t *testing.T) {
+	requireMigrationDatabase(t)
+	ctx := context.Background()
+	latest := latestMigration(t)
+
 	hasColumn := func(pool *pgxpool.Pool) bool {
 		var n int
 		const q = `select count(*) from information_schema.columns where table_name = 'users' and column_name = 'birthday'`
@@ -664,31 +591,23 @@ func TestMigrations_0002IsReversible(t *testing.T) {
 		}
 		return n == 1
 	}
-	version := func(pool *pgxpool.Pool) (int, bool) {
-		var v int
-		var dirty bool
-		if err := pool.QueryRow(ctx, `select version, dirty from schema_migrations`).Scan(&v, &dirty); err != nil {
-			t.Fatalf("read schema_migrations: %v", err)
-		}
-		return v, dirty
-	}
 
-	withPool(func(pool *pgxpool.Pool) {
+	withFreshPool(t, func(pool *pgxpool.Pool) {
 		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
 			t.Fatalf("truncate: %v", err)
 		}
-		if v, dirty := version(pool); v != 2 || dirty {
-			t.Fatalf("expected version 2 (clean) before the test, got %d dirty=%v", v, dirty)
+		if v, dirty := schemaVersion(t, pool); v != latest || dirty {
+			t.Fatalf("expected version %d (clean) before the test, got %d dirty=%v", latest, v, dirty)
 		}
 		if !hasColumn(pool) || !hasConstraint(pool) {
-			t.Fatal("expected the birthday column and users_birthday_min at version 2")
+			t.Fatal("expected the birthday column and users_birthday_min at the latest version")
 		}
 		mustCreateUser(t, postgres.NewUserRepo(pool), "before-down@example.com")
 	})
 
-	goTo(1)
-	withPool(func(pool *pgxpool.Pool) {
-		if v, dirty := version(pool); v != 1 || dirty {
+	migrateGoTo(t, 1)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 1 || dirty {
 			t.Fatalf("after goto 1: version %d dirty=%v", v, dirty)
 		}
 		if hasColumn(pool) || hasConstraint(pool) {
@@ -702,9 +621,9 @@ func TestMigrations_0002IsReversible(t *testing.T) {
 		}
 	})
 
-	goTo(2)
-	withPool(func(pool *pgxpool.Pool) {
-		if v, dirty := version(pool); v != 2 || dirty {
+	migrateGoTo(t, 2)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 2 || dirty {
 			t.Fatalf("after goto 2: version %d dirty=%v", v, dirty)
 		}
 		if !hasColumn(pool) || !hasConstraint(pool) {
@@ -724,6 +643,99 @@ func TestMigrations_0002IsReversible(t *testing.T) {
 		}
 		if _, err := pool.Exec(ctx, `update users set birthday = date '1900-01-01'`); err != nil {
 			t.Fatalf("1900-01-01 must be allowed: %v", err)
+		}
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("final truncate: %v", err)
+		}
+	})
+}
+
+// TestMigrations_0003IsReversible walks the test database from the latest
+// version down to 2 and back up. At version 3 the Apple and Google columns,
+// their two unique indexes and the provider values of the verification check
+// are gone; at version 2 they are all back and the unique indexes work. An
+// existing account survives the trip in both directions.
+func TestMigrations_0003IsReversible(t *testing.T) {
+	requireMigrationDatabase(t)
+	ctx := context.Background()
+	latest := latestMigration(t)
+
+	providerColumns := func(pool *pgxpool.Pool) int {
+		var n int
+		const q = `select count(*) from information_schema.columns where table_name = 'users' and column_name in ('apple_subject', 'google_subject')`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("column check: %v", err)
+		}
+		return n
+	}
+	providerIndexes := func(pool *pgxpool.Pool) int {
+		var n int
+		const q = `select count(*) from pg_indexes where tablename = 'users' and indexname in ('users_apple_subject_idx', 'users_google_subject_idx')`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("index check: %v", err)
+		}
+		return n
+	}
+
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+		if v, dirty := schemaVersion(t, pool); v != latest || dirty {
+			t.Fatalf("expected version %d (clean) before the test, got %d dirty=%v", latest, v, dirty)
+		}
+		if providerColumns(pool) != 0 || providerIndexes(pool) != 0 {
+			t.Fatal("the latest version must have no Apple or Google column or index")
+		}
+		// The narrowed check: only password_flow is a known verification source.
+		var pgErr *pgconn.PgError
+		_, err := pool.Exec(ctx, `insert into users (email, email_verified_via) values ('apple-source@example.com', 'apple')`)
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_email_verified_via_check" {
+			t.Fatalf("an 'apple' verification source at version 3: got %v, want a users_email_verified_via_check violation", err)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email, email_verified_via) values ('flow-source@example.com', 'password_flow')`); err != nil {
+			t.Fatalf("password_flow must stay allowed: %v", err)
+		}
+	})
+
+	migrateGoTo(t, 2)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 2 || dirty {
+			t.Fatalf("after goto 2: version %d dirty=%v", v, dirty)
+		}
+		if providerColumns(pool) != 2 || providerIndexes(pool) != 2 {
+			t.Fatal("goto 2 must restore both provider columns and both unique indexes")
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("goto 2 changed the user count to %d, want 1", n)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email, email_verified_via, apple_subject) values ('a1@example.com', 'apple', 'sub-1')`); err != nil {
+			t.Fatalf("an Apple account at version 2: %v", err)
+		}
+		var pgErr *pgconn.PgError
+		_, err := pool.Exec(ctx, `insert into users (email, apple_subject) values ('a2@example.com', 'sub-1')`)
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_apple_subject_idx" {
+			t.Fatalf("a repeated Apple subject: got %v, want a users_apple_subject_idx violation", err)
+		}
+		// Going up narrows the check, so no provider row may be left behind.
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate before going up: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email) values ('survives-up@example.com')`); err != nil {
+			t.Fatalf("insert at version 2: %v", err)
+		}
+	})
+
+	migrateGoTo(t, 3)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 3 || dirty {
+			t.Fatalf("after goto 3: version %d dirty=%v", v, dirty)
+		}
+		if providerColumns(pool) != 0 || providerIndexes(pool) != 0 {
+			t.Fatal("goto 3 must drop both provider columns and both unique indexes")
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("user count after goto 3 = %d, want 1", n)
 		}
 		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
 			t.Fatalf("final truncate: %v", err)

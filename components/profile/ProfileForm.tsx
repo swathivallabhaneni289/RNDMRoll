@@ -12,17 +12,15 @@ import { TextButton } from '@/components/ui/TextButton';
 import { FieldSuccess, TextField } from '@/components/ui/TextField';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
-import { fetchProfile, fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
+import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
 import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
 import { useSession } from '@/lib/session/store';
 
 /**
- * The one profile page, in four modes (plans 01-19 and 01-20):
+ * The one profile page, in three modes (plans 01-19 and 01-20):
  *   signup: signed out. Email, password, birthday, name, username. Continue.
- *   finish: signed in with an unfinished account (Apple or Google). Birthday, name, username.
- *           Continue, plus Log out.
- *   extras: signed in, right after signup or finish. Photo and bio, both optional. Continue
+ *   extras: signed in, right after signup. Photo and bio, both optional. Continue
  *           or Skip for now. Shown once, in place of the landing page.
  *   edit:   signed in and complete. Photo, name, username, bio. Save changes, Log out.
  * The caller picks the mode once on mount and never changes it (the landing route remounts
@@ -30,7 +28,7 @@ import { useSession } from '@/lib/session/store';
  * submit cannot make this page show anything new while the screen swaps.
  * The look is the "Make it yours." edit page built in 6054474.
  */
-export type ProfileFormMode = 'signup' | 'finish' | 'extras' | 'edit';
+export type ProfileFormMode = 'signup' | 'extras' | 'edit';
 
 const BIO_MAX_LENGTH = 160;
 const NAME_MAX_LENGTH = 50;
@@ -97,18 +95,13 @@ type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   const router = useRouter();
-  const { user, signIn, signOut, reloadUser, startExtras, finishExtras } = useSession();
+  const { user, signIn, signOut, reloadUser, finishExtras } = useSession();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const signup = mode === 'signup';
   const edit = mode === 'edit';
   const extras = mode === 'extras';
-  // Signup and finish ask who the person is; extras and edit are the profile pages.
-  const joining = signup || mode === 'finish';
-  // Finish mode leaves the 13+ rule to the server: an under-13 birthday must be sent so the
-  // server can delete the unfinished account and the refusal path runs (plan step 18).
-  const ageOptions = { ignoreAge: mode === 'finish' };
 
   // What is stored right now. A signup has nothing stored; after its signIn the session
   // user appears, but this page is already on its way out, so it keeps reading blanks.
@@ -164,15 +157,13 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   // A photo that already uploaded is remembered by its local file, so a retry after a
   // failed later step never uploads it twice.
   const uploadedRef = useRef<{ uri: string; url: string } | null>(null);
-  // Finish mode: the birthday is accepted once, so a retry skips straight to the rest.
-  const birthdaySavedRef = useRef(false);
 
   useEffect(() => {
     usernameRef.current = username;
   }, [username]);
 
   useEffect(() => {
-    if (joining && name.trim().length > 0 && username === '') {
+    if (signup && name.trim().length > 0 && username === '') {
       maybeSuggestUsername(name);
     }
     return () => {
@@ -241,7 +232,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   function maybeSuggestUsername(fromName: string) {
     const trimmed = fromName.trim();
-    if (!joining || suggestionFetchedRef.current || usernameEditedRef.current || trimmed.length === 0) return;
+    if (!signup || suggestionFetchedRef.current || usernameEditedRef.current || trimmed.length === 0) return;
     suggestionFetchedRef.current = true;
     void fetchSuggestion(trimmed);
   }
@@ -303,7 +294,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     // blurs by itself); until then only clear or refresh a message that is already showing.
     const complete = next.month !== '' && next.day !== '' && next.year.length === 4;
     if (complete || birthdayError) {
-      const result = checkBirthday(next, new Date(), ageOptions);
+      const result = checkBirthday(next, new Date());
       setBirthdayError(result.ok ? undefined : result.error);
     }
   }
@@ -312,7 +303,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     // Month and Day blur on the way to Year, so they speak only once all three are filled.
     const filled = birthday.month !== '' && birthday.day !== '' && birthday.year !== '';
     if (key !== 'year' && !filled) return;
-    const result = checkBirthday(birthday, new Date(), ageOptions);
+    const result = checkBirthday(birthday, new Date());
     setBirthdayError(result.ok ? undefined : result.error);
   }
 
@@ -325,7 +316,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       year: String(date.getFullYear()),
     };
     setBirthday(next);
-    const result = checkBirthday(next, new Date(), ageOptions);
+    const result = checkBirthday(next, new Date());
     setBirthdayError(result.ok ? undefined : result.error);
   }
 
@@ -406,17 +397,16 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   const trimmedName = name.trim();
   const trimmedBio = bio.trim();
 
-  const birthdayResult = joining ? checkBirthday(birthday, new Date(), ageOptions) : null;
+  const birthdayResult = signup ? checkBirthday(birthday, new Date()) : null;
   const birthdayValid = birthdayResult?.ok === true;
   const nameValid = nameProblem(name) === undefined;
   // The green notes. Email and password speak as you type; the name after you leave the box (or
-  // at once when it came filled in); the birthday once a date is chosen. The birthday note
-  // always applies the 13+ rule, even on the finish page, which leaves that rule to the server.
+  // at once when it came filled in); the birthday once a date is chosen.
   const emailTakenNow = signup && takenEmail !== null && email.trim().toLowerCase() === takenEmail;
   const emailOk = signup && email.trim() !== '' && emailProblem(email) === undefined && !emailTakenNow;
   const passwordOk = signup && password !== '' && passwordProblem(password) === undefined;
-  const nameOk = joining && nameValid && (nameTouched || initialName.trim() !== '');
-  const birthdayOk = joining && checkBirthday(birthday, new Date(), { ignoreAge: false }).ok;
+  const nameOk = signup && nameValid && (nameTouched || initialName.trim() !== '');
+  const birthdayOk = signup && checkBirthday(birthday, new Date()).ok;
   const usernameValid =
     (initialUsername !== '' && username === initialUsername) || USERNAME_PATTERN.test(username);
   const usernameBlocking = usernameStatus === 'checking' || usernameStatus === 'taken';
@@ -438,8 +428,6 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       usernameValid &&
       !usernameBlocking &&
       !submitting;
-  } else if (mode === 'finish') {
-    canSubmit = birthdayValid && nameValid && usernameValid && !usernameBlocking && !submitting;
   } else if (extras) {
     // Photo and bio are both optional, so Continue with neither filled in simply moves on.
     canSubmit = !submitting;
@@ -463,7 +451,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       case 'birthday': {
         // The client check already passed, so the server disagreed (a clock edge): a
         // "month, day and year" message would be wrong, so show the generic one.
-        const result = checkBirthday(birthday, new Date(), ageOptions);
+        const result = checkBirthday(birthday, new Date());
         if (result.ok) setFormError(GENERIC_MESSAGE);
         else setBirthdayError(result.error);
         return true;
@@ -516,7 +504,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   }
 
   async function submitSignup() {
-    const check = checkBirthday(birthday, new Date(), ageOptions);
+    const check = checkBirthday(birthday, new Date());
     if (!check.ok) {
       setBirthdayError(check.error);
       return;
@@ -534,52 +522,6 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
     // The landing route opens on the photo-and-bio page for this one sign-in.
     await signIn(result, { extras: true });
-  }
-
-  async function submitFinish() {
-    const check = checkBirthday(birthday, new Date(), ageOptions);
-    if (!check.ok) {
-      setBirthdayError(check.error);
-      return;
-    }
-
-    // The birthday goes ALONE first. An age under 13 deletes the account, so nothing else
-    // (no name, no username) may be sent before the server has accepted it.
-    if (!birthdaySavedRef.current) {
-      try {
-        await updateProfile({ birthday: check.iso });
-        birthdaySavedRef.current = true;
-      } catch (err) {
-        if (err instanceof ApiError && err.code === 'under_minimum_age') {
-          showRefusal();
-          await signOut();
-          router.replace('/welcome');
-          return;
-        }
-        // A retry after a lost reply: the server already finished this account and now
-        // refuses a birthday from it. If the account now reads complete, reload and the root
-        // guard moves on; otherwise fall through to the usual error.
-        if (err instanceof ApiError && err.code === 'validation_failed' && err.field === 'birthday') {
-          try {
-            const fresh = await fetchProfile();
-            if (fresh.onboarding_complete) {
-              startExtras();
-              await reloadUser();
-              return;
-            }
-          } catch {
-            // fall through to the error below
-          }
-        }
-        throw err;
-      }
-    }
-
-    await updateProfile({ name: trimmedName, username });
-    // Up before the user reads as complete, so the landing route opens on the photo-and-bio page.
-    startExtras();
-    // The root guard swaps this screen for the app once the user reads as complete.
-    await reloadUser();
   }
 
   async function submitExtras() {
@@ -632,7 +574,6 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
     try {
       if (signup) await submitSignup();
-      else if (mode === 'finish') await submitFinish();
       else if (extras) await submitExtras();
       else await submitEdit();
     } catch (err) {
@@ -655,8 +596,6 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     try {
       await signOut();
       // Edit: the root guard routes back to Welcome once status flips to unauthenticated.
-      // Finish: this page lives in the signed-out group too, so it has to leave itself.
-      if (mode === 'finish') router.replace('/welcome');
     } finally {
       setSigningOut(false);
       setConfirmingSignOut(false);
@@ -706,7 +645,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         </View>
 
-        {joining ? (
+        {signup ? (
           <View style={{ marginTop: space.xl }}>
             <AppText role="heading">Create your account.</AppText>
           </View>
@@ -776,8 +715,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        {joining ? (
-          <View style={{ marginTop: signup ? space.md : space.lg }}>
+        {signup ? (
+          <View style={{ marginTop: space.md }}>
             {birthdayPickerAvailable ? (
               <BirthdayPickerField
                 value={birthday}
@@ -848,7 +787,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </View>
         ) : null}
 
-        {!joining ? (
+        {!signup ? (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>
             <DialAvatar
               name={name}
@@ -926,7 +865,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
           </>
         ) : null}
 
-        {!joining ? (
+        {!signup ? (
           <View style={{ marginTop: space.md }}>
             <TextField
               label="Bio"

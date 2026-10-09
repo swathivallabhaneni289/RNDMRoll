@@ -48,8 +48,8 @@ type fakeUserRepo struct {
 	// birthdays holds the stored date per user. user.User deliberately has
 	// no date field, so a test reads it here to prove what was stored.
 	birthdays map[uuid.UUID]string
-	// tokens, when set, lets Delete and ClaimAndRevoke revoke refresh
-	// tokens the way the database does (cascade and the claim transaction).
+	// tokens, when set, lets remove revoke refresh tokens the way the
+	// database does when an account row goes (cascade).
 	tokens *fakeRefreshRepo
 }
 
@@ -114,35 +114,20 @@ func (f *fakeUserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (
 	return &stored, nil
 }
 
-func (f *fakeUserRepo) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
+// remove deletes an account the way the database does when its row goes:
+// the account is gone and its refresh tokens stop working.
+func (f *fakeUserRepo) remove(t *testing.T, id uuid.UUID) {
+	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	u, ok := f.users[id]
-	if !ok || u.HasBirthday {
-		return false, nil
+	if _, ok := f.users[id]; !ok {
+		t.Fatalf("remove: no account %s", id)
 	}
 	delete(f.users, id)
+	delete(f.birthdays, id)
 	if f.tokens != nil {
-		_ = f.tokens.RevokeAllForUser(ctx, id)
+		_ = f.tokens.RevokeAllForUser(context.Background(), id)
 	}
-	return true, nil
-}
-
-func (f *fakeUserRepo) ClaimAndRevoke(ctx context.Context, id uuid.UUID, via user.VerificationSource) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	u, ok := f.users[id]
-	if !ok || u.EmailVerified {
-		return false, nil
-	}
-	u.EmailVerified = true
-	u.EmailVerifiedVia = &via
-	u.PasswordHash = nil
-	u.UpdatedAt = time.Now()
-	if f.tokens != nil {
-		_ = f.tokens.RevokeAllForUser(ctx, id)
-	}
-	return true, nil
 }
 
 func (f *fakeUserRepo) Create(ctx context.Context, email string, passwordHash *string, verified bool, via *user.VerificationSource) (*user.User, error) {
@@ -203,57 +188,6 @@ func (f *fakeUserRepo) GetByUsernameCI(ctx context.Context, username string) (*u
 	return nil, user.ErrNotFound
 }
 
-func (f *fakeUserRepo) GetByProviderSubject(ctx context.Context, provider user.VerificationSource, subject string) (*user.User, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, u := range f.users {
-		if providerSubject(u, provider) == subject && subject != "" {
-			stored := *u
-			return &stored, nil
-		}
-	}
-	return nil, user.ErrNotFound
-}
-
-func (f *fakeUserRepo) LinkProviderSubject(ctx context.Context, id uuid.UUID, provider user.VerificationSource, subject string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	u, ok := f.users[id]
-	if !ok {
-		return user.ErrNotFound
-	}
-	for otherID, other := range f.users {
-		if otherID == id {
-			continue
-		}
-		if providerSubject(other, provider) == subject {
-			return user.ErrSubjectLinkedToOtherAccount
-		}
-	}
-	switch provider {
-	case user.VerifiedViaApple:
-		u.AppleSubject = &subject
-	case user.VerifiedViaGoogle:
-		u.GoogleSubject = &subject
-	}
-	u.UpdatedAt = time.Now()
-	return nil
-}
-
-func providerSubject(u *user.User, provider user.VerificationSource) string {
-	switch provider {
-	case user.VerifiedViaApple:
-		if u.AppleSubject != nil {
-			return *u.AppleSubject
-		}
-	case user.VerifiedViaGoogle:
-		if u.GoogleSubject != nil {
-			return *u.GoogleSubject
-		}
-	}
-	return ""
-}
-
 func (f *fakeUserRepo) UsernameTaken(ctx context.Context, username string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -304,10 +238,6 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	}
 	if p.AvatarURL != nil {
 		u.AvatarURL = p.AvatarURL
-	}
-	if p.Birthday != nil && !u.HasBirthday {
-		u.HasBirthday = true
-		f.birthdays[id] = *p.Birthday
 	}
 	u.UpdatedAt = time.Now()
 	stored := *u

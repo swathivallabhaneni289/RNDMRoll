@@ -102,12 +102,11 @@ interface SessionContextValue {
   status: SessionStatus;
   user: ApiUser | null;
   /**
-   * True from a finished sign-up (or a finished Apple or Google account) until the person
-   * finishes or skips the photo-and-bio page. In memory only: a relaunch never shows it.
+   * True from a finished sign-up until the person finishes or skips the photo-and-bio page.
+   * In memory only: a relaunch never shows it.
    */
   extrasPending: boolean;
   signIn: (result: AuthResult, options?: { extras?: boolean }) => Promise<void>;
-  startExtras: () => void;
   finishExtras: () => void;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -139,7 +138,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
       setAccessToken(result.access_token);
       // Set before the status flips, so the landing page never draws once as the edit page.
-      // A plain log in or social sign-in clears it.
+      // A plain log in clears it.
       setExtrasPending(options?.extras === true);
       setUser(result.user);
       setStatus('authenticated');
@@ -148,7 +147,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const startExtras = useCallback(() => setExtrasPending(true), []);
   const finishExtras = useCallback(() => setExtrasPending(false), []);
 
   const doSignOut = useCallback(async () => {
@@ -252,8 +250,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     mountedRef.current = true;
     restore();
 
-    // System sheets (Apple sign-in, permission prompts, the photo picker) only move the app
-    // to inactive, so a retry waits for a real return from the background.
+    // System sheets (permission prompts, the photo picker) only move the app to inactive,
+    // so a retry waits for a real return from the background.
     let wasBackgrounded = false;
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'background') wasBackgrounded = true;
@@ -275,7 +273,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     user,
     extrasPending,
     signIn,
-    startExtras,
     finishExtras,
     signOut: doSignOut,
     refreshSession: doRefreshSession,

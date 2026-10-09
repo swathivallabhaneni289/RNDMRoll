@@ -33,13 +33,6 @@ type Config struct {
 	MailFromAddress string
 	MailFromName    string
 
-	GoogleClientIDIOS     string
-	GoogleClientIDAndroid string
-	GoogleClientIDWeb     string
-
-	AppleBundleID  string
-	AppleServiceID string
-
 	S3Endpoint        string
 	S3Region          string
 	S3Bucket          string
@@ -86,20 +79,6 @@ func Load() (*Config, error) {
 
 	mailFromName := withDefault(os.Getenv("MAIL_FROM_NAME"), "RNDMRoll")
 
-	googleClientIDIOS := os.Getenv("GOOGLE_CLIENT_ID_IOS")
-	requireVar("GOOGLE_CLIENT_ID_IOS", googleClientIDIOS)
-
-	googleClientIDAndroid := os.Getenv("GOOGLE_CLIENT_ID_ANDROID")
-	requireVar("GOOGLE_CLIENT_ID_ANDROID", googleClientIDAndroid)
-
-	googleClientIDWeb := os.Getenv("GOOGLE_CLIENT_ID_WEB")
-	requireVar("GOOGLE_CLIENT_ID_WEB", googleClientIDWeb)
-
-	appleBundleID := os.Getenv("APPLE_BUNDLE_ID")
-	requireVar("APPLE_BUNDLE_ID", appleBundleID)
-
-	appleServiceID := os.Getenv("APPLE_SERVICE_ID")
-
 	s3Endpoint := os.Getenv("S3_ENDPOINT")
 	requireVar("S3_ENDPOINT", s3Endpoint)
 
@@ -142,12 +121,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: MAIL_DRIVER must be %q or %q, got %q", "resend", "log", mailDriver)
 	}
 
-	// APPLE_SERVICE_ID is only needed for a web/Android Apple flow; an
-	// iOS-only setup defaults it to the App ID (APPLE_BUNDLE_ID).
-	if appleServiceID == "" {
-		appleServiceID = appleBundleID
-	}
-
 	return &Config{
 		Port:            port,
 		DatabaseURL:     databaseURL,
@@ -165,13 +138,6 @@ func Load() (*Config, error) {
 		MailDriver:      mailDriver,
 		MailFromAddress: mailFromAddress,
 		MailFromName:    mailFromName,
-
-		GoogleClientIDIOS:     googleClientIDIOS,
-		GoogleClientIDAndroid: googleClientIDAndroid,
-		GoogleClientIDWeb:     googleClientIDWeb,
-
-		AppleBundleID:  appleBundleID,
-		AppleServiceID: appleServiceID,
 
 		S3Endpoint:        s3Endpoint,
 		S3Region:          s3Region,

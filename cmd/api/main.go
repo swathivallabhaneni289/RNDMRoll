@@ -56,33 +56,6 @@ func main() {
 
 	refreshSvc := auth.NewRefreshService(refreshTokens, cfg.RefreshTokenTTL)
 
-	googleVerifier := auth.NewGoogleVerifier([]string{
-		cfg.GoogleClientIDIOS,
-		cfg.GoogleClientIDAndroid,
-		cfg.GoogleClientIDWeb,
-	})
-
-	// Apple's audience is the bundle ID (iOS/native flow) plus the service
-	// ID (web/Android flow) when it differs -- config.Load defaults
-	// AppleServiceID to AppleBundleID when unset, so this only appends a
-	// second entry when the two are genuinely distinct.
-	appleAudiences := []string{cfg.AppleBundleID}
-	if cfg.AppleServiceID != "" && cfg.AppleServiceID != cfg.AppleBundleID {
-		appleAudiences = append(appleAudiences, cfg.AppleServiceID)
-	}
-	// NewAppleVerifier fetches Apple's public JWKS at construction. This is
-	// a real network call to Apple's own endpoint (not gated by
-	// APPLE_BUNDLE_ID being a real value -- the JWKS is public), confirmed
-	// empirically to resolve in well under a second before this file was
-	// written. Failing fast here matches NewPool's precedent: if Apple's
-	// signing keys are unreachable at boot, no Apple sign-in request could
-	// ever verify anyway.
-	appleVerifier, err := auth.NewAppleVerifier(appleAudiences)
-	if err != nil {
-		logger.Error("failed to construct Apple verifier (fetching Apple's JWKS)", "error", err)
-		os.Exit(1)
-	}
-
 	avatarStore, err := storage.NewAvatarStore(storage.Config{
 		S3Endpoint:        cfg.S3Endpoint,
 		S3Region:          cfg.S3Region,
@@ -97,13 +70,11 @@ func main() {
 	}
 
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
-	oauthHandler := httpapi.NewOAuthHandler(users, appleVerifier, googleVerifier, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
 	usernameHandler := httpapi.NewUsernameHandler(users)
 
 	server := httpapi.NewServer(httpapi.Deps{
 		Auth:      authHandler,
-		OAuth:     oauthHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
 		Users:     users,
