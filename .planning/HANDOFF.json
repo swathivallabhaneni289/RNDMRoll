@@ -1,165 +1,54 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-08T10:45:00.000Z",
+  "timestamp": "2026-10-09T07:45:22.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts",
   "phase_dir": ".planning/phases/01-foundation-accounts",
   "plan": 21,
   "task": 2,
   "total_tasks": 3,
-  "status": "executing",
+  "status": "paused",
   "completed_tasks": [
-    {
-      "id": 1,
-      "name": "01-15 Task 1 automated sweep (and the read-only trace of steps 8 to 18)",
-      "status": "done",
-      "commit": "7419f3a"
-    },
-    {
-      "id": 2,
-      "name": "01-17 hardening fixes applied and committed",
-      "status": "done",
-      "commit": "ba57e39"
-    },
-    {
-      "id": 3,
-      "name": "The 'Make it yours.' page built in edit mode and made the landing page",
-      "status": "done",
-      "commit": "6054474"
-    },
-    {
-      "id": 4,
-      "name": "01-19 plan written, developer said start (decision a)",
-      "status": "done",
-      "commit": "383d789"
-    },
-    {
-      "id": 5,
-      "name": "01-19 Task 1 server: one-request sign-up, private birthday, no verified gate, body cap, atomic claim; 254 Go tests pass, 0 skip",
-      "status": "done",
-      "commit": "7ca2471"
-    },
-    {
-      "id": 6,
-      "name": "01-19 Task 2 app: one ProfileForm in three modes, login screen, routing, cleanup",
-      "status": "done",
-      "commit": "bf755de"
-    },
-    {
-      "id": 7,
-      "name": "01-19 Task 3A cutover: api.pre-19 backup, rndmroll_dev at schema version 2, new API on 8080, 21-check smoke test passed, throwaway rows deleted",
-      "status": "done"
-    },
-    {
-      "id": 8,
-      "name": "Cold launch of the dev client as a complete account (Ava): landing page, checked by screenshot",
-      "status": "done"
-    },
-    {
-      "id": 9,
-      "name": "Login page Back, and Sign up instead returns to choose-method (developer: looks good)",
-      "status": "done",
-      "commit": "b00cbf0"
-    },
-    {
-      "id": 10,
-      "name": "01-20 two-page sign-up: page 1 'Create your account.', page 2 'Make it yours.' (photo and bio, Continue or Skip for now) shown once via the in-memory extrasPending flag and the landing route; independent review wf_76cca644-4a2 found no confirmed defects",
-      "status": "done",
-      "commit": "255c8ad, docs 3bfcb80"
-    },
-    {
-      "id": 11,
-      "name": "Walkthrough Group 1 and Group 2 (typed birthday boxes, all six tries) passed with the developer; Claude's under-13 curl passed (403 under_minimum_age, users 3 to 3)",
-      "status": "done"
-    },
-    {
-      "id": 12,
-      "name": "01-21: birthday as a soft box that opens a sheet with iOS's scrolling date picker (@expo/ui DatePicker, already compiled in; Done is always available since the follow-up below; typed boxes remain off iOS), and green 'Looks good.' notes under Email and Password (as you type), Name (after leaving the box) and Birthday (13+ rule on even on the finish page). tsc 0, expo export iOS 0, scans clean. Independent review wf_56d85e4f-a6c: no confirmed defects, wording fixes only",
-      "status": "done",
-      "commit": "9537230"
-    },
-    {
-      "id": 13,
-      "name": "Developer re-checked page 1 on the phone with the date scroller and the green notes: 'Looks good to me.'",
-      "status": "done"
-    }
+    {"id": 1, "name": "01-15 sweep, 01-17 hardening, the Make it yours page (6054474), 01-19 one-request sign-up with server cutover (7ca2471, bf755de)", "status": "done"},
+    {"id": 2, "name": "Login page Back, Sign up instead returns to the chooser", "status": "done", "commit": "b00cbf0"},
+    {"id": 3, "name": "01-20 two-page sign-up: page 1 account, page 2 photo and bio once (extrasPending flag, landing route)", "status": "done", "commit": "255c8ad"},
+    {"id": 4, "name": "01-21 birthday date scroller (@expo/ui) and green Looks good notes", "status": "done", "commit": "9537230"},
+    {"id": 5, "name": "Walkthrough fixes: Done always on, email already in use message under the Email box, Bio box 2 lines, any photo up to 50 MiB, native uploadAsync upload (confirmed on phone and server)", "status": "done", "commit": "fdb457a"},
+    {"id": 6, "name": "Main page button: Continue (placeholder page home.tsx) or Save changes, no greyed button", "status": "done", "commit": "a563b5f"},
+    {"id": 7, "name": "Apple and Google buttons hidden by two constants in choose-method.tsx (email only first screen)", "status": "done", "commit": "2b4ddd7"},
+    {"id": 8, "name": "Walkthrough passed with the developer: Group 1, Group 2 (twice), already-in-use message, photo upload, check 4 (photo and bio page), staying signed in", "status": "done"}
   ],
   "remaining_tasks": [
-    {
-      "id": 14,
-      "name": "01-19 Task 4 Groups 3 to 5 one at a time (account and page 2, staying in, finish mode). Group 3 handed out 2026-10-08 as steps 1 to 5 (username check, already registered, make the account with try1@example.com, photo and bio, landing page); the Skip for now check (a second sign-up with try2@example.com) and the optional stopped-storage check follow",
-      "status": "in_progress"
-    },
-    {
-      "id": 15,
-      "name": "Approve strings: 'Create your account.', 'Skip for now' (01-20), 'Looks good.', 'Select your birthday', 'Done' (01-21), the 01-19 table and the surviving ones in 01-15-PRETRACE sections 5 and 6; answer the open decision (a assumed)",
-      "status": "not_started"
-    },
-    {
-      "id": 16,
-      "name": "Write 01-21-SUMMARY.md, 01-20-SUMMARY.md, 01-19-SUMMARY.md, 01-15-SUMMARY.md and 01-17-SUMMARY.md; close ROADMAP and STATE; re-run the 01-15 Task 1 gate command (radius allow-list now has BirthdayPickerField.tsx); one close-out commit; only after the developer types approved",
-      "status": "not_started"
-    }
+    {"id": 9, "name": "Build the Sign up (black) and Log in (outlined) buttons on the first screen (developer said yes), swipe-away restart, developer looks", "status": "not_started"},
+    {"id": 10, "name": "Developer runs check 5 (finish-a and finish-b through the email Log in) and looks at the Continue page and Skip for now; answers: keep or remove the Log in instead link, phone numbers (Claude: not now), email code (Claude: before launch)", "status": "not_started"},
+    {"id": 11, "name": "Optional: real Google setup (free Google Cloud project, test user, iOS and web client IDs, plugin in app.json, dev client rebuild, web ID into server config), then set GOOGLE_SIGN_IN_ENABLED true", "status": "not_started"},
+    {"id": 12, "name": "Show all new words in one list for keep all or changes; confirm decision a (Apple and Google accounts also enter a birthday)", "status": "not_started"},
+    {"id": 13, "name": "After approved: 01-21, 01-20, 01-19, 01-15, 01-17 SUMMARY files; close ROADMAP and STATE; re-run the 01-15 Task 1 gate; declare expo-file-system in package.json; delete throwaway accounts by exact email; one close-out commit; no push", "status": "not_started"}
   ],
   "blockers": [
-    {
-      "description": "Waiting for the developer to open the date scroller on the phone and walk the rest of Task 4",
-      "type": "human_action",
-      "workaround": "Give one small group at a time and wait for ok or what looked wrong"
-    },
-    {
-      "description": "Steps for Apple and Google need real accounts, deferred to the end of the project",
-      "type": "external",
-      "workaround": "Finish mode with a test-only account stands in"
-    }
+    {"description": "Waiting for the developer's phone checks and answers", "type": "human_action", "workaround": "Give one complete numbered list per group"},
+    {"description": "Real Google and Apple sign-in need accounts and a rebuild; both are hidden until then", "type": "external", "workaround": "Email only for Phase 1"},
+    {"description": "Claude cannot tap or type on the Simulator (the safety check denied a click and keyboard helper)", "type": "human_action", "workaround": "The developer taps"}
   ],
   "async_jobs": [],
   "human_actions_pending": [
-    {
-      "action": "Walk Task 4 Groups 3 to 5 on the phone and say ok or what looked off; later type approved",
-      "context": "Everything is built, committed locally and live on the dev client and the dev API",
-      "blocking": true
-    },
-    {
-      "action": "Supply real Terms and Privacy text, set up Google, Apple, S3 and Resend accounts, domain, favicon, remove AI tag",
-      "context": "Launch list in PROJECT.md; deferred to the end",
-      "blocking": false
-    },
-    {
-      "action": "Decide whether to push the local commits to GitHub",
-      "context": "The repo is public; nothing has been pushed",
-      "blocking": false
-    }
+    {"action": "Run check 5 and the Continue page; answer the open questions; type approved when happy", "context": "Everything is built, committed locally and live", "blocking": true},
+    {"action": "Decide on real Google (and later Apple) setup, domain, favicon, remove AI tag, Terms and Privacy text, Resend and S3 accounts", "context": "Launch list in PROJECT.md", "blocking": false},
+    {"action": "Decide whether to push the local commits to GitHub", "context": "The repo is public; nothing is pushed", "blocking": false}
   ],
   "decisions": [
-    {
-      "decision": "Sign-up is TWO pages. Page 1 'Create your account.': email, password (8+), birthday (13+), name, username, Continue (the account is made there). Page 2 'Make it yours.': photo and bio, both optional, Continue or Skip for now, shown once right after sign-up and after an Apple or Google finish. The landing and edit page afterwards is unchanged (Save changes, Log out). No code, no email verification.",
-      "rationale": "Developer decision 2026-10-08 during the 01-19 walkthrough (bio and photo on a different page after signing up), after comparing Instagram's flow; picked option a. Replaces the one-page form of 2026-10-06",
-      "phase": "01"
-    },
-    {
-      "decision": "Page 1 needs less typing: the birthday is picked on iOS's scrolling date picker (typed boxes off iOS) and a green 'Looks good.' note shows under checkable fields on the sign-up and Apple/Google finish pages. Not chosen: keyboard Next key, hints in boxes, tap-to-pick usernames, Apple/Google first, email-domain buttons. Face ID: not yet.",
-      "rationale": "Developer 2026-10-08: nobody wants to physically enter something. Plan 01-21",
-      "phase": "01"
-    },
-    {
-      "decision": "The Profile view page is removed; the landing page is the Make it yours page",
-      "rationale": "Developer: no middle page, do not want to tap to see the new design",
-      "phase": "01"
-    },
-    {
-      "decision": "Real accounts and Terms/Privacy text come at the end; Claude writes no legal text",
-      "rationale": "Developer 2026-10-01 and 2026-10-05",
-      "phase": "01"
-    }
+    {"decision": "Sign-up is two pages: page 1 Create your account (email, password, birthday scroller, name, username), page 2 Make it yours (photo and bio, Continue or Skip for now), shown once", "rationale": "Developer 2026-10-08", "phase": "01"},
+    {"decision": "Less typing: birthday date scroller on iOS, green Looks good notes; Done always available; Bio box 2 lines; any photo accepted", "rationale": "Developer 2026-10-08", "phase": "01"},
+    {"decision": "Main page has one button: Continue (to a placeholder page that Phase 2 replaces) or Save changes", "rationale": "Developer 2026-10-08", "phase": "01"},
+    {"decision": "Apple and Google hidden until real accounts exist; email only; first screen to get Sign up and Log in buttons", "rationale": "Developer 2026-10-09", "phase": "01"},
+    {"decision": "Real accounts and Terms and Privacy text come at the end; Claude writes no legal text", "rationale": "Developer 2026-10-01", "phase": "01"}
   ],
   "uncommitted_files": [
-    "components/profile/BirthdayPickerField.tsx (Done always available: the developer's birthday is January 1, 2001, the scroller's starting date, and Done stayed off until a scroll so it could not be picked), internal/storage/s3.go (photo rules: any image type, 50 MiB ceiling; API rebuilt and restarted on 2026-10-08, old binary at ~/.local/share/rndmroll-api/api.pre-photo), the Bio box now 2 lines, the picker asking for a standard JPEG, components/profile/ProfileForm.tsx and lib/api/client.ts (the photo refusal text, and the duplicate-email message now reads 'That email is already in use.' under the Email box, no 'log in', cleared when the email changes; stale form messages cleared on any edit) and the doc edits recording them (01-UI-SPEC.md, 01-21-PLAN.md, 01-19-PLAN.md, PROJECT.md, HANDOFF.json, .continue-here.md, 01-15-PRETRACE.md): uncommitted until the developer confirms (rollback point a0b7d98)",
     "app/lab/ (on purpose)",
     "docs/reference/ extras (on purpose)",
     ".claude/ (on purpose)",
     ".planning/config.json (on purpose)"
   ],
-  "next_action": "01-19, 01-20 and 01-21 are built, committed (9537230 is 01-21) and live: do NOT rebuild them. Groups 1 and 2 are done (Group 2 re-checked with the date scroller and green notes: 'Looks good to me.'). Group 3 was handed to the developer (steps 1 to 5: username check, already registered with smoke-test@example.com, make the account with try1@example.com, photo and bio on page 2, landing page). Wait for their reply, then give the next piece in plain words: the Skip for now check (log out, sign up again with try2@example.com, tap Skip for now, landing page with no photo and no bio), then Claude's optional stopped-storage check (stop MinIO on 9000, the photo message under the circle reads 'Couldn't connect. Check your connection and try again.', Skip works, restart with ~/.local/share/rndmroll-work/start-test-storage.sh), then Group 4 and Group 5. Say 'date scroller', not 'wheel'. Throwaway accounts the walkthrough creates: test2@gmail.com (made by the developer on 2026-10-08: Test2, @test2, no photo, no bio; the phone is signed in as it), and any try1@example.com, try2@example.com, try3@example.com or try4@example.com, plus the two test-only unfinished accounts Claude added on 2026-10-08 for Group 5 (finish-a@example.com, which the server deletes on the under-13 path, and finish-b@example.com; password abcdefgh1; bcrypt $2a$ hash; no name, username or birthday): delete by exact email at close-out only, never a bulk delete. Waiting for the developer's Group 3 report (what they saw on page 2) and their keep or remove answer about the Log in instead link under Continue. Never touch the three real accounts smoke-test, ava.stone.1004, test1@gmail.com. Rollback of the server if ever needed: stop API, copy ~/.local/share/rndmroll-api/api.pre-19 over api, start without the go build line; never migrate down once real sign-ups exist. Do not push.",
-  "context_notes": "The developer dictates by voice and wants short plain messages and quick visible results; they iterate fast and ask for small changes mid-walkthrough (the login Back, the two-page split, now less typing). 2026-10-08: the developer asked Claude to do all the phone taps; Claude Code's safety check denied building a mouse and keyboard helper for the Simulator (synthetic input), so the taps stay with the developer unless they choose to allow it themselves; the developer was told the options. DEVELOPER SAID YES (2026-10-09): build the Sign up (black) and Log in (outlined) buttons on the first screen first thing next session (Sign up goes straight to the email form; drop the Continue with Email button and the small Already have an account line). They then said they want phone-number sign-up and asked if it costs money (yes: SMS costs per text and needs a texting service account; Claude recommended email only for now, phone later as its own step, D-03 said no phone numbers) and whether email sign-in asks for a code (Instagram does; this app does not: email plus password only, a code needs the real email service, on the launch list; Claude recommended adding it before launch). Their answers on those are still open. LATEST (2026-10-09, developer: 'lets hide it ... lets just keep the email part'): both Apple and Google are hidden (APPLE_SIGN_IN_ENABLED and GOOGLE_SIGN_IN_ENABLED are false in app/(auth)/choose-method.tsx); the developer asked whether the first screen should offer Sign up and Log in buttons instead of Continue with Email (Claude recommended yes: Sign up black and Log in outlined, Sign up going straight to the email form; awaiting their yes) and whether Instagram offers phone sign-up (yes per the 01-18 research: email or SMS; phone numbers stay out for now, SMS needs a paid service). Earlier: GOOGLE TAP RESULT (2026-10-09, seen on the phone): tapping Continue with Google takes a long time and then shows a red screen: RNGoogleSignin failed to determine clientID, GoogleService-Info.plist was not found and iosClientId was not provided. Expected: the real Google setup does not exist yet. In a release build this could crash the app, so hide Google (GOOGLE_SIGN_IN_ENABLED=false) unless the setup is done; the developer was asked whether to hide it and has not answered. GOOGLE SHOWN AGAIN, APPLE HIDDEN (2026-10-09, developer: 'keep the google, maybe i will try testing it'): app/(auth)/choose-method.tsx has APPLE_SIGN_IN_ENABLED=false and GOOGLE_SIGN_IN_ENABLED=true; the first screen shows Email, Google and the Log in link; real Google is not set up (needs a free Google Cloud project with the consent screen in Testing mode and the developer's test Google account as a test user, an iOS client ID and a web client ID, the Google plugin in app.json, a dev client rebuild, and the web client ID given to the server), so tapping Google errors until then; offer to do this setup in a fresh session; check 5 still runs through the email Log in with finish-a and finish-b. Earlier: APPLE KEPT (2026-10-08 late, developer): Apple was removed from choose-method and then put back at their word ('keep apple back'); choose-method shows Email, Apple and Google again; Claude had advised email only (App Store rule 4.8) but the developer keeps all three and will test Google themselves; check 5 and the finish page stay; the developer also asked for ideas on email verification (not given yet: code in the app, link that opens the app, or none until launch with real email accounts). DECIDED (2026-10-08 late, developer): the main page keeps editing and has one bottom button: Continue (opens the placeholder page app/(app)/home.tsx, 'You're in.' / 'Your daily spin will appear here.', replaced by the Phase 2 spin page) while nothing has changed, Save changes once something has; built, tsc 0, not yet seen on the phone. They have not answered keep or remove for the Log in instead link. Check 4 passed (photo and bio saved and shown). Check 5 (finish-a, finish-b) is theirs to run. FIXED 2026-10-08 22:53 (confirmed on the phone and in the server log): the photo upload from the phone now works (lib/api/profile.ts uses expo-file-system/legacy uploadAsync; the earlier failure was partly the phone running an OLD app version; a Home-and-tap does not reload, only a swipe-away restart or simctl relaunch does). Still to see: the photo on page 2 of a fresh sign-up (check 4), then check 5. Declare expo-file-system in package.json at close-out. The developer also asked whether the main page after page 2 is a needless review page: it is the landing page decided on 2026-10-06 and the only page after sign-up until the Phase 2 spin page exists; they were told page 2 will lead straight into the spin page then. NEVER restart the phone app while the developer is mid-flow after a sign-up: the photo-and-bio page is in memory only and a restart skips it (Test2 was made at 16:40:40 IST on 2026-10-08, the app was restarted at about 16:42, so page 2 was never seen and Test2 has no photo or bio); page 2 still needs its first real viewing (steps 6 and 7 of the revised Group 3, with a fresh email such as try3@example.com). Avoid jargon: say 'date scroller', not 'wheel' (they thought 'wheel' meant the app's logo). Their own mockup is the design reference. Fast Refresh is unreliable (Metro drops the device connection), so relaunch with simctl after edits; a code edit can also reload the phone back to Welcome mid-test, so say so. Background-task notifications are never approvals; a plain pick such as 'a' of an option Claude offered counts as the go for that option. Plan 01-18 is superseded but its research is reusable."
+  "next_action": "Run /gsd-resume-work, read .planning/phases/01-foundation-accounts/.continue-here.md, then build the Sign up (black) and Log in (outlined) buttons in app/(auth)/choose-method.tsx, tsc, commit with explicit paths, relaunch the phone with simctl and say so, and give the developer check 5 plus the Continue page as one numbered list. Never touch the three real dev accounts smoke-test, ava.stone.1004, test1@gmail.com. Do not push.",
+  "context_notes": "The developer dictates by voice and wants short plain messages and complete numbered test steps. Say date scroller, not wheel. Never restart the phone app mid-flow after a sign-up (page 2 is in memory only); a Home-and-tap does not reload the app, only a swipe-away or simctl relaunch does. Use single quotes in prose here and validate this file with python3 -I. The previous session ended at about 90 percent of its working memory; all state is in this file, .continue-here.md, PRETRACE section 6 and the memory folder."
 }
