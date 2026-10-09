@@ -129,6 +129,30 @@ func TestUserRepo_UpdateProfile_UsernameConflictReturnsErrUsernameTaken(t *testi
 	}
 }
 
+func TestUserRepo_GetByUsernameCI_FindsAnyCaseAndReportsAMissingOne(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	created, err := repo.CreateComplete(ctx, newAccount("finder@example.com", "finder_name"))
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
+	}
+
+	for _, typed := range []string{"finder_name", "FINDER_Name"} {
+		got, err := repo.GetByUsernameCI(ctx, typed)
+		if err != nil {
+			t.Fatalf("GetByUsernameCI(%q): %v", typed, err)
+		}
+		if got.ID != created.ID {
+			t.Fatalf("GetByUsernameCI(%q): got account %v, want %v", typed, got.ID, created.ID)
+		}
+	}
+	if _, err := repo.GetByUsernameCI(ctx, "nobody_here"); !errors.Is(err, user.ErrNotFound) {
+		t.Fatalf("GetByUsernameCI(unknown): got %v, want ErrNotFound", err)
+	}
+}
+
 func TestUserRepo_UpdateProfile_NilFieldLeavesColumnUnchanged(t *testing.T) {
 	pool := requireTestPool(t)
 	repo := postgres.NewUserRepo(pool)

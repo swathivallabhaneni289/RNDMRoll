@@ -37,6 +37,10 @@ type Repository interface {
 	Create(ctx context.Context, email string, passwordHash *string, verified bool, via *VerificationSource) (*User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmailCI(ctx context.Context, email string) (*User, error)
+	// GetByUsernameCI finds an account by its username, ignoring case, so the
+	// Log in page can take a username as well as an email. It returns
+	// ErrNotFound when no account holds that username.
+	GetByUsernameCI(ctx context.Context, username string) (*User, error)
 	GetByProviderSubject(ctx context.Context, provider VerificationSource, subject string) (*User, error)
 	LinkProviderSubject(ctx context.Context, id uuid.UUID, provider VerificationSource, subject string) error
 	UsernameTaken(ctx context.Context, username string) (bool, error)

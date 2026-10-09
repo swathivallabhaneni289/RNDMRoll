@@ -176,6 +176,18 @@ func (r *UserRepo) GetByEmailCI(ctx context.Context, email string) (*user.User, 
 	return u, nil
 }
 
+func (r *UserRepo) GetByUsernameCI(ctx context.Context, username string) (*user.User, error) {
+	const q = `select ` + userColumns + ` from users where lower(username) = lower($1::text)`
+	u, err := scanUser(r.pool.QueryRow(ctx, q, username))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, user.ErrNotFound
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
 func (r *UserRepo) GetByProviderSubject(ctx context.Context, provider user.VerificationSource, subject string) (*user.User, error) {
 	var q string
 	switch provider {

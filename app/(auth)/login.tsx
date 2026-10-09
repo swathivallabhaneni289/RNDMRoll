@@ -12,10 +12,10 @@ import type { AuthResult } from '@/lib/api/types';
 import { useSession } from '@/lib/session/store';
 
 /**
- * Log in with email and password. Sign-up is its own page now (make-it-yours). Back and
- * "Sign up instead" both return to choose-method, where Email, Apple and Google are offered,
- * so a person who is not sure how they signed up can pick. An account that never verified
- * its email logs in like any other.
+ * Log in with an email or a username, plus a password. Sign-up is its own page now
+ * (make-it-yours). Back and "Sign up instead" both return to choose-method, where Email, Apple
+ * and Google are offered, so a person who is not sure how they signed up can pick. An account
+ * that never verified its email logs in like any other.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,9 +24,9 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useSession();
 
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [emailError, setEmailError] = useState<string | undefined>();
+  const [loginError, setLoginError] = useState<string | undefined>();
   const [passwordError, setPasswordError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -36,7 +36,7 @@ export default function LoginScreen() {
   // submit remounts the invalid field fresh with autoFocus set, which moves
   // the keyboard cursor there without needing TextField to expose a ref.
   const [attemptId, setAttemptId] = useState(0);
-  const [autoFocusField, setAutoFocusField] = useState<'email' | 'password' | null>(null);
+  const [autoFocusField, setAutoFocusField] = useState<'login' | 'password' | null>(null);
 
   // This page is only pushed from choose-method (or swapped in for the sign-up form that was
   // pushed from it), so one step back is the method chooser. The replace is a safety net.
@@ -45,24 +45,30 @@ export default function LoginScreen() {
     else router.replace('/choose-method');
   }
 
-  function validateEmailValue(value: string): string | undefined {
-    return EMAIL_PATTERN.test(value.trim()) ? undefined : 'Enter a valid email address.';
+  // An @ means an email address, so it gets the address check. Anything else is taken as a
+  // username and left to the server: a username that is not there gets the same "isn't right"
+  // message as a wrong password.
+  function validateLoginValue(value: string): string | undefined {
+    const typed = value.trim();
+    if (typed.length === 0) return 'Enter your email or username.';
+    if (typed.includes('@') && !EMAIL_PATTERN.test(typed)) return 'Enter a valid email address.';
+    return undefined;
   }
 
   // Only "not empty": a short wrong password must reach the server and come back as the
-  // one "That email or password isn't right." message.
+  // one "That email, username or password isn't right." message.
   function validatePasswordValue(value: string): string | undefined {
     return value.length > 0 ? undefined : 'Enter your password.';
   }
 
   async function handleSubmit() {
-    const nextEmailError = validateEmailValue(email);
+    const nextLoginError = validateLoginValue(login);
     const nextPasswordError = validatePasswordValue(password);
-    setEmailError(nextEmailError);
+    setLoginError(nextLoginError);
     setPasswordError(nextPasswordError);
 
-    if (nextEmailError || nextPasswordError) {
-      setAutoFocusField(nextEmailError ? 'email' : 'password');
+    if (nextLoginError || nextPasswordError) {
+      setAutoFocusField(nextLoginError ? 'login' : 'password');
       setAttemptId((n) => n + 1);
       return;
     }
@@ -73,17 +79,17 @@ export default function LoginScreen() {
       // A keyboard's trailing space passes client validation but the server rejects it.
       const result = await api.post<AuthResult>(
         '/auth/login',
-        { email: email.trim(), password },
+        { login: login.trim(), password },
         { auth: false }
       );
       // The root guard routes onward from here: the app, or the finish page for an unfinished account.
       await signIn(result);
     } catch (err) {
-      // One message for a wrong password and an unknown account (invalid_credentials): the
-      // server refuses to tell them apart and so does this screen.
-      if (err instanceof ApiError && err.code === 'validation_failed' && !err.field) {
-        // The server's address check is stricter than this screen's: name the email, not "went wrong".
-        setEmailError('Enter a valid email address.');
+      // One message for a wrong password, an unknown email and an unknown username
+      // (invalid_credentials): the server refuses to tell them apart and so does this screen.
+      if (err instanceof ApiError && err.code === 'validation_failed') {
+        // The server's address check is stricter than this screen's: name the box, not "went wrong".
+        setLoginError(login.includes('@') ? 'Enter a valid email address.' : 'Enter your email or username.');
       } else {
         setFormError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
       }
@@ -112,17 +118,17 @@ export default function LoginScreen() {
 
         <View style={{ marginTop: space.lg }}>
           <TextField
-            key={`email-${attemptId}`}
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            onBlur={() => setEmailError(validateEmailValue(email))}
-            error={emailError}
+            key={`login-${attemptId}`}
+            label="Email or username"
+            value={login}
+            onChangeText={setLogin}
+            onBlur={() => setLoginError(validateLoginValue(login))}
+            error={loginError}
             keyboardType="email-address"
             autoCapitalize="none"
-            autoComplete="email"
-            textContentType="emailAddress"
-            autoFocus={autoFocusField === 'email'}
+            autoComplete="username"
+            textContentType="username"
+            autoFocus={autoFocusField === 'login'}
           />
         </View>
 

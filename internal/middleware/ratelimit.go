@@ -72,15 +72,22 @@ func KeyByIP(c *gin.Context) string {
 // lowercased JSON body field (e.g. "email"), so login throttling applies
 // per account as well as per source. It reads the body via
 // ShouldBindBodyWith, which caches the raw body so the handler can still
-// bind it normally afterward.
-func KeyByIPAndField(field string) func(*gin.Context) string {
+// bind it normally afterward. When a body can name the same thing under more
+// than one key (login accepts "login" and the older "email"), pass the others
+// as alternates: the first key that holds a non-empty string is used.
+func KeyByIPAndField(field string, alternates ...string) func(*gin.Context) string {
+	fields := append([]string{field}, alternates...)
 	return func(c *gin.Context) string {
 		var body map[string]any
 		if err := c.ShouldBindBodyWith(&body, binding.JSON); err != nil {
 			return c.ClientIP()
 		}
-		value, _ := body[field].(string)
-		return c.ClientIP() + "|" + strings.ToLower(value)
+		for _, f := range fields {
+			if value, _ := body[f].(string); value != "" {
+				return c.ClientIP() + "|" + strings.ToLower(value)
+			}
+		}
+		return c.ClientIP() + "|"
 	}
 }
 

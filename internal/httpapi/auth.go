@@ -74,10 +74,17 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyByIPAndField("email"),
 	}), h.Signup)
+	// Log in is limited twice as well: 20 a minute per address in total, so one
+	// address cannot try many different usernames (a username is shown to
+	// friends, unlike an email), then 5 a minute per address and login.
 	rg.POST("/auth/login", middleware.RateLimit(middleware.LimitConfig{
+		Requests: 20,
+		Window:   time.Minute,
+		KeyFunc:  middleware.KeyByIP,
+	}), middleware.RateLimit(middleware.LimitConfig{
 		Requests: 5,
 		Window:   time.Minute,
-		KeyFunc:  middleware.KeyByIPAndField("email"),
+		KeyFunc:  middleware.KeyByIPAndField("login", "email"),
 	}), h.Login)
 	// Neither refresh nor logout sits behind RequireAuth: refresh exists
 	// precisely because the access token has already expired, and logout
@@ -108,12 +115,32 @@ type SignupRequest struct {
 	Bio      *string `json:"bio"`
 }
 
-// LoginRequest is the login request body. The password rule is only
-// required,max=72: a short password is simply a wrong password (401), not a
-// validation error, so login never reveals the sign-up password rule.
+// LoginRequest is the login request body. Login is what the person typed on the
+// Log in page: an email address (it has an @) or a username. Email is the older
+// name for the same field and is still accepted; Login wins when both are sent.
+// The password rule is only required,max=72: a short password is simply a wrong
+// password (401), not a validation error, so login never reveals the sign-up
+// password rule.
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Login    string `json:"login,omitempty"`
+	Email    string `json:"email,omitempty"`
 	Password string `json:"password" binding:"required,max=72"`
+}
+
+// passwordReason checks a sign-up password: required, 8 to 72 characters. It
+// returns "" when the password is fine. Both of an account's passwords follow
+// this one rule.
+func passwordReason(p string) string {
+	n := utf8.RuneCountInString(p)
+	switch {
+	case p == "":
+		return reasonRequired
+	case n < minPasswordLength:
+		return reasonTooShort
+	case n > maxPasswordLength:
+		return reasonTooLong
+	}
+	return ""
 }
 
 // validEmail accepts a plain address of at most 254 characters: it must parse
@@ -194,16 +221,8 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		RespondFieldError(c, "email", reason)
 		return
 	}
-	passwordRunes := utf8.RuneCountInString(req.Password)
-	switch {
-	case req.Password == "":
-		RespondFieldError(c, "password", reasonRequired)
-		return
-	case passwordRunes < minPasswordLength:
-		RespondFieldError(c, "password", reasonTooShort)
-		return
-	case passwordRunes > maxPasswordLength:
-		RespondFieldError(c, "password", reasonTooLong)
+	if reason := passwordReason(req.Password); reason != "" {
+		RespondFieldError(c, "password", reason)
 		return
 	}
 
@@ -252,17 +271,8 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	hash, err := auth.HashPassword(req.Password)
-	if err != nil {
-		if errors.Is(err, auth.ErrPasswordTooLong) {
-			// The checks above count characters; bcrypt's ceiling counts
-			// bytes, so a multi-byte password can pass them and still land
-			// here.
-			RespondFieldError(c, "password", reasonTooLong)
-			return
-		}
-		log.Printf("httpapi: signup hash password failed: %v", err)
-		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
+	hash, ok := hashSignupPassword(c, "password", req.Password)
+	if !ok {
 		return
 	}
 
@@ -286,11 +296,33 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	h.issueSession(c, u, http.StatusOK)
 }
 
-// Login authenticates by email and password. Unknown-account and
-// wrong-password attempts are indistinguishable: both run a bcrypt
-// comparison (against a fixed dummy hash for the unknown-account case) and
-// both return the identical user.ErrInvalidCredentials body, per
-// RESEARCH.md's Security Domain enumeration-resistance requirement.
+// hashSignupPassword hashes the sign-up password. On failure it has
+// already answered and returns false. The checks before it count characters;
+// bcrypt's ceiling counts bytes, so a multi-byte password can pass them and
+// still be refused here, naming the field it came from.
+func hashSignupPassword(c *gin.Context, field, plain string) (string, bool) {
+	hash, err := auth.HashPassword(plain)
+	if err != nil {
+		if errors.Is(err, auth.ErrPasswordTooLong) {
+			RespondFieldError(c, field, reasonTooLong)
+			return "", false
+		}
+		log.Printf("httpapi: signup hash password failed: %v", err)
+		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
+		return "", false
+	}
+	return hash, true
+}
+
+// Login authenticates by email or username, plus password. A login with an @
+// is an email address; anything else is a username (an email can never be a
+// username, so the two cannot be confused). Either way it is the account's one
+// password that is checked. Unknown-account and wrong-password
+// attempts are indistinguishable: both run a bcrypt comparison (against a fixed
+// dummy hash for the unknown-account case) and both return the identical
+// user.ErrInvalidCredentials body, per RESEARCH.md's Security Domain
+// enumeration-resistance requirement. That includes a username nobody holds and
+// text that could never be a username: neither is a format error.
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
@@ -298,19 +330,46 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	login := req.Login
+	if login == "" {
+		login = req.Email
+	}
+	// An empty or email-shaped login is checked the way sign-up checks an
+	// address, so a typo in an address gets a field error the screen can name.
+	byEmail := login == "" || strings.Contains(login, "@")
+	if byEmail {
+		if reason := validEmail(login); reason != "" {
+			RespondFieldError(c, "login", reason)
+			return
+		}
+	}
+
 	ctx := c.Request.Context()
-	u, err := h.users.GetByEmailCI(ctx, req.Email)
-	if err != nil {
+	var (
+		u   *user.User
+		err error
+	)
+	switch {
+	case byEmail:
+		u, err = h.users.GetByEmailCI(ctx, login)
+	case user.ValidateUsername(strings.ToLower(login)) == nil:
+		u, err = h.users.GetByUsernameCI(ctx, login)
+	default:
+		err = user.ErrNotFound
+	}
+	// No such account, or an account without a password (an Apple or Google
+	// account): the same dummy comparison and the same answer as a wrong
+	// password. The dummy hash is never used as if it were the account's own.
+	var hash *string
+	if err == nil {
+		hash = u.PasswordHash
+	}
+	if err != nil || hash == nil || *hash == "" {
 		_ = auth.ComparePassword(dummyPasswordHash, req.Password)
 		RespondError(c, user.ErrInvalidCredentials)
 		return
 	}
-
-	storedHash := ""
-	if u.PasswordHash != nil {
-		storedHash = *u.PasswordHash
-	}
-	if err := auth.ComparePassword(storedHash, req.Password); err != nil {
+	if err := auth.ComparePassword(*hash, req.Password); err != nil {
 		RespondError(c, user.ErrInvalidCredentials)
 		return
 	}

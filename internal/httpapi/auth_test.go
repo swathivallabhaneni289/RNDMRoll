@@ -557,6 +557,199 @@ func TestLogin_PasswordOver72_Returns400(t *testing.T) {
 	assertValidationFailed(t, rec)
 }
 
+// --- Login by username ---
+
+// seedLoginAccount stores a finished account with a real password hash, so a
+// login test can reach it by its email or by its username.
+func seedLoginAccount(t *testing.T, deps TestDeps, email, username, password string) {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if _, err := deps.Users.CreateComplete(context.Background(), user.NewAccount{
+		Email: email, PasswordHash: hash, Birthday: validBirthday, Name: "Try Five", Username: username,
+	}); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+}
+
+// assertLoggedInAs checks a 200 login response that carries tokens and the
+// account with this email.
+func assertLoggedInAs(t *testing.T, rec *httptest.ResponseRecorder, email string) {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	if _, ok := body["access_token"].(string); !ok {
+		t.Fatalf("expected an access_token, got %v", body)
+	}
+	got, _ := body["user"].(map[string]any)
+	if got["email"] != email {
+		t.Fatalf("expected the account %q, got %v", email, got)
+	}
+}
+
+func TestLogin_ByUsername_Returns200WithTokensAndUser(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "try_five",
+		Password: "correct-horse-battery",
+	})
+
+	assertLoggedInAs(t, rec, "try5@example.com")
+	if got, _ := decodeBody(t, rec)["user"].(map[string]any); got["username"] != "try_five" {
+		t.Fatalf("expected the username try_five, got %v", got["username"])
+	}
+}
+
+func TestLogin_ByUsernameIgnoresCase(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "Try_FIVE",
+		Password: "correct-horse-battery",
+	})
+
+	assertLoggedInAs(t, rec, "try5@example.com")
+}
+
+func TestLogin_LoginFieldTakesAnEmailToo(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "TRY5@Example.com",
+		Password: "correct-horse-battery",
+	})
+
+	assertLoggedInAs(t, rec, "try5@example.com")
+}
+
+func TestLogin_OlderEmailFieldStillWorksAndCarriesAUsernameToo(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	for name, typed := range map[string]string{"an email": "try5@example.com", "a username": "try_five"} {
+		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+			Email:    typed,
+			Password: "correct-horse-battery",
+		})
+		t.Run(name, func(t *testing.T) { assertLoggedInAs(t, rec, "try5@example.com") })
+	}
+}
+
+func TestLogin_LoginFieldWinsOverTheOlderEmailField(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "try_five",
+		Email:    "nobody@example.com",
+		Password: "correct-horse-battery",
+	})
+
+	assertLoggedInAs(t, rec, "try5@example.com")
+}
+
+// An account with no password (an Apple or Google account) cannot log in by
+// username or by email, whatever is typed, including the fixed string the dummy
+// hash was made from.
+func TestLogin_AccountWithoutAPasswordCannotLogIn(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	if _, err := deps.Users.CreateComplete(context.Background(), user.NewAccount{
+		Email: "social@example.com", PasswordHash: "", Birthday: validBirthday, Name: "Social Account", Username: "social_account",
+	}); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+
+	for name, login := range map[string]string{"username": "social_account", "email": "social@example.com"} {
+		for pwName, password := range map[string]string{
+			"the dummy hash's input": "dummy-password-for-constant-time-comparison",
+			"blank spaces":           "        ",
+		} {
+			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Login: login, Password: password})
+			t.Run(name+" with "+pwName, func(t *testing.T) { assertInvalidCredentials(t, rec) })
+		}
+	}
+}
+
+func TestLogin_UnknownUsernameByteIdenticalToWrongPassword(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+
+	wrongPassword := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "try_five",
+		Password: "incorrect-password",
+	})
+	unknownUsername := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+		Login:    "nobody_here",
+		Password: "incorrect-password",
+	})
+
+	assertInvalidCredentials(t, wrongPassword)
+	assertInvalidCredentials(t, unknownUsername)
+	if wrongPassword.Body.String() != unknownUsername.Body.String() {
+		t.Fatalf("expected byte-identical bodies, got %q (wrong password) vs %q (unknown username)", wrongPassword.Body.String(), unknownUsername.Body.String())
+	}
+}
+
+func TestLogin_TextThatCouldNeverBeAUsernameIsAnUnknownAccountNot400(t *testing.T) {
+	cases := map[string]string{
+		"two words":     "two words",
+		"punctuation":   "bad!name",
+		"leading space": " try_five",
+		"too short":     "ab",
+		"too long":      strings.Repeat("a", 21),
+		"huge":          strings.Repeat("a", 5000),
+	}
+	for name, typed := range cases {
+		t.Run(name, func(t *testing.T) {
+			router, _, _ := newAuthTestHandler(t)
+
+			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+				Login:    typed,
+				Password: "correct-horse-battery",
+			})
+
+			assertInvalidCredentials(t, rec)
+		})
+	}
+}
+
+func TestLogin_EmptyLogin_Returns400NamingTheLoginField(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Password: "correct-horse-battery"})
+
+	assertFieldError(t, rec, "login")
+}
+
+func TestLogin_MalformedEmail_Returns400NamingTheLoginField(t *testing.T) {
+	cases := map[string]string{
+		"two at signs":        "a@@b.com",
+		"no dot in domain":    "me@gmail",
+		"no name before @":    "@nope.com",
+		"over 254 characters": strings.Repeat("a", 250) + "@b.com",
+	}
+	for name, typed := range cases {
+		t.Run(name, func(t *testing.T) {
+			router, _, _ := newAuthTestHandler(t)
+
+			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
+				Login:    typed,
+				Password: "correct-horse-battery",
+			})
+
+			assertFieldError(t, rec, "login")
+		})
+	}
+}
+
 // --- Task 2: Refresh and logout handlers ---
 
 // loginAndGetTokens seeds a verified user and performs a real login over

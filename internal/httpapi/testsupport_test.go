@@ -191,6 +191,18 @@ func (f *fakeUserRepo) GetByEmailCI(ctx context.Context, email string) (*user.Us
 	return nil, user.ErrNotFound
 }
 
+func (f *fakeUserRepo) GetByUsernameCI(ctx context.Context, username string) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.users {
+		if u.Username != nil && strings.EqualFold(*u.Username, username) {
+			stored := *u
+			return &stored, nil
+		}
+	}
+	return nil, user.ErrNotFound
+}
+
 func (f *fakeUserRepo) GetByProviderSubject(ctx context.Context, provider user.VerificationSource, subject string) (*user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

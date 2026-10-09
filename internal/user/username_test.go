@@ -35,6 +35,10 @@ func (f *fakeUsernameRepo) GetByEmailCI(ctx context.Context, email string) (*Use
 	return nil, ErrNotFound
 }
 
+func (f *fakeUsernameRepo) GetByUsernameCI(ctx context.Context, username string) (*User, error) {
+	return nil, ErrNotFound
+}
+
 func (f *fakeUsernameRepo) GetByProviderSubject(ctx context.Context, provider VerificationSource, subject string) (*User, error) {
 	return nil, ErrNotFound
 }

@@ -7,6 +7,10 @@ import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 const MULTILINE_PADDING = 12;
+// A single-line input gets no lineHeight and a frame taller than its text. iOS clips a focused
+// single-line field to its frame, and with lineHeight set the text sat low in a 24 high frame, so
+// the underscore and the tails of g, j, p, q and y were cut off while typing.
+const SINGLE_LINE_INPUT_HEIGHT = 40;
 
 type TextFieldProps = {
   label: string;
@@ -185,7 +189,6 @@ export function TextField({
                 lineHeight: type.body.lineHeight,
                 fontFamily: type.body.fontFamily,
                 color: color.muted,
-                marginTop: 5,
               }}
             >
               {prefix}
@@ -199,11 +202,11 @@ export function TextField({
               flex: 1,
               padding: 0,
               fontSize: type.body.fontSize,
-              lineHeight: type.body.lineHeight,
               fontFamily: type.body.fontFamily,
               color: color.ink,
               textAlignVertical: multiline ? 'top' : 'center',
               paddingRight: clearable ? 28 : 0,
+              ...(multiline ? { lineHeight: type.body.lineHeight } : { height: SINGLE_LINE_INPUT_HEIGHT }),
             }}
           />
           {clearable && count > 0 ? (
@@ -259,9 +262,9 @@ export function TextField({
             ? { paddingTop: MULTILINE_PADDING, paddingBottom: MULTILINE_PADDING, textAlignVertical: 'top' as const }
             : null),
           fontSize: type.body.fontSize,
-          lineHeight: type.body.lineHeight,
           fontFamily: type.body.fontFamily,
           color: color.ink,
+          ...(multiline ? { lineHeight: type.body.lineHeight } : null),
         }}
       />
       {feedback}

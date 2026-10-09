@@ -354,6 +354,53 @@ func TestServer_SpoofedForwardedForStillHitsTheLimitOfTheRealAddress(t *testing.
 	}
 }
 
+func TestServer_LoginIsLimitedToFivePerMinutePerAddressAndLogin(t *testing.T) {
+	srv := newFullTestServer(t, newFakeUserRepo())
+	// The missing password makes each attempt a cheap 400; the limits count it
+	// all the same.
+	for i := 0; i < 5; i++ {
+		rec := serveFrom(t, srv, "198.51.100.40:1", http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "Some_Name"})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("request %d: expected 400, got %d", i+1, rec.Code)
+		}
+	}
+	// The same login in other capitals, and under the older email key, share
+	// the bucket.
+	for _, body := range []map[string]any{{"login": "some_name"}, {"email": "SOME_NAME"}} {
+		rec := serveFrom(t, srv, "198.51.100.40:1", http.MethodPost, "/v1/auth/login", "", body)
+		if rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("expected 429 on the 6th try for %v, got %d", body, rec.Code)
+		}
+	}
+	// Same address, another login: only the per-address limit applies.
+	rec := serveFrom(t, srv, "198.51.100.40:1", http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "other_name"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for another login, got %d", rec.Code)
+	}
+}
+
+func TestServer_LoginIsLimitedToTwentyPerMinutePerAddress(t *testing.T) {
+	srv := newFullTestServer(t, newFakeUserRepo())
+	for i := 0; i < 20; i++ {
+		rec := serveFrom(t, srv, "198.51.100.41:1", http.MethodPost, "/v1/auth/login", "", map[string]any{"login": fmt.Sprintf("name_%d", i)})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("request %d: expected 400, got %d", i+1, rec.Code)
+		}
+	}
+	rec := serveFrom(t, srv, "198.51.100.41:1", http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "name_99"})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on the 21st login from one address, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeBody(t, rec)["error"]; got != "rate_limited" {
+		t.Fatalf("expected rate_limited, got %v", got)
+	}
+	// A different address is not limited.
+	other := serveFrom(t, srv, "198.51.100.42:1", http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "name_99"})
+	if other.Code != http.StatusBadRequest {
+		t.Fatalf("a different address should not be limited, got %d", other.Code)
+	}
+}
+
 func TestServer_SignupIsLimitedToThreePerMinutePerAddressAndEmail(t *testing.T) {
 	srv := newFullTestServer(t, newFakeUserRepo())
 	for i := 0; i < 3; i++ {

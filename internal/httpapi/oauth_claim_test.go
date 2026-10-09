@@ -237,6 +237,11 @@ func TestOAuth_ClaimKeepsProfileAndBirthdayAndEndsOldSessions(t *testing.T) {
 		t.Fatalf("pre-registrant login: %d %s", login.Code, login.Body.String())
 	}
 	oldRefresh, _ := decodeBody(t, login)["refresh_token"].(string)
+	// ... and may log in by username with the same password.
+	beforeByUsername := doJSONRequest(t, rig.router, http.MethodPost, "/auth/login", map[string]any{"login": "victim_name", "password": "attacker-password"})
+	if beforeByUsername.Code != http.StatusOK {
+		t.Fatalf("pre-registrant login by username: %d %s", beforeByUsername.Code, beforeByUsername.Body.String())
+	}
 
 	rec := rig.signInGoogle(t)
 	if rec.Code != http.StatusOK {
@@ -263,6 +268,9 @@ func TestOAuth_ClaimKeepsProfileAndBirthdayAndEndsOldSessions(t *testing.T) {
 	}
 	relogin := doJSONRequest(t, rig.router, http.MethodPost, "/auth/login", map[string]any{"email": "victim@example.com", "password": "attacker-password"})
 	assertInvalidCredentials(t, relogin)
+	// The username door is shut too: the one password is gone.
+	reloginByUsername := doJSONRequest(t, rig.router, http.MethodPost, "/auth/login", map[string]any{"login": "victim_name", "password": "attacker-password"})
+	assertInvalidCredentials(t, reloginByUsername)
 }
 
 // Real postgres repositories: a failed claim then a plain retry must end with

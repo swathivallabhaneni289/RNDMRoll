@@ -413,6 +413,51 @@ func TestUnverifiedAccountCanLogInRefreshAndUseTheApp(t *testing.T) {
 	}
 }
 
+// TestLoginWithAUsernameReachesTheSameAccountAsTheEmail proves the Log in
+// page's "email or username" box against real Postgres: the username (in any
+// case) and the email open the same account with the account's one password,
+// and a wrong password or an unknown username is the same 401.
+func TestLoginWithAUsernameReachesTheSameAccountAsTheEmail(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	server, _ := buildIntegrationServer(t, pool)
+	engine := server.Engine()
+
+	const password = "correct-horse-battery-staple"
+	integrationOnboardAccount(t, engine, "username-login@example.com", password, "Username Login", "username_login")
+
+	for name, login := range map[string]string{
+		"username":             "username_login",
+		"username in capitals": "USERNAME_Login",
+		"email":                "username-login@example.com",
+	} {
+		rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{
+			"login": login, "password": password,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("login by %s: expected 200, got %d: %s", name, rec.Code, rec.Body.String())
+		}
+		got, _ := decodeBody(t, rec)["user"].(map[string]any)
+		if got["email"] != "username-login@example.com" || got["username"] != "username_login" {
+			t.Fatalf("login by %s: expected the account just made, got %v", name, got)
+		}
+	}
+
+	wrong := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{
+		"login": "username_login", "password": "abcde",
+	})
+	unknown := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{
+		"login": "nobody_here", "password": "abcde",
+	})
+	for name, rec := range map[string]*httptest.ResponseRecorder{"wrong password": wrong, "unknown username": unknown} {
+		if rec.Code != http.StatusUnauthorized || decodeBody(t, rec)["error"] != "invalid_credentials" {
+			t.Fatalf("%s: expected 401 invalid_credentials, got %d: %s", name, rec.Code, rec.Body.String())
+		}
+	}
+	if wrong.Body.String() != unknown.Body.String() {
+		t.Fatalf("expected byte-identical bodies, got %q vs %q", wrong.Body.String(), unknown.Body.String())
+	}
+}
+
 // TestCrossAccountIsolation creates two accounts and asserts account B holds
 // no way to read or modify account A's record, constructing the attempt the
 // way a real caller would: sending A's ID in the PATCH /v1/me body while

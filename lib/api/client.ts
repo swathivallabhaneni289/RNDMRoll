@@ -26,7 +26,7 @@ const USER_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   network_unavailable: "Couldn't connect. Check your connection and try again.",
   email_taken: 'That email is already in use.',
   rate_limited: 'Too many tries. Wait a minute and try again.',
-  invalid_credentials: "That email or password isn't right.",
+  invalid_credentials: "That email, username or password isn't right.",
   photo_rejected: "That file can't be used as a photo. Try another one.",
   photo_upload_failed: 'Photo upload failed. Please try again.',
 };
