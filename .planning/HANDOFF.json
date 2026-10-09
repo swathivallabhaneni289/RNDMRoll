@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-10-09T17:40:00.000Z",
+  "timestamp": "2026-10-09T18:10:00.000Z",
   "phase": "01",
   "phase_name": "foundation-accounts (CLOSED 2026-10-09)",
   "phase_dir": ".planning/phases/01-foundation-accounts",
@@ -90,7 +90,7 @@
   "remaining_tasks": [
     {
       "id": 16,
-      "name": "Phase 2: copy ~/.local/share/rndmroll-phase2/project-copy/.planning/phases/02-daily-roll/ into the main tree (plain copy, then git add explicit paths), apply the hand edits listed at the end of 02-CONTEXT.md, commit, give the developer the 5-line description and the 4 small choices from ~/.local/share/rndmroll-phase2/REBASE-DONE-2026-10-09.md (suggested yes to all), wait for the word go, then build 02-01 (server) and 02-02 (app) in parallel with agents, then 02-03 (cutover, scans, a SHORT device walkthrough). Tag pre-phase2 only after everything is committed",
+      "name": "Phase 2 documents are MERGED and committed (2ad9220, nothing built). Waiting for the developer's word go after they read the 5-line description and the 4 small choices (suggested yes to all: hide the bar on the photo-and-bio page and end Continue and Skip on Today; Profile Continue goes to Today; delete the temporary You're in page; defer the Apple and Google phone checks). Then build 02-01 (server) and 02-02 (app) in parallel with agents (fresh context is fine, each plan is self-contained), then 02-03 (cutover, scans, a SHORT device walkthrough). Tag pre-phase2 only when the tree is committed",
       "status": "not_started"
     },
     {
@@ -174,6 +174,6 @@
   "uncommitted_files": [
     "app/lab/, docs/reference/ extras, .claude/, .planning/config.json (on purpose, never add)"
   ],
-  "next_action": "Read .planning/phases/01-foundation-accounts/.continue-here.md. Phase 1 is CLOSED and committed locally (never pushed; push only when the developer asks). Do Phase 2 preparation (remaining_tasks), then wait for the developer's go. Ask about test4@gmail.com (jaykayyy) only if it matters.",
+  "next_action": "Read .planning/phases/01-foundation-accounts/.continue-here.md. Phase 1 is closed, Phase 2 documents are merged (2ad9220). Ask the developer for go (5-line description and 4 choices are in ~/.local/share/rndmroll-phase2/REBASE-DONE-2026-10-09.md sections 5 and 6), then execute Phase 2 with parallel agents. Never push. A context hook may rewrite .planning/STATE.md (it reset completed_phases to 0 once): restore it from git before committing.",
   "context_notes": "2026-10-09 lessons: (1) terse screenshot complaints ('its all empty', 'like this') were guessed wrong three times; one concrete example settled the design, so ask one plain question with an example before building. (2) A hot update can silently not reach the phone: take a screenshot after every app edit and restart the app at a boundary if unchanged. (3) The developer hates typing in tests: use accounts made through the API (try5@example.com, username try_five, password abcdefgh1) and keep the check short. (4) Adding a nullable column is backward compatible: apply migrations to the dev database BEFORE restarting the API; the API does not migrate itself; migrate CLI is ~/go/bin/migrate; the 0002 migration test restores version 2. (5) Several earlier rules still hold: never restart the phone app mid-flow after a sign-up (page 2 is in memory), Home-and-tap does not reload the app, edit a screen in ONE write, single quotes in prose here, no em dashes."
 }
