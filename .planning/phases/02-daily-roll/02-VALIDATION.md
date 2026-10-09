@@ -56,7 +56,7 @@ Never run `expo lint`. Never run Go tests on `rndmroll_dev`.
 | Safety | Test tools answer 404 for a caller not on the allow-list; one account's clock move changes no other | HTTP tests | 02-01 Task 3 |
 | Safety | Every Phase 2 route refuses no token (401), deleted user (401), unfinished account with no name or username (403), body over 16 KB (413), 11th spin in a minute (429); no response carries birthday, email or password hash | HTTP tests | 02-01 Task 3 |
 | Safety | Migration 0004 is reversible, and the older migration tests (0002 and 0003) still pass because they start and restore at the latest version read from the files | `TestMigrations_0004IsReversible`, the 0002 and 0003 tests | 02-01 Task 2 |
-| Safety | Users table and three real accounts untouched | `git diff --stat` on user files, user count before and after | 02-03 Tasks 1, 3 |
+| Safety | Users table and four real accounts untouched | `git diff --stat` on user files, user count before and after | 02-03 Tasks 1, 3 |
 | Launch | First screen is Today, no Unmatched Route, no Welcome flash, in these cases: signed out, signed in, expired token, log out then in | Cold launches with recorded first frames, right after 02-02 Task 3 and after the cutover | 02-02 Task 3, 02-03 Task 2 |
 | Launch | Just signed up: the photo-and-bio page comes first with no bottom bar and no flash of Today; Continue or Skip for now ends on Today with the bar; a relaunch there shows Today | Recorded first frames (02-02 Task 3 case (c), 02-03 case (e)) and walkthrough Group 8b | 02-02 Task 3, 02-03 Tasks 2, 3 |
 | Launch | Phase 1's placeholder page is gone: the bar shows exactly three items and nothing links to `/home` | `ls "app/(app)"` and a grep | 02-02 Task 3, 02-03 Task 2 |
