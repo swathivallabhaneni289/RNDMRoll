@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 01
-current_phase_name: foundation-accounts
-status: executing
-stopped_at: Session resumed 2026-10-09; Sign up and Log in buttons built (c864e16), waiting for the developer's phone check 5 and the Continue page
-last_updated: "2026-10-09T07:59:36.764Z"
-last_activity: 2026-09-29
-last_activity_desc: Phase 01 execution resumed (wave continue)
+current_phase: 02
+current_phase_name: daily-roll
+status: planning
+stopped_at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents written on paper in ~/.local/share/rndmroll-phase2, to be merged into this tree, waiting for the developer's go
+last_updated: "2026-10-09T17:30:00.000Z"
+last_activity: 2026-10-09
+last_activity_desc: Phase 01 approved and closed
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 21
-  completed_plans: 15
-  percent: 0
+  completed_plans: 21
+  percent: 20
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 01 (foundation-accounts) — EXECUTING
-Plan: 1 of 16
-Status: Executing Phase 01
-Last activity: 2026-09-29 — Phase 01 execution resumed (wave continue)
+Phase: 02 (daily-roll) — PLANNED ON PAPER (Phase 01 closed 2026-10-09)
+Plan: 0 of 3
+Status: Waiting for the developer's go
+Last activity: 2026-10-09 — Phase 01 approved and closed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 01-18 (code-flow sign-up) is superseded by 01-19 (2026-10-07): one-page sign-up with a birthday (13+), no code, no email check; Apple and Google also enter a birthday (open decision a). Developer said start.
 - [Phase 01]: Sign-up is two pages (2026-10-08): page 1 account details (email, password, birthday, name, username), page 2 photo and bio once with Skip for now; replaces the one-page form; plan 01-20, built the same day. Developer picked option a after asking how Instagram does it.
 - [Phase 01]: Less typing on page 1 (2026-10-08): the birthday is picked on iOS's scrolling date picker (typed boxes off iOS) and a green "Looks good." note shows under checkable fields on the sign-up and Apple/Google finish pages; plan 01-21. Face ID, Next key, box hints, username choices, Apple/Google first: not chosen.
+- [Phase 01]: Phase 1 closed 2026-10-09 (the developer typed approve). ONE password per account, typed once on sign-up and used with the email and the username (a confirmation box and then two separate passwords were built and removed the same evening); Log in takes an email or a username in one box (plan 01-22); the sign-up page order follows the Instagram photo (email, password, birthday, name, username); text boxes never clip what is typed. Launch list unchanged (domain, favicon, remove the AI tag, real Terms and Privacy, Forgot password, real Google, Apple, S3 and Resend accounts).
+- [Whole project]: the developer wants everything finished by 2026-10-10; parallelize, keep device checks short.
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T07:59:36.742Z
-Stopped at: Session resumed 2026-10-09; Sign up and Log in buttons built (c864e16), waiting for the developer's phone check 5 and the Continue page
+Last session: 2026-10-09T17:30:00.000Z
+Stopped at: Phase 1 closed 2026-10-09 (developer approved); Phase 2 documents to be merged into this tree, waiting for the developer's go
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md

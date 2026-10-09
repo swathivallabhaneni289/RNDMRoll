@@ -13,7 +13,7 @@ RNDMRoll delivers a daily habit-loop mobile app in five phases: first the accoun
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Accounts** - Users can create accounts, log in, and view their profile
+- [x] **Phase 1: Foundation & Accounts** - Users can create accounts, log in, and view their profile (completed 2026-10-09)
 - [ ] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel
 - [ ] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category
 - [ ] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated
@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create an account and log in, staying logged in across app sessions
   2. User can view their own profile
 
-**Plans**: 15/16 plans executed
+**Plans**: 21/21 plans executed (01-18 was replaced by 01-19 and never built)
 
 Plans:
 **Wave 1**
@@ -66,7 +66,16 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 01-15-PLAN.md — Phase verification: automated sweep and device UAT
+- [x] 01-15-PLAN.md — Phase verification: automated sweep and device UAT
+
+**Added during the device walkthrough (2026-10-01 to 2026-10-09)**
+
+- [x] 01-17-PLAN.md — Defects found in the static walkthrough review
+- [ ] ~~01-18-PLAN.md~~ — Code-flow sign-up (superseded by 01-19, never built)
+- [x] 01-19-PLAN.md — One-request sign-up with a birthday (server) and the shared profile form
+- [x] 01-20-PLAN.md — Sign-up in two pages: account details, then photo and bio once
+- [x] 01-21-PLAN.md — Birthday date scroller and green "Looks good." notes
+- [x] 01-22-PLAN.md — Log in with an email or a username; text boxes that never cut off what you type
 
 **UI hint**: yes
 
@@ -141,7 +150,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Accounts | 15/16 | In Progress|  |
+| 1. Foundation & Accounts | 21/21 | Complete | 2026-10-09 |
 | 2. Daily Roll | 0/TBD | Not started | - |
 | 3. Daily Entry | 0/TBD | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
