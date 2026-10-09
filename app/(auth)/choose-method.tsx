@@ -21,6 +21,10 @@ import {
  * Background Texture sections). D-01/D-02/D-03: exactly three methods,
  * Apple gated to iOS, and no fourth SMS-based method of any kind.
  */
+// Apple and Google are hidden until their real accounts exist (developer, 2026-10-09: "hide
+// both"). Set this to true to bring both buttons back; the code and the server stay as they are.
+const SOCIAL_SIGN_IN_ENABLED = false;
+
 export default function ChooseMethodScreen() {
   const router = useRouter();
   const { signIn } = useSession();
@@ -29,7 +33,7 @@ export default function ChooseMethodScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
+    if (!SOCIAL_SIGN_IN_ENABLED || Platform.OS !== 'ios') return;
     let cancelled = false;
     isAppleSignInAvailable().then((available) => {
       if (!cancelled) setAppleAvailable(available);
@@ -39,7 +43,7 @@ export default function ChooseMethodScreen() {
     };
   }, []);
 
-  const showApple = Platform.OS === 'ios' && appleAvailable;
+  const showApple = SOCIAL_SIGN_IN_ENABLED && Platform.OS === 'ios' && appleAvailable;
 
   async function handleSocial(provider: 'apple' | 'google') {
     setError(null);
@@ -87,13 +91,15 @@ export default function ChooseMethodScreen() {
               disabled={inFlight !== null && inFlight !== 'apple'}
             />
           ) : null}
-          <MethodButton
-            provider="google"
-            label="Continue with Google"
-            onPress={() => handleSocial('google')}
-            loading={inFlight === 'google'}
-            disabled={inFlight !== null && inFlight !== 'google'}
-          />
+          {SOCIAL_SIGN_IN_ENABLED ? (
+            <MethodButton
+              provider="google"
+              label="Continue with Google"
+              onPress={() => handleSocial('google')}
+              loading={inFlight === 'google'}
+              disabled={inFlight !== null && inFlight !== 'google'}
+            />
+          ) : null}
         </View>
 
         {error ? (
