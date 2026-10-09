@@ -34,7 +34,7 @@
   "human_actions_pending": [
     {"action": "Look at the new Sign up and Log in buttons, run check 5 and the Continue page; answer the open questions; type approved when happy", "context": "Everything is built, committed locally and live; the phone was relaunched at Welcome", "blocking": true},
     {"action": "Decide on real Google (and later Apple) setup, domain, favicon, remove AI tag, Terms and Privacy text, Resend and S3 accounts", "context": "Launch list in PROJECT.md", "blocking": false},
-    {"action": "Decide whether to push the local commits to GitHub", "context": "The repo is public; nothing is pushed", "blocking": false}
+    {"action": "Decide whether to push the local commits to GitHub", "context": "The repo is public. GitHub has this branch up to 9691474 (the paused note), pushed 2026-10-09 13:21 IST, not by Claude and reason unknown; the commits after that are local only. Claude does not push", "blocking": false}
   ],
   "decisions": [
     {"decision": "Sign-up is two pages: page 1 Create your account (email, password, birthday scroller, name, username), page 2 Make it yours (photo and bio, Continue or Skip for now), shown once", "rationale": "Developer 2026-10-08", "phase": "01"},
