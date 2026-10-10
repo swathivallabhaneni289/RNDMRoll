@@ -5,7 +5,7 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: daily-roll
 status: planning
-stopped_at: Apple and Google sign-in removed completely 2026-10-09 (one local commit, not pushed); Phase 2 documents renumbered and waiting for the developer's go; Phase 3 documents written on paper (nothing built)
+stopped_at: Apple and Google sign-in removed completely 2026-10-09 (pushed to GitHub on 2026-10-10 at the developer's ask); Phase 2 documents renumbered and waiting for the developer's go; Phase 3 documents written on paper (nothing built)
 last_updated: "2026-10-09T18:21:00.000Z"
 last_activity: 2026-10-09
 last_activity_desc: Apple and Google sign-in removed; Phase 3 planned on paper
@@ -102,5 +102,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-09T18:21:00.000Z
-Stopped at: Apple and Google sign-in removed completely (one local commit, not pushed); Phase 2 documents renumbered, waiting for the developer's go; Phase 3 documents written on paper
+Stopped at: Apple and Google sign-in removed completely (pushed to GitHub on 2026-10-10 at the developer's ask); Phase 2 documents renumbered, waiting for the developer's go; Phase 3 documents written on paper
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md
