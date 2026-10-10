@@ -3,7 +3,7 @@ phase: 02-daily-roll
 plan: 02
 status: built, waiting for the cutover and the walkthrough (plan 02-03)
 built: 2026-10-10
-commits: 13e9a3e, 90d325b, 5dd86df
+commits: 13e9a3e, 90d325b, 5dd86df, 84af689
 ---
 
 # 02-02 Summary: the spin app
@@ -42,6 +42,15 @@ against an in-app stand-in for it (see Verification).
   Today, and the first-run exits call `router.navigate('/(app)/today')` before `finishExtras()`.
 - Not edited: `app/_layout.tsx`, `app/(auth)/_layout.tsx`, `lib/session/store.ts`, `profile/edit.tsx`,
   `package.json`, the Welcome wheel and `components/brand`.
+
+## Fixes found in review (`84af689`)
+
+- The middle Spin button now asks for the spin and then navigates. The other way round, the leave sheet's
+  guard (which clears the request, decision 4) ran before the flag existed, so "Leave" would have gone to
+  Today and spun.
+- The "isn't open yet" and "has closed" messages now stay under the countdown when the follow-up answer
+  says waiting (decision 5, UI-SPEC 4.4). They used to be replaced by the countdown after a moment.
+  A day that already has a spin still shows the result with no error text.
 
 ## Where it differs from the paper
 
@@ -87,7 +96,10 @@ out (Welcome) when the work started and no touch tool exists, so the app was dri
 in-app stand-in: a `fetch` replacement answering `/auth/refresh`, `/me`, `/time-zone`, `/today`, `/spin`,
 `/spin/bonus` and `/wheel`, an automatic sign-in with a made-up account, and (once) a hook that opened the
 bonus sheet. It was never committed and has been removed; the simulator was left signed out and its Reduce
-Motion setting back off. What it showed:
+Motion setting back off. (Two things that were tried and dropped: attaching to Metro's inspector, which
+Metro refused, and a small local listener on 127.0.0.1:9099 meant to feed code to the app. The listener was
+killed and its files deleted before any app code used it; the permission system refused the step that
+would have wired the app to it.) What it showed:
 - Waiting (layout 1a): wordmark and bell, long date line, two-line `title` heading, two-tone wheel with the
   words across the wedges, label and live countdown, Edit wheel, week section with filled, ring and small
   dots, bar with the outlined round Spin button 8dp above the rule. Close to the picture; the countdown row
@@ -118,7 +130,8 @@ Motion setting back off. What it showed:
 - Not exercised for lack of a way to tap: the bell, back arrow and tab presses themselves; the hub tap
   (the same `spin()` ran through the Spin button's `pendingSpin` path); Save wheel, the steppers, the leave
   sheet and the Profile tab's "Saved."; the top 8dp of the Spin button above the bar (UI-SPEC section 8
-  device check). All are in the 02-03 walkthrough.
+  device check). The two fixes above were checked by reading and `tsc`, not on the phone. All are in the
+  02-03 walkthrough.
 - A signed-in cold launch against the real new server is plan 02-03's (cutover) job.
 - On a phone with no bottom safe-area inset (iPhone SE) the "Spin" label under the circle would sit at
   the screen edge, because the bar is 56dp plus the inset as written.
