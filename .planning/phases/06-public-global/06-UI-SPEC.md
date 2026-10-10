@@ -3,13 +3,13 @@ phase: 6
 slug: public-global
 status: draft
 created: 2026-10-10
-revision: 1
+revision: 2
 approval_word: go
 ---
 
 # Phase 6 - UI Design Contract (Public Accounts, Global and the 8 PM reminder)
 
-> Design contract the Phase 6 app plans (06-02, 06-03) build from. PHASE 6. NOTHING IS BUILT. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 18 or later), and the bar, bell, Notifications page, `ConfirmSheet` and `StatusMessage` of `02-daily-roll/02-UI-SPEC.md` (revision 6 or later), the entry page and photo parts of `03-daily-entry/03-UI-SPEC.md` (revision 2 or later), and the Board, card, post page, comments and Friends screen of `05-friend-feed/05-UI-SPEC.md` (revision 1, cited below as 05-UI-SPEC with its section number; its numbers win where this document gives none). Phases 2 to 5 are not built either. **There are NO pictures for this phase.** The developer's pictures 08, 09 and 10 (`docs/reference/screens-07-diary-08-board-locked-2026-10-10.png`, `docs/reference/screens-09-board-unlocked-10-post-2026-10-10.png`) draw the "Friends | Global" switch, the card grid and the post page, and every screen below is built from those parts and the standing tokens. The Global view, the privacy switch, the person page, the two report sheets and the reminder sheet have never been drawn, so they are plain defaults: send pictures and this document is redrawn from them. Every override of an older rule is in the choices list at the end of section 14. All imagery is the developer's: photos are people's own and every placeholder is plain.
+> Design contract the Phase 6 app plans (06-02, 06-03) build from. PHASE 6. NOTHING IS BUILT. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 18 or later), and the bar, bell, Notifications page, `ConfirmSheet` and `StatusMessage` of `02-daily-roll/02-UI-SPEC.md` (revision 6 or later), the entry page and photo parts of `03-daily-entry/03-UI-SPEC.md` (revision 2 or later), and the Board, card, post page, comments and Friends screen of `05-friend-feed/05-UI-SPEC.md` (revision 1, cited below as 05-UI-SPEC with its section number; its numbers win where this document gives none), and the Settings page of `02.1-settings/02.1-UI-SPEC.md` (revision 1, cited below as 02.1-UI-SPEC; the reminder row sits on it). Phases 2, 2.1 and 3 to 5 are not built either. **There are NO pictures for this phase.** The developer's pictures 08, 09 and 10 (`docs/reference/screens-07-diary-08-board-locked-2026-10-10.png`, `docs/reference/screens-09-board-unlocked-10-post-2026-10-10.png`) draw the "Friends | Global" switch, the card grid and the post page, and every screen below is built from those parts and the standing tokens. The Global view, the person page, the two report sheets, the reminder sheet and the reminder's row on Settings have never been drawn, so they are plain defaults: send pictures and this document is redrawn from them. The public or private setting is not drawn here at all: it is Phase 2.1's (the 'Private account' switch on the Settings page, 02.1-UI-SPEC section 8). Every override of an older rule is in the choices list at the end of section 14. All imagery is the developer's: photos are people's own and every placeholder is plain.
 
 ## Visual reference (binding)
 
@@ -28,8 +28,8 @@ The developer's pictures named above are the visual reference for the build ("us
 | Delete sheet (comment) | Phase 5's comment list (05-UI-SPEC 4.1), on a friend's post page and on your own entry page (05-UI-SPEC 5) | Changed: a comment that is not yours gets a second row, 'Delete and block {first name}'. |
 | Person page | `app/(app)/board/person` (inside the Board stack) | New. |
 | Name chip on a card | Phase 5's card | Changed: it opens the person page (it is a drawn label in Phase 5). |
-| Public account row and consent sheet | Edit profile page | New. |
-| Reminder row | Edit profile page | New (built in plan 06-03). |
+| Reminder row | the Settings page (Phase 2.1's `SettingsScreen`), a new row directly under 'Private account' | New (built in plan 06-03). It is the only thing this phase puts on Settings or Profile: the setting, its switch and the gear are Phase 2.1's. |
+| Welcome page | `app/(auth)/welcome.tsx` | Changed in code only: one hook call that cancels a stale reminder on a signed-out launch (section 9). Nothing on screen changes. |
 | Reminder permission sheet | over Today, once | New (06-03). |
 | The phone notification | the lock screen | New (06-03). |
 | Bottom bar | `app/(app)/_layout.tsx` | Unchanged: Home, Diary, Spin, Board, Profile. |
@@ -57,7 +57,7 @@ Reused as they are:
 
 **Radius.** Phase 6 adds no radius token. The Friends and Global track is a pill, drawn as picture 08 draws it (full width, rounded ends): the visual reference above wins over the old no-pill rule, and the choices list says so. Phase 5's spec (05-UI-SPEC section 2) already rewrote the token note and lists the files that may use `radius.full`: Phase 4's five, then `Avatar`, `NameChip`, `ReactionRow` and `CommentBar`. Phase 6 adds exactly one: `components/board/ViewSwitch.tsx`, the track. Nothing else here is round (the person page's photo reuses `Avatar`; the chips on cards are `NameChip`), and no file joins the `radius.lg` list.
 
-**The phone's own switch.** The two switches on the Edit profile page are the platform `Switch`: track `ink` when on and `divider` when off, thumb `dominant`, all from tokens. It is rounded by nature (listed in the choices).
+**The phone's own switch.** The one switch this phase draws, on the reminder row, is the platform `Switch` exactly as Phase 2.1 draws 'Private account' (02.1-UI-SPEC section 2): track `ink` when on and `divider` when off, thumb `dominant`, all from tokens. It is rounded by nature (listed in the choices).
 
 ## 3. The Board header and the Friends | Global switch
 
@@ -153,7 +153,7 @@ Route `app/(app)/board/person`, opened with the person's id. Pushed over the Boa
 | friends | 'Friends' (outlined, disabled) |
 
    A request failure shows Phase 2's offline or generic line in `destructive` under the button.
-4. `sm` below: one Label line, `muted`: 'Public account' or 'Private account' (from `visibility`).
+4. `sm` below: one Label line, `muted`: 'Public account' or 'Private account' (from `visibility`, the person's `users.account_visibility` as Phase 2.1 stores it; the page only shows it and never changes it).
 5. `lg` below, a 1dp `divider` rule, then:
    - **Public person** (`posts` is a list): the small-caps Label 'Posts' and the same two-column grid as Global, newest first, 20 a page, with the same paging and states. An empty list says 'No posts yet.' A card opens the post page with `from` = 'person' (its Back label reads 'Back').
    - **Private person who is a friend** (`posts` is null): one Label line, `muted`: 'Their posts show on your Board.'
@@ -161,48 +161,40 @@ Route `app/(app)/board/person`, opened with the person's id. Pushed over the Boa
 
 States: Loading shows the Label 'Loading this person.'; offline is `StatusMessage` with 'Try again'; a 404 shows 'This person isn't here.' and a 'Back' text button. The page reloads when it comes back into focus, so a request or a block shows at once. The person page is never opened for the caller's own account (the caller's own card is not a button).
 
-## 8. Account settings on the Edit profile page: Public account
+## 8. The public or private setting (Phase 2.1's, only read here)
 
-Phase 4 makes Phase 1's form page the Edit page (`app/(app)/profile/edit.tsx`). Phase 6 adds one row to it, between the Bio box and the bottom button, and only in edit mode (never on the first-run page). The Reminder row of section 9 sits under it. Each row applies at once and is not part of 'Save changes'.
+Phase 6 draws no switch, no sheet and no line for the setting, and the phone never writes it. The setting is Phase 2.1's: the column `users.account_visibility`, PUBLIC by default for everyone, switched by the row 'Private account' on the Settings page (ON means private; it saves the moment it is tapped and asks nothing; its sentence is 'Public accounts can appear on Global. Private accounts are seen by friends only.', 02.1-UI-SPEC section 8). An account whose birthday makes it under 18 STARTS private and can switch like anyone else (02.1-CONTEXT D-11).
 
-**The row.** One line: the label 'Public account' (Body role, `ink`) on the left, the switch on the right, 44dp high at least; under it, `xs` below, a Label line in `muted`:
-- Normal: 'Anyone on RNDMRoll can see your posts on Global. Turn it off and only your friends can.'
-- Under 18 (`can_be_public` false): the switch is off and disabled (`inkDisabled` thumb) and the line is 'Public accounts are for people 18 and over.' The phone never works out the age: it only reads `can_be_public`.
+What this phase does with it, always from the server's reading of the column at the moment a list or a page is read (never a copy per post, never a cache on the phone):
+- **Global** lists the posts of authors whose account is public, and only those (section 4).
+- A person who switches to private leaves Global at once, past posts included, and appears again, past posts included, when they switch back. A card already on a phone's screen stays until that phone asks again (tab focus, pull down, back to the foreground); opening it then answers 'not found' and the post page shows Phase 5's gone state.
+- **The person page** shows 'Public account' or 'Private account' from the server's `visibility` (section 7).
+- **Not here:** the switch, a consent sheet, a line about age, any refusal. Switching to public asks nothing in Phase 2.1, so past posts show on Global with no question; the sentence under the switch is the only warning (choices list).
 
-| State | Switch | Line below | Notes |
-|---|---|---|---|
-| Loading | off, disabled | none | the row asks `GET /v1/account/visibility` when the page opens |
-| Private (default) | off | normal | |
-| Public | on | normal | |
-| Under 18 | off, disabled | under-18 line | |
-| Saving | disabled, at the target position | unchanged | one request at a time |
-| Load failed | hidden | 'Couldn't connect. Check your connection and try again.' in `destructive` and a text link 'Try again' | |
-| Save failed | snaps back | the offline or generic line in `destructive` | |
-
-**Turning it on asks first.** `ConfirmSheet`. Title (Heading): 'Make your account public?'. Body (Body): 'Anyone on RNDMRoll will see your posts on Global, including the ones you have already posted. They will see your name, username and photo with each post.' Rows: 'Make public' and 'Keep private'. 'Make public' closes the sheet and sends `PATCH /v1/account/visibility`; 'Keep private' (or a swipe down) leaves the switch off. **Turning it off needs no sheet:** it sends at once, and the posts leave Global at once. If the server answers 403 `under_age_for_public` (a phone with a stale answer), the switch snaps back off and the line becomes the under-18 line.
+**Safety note (a recommendation, not a rule).** An under-18 account that switches to public lets strangers see and comment on a young person's posts. Phase 2.1 deferred refusing it and Phase 6 adds no refusal: it is one server line, for the developer to decide before any outside user (launch list, and the choices list below).
 
 ## 9. The 8 PM reminder (plan 06-03)
 
 A LOCAL notification the phone schedules itself, daily at 20:00 in the phone's own time zone. The server is not involved and no Apple push setup is needed. It needs one native module and one rebuild (plan 06-03). If the installed dev client does not have the module, none of this shows: no row, no sheet, nothing dead.
 
-**The row.** Under the Public account row on the Edit profile page: the label 'Remind me at 8:00 PM' (Body role) with the switch, same size and behaviour. Under it, only when the system permission is off: the Label 'Turn on notifications for RNDMRoll in Settings.' (`muted`). The switch then shows off and a tap on it does nothing but show that line (it is disabled). The row is not drawn on the first-run page and not when the module is missing.
+**The row.** On the Settings page (Phase 2.1's `SettingsScreen`), a new row directly under 'Private account' and above 'Log out', so the rows read Edit profile, Username, Password, Private account, Remind me at 8:00 PM, Log out. It is drawn exactly like the 'Private account' row (02.1-UI-SPEC section 8): at least 56dp, the label 'Remind me at 8:00 PM' (Body role, `ink`) at the left and the switch at the right, the whole row one switch element so a tap anywhere toggles, and a 1dp `divider` hairline under it as under every Settings row. Under the row, `xs` below inside the same hairline block and only when the system permission is off: the Label 'Turn on notifications for RNDMRoll in Settings.' (`muted`). The switch then shows off and dimmed and a tap on it does nothing but show that line (the row is disabled). The row is not drawn when the module is missing.
 
 **The permission sheet, asked once.** When Today shows Posted for the first time on this phone after this phase is installed, and the person was never asked, a `ConfirmSheet` opens about 600ms after the Posted state has appeared (so it does not talk over the 'Posted.' announcement). Title (Heading): 'Get a reminder at 8:00 PM?'. Body (Body): 'We'll tell you when your spin opens.' Rows: 'Remind me' and 'Not now'.
-- 'Remind me' closes the sheet, switches the Reminder on and asks the system for permission (the system's own prompt, whose wording the app cannot change). Allowed: the reminder is scheduled. Not allowed: the switch stays off and the Edit profile row shows the Settings line.
-- 'Not now' (or a swipe down) is remembered and the sheet is never shown again. The switch on Edit profile is the way back.
+- 'Remind me' closes the sheet, switches the Reminder on and asks the system for permission (the system's own prompt, whose wording the app cannot change). Allowed: the reminder is scheduled. Not allowed: the switch stays off and the row on Settings shows the Settings line.
+- 'Not now' (or a swipe down) is remembered and the sheet is never shown again. The row on the Settings page is the way back.
 
 **The notification.** Title 'Your spin is open.' Body 'Spin today's wheel.' Daily at 20:00 local time. No category word, no name, no counts: it says the same thing to everyone and reveals nothing on a lock screen. It plays the phone's default notification sound, which the person can turn off in iOS Settings. It is not shown while the app is open in the foreground (the Today screen already says it). Tapping it opens the app on Home.
 
 **Behaviour.**
 - The schedule is rebuilt every time Today opens for a signed-in person and every time the app comes back to the foreground: all earlier schedules are cancelled and, if the switch is on and the permission is granted, exactly one is added. It can never double.
-- Turning the switch off cancels it. Logging out cancels it.
+- Turning the switch off cancels it. **Every way of signing out cancels it:** the Log out row on Settings, the Log out button on the Edit profile page and a session that expires while the app is open all end in the same session change, and the reminder hook (alive on Today for the whole signed-in session) cancels every scheduled reminder as soon as the session is no longer signed in, and again when the signed-in screens go away. A session that ended while the app was closed (a revoked sign-in, for example after a password change on another phone) cannot be cancelled until the app is next opened: every signed-out launch starts on Welcome, and a one-line hook there cancels every scheduled reminder at once. Until that launch the reminder can still show once a day, with the same neutral words. Nothing in the session store or in the Log out controls is edited for any of this. The next person to sign in on the phone gets their own schedule when Today opens.
 - The switch value and the "already asked" mark live on the phone, per account (so a second person on the same phone is asked on their own).
 - It still fires on a day the person has already spun or posted. That is accepted in this version.
 
 ## 10. Motion
 
 Calm, as everywhere. Nothing new is invented.
-- The Friends and Global halves and the switches change at once. Content swaps with no animation.
+- The Friends and Global halves and the reminder switch change at once. Content swaps with no animation.
 - Sheets use `ConfirmSheet`'s existing motion.
 - Cards reveal with Phase 5's `ImageReveal` and nothing else.
 - The 'Thanks. We'll look at it.' line appears at once, and a reported comment leaves the list at once with no fade.
@@ -221,13 +213,11 @@ Every string the person sees. 'Spin' wording, plain words, no em dashes, no lega
 | Comment, report | Report (N) / Report this comment (N) / It's spam (E) / It's unkind or harassing (E) / Something else (E) / Block {first name} (E, Phase 5's words) / Cancel (E) / Thanks. We'll look at it. (E) |
 | Comment, delete | Delete this comment? (E, Phase 5) / It will be gone for good. (E) / Delete (E) / Delete and block {first name} (N) / Keep it (E) / Comment deleted. Couldn't block {first name}. (N) / Try again (E) |
 | Block sheet | Block {first name}? (E, Phase 5) / You will stop seeing each other's posts. They won't be told. (E) / Block (E) / Don't block (E) |
-| Person page | Add friend (E, Phase 5) / Requested (E) / Accept (E) / Friends (E) / Public account (N) / Private account (N) / Posts (N) / No posts yet. (N) / Their posts show on your Board. (N) / Loading this person. (N) / This person isn't here. (N) / Back (E) |
-| Edit profile, account | Public account (N) / Anyone on RNDMRoll can see your posts on Global. Turn it off and only your friends can. (N) / Public accounts are for people 18 and over. (N) |
-| Consent sheet | Make your account public? (N) / Anyone on RNDMRoll will see your posts on Global, including the ones you have already posted. They will see your name, username and photo with each post. (N) / Make public (N) / Keep private (N) |
-| Edit profile, reminder | Remind me at 8:00 PM (N) / Turn on notifications for RNDMRoll in Settings. (N) |
+| Person page | Add friend (E, Phase 5) / Requested (E) / Accept (E) / Friends (E) / Public account (N) / Private account (E, Phase 2.1's Settings label) / Posts (N) / No posts yet. (N) / Their posts show on your Board. (N) / Loading this person. (N) / This person isn't here. (N) / Back (E) |
+| Settings, reminder row | Remind me at 8:00 PM (N) / Turn on notifications for RNDMRoll in Settings. (N) |
 | Reminder sheet | Get a reminder at 8:00 PM? (N) / We'll tell you when your spin opens. (N) / Remind me (N) / Not now (N) |
 | The notification | Your spin is open. (E, Phase 2's heading) / Spin today's wheel. (N) |
-| Errors | the existing offline and generic strings only. `under_age_for_public` has no string of its own: the screen shows the under-18 line |
+| Errors | the existing offline and generic strings only. `own_comment` and `not_found` on a report have no string of their own: the post reloads and the generic line shows |
 
 ## 12. Accessibility
 
@@ -237,18 +227,18 @@ Every string the person sees. 'Spin' wording, plain words, no em dashes, no lega
 - **Delete sheet.** The row 'Delete and block {first name}' is a button labelled 'Delete this comment and block {first name}' with the hint 'Deletes it, then blocks them.' The failure line 'Comment deleted. Couldn't block {first name}.' is a polite live region and its 'Try again' is a button labelled 'Try blocking {first name} again'. 'Thanks. We'll look at it.' is a polite live region, and so is the message line above the comment bar.
 - **Report sheets.** Each row is a button labelled by its words ('Block {first name}' in the comment sheet keeps the hint 'Asks first.'). Focus lands on the title.
 - **Person page.** The header is one element: '{name}, @{username}, {Public or Private} account'. The relation button announces its state ('Friends, disabled'). 'Posts' is a header element.
-- **Switches.** 'Public account' and 'Remind me at 8:00 PM' use the switch role with the state on or off; the disabled under-18 switch is announced as dimmed and its line is read with it ('Public account, off, dimmed. Public accounts are for people 18 and over.').
-- **Consent and reminder sheets.** As `ConfirmSheet`: title first, then body, then the rows.
+- **Reminder switch.** 'Remind me at 8:00 PM' is one element with the switch role and the state on or off, as Phase 2.1's 'Private account' row is; when the permission is off it is announced as dimmed and its line is read with it ('Remind me at 8:00 PM, off, dimmed. Turn on notifications for RNDMRoll in Settings.').
+- **Reminder sheet.** As `ConfirmSheet`: title first, then body, then the rows.
 - **Targets.** Every tappable is at least 44dp (switch halves 44, rows 56, links 44, the chip's hit area 44).
 - **Text size.** Everything scales with the phone's text size except the category word on cards and the six emoji (Phase 5).
 - **Contrast.** `muted` on `dominant` 5.82:1, `ink` 17.32:1, `destructive` as in Phase 1.
 
 ## 13. Notes for the plan
 
-- **Plan split.** 06-01 is the server. 06-02 builds the pure logic, the API calls, the switch, the Global view, the post page's 'Report this post' link (beside Phase 5's Block link), the quiet 'Report' on a comment and the two report sheets, the extra 'Delete and block' row on the comment delete sheet, the person page, and the Public account row with its consent sheet. 06-03 builds the reminder (the module, the sheet, the row, the scheduler, the rebuild) and runs the cutover, gates, walkthrough and close-out.
-- **Wiring.** The Board store gets a `view` value (`friends` or `global`) and a second list for Global. The phone never works out age, friendship or visibility: it reads `can_be_public`, `relation`, `visibility`, `can_comment`, `can_react` and each comment's `can_delete`. The block and report calls also remove the person's or the post's cards, and a comment report removes the comment, from memory at once.
-- **Pure logic in pure files** (`lib/account/visibility.ts`, `lib/board/view.ts`, `lib/board/report.ts`, `lib/reminder/plan.ts`), checked by throwaway node scripts (`scripts/check-global.ts`, `scripts/check-reminder.ts`) and by device steps.
-- **Launch.** `app/(app)/_layout.tsx`, `app/index.tsx`, the root and auth layouts, `lib/session/store.ts` and `lib/api/client.ts` are not edited. The person route is added to the Board stack only. `components/profile/ProfileForm.tsx` gets one optional prop (a settings slot) and one line in the Log out handler (cancel the reminder); nothing else in it changes.
+- **Plan split.** 06-01 is the server. 06-02 builds the pure logic, the API calls, the Friends and Global switch, the Global view, the post page's 'Report this post' link (beside Phase 5's Block link), the quiet 'Report' on a comment and the two report sheets, the extra 'Delete and block' row on the comment delete sheet, and the person page. 06-03 builds the reminder (the module, the sheet, its row on the Settings page, the scheduler, the rebuild) and runs the cutover, gates, walkthrough and close-out. The public or private setting, its switch, the Settings page and the gear are Phase 2.1's, and none of it is built here.
+- **Wiring.** The Board store gets a `view` value (`friends` or `global`) and a second list for Global. The phone never works out age, friendship or visibility, and never writes the account setting: it reads `relation`, `visibility`, `can_comment`, `can_react` and each comment's `can_delete`. The block and report calls also remove the person's or the post's cards, and a comment report removes the comment, from memory at once.
+- **Pure logic in pure files** (`lib/board/view.ts`, `lib/board/report.ts`, `lib/reminder/plan.ts`), checked by throwaway node scripts (`scripts/check-global.ts`, `scripts/check-reminder.ts`) and by device steps.
+- **Launch.** `app/(app)/_layout.tsx`, `app/index.tsx`, the root and auth layouts, `lib/session/store.ts` and `lib/api/client.ts` are not edited. The person route is added to the Board stack only. No Profile file is edited (`ProfileForm.tsx` stays as Phases 1 and 2.1 left it). The one edit to a Phase 2.1 file is `components/settings/SettingsScreen.tsx`: one import and one element, the reminder row under 'Private account'. The reminder is cancelled on every sign-out by the reminder hook that Today already mounts, and on a signed-out launch by a second one-line hook on the Welcome screen (section 9), so the session store and the Log out controls are not touched. `app/(auth)/welcome.tsx` is the one Phase 1 screen this phase edits (an import and one call; no layout and no launch file).
 - **Rebuild.** Plans 06-01 and 06-02 need no rebuild. Plan 06-03 adds `expo-notifications` and rebuilds the dev client once; before the rebuild the app must start and behave exactly as at the end of 06-02 (the module import is guarded).
 - **Never run `expo lint`.** Tokens only, no hex. The emoji scan still allows exactly one file, `lib/entry/reactions.ts`; the notification text has no emoji.
 
@@ -265,23 +255,22 @@ Developer: say keep or change for each row. The word go is only for starting the
 | 5 | Comment | Report / Report this comment / It's spam / It's unkind or harassing / Something else / Block {first name} / Thanks. We'll look at it. | New. The first three reasons use the post sheet's words. Block is a second, confirming step (Phase 5's block sheet). |
 | 6 | Delete and block | Delete and block {first name} / Comment deleted. Couldn't block {first name}. | New. The rest of the delete sheet (Delete this comment? / It will be gone for good. / Delete / Keep it) is Phase 5's. |
 | 7 | Person page | Public account / Private account / Posts / No posts yet. / Their posts show on your Board. / Loading this person. / This person isn't here. | New. The block sheet is Phase 5's (Block {first name}? / You will stop seeing each other's posts. They won't be told. / Block / Don't block). |
-| 8 | Public account | Public account / Anyone on RNDMRoll can see your posts on Global. Turn it off and only your friends can. / Public accounts are for people 18 and over. | New. |
-| 9 | Consent | Make your account public? / Anyone on RNDMRoll will see your posts on Global, including the ones you have already posted. They will see your name, username and photo with each post. / Make public / Keep private | New. The second sentence is added by me. |
-| 10 | Reminder | Remind me at 8:00 PM / Turn on notifications for RNDMRoll in Settings. / Get a reminder at 8:00 PM? / We'll tell you when your spin opens. / Remind me / Not now | New. |
-| 11 | Notification | Your spin is open. / Spin today's wheel. | The first is your Today heading. |
+| 8 | Reminder | Remind me at 8:00 PM / Turn on notifications for RNDMRoll in Settings. / Get a reminder at 8:00 PM? / We'll tell you when your spin opens. / Remind me / Not now | New. The row is on the Settings page, under 'Private account' (a Phase 2.1 word). |
+| 9 | Notification | Your spin is open. / Spin today's wheel. | The first is your Today heading. |
 
 **Choices made here that you may want to change:**
-- Every account starts **Private**, and every existing account is Private. Public is one switch on Edit profile.
-- **Under 18 is always Private.** The birthday already tells the server. The switch is off and says why. The server also refuses it and never puts an under-18 account on Global even if a row said so. This is my safety default, not something you asked for.
+- The setting is **Phase 2.1's, not built here**: every account is **Public by default** (yours, the four test accounts and every older account included) and the 'Private account' switch on the Settings page turns it private. That is your own rule ("originally it's gonna be a public account and they can turn it into private, just like how Instagram works"); it replaces my first notes (Private by default, under 18 never Public, a Public switch on Edit profile with a sheet).
+- **An account under 18 starts private and may switch it**, like anyone else (Phase 2.1). Nothing in Phase 6 refuses public for an under-18 account, so strangers could then see and comment on a young person's posts. **This is a recommendation for you to decide before any outside user:** refusing it is one server line and it is on the launch list. I have not added it.
 - **Global is open at any time** and is not behind the post-first rule. A friend who is Public is therefore visible on Global without posting. The post-first rule protects private posts only.
 - **Strangers can comment on public posts, as you said.** Global works like Friends: the post page has reactions, the comments and the comment bar for everyone who can see it. **The owner can delete any comment** on their post and a writer can delete their own. **Anyone can report a comment** (a quiet 'Report' where 'Delete' would be) **or block its writer** (a second, confirming step). There is no switch to turn comments off and no word filter; Phase 5's 20 a minute limit is the only brake.
-- **Turning Public on makes past posts visible.** The sheet says so, and it also says your name, username and photo show with each post (the second sentence is mine).
+- **No question is asked when an account becomes public**, and the posts it already has show on Global at once (turning 'Private account' off asks nothing in Phase 2.1). Because every existing account is public, **all their past posts are on Global the moment it exists**. Only the test group is here, so that is fine now; before any outside user it is on the launch list. Say if you want a question back.
 - **No per-post switch.** The account setting decides.
-- The **Friends and Global switch** is drawn as in your picture 08: a pill with rounded ends, in the pill style Phase 4 and 5 already use (your picture wins over the old no-pill rule). The two **settings switches** are the phone's own switches (rounded by nature).
+- The **Friends and Global switch** is drawn as in your picture 08: a pill with rounded ends, in the pill style Phase 4 and 5 already use (your picture wins over the old no-pill rule). The **reminder switch** is the phone's own switch (rounded by nature), like 'Private account'.
 - The overline in Global reads **Public posts** (the picture's 'Today' belongs to the Friends day).
 - **Report** is one sheet with four reasons for a post, and one with three reasons plus Block for a comment, no free text. A reported post or comment disappears for the reporter at once and stays for everyone else. **Nothing happens automatically**: reports go into tables you read. Who reads them, and the Terms, are on the launch list.
 - **Delete and block.** When you delete a comment that is not yours (it is on your post), the delete sheet has a second row, 'Delete and block {first name}': it deletes the comment and then blocks the writer, as two calls in that order. If the block fails after the delete, the comment is already gone and you see 'Comment deleted. Couldn't block {first name}.' with a 'Try again' that sends only the block. On your own comment the sheet stays Phase 5's two rows.
 - **Report and Block also show on a friend's post**, not only on strangers'. The block sheet and its words are Phase 5's.
 - The **person page is small**: photo, name, @username, one button, and posts only when the account is Public. A private friend's posts stay on the Board.
-- The **reminder is a local notification**, daily at 8:00 PM, with the same words for everyone and no category word. It fires even on a day you already spun. It is asked once, after your first posted day, and the switch on Edit profile is the way back. It needs one rebuild of the test app.
+- The **reminder is a local notification**, daily at 8:00 PM, with the same words for everyone and no category word. It fires even on a day you already spun. It is asked once, after your first posted day, and its row on the Settings page (under 'Private account') is the way back. Every way of logging out cancels it. It needs one rebuild of the test app.
+- The reminder row's line says "in Settings" (your words in the notes). On the app's own Settings page that could be read as this page, not the phone's Settings app. If you want, I change it to "Turn on notifications for RNDMRoll in your phone's Settings."
 - iOS has no wording the app can set for the notification permission prompt; the sheet before it is the explanation.

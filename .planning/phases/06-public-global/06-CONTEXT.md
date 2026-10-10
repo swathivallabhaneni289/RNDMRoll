@@ -2,7 +2,7 @@
 
 **Gathered:** 2026-10-10 (the developer's voice note about the Board, "friends or global", public and private accounts; their notification note, "the 8 PM reminder should also go out as a phone notification")
 **Written:** 2026-10-10, on paper, against Phase 2 to Phase 5 documents. NONE of those phases is built. Every file, table and function named here from them is that PLAN's name. At build time the built code wins; each plan's start_rules say how to re-check.
-**Status:** Ready for the developer to read. NOTHING IS BUILT. PHASE 6. **There are NO pictures for this phase yet** (the Global view, the privacy switch, the person page, the report sheet, the reminder sheet). Everything on screen here is a plain default built from the Phase 5 picture parts; send pictures and the UI spec is redrawn from them.
+**Status:** Ready for the developer to read. NOTHING IS BUILT. PHASE 6. **There are NO pictures for this phase yet** (the Global view, the person page, the report sheets, the reminder sheet and its row on Phase 2.1's Settings page; the privacy switch itself is Phase 2.1's). Everything on screen here is a plain default built from the Phase 5 picture parts; send pictures and the UI spec is redrawn from them.
 **Approval word for a Phase 6 plan:** "go", said separately, after Phase 5 is built, walked on the phone and closed.
 
 Wording: anything the user sees says "spin", never "roll". New requirement ids (ACCT-04, FEED-06, MOD-01, NOTIF-02) are in `06-HAND-EDITS.md`.
@@ -11,19 +11,19 @@ Why this is its own phase: Global puts strangers' photos in front of each other.
 
 **Visual reference (binding, developer 2026-10-10: "use exactly the same visuals ... as a reference to build this project"):** the developer's pictures are the visual reference for this phase. Build to match them: what is on each screen, its order, spacing, type, shapes (the pills and circles included) and states. At every screen's device check the phone is compared with its picture side by side (a simulator screenshot opened next to the picture); any difference that is not in the UI spec's "Choices made here that you may want to change" list is a defect to fix, not a choice. Where this paper and a picture disagree, the picture wins and the paper is corrected.
 
-Phase 6 has no pictures of its own yet: it reuses the parts of pictures 08 to 10 (the switch, the card, the post page). When the developer sends pictures for the Global view, the privacy switch, the person page, the report sheet and the reminder sheet, they become the reference and the UI spec is redrawn from them.
+Phase 6 has no pictures of its own yet: it reuses the parts of pictures 08 to 10 (the switch, the card, the post page). When the developer sends pictures for the Global view, the person page, the report sheets and the reminder sheet, they become the reference and the UI spec is redrawn from them.
 
 <domain>
 ## Phase Boundary
 
-Each account is Public or Private. A Public account's posts also show on Global, a second view on the Board next to Friends, to every signed-in person, whatever their own setting. A Private account's posts are seen only by accepted friends (Phase 5). A person can open another person (a public one, or someone they have a request with) on a small person page, add them as a friend, block them, and report a post. At 8:00 PM the phone itself reminds the person that their spin is open.
+Each account is Public or Private (the setting, its column and its switch are Phase 2.1's: default PUBLIC, a "Private account" switch in Settings; this phase only READS it). A Public account's posts also show on Global, a second view on the Board next to Friends, to every signed-in person, whatever their own setting. A Private account's posts are seen only by accepted friends (Phase 5). A person can open another person (a public one, or someone they have a request with) on a small person page, add them as a friend, block them, and report a post. At 8:00 PM the phone itself reminds the person that their spin is open.
 
 What the user gets:
-- **Account setting:** "Public account" switch on the Edit profile page (default off). Turning it on asks first, because past posts become visible.
+- **Account setting:** NOT built here. Phase 2.1 (Settings) owns it: `users.account_visibility`, default PUBLIC, the "Private account" switch in Settings. Phase 6 only reads the author's column when it builds Global, the person page and post visibility.
 - **Board:** a "Friends | Global" switch under the title (the picture of screen 08 already draws it). Global is a two-column grid of public posts, newest first, open at any time.
 - **Post page:** someone else's post, exactly like a friend's: the six reactions and the comments (anyone who can see a post can react and comment); a quiet "Report this post" and "Block {name}"; a quiet "Report" on a comment that is not yours.
 - **Person page:** photo, name, @username, one relation button, their public posts.
-- **8 PM reminder:** a phone notification "Your spin is open." at 8:00 PM local time, a switch for it on the Edit profile page, asked once after the first post.
+- **8 PM reminder:** a phone notification "Your spin is open." at 8:00 PM local time, a switch for it as a new row on Phase 2.1's Settings page, asked once after the first post.
 
 Out of scope:
 - Following (a one-way relation) a public person; ranking or recommendations; hashtags or search by name; direct messages.
@@ -46,9 +46,8 @@ Phase 6 is BUILT only after Phase 5 is built and closed.
 
 ### Claude's Discretion (safe defaults, told to the developer; every one is a paper edit to change)
 Accounts and safety:
-- **One setting per account, Private by default.** Every existing account is Private. There is no per-post switch.
-- **Under 18 is always Private.** The birthday is already collected (13 or older). The switch is off and disabled for an account under 18, with the line "Public accounts are for people 18 and over." The server refuses a change (`under_age_for_public`). Reason: a global feed of photos from 13 to 17 year olds is a safety and store-rules risk that a small friend group does not have. Say if you want it different.
-- **Turning on asks first** with a sheet: "Make your account public?" / "Anyone on RNDMRoll will see your posts on Global, including the ones you have already posted." / "Make public" and "Keep private". Turning off needs no sheet; the posts leave Global at once and friends stay friends.
+- **The public or private setting is Phase 2.1's, and the developer's later words win over this phase's first notes:** `users.account_visibility`, DEFAULT PUBLIC for everyone ("originally it's gonna be a public account and they can turn it into private, just like how Instagram works"), a "Private account" switch in Settings (ON means private) that saves on toggle with no sheet, and an account whose birthday makes it under 18 STARTS private and can switch like anyone else (Phase 2.1 D-09 to D-12). Phase 6 builds no column, no switch and no endpoint for it: it reads the author's column at the time a list is read, so switching to private hides past posts from Global at once and switching to public shows them. There is no per-post switch.
+- **Safety note (a recommendation, not a rule):** an under-18 account may turn public (Phase 2.1 deferred refusing it), and strangers can now comment on public posts. Before any outside user the developer decides whether an under-18 account may be public: it is one server line and it is on the launch list. This phase adds no refusal.
 - **Private posts stay gated.** The post-first rule of Phase 5 applies to Friends only. Global is open at any time, even to a person who has not posted. A friend who is Public is therefore visible on Global without the gate; the gate protects private posts only. This is stated plainly in the UI spec's choices list.
 - **Photos on Global are viewable by any signed-in person.** The single link function of Phase 5 (visibility check, then link) is extended; real friend-only and signed links still wait for the real storage account.
 
@@ -73,7 +72,7 @@ Reminder:
 - A LOCAL notification repeating every day at 20:00 in the phone's own time zone (`expo-notifications`, a calendar trigger). The server is not involved, so it needs no Apple push key. It needs the native module, so one dev-client rebuild (`npx expo prebuild --clean`, which also drops the two native modules Phase 1's Apple and Google sign-in left in `ios/`). No other phase needs a rebuild.
 - Text: title "Your spin is open." body "Spin today's wheel." Tapping it opens the app on Home.
 - Asked once, after the person's first posted day: a sheet "Get a reminder at 8:00 PM?" / "We'll tell you when your spin opens." / "Remind me" and "Not now". "Remind me" shows the system permission prompt, then schedules. "Not now" is remembered (never asked again; the switch is the way back).
-- The switch "Remind me at 8:00 PM" lives on the Edit profile page under the account switch. The value is kept on the phone (`expo-secure-store`, already installed). On every app start the schedule is rebuilt (cancel all, schedule one) so it can never double. If the person turns the system permission off, the switch shows off with the line "Turn on notifications for RNDMRoll in Settings." Nothing else.
+- The switch "Remind me at 8:00 PM" lives on Phase 2.1's Settings page as a new row under "Private account". The value is kept on the phone (`expo-secure-store`, already installed). On every app start the schedule is rebuilt (cancel all, schedule one) so it can never double. If the person turns the system permission off, the switch shows off with the line "Turn on notifications for RNDMRoll in Settings." Nothing else.
 - A reminder still fires on a day the person already spun. That is accepted for the first version.
 
 </decisions>
@@ -85,20 +84,18 @@ Same conventions as Phase 5 (snake_case, RFC 3339 UTC, signed-in group, `Onboard
 
 | Route | Request | Success | Limit/min |
 |---|---|---|---|
-| `GET /v1/account/visibility` | none | 200 `{"visibility":"private"|"public","can_be_public":bool}` | 60 |
-| `PATCH /v1/account/visibility` | `{"visibility":"public"|"private"}` | 200 same shape; 403 `under_age_for_public` | 10 |
 | `GET /v1/board?view=global` | `cursor` (opaque), `limit` 1 to 40, default 20 | 200 `{"state":"open","cards":[Card],"next_cursor":string|null}` | 60 |
 | `GET /v1/people/{user_id}` | `cursor`, `limit` (the posts) | 200 `{"person":Person,"relation":"none"|"friends"|"request_sent"|"request_received","visibility":"public"|"private","posts":[Card]|null,"next_cursor":string|null}`; 404 `not_found` unless the person is Public, a friend, or has a request with the caller, and nobody blocked anybody | 60 |
 | `POST /v1/posts/{entry_id}/report` | `{"reason":"spam"|"unkind"|"not_public"|"other"}` | 200 `{}` (a repeat from the same person for the same post is 200 and stores nothing new) | 10 |
 | `POST /v1/comments/{id}/report` | `{"reason":"spam"|"unkind"|"other"}` | 200 `{}` (a repeat is 200 and stores nothing new; 404 `not_found` if the comment is not visible to the caller; a person cannot report their own comment: 409 `own_comment`) | 10 |
 
-`GET /v1/board` without `view` is Phase 5's Friends view, unchanged.
+`GET /v1/board` without `view` is Phase 5's Friends view, unchanged. The account setting has no route here: it is `account_visibility` on `PATCH /v1/me` and in the user JSON (Phase 2.1). `GET /v1/people/{user_id}` returns that column as `visibility`.
 
 The visibility rule becomes: a viewer sees an entry iff the viewer is its owner, OR (the viewer and the owner are accepted friends, nobody blocked anybody, AND the viewer has a posted day for the entry's `local_date`), OR (the owner's account is Public AND nobody blocked anybody). Everything that returns a post, a card, a reaction, a comment, or a photo link goes through this one function: whoever can see an entry can read and write its comments (a blocked pair excepted), so a stranger may comment on a public post.
 
-New error codes: `under_age_for_public` 403, `own_comment` 409. Everything else reuses Phase 5's.
+New error codes: `own_comment` 409. Everything else reuses Phase 5's.
 
-Data (migration 0007, hand numbered, after `ls migrations`): `account_settings (user_id pk references users on delete cascade, visibility text not null default 'private' check in ('private','public'), updated_at)`; `post_reports (id, reporter_id references users on delete cascade, entry_id references entries on delete cascade, reason text check in the four, created_at, unique (reporter_id, entry_id))`; `comment_reports (id, reporter_id references users on delete cascade, comment_id references the comments table of Phase 5 on delete cascade, reason text check in the three, created_at, unique (reporter_id, comment_id))`; one index to read public entries newest first. Nothing is added to `users`. A missing `account_settings` row means Private.
+Data (migration 0008 expected: Phase 2.1 is 0005, Phase 3 0006, Phase 5 0007; hand numbered, after `ls migrations`): no account table (the setting is `users.account_visibility` from Phase 2.1); `post_reports (id, reporter_id references users on delete cascade, entry_id references entries on delete cascade, reason text check in the four, created_at, unique (reporter_id, entry_id))`; `comment_reports (id, reporter_id references users on delete cascade, comment_id references the comments table of Phase 5 on delete cascade, reason text check in the three, created_at, unique (reporter_id, comment_id))`; one index to read public entries newest first. Nothing is added to `users` by this phase.
 
 </api_contract>
 
@@ -107,13 +104,13 @@ Data (migration 0007, hand numbered, after `ls migrations`): `account_settings (
 
 - `/Users/swathivallabhaneni/.local/share/rndmroll-phase2/PHASE345-DECISIONS.md` (outside the project, read only): the new scope and the defaults.
 - `.planning/phases/05-friend-feed/` (all files): the Board, the cards, the post page, the visibility function, friends and blocks, notifications.
-- `.planning/phases/04-personal-diary/`, `03-daily-entry/`, `02-daily-roll/`, `01-foundation-accounts/` (the Edit profile page, the birthday, the profile form).
+- `.planning/phases/04-personal-diary/`, `03-daily-entry/`, `02-daily-roll/`, `01-foundation-accounts/` (the profile form; Phase 2.1's Settings page).
 - `.planning/PROJECT.md` (launch gate), `.planning/REQUIREMENTS.md` (Out of Scope: "Public launch / outside-user growth" needs a one-line revisit, see the hand edits).
 - Expo notifications reference (read at build time): local scheduling with a calendar trigger, permission request, the response listener.
 
 ### Code to read before planning or building
 - Server: the Phase 5 `internal/board` and `internal/social` packages, `internal/httpapi/*`, `internal/store/postgres`, `internal/user` (the birthday and age), the entry photo store.
-- App: the Phase 5 Board and post page components, `components/profile/ProfileForm.tsx` (the Edit profile page), `app/(app)/_layout.tsx`, `lib/session/store.ts` (read only; the reminder value is NOT stored there), `package.json`, `app.json` (the notification config plugin; iOS has no usage-description string for notifications, the permission is the system prompt).
+- App: the Phase 5 Board and post page components, `app/(app)/profile/settings.tsx` and the other Phase 2.1 files (the Settings page and `users.account_visibility`), `components/profile/ProfileForm.tsx`, `app/(app)/_layout.tsx`, `lib/session/store.ts` (read only; the reminder value is NOT stored there), `package.json`, `app.json` (the notification config plugin; iOS has no usage-description string for notifications, the permission is the system prompt).
 
 </canonical_refs>
 
@@ -122,17 +119,17 @@ Data (migration 0007, hand numbered, after `ls migrations`): `account_settings (
 
 ### Reusable assets (after Phases 2 to 5 are built)
 - The Board grid, the card, the post page, the reaction row, `ConfirmSheet`, the Friends screen rows, `StatusMessage`, the visibility function and the single photo-link function.
-- The birthday is on the account (Phase 1 migration 0002). Age is computed on the server from the birthday and the clock.
+- The account setting `users.account_visibility` and its switch are Phase 2.1's (migration 0005). The birthday is on the account (Phase 1 migration 0002).
 - `expo-secure-store` is installed. `expo-notifications` is NOT: this phase adds it.
 
 ### Gaps to close
-- `account_settings` and `post_reports`; the four routes and the visibility change; the Global view; the person page; the report sheet; the Edit profile switches; the reminder permission sheet and scheduler; the native module and the one rebuild.
+- `post_reports` and `comment_reports`; the Global, person and report routes and the visibility change; the Global view; the person page; the report sheets; the reminder row on Settings; the reminder permission sheet and scheduler; the native module and the one rebuild.
 
 ### Integration points and traps
 - **Rebuild:** adding `expo-notifications` changes `package.json`, `package-lock.json` and `app.json`; the dev client must be rebuilt and reinstalled on the Simulator; never run `expo lint`; install with `npx expo install expo-notifications` only after the developer agrees to the rebuild. The app must still start if the module is missing (guard the import) so the Phase 5 build keeps working until the rebuild.
-- **Launch files:** the Edit profile page and the Board header change; no launch file other than `app/(app)/_layout.tsx` if a hidden person route needs registering; `app/index.tsx` is not touched.
-- **Safety:** under-18 accounts can never become Public: the check is on the server, not only in the app. A test fixture for an under-18 account is made through the API with a birthday that makes them 17.
-- **Tests:** the shared Phase 5 suite gains public, private, blocked and under-age cases; never touch the four real dev accounts.
+- **Launch files:** the Settings page (one new row) and the Board header change; no launch file other than `app/(app)/_layout.tsx` if a hidden person route needs registering; `app/index.tsx` is not touched.
+- **Safety:** the Global query reads `users.account_visibility` at read time and never caches it. An under-18 test account is made through the API with a birthday that makes them 17 (it starts private, Phase 2.1).
+- **Tests:** the shared Phase 5 suite gains public, private and blocked cases; never touch the four real dev accounts.
 
 </code_context>
 

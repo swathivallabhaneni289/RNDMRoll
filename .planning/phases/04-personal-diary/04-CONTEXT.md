@@ -24,7 +24,7 @@ What the user gets: a Diary tab (list, category chips, paging, empty states), a 
 
 Out of scope:
 - Friends, the Board, reactions and comments from other people, the Friends number being anything but 0 (Phase 5).
-- Public and private accounts, the person page for someone else, Global (Phase 6).
+- The person page for someone else and Global (Phase 6). The public or private setting itself is Phase 2.1's (Settings, default public).
 - A photo grid, a stats header on the Diary, search, month headings, sharing a diary (the picture has none of them).
 - Anything that creates or changes an entry. Phase 3 owns post, edit and delete. Phase 4 only reads, and opens Phase 3's pages.
 - Real storage accounts, the domain, Terms and Privacy (the developer's launch list).
@@ -71,6 +71,7 @@ Profile:
 - **Edit** opens Phase 1's form page in edit mode as a pushed page with Back (the file `app/(app)/profile/edit.tsx` already exists and nothing opens it). Its bottom button is "Save changes" (grey until something changed). After a save the page goes back to the Profile page. Log out stays at the bottom of that edit page, exactly as Phase 1 built it, so the Profile page itself has no Log out.
 - **First run is untouched.** Right after a sign-up the Profile route still shows Phase 1's photo-and-bio page once (flag `extrasPending`, bar hidden, Continue or Skip for now end on Today). Only after that does the Profile route show the new page.
 - Other people's profiles do not exist yet (Phase 6).
+- **Settings gear and bio (Phase 2.1, the developer's words of 2026-10-10: "a settings section ... edit their bio even on the profile page").** The Profile page mounts Phase 2.1's `SettingsGear` at its top right, beside the Edit chip, and Phase 2.1's `BioInline` under the @username (the bio edited in place, label off). The picture draws neither; they were asked for in words and are listed as differences. Settings (Phase 2.1) holds Edit profile, Username, Password, Private account and Log out.
 
 Bar:
 - Home, Diary, Spin, Profile. Spin sits third of four, a little right of centre, until Phase 5 adds Board and puts it in the middle of five. Diary uses Ionicons `document-text-outline`, the same size and colours as Home and Profile (Phase 2 section 8). If a centred Spin matters now, say so.
@@ -143,7 +144,7 @@ Read before planning or building. Paths are inside the project unless stated.
 
 ### Integration points
 - **Routes:** `internal/httpapi/server.go` is the only engine builder; the new handler is a field on `Deps`, registered only when not nil; `cmd/api/main.go` and both test builders change together in one task.
-- **No migration is expected.** The diary reads `entries` (indexed by its `unique (user_id, local_date)`) and `spins`; a plan may add one index in a numbered migration only if its query plan shows the need (the next free number is 0006, or whatever the built code shows).
+- **No migration is expected.** The diary reads `entries` (indexed by its `unique (user_id, local_date)`) and `spins`; a plan may add one index in a numbered migration only if its query plan shows the need (the next free number is 0007: Phase 2.1 took 0005 and Phase 3 takes 0006; or whatever the built code shows).
 - **Launch files:** `app/(app)/_layout.tsx` (Tabs) is a launch file and changes here, so one cold launch is checked after it changes (Phase 2 section 12). `app/index.tsx` is not touched.
 - **Test traps:** never delete or edit the four real dev accounts in `rndmroll_dev` (`smoke-test@example.com`, `ava.stone.1004@example.com`, `test1@gmail.com`, `test4@gmail.com`); Go tests run only on a database whose name ends in `test`, with `-p 1`, through the guarded helpers. The test reset clears entries and posted days (Phase 3), so a throwaway account can be walked again.
 - **Limits:** no new native module; never run `expo lint`; no JS test runner (a throwaway node script checks pure logic); local commits, one per task, explicit paths, never pushed.

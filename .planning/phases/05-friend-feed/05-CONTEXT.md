@@ -31,7 +31,7 @@ What the user gets:
 - **Profile:** the Friends number is real and opens the Friends screen.
 
 Out of scope:
-- Public and private accounts, the Global view, reporting a post, the person page for someone you are not friends with (Phase 6).
+- The Global view, reporting a post and a comment, the person page for someone you are not friends with (Phase 6). The public or private setting itself is Phase 2.1's (Settings, default public); Phase 5 does not read it.
 - The 8 PM phone reminder and any phone alert (Phase 6 and the launch list): they need a new native module, a rebuild, and for real alerts the developer's Apple push setup.
 - Groups ("Leo joined your group." in the picture): the Phase 5 wording is "accepted your request". Groups are SOCIAL-01 (v2).
 - Search by name or email, friends-of-friends, invite links (they need the domain), comment replies, editing a comment, reacting to a comment.
@@ -60,7 +60,7 @@ Phase 5 is BUILT only after Phase 4 is built and closed, and after these documen
 - **D-11 One reaction per person per post.** Tap another to change, tap the same to clear. A person cannot react to their own post (their own reaction is the author's reaction of Phase 3). The same list of names serves the author and the friends (Phase 3 D-02).
 - **D-12 A post belongs to the day of the person who posted it**, with no time zone conversion between friends: the day is the stored `local_date` string.
 - **D-13 No friends at all:** the Board shows an "Add friends" prompt above the person's own diary (FEED-03).
-- **D-14 Every post is friends-only in Phase 5** and photos are shown only to accepted friends and the owner. (Phase 6 adds public accounts.) There is no per-post audience switch.
+- **D-14 Every post is friends-only in Phase 5** and photos are shown only to accepted friends and the owner. (Phase 2.1 stores a public or private choice, default public, but nothing reads it until Phase 6 builds Global.) There is no per-post audience switch.
 - **D-15 The bar:** Home, Diary, Spin, Board, Profile, with Spin in the middle. Board uses Ionicons `people-outline`.
 
 ### Claude's Discretion (safe defaults, told to the developer; change any by saying so)
@@ -192,7 +192,7 @@ Read before planning or building. Paths are inside the project unless stated.
 
 ### Integration points
 - **Routes:** `internal/httpapi/server.go` is the only engine builder; handlers are fields on `Deps` registered only when not nil; `cmd/api/main.go` and both test builders change together in one task.
-- **Data:** migration 0006 (Phase 1's clean-up is 0003, Phase 2's 0004, Phase 3's 0005; re-check with `ls migrations`), hand numbered. Every table references `users(id) on delete cascade` so the `truncate users cascade` cleanups work; nothing is added to `users`. Reactions and comments reference `entries(id) on delete cascade` so Phase 3's delete removes them.
+- **Data:** migration 0007 (Phase 1's clean-up is 0003, Phase 2's 0004, Phase 2.1's 0005, Phase 3's 0006; Phase 4 adds one only if its query-plan check needs an index, then this becomes 0008; re-check with `ls migrations`), hand numbered. Every table references `users(id) on delete cascade` so the `truncate users cascade` cleanups work; nothing is added to `users`. Reactions and comments reference `entries(id) on delete cascade` so Phase 3's delete removes them.
 - **Package layout (suggested):** `internal/social` (requests, friendships, blocks, the visibility rule), `internal/board` (board, posts, reactions, comments, photo link function), `internal/notifications` (derived list and seen time). One repository interface each, a MemRepo and a Postgres run of one shared suite, as Phase 2 did.
 - **Launch files:** `app/(app)/_layout.tsx` (Tabs: Board added, a hidden notifications route) is a launch file, so one cold launch is checked after it changes. `app/index.tsx`, `lib/session/store.ts`, `lib/api/client.ts` are not edited (an edit to `lib/api/types.ts` can reload the dev client to Welcome: make it when the developer is not mid-test).
 - **Test traps:** never delete or edit the four real dev accounts in `rndmroll_dev`; two or three test accounts are needed for a friend walk, made through the API with throwaway emails and deleted by exact email afterwards; Go tests run only on a database whose name ends in `test`, with `-p 1`.

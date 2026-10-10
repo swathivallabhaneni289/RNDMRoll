@@ -23,7 +23,7 @@ The developer's pictures named above are the visual reference for the build ("us
 | Post page (a friend's post) | `app/(app)/post.tsx` (a hidden route), component `components/board/PostView.tsx` | New. Photo, title, stars, their reaction, their note, the reaction row, comments, the comment bar. No bottom bar. |
 | Own post (your entry page) | Phase 3's `EntryView`, picture 06 (opened from Today, the Diary, Profile, the Board or a notification) | Changed by ADDITION only: below the author's note and above the footer, the received-reactions line, the '{n} comments' list with its delete buttons and the add-a-comment bar. The square edge-to-edge photo, the Back label and the fixed Edit and Delete footer stay as Phase 3 built them. |
 | Friends screen | `app/(app)/profile/friends.tsx` (plan 05-04) | New. Find by username, requests, sent, friends, blocked, share an invite. |
-| Profile | Phase 4's `ProfileScreen` | Changed: the Friends number is a button that opens the Friends screen. |
+| Profile | Phase 4's `ProfileScreen` | Changed: only the Friends column of the three-numbers row becomes a button that opens the Friends screen. The header (photo, name, @username with Phase 2.1's `BioInline` under it, the Edit chip and Phase 2.1's `SettingsGear` at the top right) is Phase 4's and Phase 2.1's and is not touched. |
 | Bell | Today header (Phase 2) and Board header | Changed: a black dot while anything is unread; it opens Notifications above the current tab. |
 | Notifications page | `app/(app)/notifications.tsx` (a hidden route), component `components/today/NotificationsScreen.tsx` | Changed: no longer a stub. Phase 2's route `app/(app)/today/notifications.tsx` is removed. No bottom bar. |
 | Bottom bar | `app/(app)/_layout.tsx` | Changed: Board added. Home, Diary, Spin, Board, Profile (five), Spin in the middle. Hidden on the post page and on Notifications. |
@@ -253,7 +253,7 @@ Top to bottom:
 
 ## 8. Profile: the Friends number
 
-Phase 4 draws the three numbers on the Profile page with Friends as plain text. Here the Friends column becomes one button: the number and its Label together are the tap target (44dp high at least), no icon, no underline, no change of look (a number is not styled as a link in the picture), spoken 'N friends. Opens your friends.' It opens the Friends screen (section 7). The Friends number is the real count of accepted friends from `GET /v1/me/summary`. A pending request adds nothing to it (the bell carries requests).
+Phase 4 draws the three numbers on the Profile page with Friends as plain text. Here the Friends column becomes one button: the number and its Label together are the tap target (44dp high at least), no icon, no underline, no change of look (a number is not styled as a link in the picture), spoken 'N friends. Opens your friends.' It opens the Friends screen (section 7). The Friends number is the real count of accepted friends from `GET /v1/me/summary`. A pending request adds nothing to it (the bell carries requests). Nothing else on the Profile page changes: the header (the photo, the name, @username with Phase 2.1's `BioInline` under it, the Edit chip, and Phase 2.1's `SettingsGear` at the top right, which Phase 4 mounts) is not touched here, and the Friends number stays the third column of the three-numbers row.
 
 ## 9. The bell
 
@@ -353,6 +353,8 @@ Every string the person sees. 'Spin' wording, plain words, no em dashes, no lega
 - **Today.** Phase 5 edits two things in Today: the bell becomes `BellButton` and goes to `/(app)/notifications`; Today's refetch also asks for the unread summary. Nothing else in Today changes.
 - **Pure logic in pure files** (`lib/board/*.ts`, `lib/notifications/rules.ts`) with no React and no imports, checked by throwaway node scripts and by device steps.
 - **Launch.** `app/(app)/_layout.tsx` (Tabs: Board, two hidden routes, history back) is a launch file and changes here, so one cold launch is recorded after it changes. `app/index.tsx`, `app/_layout.tsx`, `lib/session/store.ts` and `lib/api/client.ts` are not edited. An edit to `lib/api/types.ts` (new error codes) can reload the dev client to Welcome: make it when the developer is not mid-test.
+- **Public or private.** The choice is Phase 2.1's `users.account_visibility` (default public, switched in Settings). Nothing in Phase 5 reads it: the Friends view shows a friend's posts to accepted friends whatever their setting, and the Board has no switch. Phase 6 reads it for Global.
+- **Deferred.** Notification settings: Phase 2.1's Settings page, with Phase 6's reminder row.
 - **Never run `expo lint`.** No new native module in this phase. Tokens only, no hex. The emoji scan still allows exactly one file, `lib/entry/reactions.ts`. Round shapes only in the nine files of section 2.
 
 ## 16. Strings for approval
