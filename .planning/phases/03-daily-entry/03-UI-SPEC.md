@@ -24,13 +24,13 @@ approval_word: go
 | Edit entry | `app/(app)/today/edit-entry` | New. |
 | Delete sheet | over the entry page | New. `ConfirmSheet` again. |
 | Week dots | `components/today/WeeklyCard.tsx` (Phase 2's week section; the file keeps its name) | Changed: a skipped day gets a dash. |
-| Bottom bar | `app/(app)/_layout.tsx` | Unchanged: Home, Spin, Profile (the pictures show the final five tabs; Diary comes in Phase 4 and Board in Phase 5). It is not drawn on the entry screen, edit entry or the entry page (sections 4, 9 and 10). |
+| Bottom bar | `app/(app)/_layout.tsx` | Five tabs, as in the pictures: Home, Diary, Spin, Board, Profile (Phase 2, D-24). Diary and Board are plain pages until Phases 4 and 5 fill them. It is not drawn on the entry screen, edit entry or the entry page (sections 4, 9 and 10). |
 
 All new routes sit inside the Home stack (`app/(app)/today/`), next to Today and Edit wheel. Under Tabs a file placed directly in `app/(app)/` becomes a tab, so none is.
 
 ## 2. Tokens added (the only new design values)
 
-No new colour, space, radius or font. Every value comes from `lib/theme/tokens.ts` as Phase 2 leaves it. Phase 2's token task defines all the text roles up front, so nothing edits the tokens twice. This phase uses five of them: `hero` (`Domine_400Regular` 100/104, the result word, built by Phase 2), `heroSmall` (80/84, the word in Skipped), `note` (20/28, the Title and Comment fields and the rating figure on the entry screen, the title on the Posted row, the comment on the entry page), `title` (32/38, the Today heading and the entry page title) and `countdown` (40/46, the category word on the entry screen). `wheelMid` and `wheelLabel` are not used here. The entry page's date line uses `dateLineLong` (Phase 2, `lib/wheel/format.ts`); the entry screen's date ('THU · OCT 8') uses one new small helper, `dateDot`, added to the same file.
+No new colour, space, radius or font. Every value comes from `lib/theme/tokens.ts` as Phase 2 leaves it. Phase 2's token task defines all the text roles up front, so nothing edits the tokens twice. This phase uses five of them: `hero` (`Domine_400Regular` 100/104, the result word, built by Phase 2), `heroSmall` (80/84, the word in Skipped), `note` (20/28, the Title and Comment fields and the rating figure on the entry screen, the title on the Posted row, the comment on the entry page), `title` (32/38, the Today heading and the entry page title) and `countdown` (40/46, the category word on the entry screen). `wheelLabel` is not used here (the grey `wheelMid` colour no longer exists). The entry page's date line uses `dateLineLong` (Phase 2, `lib/wheel/format.ts`); the entry screen's date ('THU · OCT 8') uses one new small helper, `dateDot`, added to the same file.
 
 Reused as they are:
 
@@ -78,7 +78,7 @@ Notes:
 - **Phase 5's friends block (picture 04).** Under the entry row the picture shows 'FRIENDS TODAY / 3 of 5 posted', three friend rows and an 'Open Board' link, and the bell with an unread dot. Friends and notifications do not exist before Phase 5, so Phase 3 draws none of it: the space under the row stays empty and flexes, so the week section stays at the bottom.
 - The 'Use bonus spin' link is gone (the server sends `can_use` false once the day is settled).
 - After the person's own Log it or Skip it, the answer carries the new Today, so the screen changes at once with no loading step. The heading and everything under it cross-fade over Phase 2's 400ms; the word is not animated in size.
-- The middle Spin button in these states goes to Home and shows today's spin, and nothing spins. Its spoken hint is Phase 2's 'Shows today's spin.'. It is drawn outlined (locked) in Posted and Skipped, as in every state except open (Phase 2 section 8, revision 5).
+- The middle Spin button in these states goes to Home and shows today's spin, and nothing spins. Its spoken hint is Phase 2's 'Shows today's spin.'. It is drawn as the light grey circle (locked) in Posted and Skipped, as in every state except open (Phase 2 section 8).
 
 ### 3.2 The day actions (Result and Late)
 
@@ -358,7 +358,7 @@ Developer: say keep or change for each row. The word go is only for starting the
 - The entry page has no bottom bar. A footer with Edit and Delete side by side replaces it, the photo runs edge to edge with square corners, and the date is written in full beside the category. Before: two full-width rows, an inset rounded photo and the short date.
 - The Back label names where you came from: Today now, Diary from Phase 4.
 - The six reactions are the six in your picture (love, fire, laughing, wow, sad, sleepy), not the six you tapped on 2026-10-09 and 2026-10-10 (heart, laughing, wow, fire, clap, yum). Phase 5's paper uses the same six. Say if you want your tapped six back: it is one file and one list.
-- The bar in your pictures has five tabs, says 'Roll' and has a grey filled round middle button. That is not copied: the bar keeps Home, Spin and Profile until Diary (Phase 4) and Board (Phase 5), the word is Spin, and the Spin button keeps your outlined and solid black looks.
+- The bar in your pictures has five tabs and a grey filled round middle button, and it is built that way now (Phase 2, D-24): Home, Diary, Spin, Board, Profile. The word stays Spin, not 'Roll', and the middle button turns solid black when the spin opens. Diary and Board are plain pages until Phases 4 and 5.
 - **From your pictures 03 and 04 of 2026-10-10 (each overrides an older rule):**
 - The entry screen is a full screen with no bottom bar: 'Cancel' instead of a Back control, the date as 'THU · OCT 8', the category word large with 'Today's spin' at its right, and underlined Title and Comment fields instead of boxes.
 - The six reaction buttons are circles and 'Camera' and 'Library' are pills. These are named exceptions to the no-pill rule, taken from your picture.
