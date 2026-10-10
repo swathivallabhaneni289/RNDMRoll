@@ -15,6 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Accounts** - Users can create accounts, log in, and view their profile (completed 2026-10-09)
 - [ ] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel
+- [ ] **Phase 2.1: Settings (INSERTED)** - Users change their username and password, make their account public or private, and edit their bio on the profile page (decided 2026-10-10)
 - [ ] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category
 - [ ] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated
 - [ ] **Phase 5: Friend Feed** - Users build a friend circle and see a reciprocity-gated daily feed of what friends rolled and rated
@@ -107,6 +108,27 @@ Plans:
 **UI hint**: yes
 
 **Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
+
+### Phase 2.1: Settings (INSERTED)
+
+**Goal**: Users manage their own account like Instagram: change their username, change their password, set the account public (the default) or private, and edit their bio in place on the profile page
+**Depends on**: Phase 2
+**Requirements**: SET-01, SET-02, SET-03, SET-04
+**Success Criteria** (what must be TRUE):
+
+  1. User can open Settings from the Profile page and change their username with the live taken-or-free check
+  2. User can change their password; their other phones are signed out and this one stays signed in
+  3. User can switch the account between public and private at any time; new accounts start public (under 18 start private)
+  4. User can edit their bio in place on the profile page
+
+**Plans**: 0/2 plans executed
+
+Plans:
+
+- [ ] 02.1-01-PLAN.md: The settings server: change password, account visibility (migration 0005)
+- [ ] 02.1-02-PLAN.md: The settings app: Settings page, Username, Password, the private switch, bio in place
+
+**UI hint**: yes
 
 ### Phase 3: Daily Entry
 

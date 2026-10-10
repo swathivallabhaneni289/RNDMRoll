@@ -11,6 +11,13 @@
 - [ ] **ACCT-02**: User can add friends (e.g., via invite/username) to form their friend circle
 - [x] **ACCT-03**: User can view their own profile
 
+### Settings (inserted 2026-10-10, Phase 2.1)
+
+- [ ] **SET-01**: User can change their username from Settings
+- [ ] **SET-02**: User can change their password from Settings (other phones are signed out)
+- [ ] **SET-03**: User can make their account public or private (default public); the choice is stored and shown, and read by the Friends view and Global in Phases 5 and 6
+- [ ] **SET-04**: User can edit their bio in place on the profile page
+
 ### Roll & Wheel
 
 - [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
@@ -86,6 +93,10 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 | ROLL-02 | Phase 2 | Pending |
 | ROLL-03 | Phase 2 | Pending |
 | ROLL-04 | Phase 2 | Pending |
+| SET-01 | Phase 2.1 | Pending |
+| SET-02 | Phase 2.1 | Pending |
+| SET-03 | Phase 2.1 | Pending |
+| SET-04 | Phase 2.1 | Pending |
 | ENTRY-01 | Phase 3 | Pending |
 | ENTRY-02 | Phase 3 | Pending |
 | ENTRY-03 | Phase 3 | Pending |
