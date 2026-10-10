@@ -93,8 +93,8 @@ func RespondError(c *gin.Context, err error) {
 
 // RespondFieldError writes a 400 validation_failed response that names the
 // request field that failed. field is one of email, password, birthday,
-// name, username, bio or avatar_url; reason is one of the fixed reason
-// constants above. The message is fixed text.
+// name, username, bio, avatar_url or account_visibility; reason is one of the
+// fixed reason constants above. The message is fixed text.
 func RespondFieldError(c *gin.Context, field, reason string) {
 	text, ok := fieldReasonText[reason]
 	if !ok {

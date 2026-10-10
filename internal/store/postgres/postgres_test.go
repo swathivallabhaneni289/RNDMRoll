@@ -849,3 +849,216 @@ func TestMigrations_0004IsReversible(t *testing.T) {
 		}
 	})
 }
+
+// --- public or private account (migration 0005) ---
+
+func TestUserRepo_AccountVisibility_DefaultsToPublicAndCheckRefusesOthers(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	// An insert that names no value is public: the column default.
+	created := mustCreateUser(t, repo, "visibility-default@example.com")
+	if created.AccountVisibility != "public" {
+		t.Fatalf("a new account's value = %q, want public", created.AccountVisibility)
+	}
+
+	// Any other value written straight to the table is a check violation.
+	var pgErr *pgconn.PgError
+	_, err := pool.Exec(ctx, `update users set account_visibility = 'secret' where id = $1`, created.ID)
+	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_account_visibility_check" {
+		t.Fatalf("a value of 'secret': got %v, want a users_account_visibility_check violation", err)
+	}
+	_, err = pool.Exec(ctx, `update users set account_visibility = null where id = $1`, created.ID)
+	if !errors.As(err, &pgErr) || pgErr.Code != "23502" {
+		t.Fatalf("a null value: got %v, want a not-null violation", err)
+	}
+
+	// The repository turns the violation into a field error with fixed text.
+	bad := "secret"
+	_, err = repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{AccountVisibility: &bad})
+	var fieldErr *user.FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "account_visibility" {
+		t.Fatalf("UpdateProfile with 'secret': got %v, want a FieldError for account_visibility", err)
+	}
+	if strings.Contains(err.Error(), "constraint") || strings.Contains(err.Error(), "violates") {
+		t.Fatalf("error text carries database text: %q", err.Error())
+	}
+	if got, err := repo.GetByID(ctx, created.ID); err != nil || got.AccountVisibility != "public" {
+		t.Fatalf("after a refused update: %v (err %v), want public", got, err)
+	}
+
+	// A value sets it; a nil field leaves it.
+	private := "private"
+	updated, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{AccountVisibility: &private})
+	if err != nil || updated.AccountVisibility != "private" {
+		t.Fatalf("UpdateProfile(private): %v (err %v)", updated, err)
+	}
+	name := "Renamed Person"
+	renamed, err := repo.UpdateProfile(ctx, created.ID, user.ProfilePatch{Name: &name})
+	if err != nil {
+		t.Fatalf("UpdateProfile(name): %v", err)
+	}
+	if renamed.AccountVisibility != "private" {
+		t.Fatalf("a patch with a nil field changed the value to %q", renamed.AccountVisibility)
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `select account_visibility from users where id = $1`, created.ID).Scan(&stored); err != nil || stored != "private" {
+		t.Fatalf("stored value = %q (err %v), want private", stored, err)
+	}
+}
+
+func TestUserRepo_CreateComplete_StoresTheVisibilityGiven(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	ctx := context.Background()
+
+	for i, tc := range []struct{ given, want string }{
+		{"private", "private"},
+		{"public", "public"},
+		{"", "public"}, // an empty value is stored as public, never as ''
+	} {
+		in := newAccount(fmt.Sprintf("vis-%d@example.com", i), fmt.Sprintf("vis_user_%d", i))
+		in.AccountVisibility = tc.given
+		u, err := repo.CreateComplete(ctx, in)
+		if err != nil {
+			t.Fatalf("CreateComplete(%q): %v", tc.given, err)
+		}
+		if u.AccountVisibility != tc.want {
+			t.Errorf("CreateComplete(%q): returned %q, want %q", tc.given, u.AccountVisibility, tc.want)
+		}
+		var stored string
+		if err := pool.QueryRow(ctx, `select account_visibility from users where id = $1`, u.ID).Scan(&stored); err != nil || stored != tc.want {
+			t.Errorf("CreateComplete(%q): stored %q (err %v), want %q", tc.given, stored, err, tc.want)
+		}
+	}
+
+	// A value the check refuses is a field error and stores nothing.
+	before := countUsers(t, pool)
+	in := newAccount("vis-bad@example.com", "vis_bad")
+	in.AccountVisibility = "secret"
+	_, err := repo.CreateComplete(ctx, in)
+	var fieldErr *user.FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "account_visibility" {
+		t.Fatalf("CreateComplete('secret'): got %v, want a FieldError for account_visibility", err)
+	}
+	if n := countUsers(t, pool); n != before {
+		t.Fatalf("a refused insert changed the user count from %d to %d", before, n)
+	}
+}
+
+// TestMigrations_0005IsReversible walks the test database from the latest
+// version down to 4 and back up to 5. At version 4 the account_visibility
+// column and its check are gone and the user row is still there; going back up
+// restores both, and every surviving row reads 'public'. Nothing here goes
+// through the repository at version 4, because its column list names the
+// column: the checks are plain SQL.
+func TestMigrations_0005IsReversible(t *testing.T) {
+	requireMigrationDatabase(t)
+	ctx := context.Background()
+	latest := latestMigration(t)
+	if latest < 5 {
+		t.Fatalf("latest migration is %d, want at least 5", latest)
+	}
+
+	hasColumn := func(pool *pgxpool.Pool) bool {
+		var n int
+		const q = `select count(*) from information_schema.columns where table_name = 'users' and column_name = 'account_visibility'`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("column check: %v", err)
+		}
+		return n == 1
+	}
+	hasConstraint := func(pool *pgxpool.Pool) bool {
+		var n int
+		const q = `select count(*) from pg_constraint where conname = 'users_account_visibility_check'`
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("constraint check: %v", err)
+		}
+		return n == 1
+	}
+	refusesSecret := func(pool *pgxpool.Pool) {
+		t.Helper()
+		var pgErr *pgconn.PgError
+		_, err := pool.Exec(ctx, `update users set account_visibility = 'secret'`)
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_account_visibility_check" {
+			t.Fatalf("a value of 'secret': got %v, want a users_account_visibility_check violation", err)
+		}
+	}
+	valueOf := func(pool *pgxpool.Pool, email string) string {
+		t.Helper()
+		var v string
+		if err := pool.QueryRow(ctx, `select account_visibility from users where email = $1`, email).Scan(&v); err != nil {
+			t.Fatalf("read the value for %s: %v", email, err)
+		}
+		return v
+	}
+
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+		if v, dirty := schemaVersion(t, pool); v != latest || dirty {
+			t.Fatalf("expected version %d (clean) before the test, got %d dirty=%v", latest, v, dirty)
+		}
+		if !hasColumn(pool) || !hasConstraint(pool) {
+			t.Fatal("expected the account_visibility column and its check at the latest version")
+		}
+		var def string
+		const q = `select column_default from information_schema.columns where table_name = 'users' and column_name = 'account_visibility'`
+		if err := pool.QueryRow(ctx, q).Scan(&def); err != nil || def != "'public'::text" {
+			t.Fatalf("column default = %q (err %v), want 'public'::text", def, err)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email) values ('visibility-before-down@example.com')`); err != nil {
+			t.Fatalf("insert before the down step: %v", err)
+		}
+		if got := valueOf(pool, "visibility-before-down@example.com"); got != "public" {
+			t.Fatalf("a row with no value reads %q, want public", got)
+		}
+		refusesSecret(pool)
+		// A private row: the down step drops the choice, so the row reads
+		// 'public' after the round trip. That loss is the documented price of
+		// going down; the row itself must survive.
+		if _, err := pool.Exec(ctx, `update users set account_visibility = 'private'`); err != nil {
+			t.Fatalf("set private: %v", err)
+		}
+	})
+
+	migrateGoTo(t, 4)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 4 || dirty {
+			t.Fatalf("after goto 4: version %d dirty=%v", v, dirty)
+		}
+		if hasColumn(pool) || hasConstraint(pool) {
+			t.Fatal("goto 4 must drop the account_visibility column and its check")
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("goto 4 changed the user count to %d, want 1", n)
+		}
+		if _, err := pool.Exec(ctx, `insert into users (email) values ('written-at-v4@example.com')`); err != nil {
+			t.Fatalf("insert at version 4: %v", err)
+		}
+	})
+
+	migrateGoTo(t, 5)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 5 || dirty {
+			t.Fatalf("after goto 5: version %d dirty=%v", v, dirty)
+		}
+		if !hasColumn(pool) || !hasConstraint(pool) {
+			t.Fatal("goto 5 must restore the account_visibility column and its check")
+		}
+		if n := countUsers(t, pool); n != 2 {
+			t.Fatalf("user count after goto 5 = %d, want 2", n)
+		}
+		for _, email := range []string{"visibility-before-down@example.com", "written-at-v4@example.com"} {
+			if got := valueOf(pool, email); got != "public" {
+				t.Errorf("%s reads %q after going back up, want public", email, got)
+			}
+		}
+		refusesSecret(pool)
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("final truncate: %v", err)
+		}
+	})
+}

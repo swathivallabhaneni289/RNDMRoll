@@ -7,10 +7,12 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -33,12 +35,17 @@ const maxAvatarURLLength = 2048
 //
 // Birthday is never accepted: it is set once, at sign-up, and cannot change.
 // The field exists only so a request that sends one is refused by name.
+//
+// AccountVisibility is "public" or "private" (exactly, lower case). It is the
+// Settings switch and rides on this route; there is no id in the body, so a
+// person can only ever change their own.
 type UpdateProfileRequest struct {
-	Name      *string `json:"name"`
-	Username  *string `json:"username"`
-	Bio       *string `json:"bio"`
-	AvatarURL *string `json:"avatar_url"`
-	Birthday  *string `json:"birthday"`
+	Name              *string `json:"name"`
+	Username          *string `json:"username"`
+	Bio               *string `json:"bio"`
+	AvatarURL         *string `json:"avatar_url"`
+	Birthday          *string `json:"birthday"`
+	AccountVisibility *string `json:"account_visibility"`
 }
 
 // AvatarUploadRequest is the POST /me/avatar/upload-url body.
@@ -70,7 +77,14 @@ func NewProfileHandler(users user.Repository, avatars storage.AvatarStore, publi
 // these handlers are mounted on.
 func (h *ProfileHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/me", h.getMe)
-	rg.PATCH("/me", h.patchMe)
+	// PATCH /me is limited to 30 a minute per caller, so a loop of renames is
+	// no way to grab or probe usernames (the unique index still decides who
+	// gets one). The 429 body is the shared {"error":"rate_limited"}.
+	rg.PATCH("/me", middleware.RateLimit(middleware.LimitConfig{
+		Requests: 30,
+		Window:   time.Minute,
+		KeyFunc:  middleware.KeyBySubject,
+	}), h.patchMe)
 	rg.POST("/me/avatar/upload-url", h.createAvatarUploadURL)
 }
 
@@ -89,6 +103,7 @@ func profileBody(u *user.User) gin.H {
 		"avatar_url":          u.AvatarURL,
 		"email_verified":      u.EmailVerified,
 		"onboarding_complete": u.OnboardingComplete(),
+		"account_visibility":  u.AccountVisibility,
 	}
 }
 
@@ -147,7 +162,9 @@ var avatarFileName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // patchMe applies a partial profile update. Order: bind; a birthday is
 // refused (it never changes after sign-up); each other field by hand; then
-// one UpdateProfile.
+// one UpdateProfile. A value of account_visibility that is not exactly
+// "public" or "private" is 400 validation_failed naming that field, and
+// nothing is stored.
 func (h *ProfileHandler) patchMe(c *gin.Context) {
 	cur, ok := h.currentUser(c)
 	if !ok {
@@ -156,6 +173,14 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 
 	var req UpdateProfileRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		// A number, a boolean or an object where the word "public" or
+		// "private" belongs is refused by name, like any other bad value of
+		// this field. Every other bind failure stays the one generic answer.
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) && typeErr.Field == "account_visibility" {
+			RespondFieldError(c, "account_visibility", reasonInvalid)
+			return
+		}
 		RespondValidationError(c, err)
 		return
 	}
@@ -200,6 +225,13 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 			return
 		}
 		patch.AvatarURL = req.AvatarURL
+	}
+	if req.AccountVisibility != nil {
+		if !user.ValidVisibility(*req.AccountVisibility) {
+			RespondFieldError(c, "account_visibility", reasonInvalid)
+			return
+		}
+		patch.AccountVisibility = req.AccountVisibility
 	}
 
 	updated, err := h.users.UpdateProfile(c.Request.Context(), cur.ID, patch)

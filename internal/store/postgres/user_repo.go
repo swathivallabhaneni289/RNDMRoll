@@ -17,15 +17,19 @@ type UserRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewUserRepo builds a UserRepo backed by pool.
-func NewUserRepo(pool *pgxpool.Pool) user.Repository {
+// NewUserRepo builds a UserRepo backed by pool. It returns the concrete type
+// so one value can be handed out as a user.Repository and, where a handler
+// needs the password change, as a user.PasswordChanger.
+func NewUserRepo(pool *pgxpool.Pool) *UserRepo {
 	return &UserRepo{pool: pool}
 }
+
+var _ user.Repository = (*UserRepo)(nil)
 
 // userColumns is the one column list every query selects or returns, in the
 // order scanUser reads it. It selects whether a birthday is on file, never
 // the date itself, so no code path can return or log a birthday.
-const userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at`
+const userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility`
 
 // scanUser scans a single row shaped like userColumns. The caller decides how to
 // interpret a returned error (pgx.ErrNoRows means different things to
@@ -36,7 +40,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 	var via *string
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Username, &u.Bio, &u.AvatarURL,
-		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt,
+		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt, &u.AccountVisibility,
 	)
 	if err != nil {
 		return nil, err
@@ -84,6 +88,8 @@ func mapCheckViolation(err error) error {
 		return &user.FieldError{Field: "birthday"}
 	case "users_bio_check":
 		return &user.FieldError{Field: "bio"}
+	case "users_account_visibility_check":
+		return &user.FieldError{Field: "account_visibility"}
 	default:
 		return err
 	}
@@ -122,14 +128,18 @@ func (r *UserRepo) Create(ctx context.Context, email string, passwordHash *strin
 // CreateComplete inserts every column of a finished account in a single
 // statement, so a failure of any kind (taken email, taken username, a check
 // violation) stores nothing. The account is unverified: sign-up has no email
-// check.
+// check. An empty AccountVisibility is stored as 'public'.
 func (r *UserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*user.User, error) {
+	visibility := in.AccountVisibility
+	if visibility == "" {
+		visibility = user.VisibilityPublic
+	}
 	const q = `
-		insert into users (email, password_hash, name, username, bio, birthday, email_verified, email_verified_via)
-		values ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, false, null)
+		insert into users (email, password_hash, name, username, bio, birthday, email_verified, email_verified_via, account_visibility)
+		values ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, false, null, $7::text)
 		returning ` + userColumns + `
 	`
-	row := r.pool.QueryRow(ctx, q, in.Email, in.PasswordHash, in.Name, in.Username, in.Bio, in.Birthday)
+	row := r.pool.QueryRow(ctx, q, in.Email, in.PasswordHash, in.Name, in.Username, in.Bio, in.Birthday, visibility)
 	u, err := scanUser(row)
 	if err != nil {
 		return nil, mapWriteError(err)
@@ -204,11 +214,12 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 		set name = coalesce($1::text, name),
 		    username = coalesce($2::text, username),
 		    bio = coalesce($3::text, bio),
-		    avatar_url = coalesce($4::text, avatar_url)
-		where id = $5
+		    avatar_url = coalesce($4::text, avatar_url),
+		    account_visibility = coalesce($5::text, account_visibility)
+		where id = $6
 		returning ` + userColumns + `
 	`
-	row := r.pool.QueryRow(ctx, q, p.Name, p.Username, p.Bio, p.AvatarURL, id)
+	row := r.pool.QueryRow(ctx, q, p.Name, p.Username, p.Bio, p.AvatarURL, p.AccountVisibility, id)
 	u, err := scanUser(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -206,7 +206,8 @@ func hasControlChar(s string, allowLineBreaks bool) bool {
 // nothing. A duplicate email is 409 email_taken, a duplicate username 409
 // username_taken with suggestions (including a race, which the unique index
 // decides). Success answers with the same body as Login. The email is NOT
-// verified and no mail is sent.
+// verified and no mail is sent. The account starts public, or private when the
+// person is under 18 that day (account_visibility in the body).
 func (h *AuthHandler) Signup(c *gin.Context) {
 	var req SignupRequest
 	// ShouldBindBodyWith (not ShouldBindJSON) so the request body survives
@@ -261,7 +262,8 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 
 	// The age check comes after every field is well formed and before
 	// anything is stored or hashed. Nothing about a refusal is logged.
-	if user.AgeOn(birth, now) < user.MinimumAge {
+	age := user.AgeOn(birth, now)
+	if age < user.MinimumAge {
 		RespondUnderMinimumAge(c)
 		return
 	}
@@ -276,13 +278,17 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
+	// A new account starts public, except that one under 18 on the day it is
+	// made starts private (user.DefaultVisibility is the whole rule). The
+	// person can switch it either way in Settings.
 	u, err := h.users.CreateComplete(c.Request.Context(), user.NewAccount{
-		Email:        req.Email,
-		PasswordHash: hash,
-		Birthday:     birth.Format("2006-01-02"),
-		Name:         name,
-		Username:     req.Username,
-		Bio:          bio,
+		Email:             req.Email,
+		PasswordHash:      hash,
+		Birthday:          birth.Format("2006-01-02"),
+		Name:              name,
+		Username:          req.Username,
+		Bio:               bio,
+		AccountVisibility: user.DefaultVisibility(age),
 	})
 	if err != nil {
 		if errors.Is(err, user.ErrUsernameTaken) {
@@ -416,6 +422,7 @@ func apiUser(u *user.User) gin.H {
 		"avatar_url":          u.AvatarURL,
 		"email_verified":      u.EmailVerified,
 		"onboarding_complete": u.OnboardingComplete(),
+		"account_visibility":  u.AccountVisibility,
 	}
 }
 

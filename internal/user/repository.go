@@ -14,17 +14,23 @@ type ProfilePatch struct {
 	Username  *string
 	Bio       *string
 	AvatarURL *string
+	// AccountVisibility is VisibilityPublic or VisibilityPrivate; the caller
+	// validates it with ValidVisibility before it gets here.
+	AccountVisibility *string
 }
 
 // NewAccount is everything a one-request sign-up stores. Birthday is a
 // validated "YYYY-MM-DD" date. Bio is optional (nil stores NULL).
+// AccountVisibility is the starting value (see DefaultVisibility); an empty
+// string is stored as VisibilityPublic, so no caller can store an empty value.
 type NewAccount struct {
-	Email        string
-	PasswordHash string
-	Birthday     string
-	Name         string
-	Username     string
-	Bio          *string
+	Email             string
+	PasswordHash      string
+	Birthday          string
+	Name              string
+	Username          string
+	Bio               *string
+	AccountVisibility string
 }
 
 // Repository is the storage contract for account and profile data. Handler

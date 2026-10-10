@@ -38,6 +38,10 @@ type User struct {
 	HasBirthday bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// AccountVisibility is VisibilityPublic or VisibilityPrivate. It is stored
+	// and shown only; the Friends view and Global (Phases 5 and 6) read the
+	// author's value.
+	AccountVisibility string
 }
 
 // OnboardingComplete reports whether the account has a name and a username.

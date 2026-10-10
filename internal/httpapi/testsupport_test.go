@@ -97,16 +97,26 @@ func (f *fakeUserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (
 	}
 	now := time.Now()
 	hash, name, username := in.PasswordHash, in.Name, in.Username
+	// Like the real repository: an empty starting value is stored as public,
+	// and a value the check constraint would refuse is a field error.
+	visibility := in.AccountVisibility
+	if visibility == "" {
+		visibility = user.VisibilityPublic
+	}
+	if !user.ValidVisibility(visibility) {
+		return nil, &user.FieldError{Field: "account_visibility"}
+	}
 	u := &user.User{
-		ID:           uuid.New(),
-		Email:        in.Email,
-		PasswordHash: &hash,
-		Name:         &name,
-		Username:     &username,
-		Bio:          in.Bio,
-		HasBirthday:  true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                uuid.New(),
+		Email:             in.Email,
+		PasswordHash:      &hash,
+		Name:              &name,
+		Username:          &username,
+		Bio:               in.Bio,
+		HasBirthday:       true,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		AccountVisibility: visibility,
 	}
 	f.users[u.ID] = u
 	f.birthdays[u.ID] = in.Birthday
@@ -140,13 +150,14 @@ func (f *fakeUserRepo) Create(ctx context.Context, email string, passwordHash *s
 	}
 	now := time.Now()
 	u := &user.User{
-		ID:               uuid.New(),
-		Email:            email,
-		PasswordHash:     passwordHash,
-		EmailVerified:    verified,
-		EmailVerifiedVia: via,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		ID:                uuid.New(),
+		Email:             email,
+		PasswordHash:      passwordHash,
+		EmailVerified:     verified,
+		EmailVerifiedVia:  via,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		AccountVisibility: user.VisibilityPublic, // the column default
 	}
 	f.users[u.ID] = u
 	stored := *u
@@ -219,6 +230,11 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	if !ok {
 		return nil, user.ErrNotFound
 	}
+	// The database check constraint, as a field error, before anything is
+	// applied: one UPDATE changes everything or nothing.
+	if p.AccountVisibility != nil && !user.ValidVisibility(*p.AccountVisibility) {
+		return nil, &user.FieldError{Field: "account_visibility"}
+	}
 	if p.Username != nil {
 		for otherID, other := range f.users {
 			if otherID == id {
@@ -238,6 +254,9 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	}
 	if p.AvatarURL != nil {
 		u.AvatarURL = p.AvatarURL
+	}
+	if p.AccountVisibility != nil {
+		u.AccountVisibility = *p.AccountVisibility
 	}
 	u.UpdatedAt = time.Now()
 	stored := *u
