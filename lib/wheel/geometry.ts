@@ -32,36 +32,16 @@ export type LabelDirection = 'across' | 'along';
 export type LabelPlacement = { direction: LabelDirection; flip: boolean };
 
 /**
- * The angle each wedge is drawn at. The true angle is `360 x weight / total`. A wedge under
- * MIN_WEDGE_DEGREES is drawn at that floor and the others share the rest in proportion to
- * their weights; this repeats until none is under it. The angles always add up to 360. (Twelve
- * wedges need 264 degrees, so the floor always fits for 2 to 12 categories.)
+ * The angle each wedge is drawn at. Every wedge is the same size: 360 divided by the number of
+ * categories (the developer asked for equal wedges on 2026-10-10, after seeing the weighted
+ * wheel). The weights still decide how OFTEN each category comes up (the server picks by them,
+ * and Edit wheel shows each share), but not how wide it is drawn. Twelve wedges are 30 degrees
+ * each, so every count from 2 to 12 stays above MIN_WEDGE_DEGREES. The angles add up to 360.
  */
 export function drawnAngles(weights: readonly number[]): number[] {
   const n = weights.length;
   if (n === 0) return [];
-  const w = weights.map((x) => (Number.isFinite(x) && x > 0 ? x : 1));
-  // A count the floor cannot fit (not possible for 2 to 12) falls back to equal wedges.
-  if (n * MIN_WEDGE_DEGREES > 360) return w.map(() => 360 / n);
-
-  const pinned: boolean[] = w.map(() => false);
-  let angles: number[] = w.map(() => 0);
-  for (let pass = 0; pass <= n; pass += 1) {
-    const pinnedCount = pinned.filter(Boolean).length;
-    const rest = 360 - pinnedCount * MIN_WEDGE_DEGREES;
-    let freeWeight = 0;
-    for (let i = 0; i < n; i += 1) if (!pinned[i]) freeWeight += w[i];
-    angles = w.map((x, i) => (pinned[i] ? MIN_WEDGE_DEGREES : (rest * x) / freeWeight));
-    let changed = false;
-    for (let i = 0; i < n; i += 1) {
-      if (!pinned[i] && angles[i] < MIN_WEDGE_DEGREES - 1e-9) {
-        pinned[i] = true;
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  return angles;
+  return weights.map(() => 360 / n);
 }
 
 /** Where each wedge starts, in the same order as `angles`. The first starts at 0. */

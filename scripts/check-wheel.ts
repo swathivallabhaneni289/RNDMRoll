@@ -63,18 +63,14 @@ for (let n = 2; n <= 12; n += 1) {
       angles.every((a) => a >= MIN_WEDGE_DEGREES - 1e-6),
       `${angles.map((a) => a.toFixed(2))} for ${weights}`
     );
-    // Order is kept: a heavier wedge is never drawn narrower than a lighter one.
-    for (let i = 0; i < n; i += 1) {
-      for (let j = 0; j < n; j += 1) {
-        if (weights[i] > weights[j]) check('angles keep order', angles[i] >= angles[j] - 1e-9);
-      }
-    }
+    // Every wedge is the same size, whatever the weights.
+    check(`angles are equal n=${n}`, angles.every((a) => Math.abs(a - 360 / n) < 1e-9), `${angles} for ${weights}`);
   }
 }
 {
-  // The starting wheel: Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1 -> 98, 33, 98, 33, 65, 33.
+  // The starting wheel: Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1 -> six equal wedges of 60 degrees.
   const a = drawnAngles([3, 1, 3, 1, 2, 1]).map((x) => Math.round(x));
-  check('starting wheel angles', a.join(',') === '98,33,98,33,65,33', a.join(','));
+  check('starting wheel angles', a.join(',') === '60,60,60,60,60,60', a.join(','));
 }
 
 // ---- the pointer ends on the server's winner -------------------------------------------------
@@ -104,7 +100,7 @@ for (let n = 2; n <= 12; n += 1) {
   check('small arc flag on a thin wedge', / 0 0 1 /.test(small), small);
   check('exactly half a turn uses the small flag', / 0 0 1 /.test(half), half);
   const angles = drawnAngles([10, 1]);
-  check('weights 10 and 1 draw a wedge near 327', Math.abs(angles[0] - 327.27) < 0.1, `${angles}`);
+  check('weights 10 and 1 still draw two equal halves', Math.abs(angles[0] - 180) < 1e-9 && Math.abs(angles[1] - 180) < 1e-9, `${angles}`);
 }
 
 // ---- tones -----------------------------------------------------------------------------------
