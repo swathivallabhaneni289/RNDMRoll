@@ -1,0 +1,91 @@
+---
+phase: 5
+slug: friend-feed
+status: draft
+nyquist_compliant: false
+wave_0_complete: false
+created: 2026-10-10
+---
+
+# Phase 5: Validation Map (Friend Feed: friends, the Board, reactions, comments, notifications)
+
+> How each behaviour is proven. PHASE 5. NOTHING IS BUILT. Written on paper on 2026-10-10 against the Phase 2, 3 and 4 plans and the Phase 5 plans: 05-01 (friends, blocks, the visibility rule, the one migration 0006, the social test tools), 05-02 (the Board, posts, reactions, comments, the one photo-link function, the friends count), 05-03 (the derived notification list and the seen time), 05-04 (the Friends screen and the Friends number on Profile, the friends API calls and error codes), 05-05 (the Board, a friend's post page, the reaction row, comments, the additions to your own entry page, the bar of five) and 05-06 (the notification list in the app, the bell dots, the cutover, the gates, the walkthrough, the close-out). Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (two throwaway node scripts, `scripts/check-board.ts` and `scripts/check-notifications.ts`, check the pure logic), so screen checks are device steps in `05-06-PLAN.md` Task 3 ('group done' or what looked wrong).
+
+## Commands
+
+| What | Command |
+|---|---|
+| Pure rules, no database | `go test ./internal/clock ./internal/spin ./internal/social ./internal/board ./internal/notifications -count=1` |
+| Full suite | `TEST_DATABASE_URL=postgres://localhost:5432/rndmroll_test?sslmode=disable go test ./... -p 1 -count=1 -v \| grep -c '^--- SKIP'` prints 0 |
+| App types | `npx tsc --noEmit` |
+| Board logic | `node --experimental-strip-types scripts/check-board.ts` prints no failure and the line 'reaction names match the server list' (before plan 05-02 exists it prints 'not compared with the server list yet', which is fine then but not at the gate) |
+| Notification logic | `node --experimental-strip-types scripts/check-notifications.ts` prints no failure |
+| Earlier scripts | `scripts/check-wheel.ts`, `scripts/check-entry.ts` and Phase 4's script still print no failure |
+| App bundle | `npx expo export --platform ios --output-dir $(mktemp -d)` |
+| Cold launch | `xcrun simctl terminate booted com.rndmroll.app; xcrun simctl launch booted com.rndmroll.app`, with the first frames recorded |
+| Emoji allow-list | `LC_ALL=C grep -rlE --exclude-dir=lab $'\xf0\x9f\|\xe2[\x98-\x9e]' app components lib scripts` prints exactly `lib/entry/reactions.ts`; the same scan over `internal cmd migrations` prints nothing |
+| No reaction name outside the one file | `grep -rn "'love'\|'fire'\|'laughing'\|'wow'\|'sad'\|'sleepy'\|'heart'\|'clap'\|'yum'" components lib/board lib/notifications lib/api` prints nothing |
+| Radius allow-lists | `grep -rln --exclude-dir=lab "radius\.full" app components lib` prints Phase 4's five files plus exactly `components/people/Avatar.tsx`, `components/board/NameChip.tsx`, `components/board/ReactionRow.tsx`, `components/board/CommentBar.tsx`; `"radius\.lg"` prints the same five files as at Phase 2's close; neither appears in `components/today`, `components/entry` or `app/(app)/today` |
+| Route listings | `ls "app/(app)"` lists exactly `_layout.tsx`, `board`, `diary`, `notifications.tsx`, `post.tsx`, `profile`, `spin.tsx`, `today`; `ls "app/(app)/today"` lists exactly `_layout.tsx`, `edit-entry.tsx`, `edit-wheel.tsx`, `entry.tsx`, `index.tsx`, `log.tsx`; `ls migrations` lists exactly 0001 to 0006 (twelve files) |
+| No phone-side clock or time maths | `grep -rn "Math.random\|new Date\|Date.now\|Date.UTC\|Intl\." lib/board lib/notifications components/board components/people components/notifications` prints nothing: every time label (`posted_local_time`, `at_label`) is the server's string, printed as sent |
+| No server clock in the new packages | `grep -rn "time.Now()" internal/social internal/board internal/notifications internal/httpapi/social*.go internal/httpapi/board*.go internal/httpapi/notifications*.go internal/store/postgres/social_repo.go internal/store/postgres/board_repo.go internal/store/postgres/notifications_repo.go \| grep -v _test` prints nothing |
+| One copy of the shared parts | `grep -rn "function firstName\|const firstName\|function initialOf\|const initialOf" lib components` prints only `lib/people/names.ts`; `ls components/people` lists `Avatar.tsx` and `BlockSheet.tsx` once each (plan 05-04's, extended by 05-05); `ls components/board` has no `BlockSheet.tsx` |
+| One photo-link function | `grep -rn "PublicURL(" internal --include=*.go \| grep -v _test.go` prints only Phase 3's lines and the one in `internal/board/photolinks.go` |
+| No DELETE in the client | `grep -rn "'DELETE'" lib app components` prints nothing |
+| No new native module | `git diff --stat pre-phase5 -- package.json package-lock.json app.json ios android` prints nothing |
+| Launch files | `git diff --stat pre-phase5 -- app/index.tsx app/_layout.tsx "app/(auth)/_layout.tsx" lib/session/store.ts lib/api/client.ts` prints nothing |
+
+Never run `expo lint`. Never run Go tests on `rndmroll_dev`.
+
+## Map
+
+| Requirement | Behaviour | Proof | Where |
+|---|---|---|---|
+| ACCT-02 | A person is found by exact username only (case-insensitive, one leading @); never by email, name or a prefix; a miss, yourself and a block either way answer the same 404; a malformed username is a 400 field error | Go table tests, HTTP tests comparing bodies byte for byte | 05-01 |
+| ACCT-02 | Ask, accept, decline, cancel, remove, block, unblock: one pending request per pair in either direction; two crossing requests make friends; decline, cancel, remove and block are silent; a repeat ask is `request_exists`, asking a friend is `already_friends`, the 51st waiting request is `request_limit` | Go suite on both repositories, concurrency tests (advisory lock on the pair), the whole-story HTTP test | 05-01 |
+| ACCT-02 | A block removes the friendship and every request in one transaction and hides each person from the other on every list; an unblock does not bring the friendship back | Go suite, HTTP tests | 05-01 |
+| ACCT-02 | A person in a response is id, name, username and photo link and nothing else: never an email, birthday, bio or photo key | Response-decoding tests, the SQL grep | 05-01, 05-02, 05-03 |
+| ACCT-02 | The Friends screen finds, asks, shows requests (Accept, Decline), sent (Cancel), friends (action sheet: Remove, Block), blocked (Unblock) and shares an invite text; lists reload after an action; the miss line and the four error lines read as written (including 'You can't send more requests right now. Cancel one first.' for `request_limit`) | Walkthrough steps 1 to 4 | 05-04; 05-06 Task 3 |
+| ACCT-02 | The Friends number on Profile is the real count of accepted friends (a pending request and a blocked person do not count) and opens the Friends screen | Go test of the counter, walkthrough steps 1 and 2 | 05-02 Task 3; 05-04; 05-06 Task 3 |
+| FEED-01 | One pure function decides who may see an entry: the owner; otherwise nobody blocked either way, accepted friends, and the viewer has a posted day for the entry's date. Every list, post, reaction, comment and photo link uses it; a hidden post answers the same 404 as a missing one | Table test of the pure function, the hand-written matrix test that proves the list and the post read agree, HTTP tests | 05-01 Task 1; 05-02 Task 2 |
+| FEED-01 | A posted day opens the day, on time or late; a deleted post still counts; a spin alone and a skip do not | Go suite with the fixed clock, the end-to-end HTTP test | 05-02 |
+| FEED-01 | The day in play is the date of the most recent 8:00 PM local that has passed; in the late window `day_label` is `last_night`; across zones and the two 2026 daylight saving changes | Go table tests (New York 2026-03-08 and 2026-11-01, Kolkata, Kathmandu) | 05-02 Task 1 |
+| FEED-01 | The Board's state is decided in order: no friends, posted (unlocked), skipped, locked; the locked block carries the friends who posted, up to four first names, the category as written and the action (`log`, `spin`, `wait`) | `board.Decide` table test, the end-to-end HTTP test | 05-02 |
+| FEED-01 | Unlocked lists the day in play first, then earlier days the viewer posted, newest first; `locked` and `skipped` list only the EARLIER days the viewer posted (the gate is per day, answer 6 option B) and an empty list when there are none; paged by `before` and `limit` (1 to 10, default 5) with `next_before`; a day with no cards is left out; the viewer's own card is included with `mine` true; `my_reaction` and `comment_count` are the caller's | Go suite, HTTP tests (a locked and a skipped Board with an earlier posted day), a paging test with no duplicate and no gap | 05-02 |
+| FEED-01 | The phone draws each state as sent: loading, offline, no friends (prompt and the person's last ten diary rows), locked (tiles, card, three actions) and skipped, each with the earlier posted days below it under their headings, and the unlocked grid with day headings; the odd card leaves an empty cell; pages merge by day in every state | `check-board.ts` (rows with a heading before every day under a lock, merge, labels), walkthrough steps 5 to 8, 17 and 18 | 05-05 Tasks 1 and 2; 05-06 Task 3 |
+| FEED-01 | The locked button follows the server: `log` makes sure Today is loaded and opens the entry screen only in Result or Late (else Home), `spin` goes to Home, `wait` draws no button and the line 'Your next spin opens at 8:00 PM.' | `check-board.ts` (`lockedButtonLabel`, `lockedFootnote`), walkthrough steps 6 and 7 | 05-05 Tasks 1, 2 and 4; 05-06 Task 3 |
+| FEED-01 | Earlier days stay readable, newest first, only for days you posted, also under today's lock or skip; a skipped or unposted day is not listed | Go test, walkthrough steps 17 and 18 (the first day under the skip and under the lock) | 05-02; 05-06 Task 3 |
+| FEED-02 | A late post carries `late` from its posted day and shows the word 'Late' on its card and page; an on-time post shows nothing | Go test, `cardSpoken` check. Not walked again on the phone (lateness was walked in Phase 3) | 05-02; 05-05 Task 1 |
+| FEED-03 | With no accepted friends the Board shows the prompt, the 'Add friends' button and the person's own diary, never a locked or empty feed | Go test (`no_friends`), `check-board.ts`, walkthrough step 1 | 05-02; 05-05; 05-06 Task 3 |
+| FEED-04 | One reaction per person per post: set, change, clear; a reaction on your own post is `own_post` 409; an unknown name is 400; the key must be present; the 61st call in a minute is 429 | Go suite, HTTP tests | 05-02 |
+| FEED-04 | The reaction names equal the shared server list (the picture's six, or the six the developer tapped if they say so) and the characters live in one app file; no name is typed anywhere else | `check-board.ts` ('reaction names match the server list'), the emoji scan, the name grep | 05-05 Task 1; 05-06 Task 2 |
+| FEED-04 | The ring moves at once and reverts on failure; a friend's row shows no counts; your own post shows no row | `reactionAfterTap` check, walkthrough step 10 | 05-05 Tasks 1 and 3; 05-06 Task 3 |
+| FEED-05 | A comment is 1 to 140 characters, trimmed; only the owner and the owner's friends who opened the day may write; oldest first; the writer or the owner deletes (a POST); deleting a post removes its reactions and comments | Go suite, HTTP tests, a Postgres test with a real `delete from entries` | 05-02 |
+| FEED-05 | The phone trims, refuses empty and over 140, sends once, appends the answer, shows 'Delete' only when `can_delete`, asks first, and a 'not found' counts as done | `check-board.ts` (`cleanComment`, `canSendComment`, `countLabel`, `appendComment`, `removeComment`), walkthrough steps 11 and 12 | 05-05 Tasks 1 and 3; 05-06 Task 3 |
+| FEED-05 | The app types `Card.comment_count` and `Post.comments` as nullable from the start (Phase 6 sends null to a stranger), and a null count draws nothing | `tsc`, `check-board.ts` (`countLabel(null)`) | 05-05 Task 1 |
+| FEED-05 | Your own entry page keeps Phase 3's square photo, Back label and fixed Edit and Delete footer, and gains, below the note and above the footer, the reactions received, the comments with delete buttons and the add-a-comment bar. A friend's post is a separate layout (photo about 3 to 2, author row on top, pinned comment bar) sharing only the comment list, the comment bar and the reaction row | `git diff` of `EntryView.tsx` shows additions only, walkthrough steps 9 and 15 | 05-05 Task 3; 05-06 Task 3 |
+| NOTIF-01 | The list is derived, with no stored event and no job: reaction, comment, friend request, accepted request, 'Your spin is open.' (once, only 8:00 PM to midnight) and 'Bonus spin added.' (when paid, at the time it was earned); a person's own actions and a block's actions never appear; 30 days, 50 items, newest first | Go suite on both repositories, the end-to-end HTTP test | 05-03 |
+| NOTIF-01 | Sections (`today`, `week`, `earlier`) and unread flags are decided in the person's zone; the seen time only moves forward; the bell's summary equals the list's `unread` | Go tests, the 12-state property test, the concurrency test (20 `seen` calls) | 05-03 |
+| NOTIF-01 | The dot is on the bell of Today and of the Board while something is unread; it is asked on focus, on foreground and at Today's `next_open_at`, with no timer; opening the page marks everything seen and clears it | Walkthrough steps 13 to 16, the grep for timers in `lib/notifications` | 05-06 Tasks 1 and 3 |
+| NOTIF-01 | Tapping: reaction and comment open your own post with its comments; request and accepted open the Friends screen; the two spin items go to Home; an item with no entry id does nothing | `check-notifications.ts` (`routeFor`), walkthrough steps 14 and 15 | 05-06 Tasks 1 and 3 |
+| NOTIF-01 | The page has no bottom bar, a Back arrow only, sections with labels, rows with dots, 'Nothing new yet.' when empty, and the offline state with 'Try again' | Walkthrough steps 14 to 16 | 05-06 Task 3 |
+| NOTIF-01 | Back from a post lands where the person came from: the Board from the Board, Notifications from Notifications | Walkthrough steps 12 and 15 (the two Back checks); the documented fallback is a paper edit | 05-05 Task 4; 05-06 Task 3 |
+| Safety | Every Phase 5 route refuses no token (401), a deleted user (401), an unfinished account (403), a body over 16 KB (413), a wrong JSON type (400), a non-UUID id (404) and the over-limit call (429); no response carries `photo_key`, email, birthday, bio, password hash or avatar url | HTTP tests, response-decoding tests | 05-01, 05-02, 05-03 |
+| Safety | A friend's photo link is built by ONE function after the visibility check; no other new code calls `PublicURL` | The `PublicURL(` scan, a test double that counts calls | 05-02; 05-06 Task 2 |
+| Safety | The social test tools exist only with the flag on, only for listed accounts, only between two listed accounts; a real account is never linked, changed or cleared; the resetters of plans 05-02 and 05-03 clear only the caller's rows | Go tests, the 9091 refusal check | 05-01 Task 3; 05-06 Task 2 |
+| Safety | Migration 0006 is the only Phase 5 migration, is reversible, references `users` and `entries` with cascade, and the migration tests start and restore at the latest version | `TestMigrations_0006IsReversible`, the other migration tests reading `latestMigration` | 05-01 Task 2 |
+| Safety | The users table, earlier migrations and the four real accounts are untouched | `git diff --stat pre-phase5` on those paths, user count before and after | 05-06 Task 2 |
+| Safety | The dev database moves from 5 to 6 with a dump, a binary backup and a rollback; users, spins and entries are unchanged | Cutover steps and the rehearsal on a throwaway copy | 05-06 Task 2 |
+| Safety | No new native module; the Phase 5 look has no glass, no blur | `git diff --stat pre-phase5` on the package files, `grep -rn "expo-glass-effect\|expo-blur" app components lib` prints only the dev-only lab | 05-06 Task 2 |
+| Launch | The first screen is still Today with no Unmatched Route or Welcome flash; the bar has exactly five items in the order Home, Diary, Spin, Board, Profile; the post and Notifications routes are hidden; `app/(app)/_layout.tsx` is the only launch file edited | Cold launches (a) and (b), the `ls` listings, `git diff` on the launch files | 05-05 Task 4; 05-06 Task 2 |
+| Copy | No em dash, no 'roll' on screen, tokens only, round shapes only in the nine files, one new text role, no phone-side date, gate or winner (every time label is the server's string, printed as sent) | Scans | 05-06 Task 2 |
+| Copy | Developer approves the strings and the listed choices (pills, the six reactions, the two photo ratios, no glass, no counts, the bar hidden on two pages, no Friends and Global switch yet) | UI spec section 16 rows 1 to 10 and the choices list | 05-06 Task 3 |
+| Risk | The installed router honours hidden routes (`href: null`), a hidden bar per screen and history Back | `node_modules` read at the start of plan 05-05, the cold launch, the two Back checks | 05-05 Task 4; 05-06 Task 3 |
+| Risk | The server writes every time label and the phone prints it as sent: `posted_local_time` on a card (the author's zone), `at_label` on a comment and on a notification item (the viewer's zone: a time of day today, a short weekday for the six days before, a month and day before that) | HTTP tests assert each field is present and follows the rule across a zone change; the scan finds no `Date` or `Intl` in the app files; the summaries of plans 05-05 and 05-06 say they were present | 05-02, 05-03; 05-05 Task 1; 05-06 Task 2 |
+| Visual | Each screen matches its picture: the phone screenshot is compared side by side with the picture, and every difference is in the UI spec's choices list or is fixed (the developer's rule of 2026-10-10: exactly the same visuals) | Side-by-side screenshot check per screen, differences listed in the task summary | 05-05 and 05-06 (each screen task and the walkthrough) |
+
+## Sign-off
+
+- [ ] Every row proven
+- [ ] The Phase 5 criteria in ROADMAP are ticked in the close-out
+- [ ] `nyquist_compliant` set to true by the close-out
