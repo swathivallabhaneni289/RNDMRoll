@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/config"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -73,14 +75,36 @@ func main() {
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
 	usernameHandler := httpapi.NewUsernameHandler(users)
 
-	server := httpapi.NewServer(httpapi.Deps{
+	// The spin slice has its own clock. Normally it is real time; in test
+	// mode (config.Load has already checked APP_ENV, the allow-list and the
+	// database name) it is a per-account clock the test routes can move. It
+	// goes to the spin service only: tokens, the rate limiter and refresh
+	// expiry always use real time.
+	var spinClock clock.Clock = clock.Real{}
+	var testClock *clock.PerUser
+	if cfg.SpinTestTools {
+		testClock = clock.NewPerUser()
+		spinClock = testClock
+	}
+	spinRepo := postgres.NewSpinRepo(pool)
+	spinService := spin.NewService(spinRepo, spinClock, spin.NewSystemRand())
+
+	deps := httpapi.Deps{
 		Auth:      authHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
+		Spin:      httpapi.NewSpinHandler(spinService),
+		Wheel:     httpapi.NewWheelHandler(spinService),
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,
 		Logger:    logger,
-	})
+	}
+	if cfg.SpinTestTools {
+		deps.TestTools = httpapi.NewSpinTestTools(true, spinService, testClock, cfg.SpinTestUserEmails)
+		logger.Warn("spin test tools are ON: the test clock and pretend-day routes answer for the listed accounts only",
+			"app_env", cfg.AppEnv, "accounts", len(cfg.SpinTestUserEmails))
+	}
+	server := httpapi.NewServer(deps)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -30,6 +30,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
 
@@ -135,8 +137,28 @@ func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 // buildIntegrationServer wires the real Server -- real pgx repositories --
 // over pool. The avatar-upload dependency is a package-local fake
 // (fakeAvatarStore, declared in profile_test.go, same package) since this
-// environment holds no real storage credentials.
+// environment holds no real storage credentials. The spin slice runs on the
+// real clock.
 func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
+	t.Helper()
+	return buildIntegrationServerWith(t, pool, integrationOptions{})
+}
+
+// integrationOptions changes how buildIntegrationServerWith wires the spin
+// slice.
+type integrationOptions struct {
+	// clock is the spin clock; nil means real time.
+	clock TestClock
+	// toolEmails, when not empty, registers the test-only routes for these
+	// accounts.
+	toolEmails []string
+	// rand lets a test choose winners; nil means the system source.
+	rand spin.Rand
+}
+
+// buildIntegrationServerWith is buildIntegrationServer with the spin slice's
+// clock and test tools under the caller's control.
+func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrationOptions) *Server {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -151,16 +173,30 @@ func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	server := NewServer(Deps{
+	var spinClock TestClock = clock.NewPerUser()
+	if opts.clock != nil {
+		spinClock = opts.clock
+	}
+	var rnd spin.Rand = spin.NewSystemRand()
+	if opts.rand != nil {
+		rnd = opts.rand
+	}
+	spinSvc := spin.NewService(postgres.NewSpinRepo(pool), spinClock, rnd)
+
+	deps := Deps{
 		Auth:      authHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
+		Spin:      NewSpinHandler(spinSvc),
+		Wheel:     NewWheelHandler(spinSvc),
 		Users:     users,
 		JWTSecret: integrationJWTSecret,
 		Logger:    logger,
-	})
-
-	return server
+	}
+	if len(opts.toolEmails) > 0 {
+		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
+	}
+	return NewServer(deps)
 }
 
 // integrationDoAuthedRequest mirrors auth_test.go's doJSONRequest but also

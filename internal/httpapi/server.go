@@ -24,6 +24,14 @@ type Deps struct {
 	Profile  *ProfileHandler
 	Username *UsernameHandler
 
+	// Spin and Wheel are the daily spin routes. TestTools is the test-only
+	// clock and pretend-day routes: it is non-nil only when the server was
+	// started in test mode with the tools switched on, and its routes are
+	// registered only then. Each is registered only when it is not nil.
+	Spin      *SpinHandler
+	Wheel     *WheelHandler
+	TestTools *SpinTestTools
+
 	Users     user.Repository
 	JWTSecret []byte
 	Logger    *slog.Logger
@@ -58,6 +66,10 @@ type Server struct {
 //     applied at this group -- not per route -- so ProfileHandler inherits
 //     both by construction, and so does any future route mounted here
 //     (T-01-SRV-03). There is no verified check: sign-up has no email step.
+//     The daily spin routes (time zone, Today, spin, bonus spin, wheel) are
+//     mounted on this group when Deps carries them; so are the test-only
+//     clock and pretend-day routes, which exist only when the server was
+//     started in test mode (see SpinTestTools).
 func NewServer(deps Deps) *Server {
 	engine := gin.New()
 	// A nil list is valid and never errors; handle the error anyway.
@@ -80,6 +92,15 @@ func NewServer(deps Deps) *Server {
 	authed := v1.Group("")
 	authed.Use(middleware.RequireAuth(deps.JWTSecret), middleware.RequireUser(deps.Users))
 	deps.Profile.Register(authed)
+	if deps.Spin != nil {
+		deps.Spin.Register(authed)
+	}
+	if deps.Wheel != nil {
+		deps.Wheel.Register(authed)
+	}
+	if deps.TestTools != nil {
+		deps.TestTools.Register(authed)
+	}
 
 	return &Server{engine: engine}
 }

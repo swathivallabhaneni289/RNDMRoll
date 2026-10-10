@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin/spintest"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
@@ -36,14 +39,37 @@ type panicIfTouchedUserRepo struct {
 
 // fullTestRig is a Server wired exactly like cmd/api/main.go, using
 // in-memory fakes for every dependency so no test here reaches a real
-// database or network.
+// database or network. The spin slice runs on the in-memory spin repository
+// and a Fixed clock (or the PerUser clock a test passes in).
 type fullTestRig struct {
 	srv     *Server
 	users   user.Repository
 	refresh *auth.RefreshService
+
+	spinSvc  *spin.Service
+	spinRepo *spintest.MemRepo
+	// clock is the Fixed clock the spin service uses; it is nil when the rig
+	// was built with a PerUser clock.
+	clock *clock.Fixed
+	// rand lets a test choose the winner of the next spin.
+	rand *spintest.QueueRand
+}
+
+// rigOptions changes how newFullTestRigWith wires the spin slice.
+type rigOptions struct {
+	// toolEmails, when not empty, registers the test-only routes for these
+	// accounts (the way SPIN_TEST_TOOLS=1 does in cmd/api).
+	toolEmails []string
+	// perUser, when set, is the spin clock instead of a Fixed one.
+	perUser *clock.PerUser
 }
 
 func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
+	t.Helper()
+	return newFullTestRigWith(t, usersRepo, rigOptions{})
+}
+
+func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions) *fullTestRig {
 	t.Helper()
 
 	tokens := newFakeRefreshRepo()
@@ -58,17 +84,40 @@ func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	spinRepo := spintest.NewMemRepo()
+	rnd := spintest.NewQueueRand(20261007)
+	var fixed *clock.Fixed
+	var spinClock TestClock
+	if opts.perUser != nil {
+		spinClock = opts.perUser
+	} else {
+		fixed = clock.NewFixed(time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC))
+		spinClock = fixed
+	}
+	spinSvc := spin.NewService(spinRepo, spinClock, rnd)
+
+	deps := Deps{
+		Auth:      authHandler,
+		Profile:   profileHandler,
+		Username:  usernameHandler,
+		Spin:      NewSpinHandler(spinSvc),
+		Wheel:     NewWheelHandler(spinSvc),
+		Users:     usersRepo,
+		JWTSecret: testServerJWTSecret,
+		Logger:    logger,
+	}
+	if len(opts.toolEmails) > 0 {
+		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
+	}
+
 	return &fullTestRig{
-		srv: NewServer(Deps{
-			Auth:      authHandler,
-			Profile:   profileHandler,
-			Username:  usernameHandler,
-			Users:     usersRepo,
-			JWTSecret: testServerJWTSecret,
-			Logger:    logger,
-		}),
-		users:   usersRepo,
-		refresh: refreshSvc,
+		srv:      NewServer(deps),
+		users:    usersRepo,
+		refresh:  refreshSvc,
+		spinSvc:  spinSvc,
+		spinRepo: spinRepo,
+		clock:    fixed,
+		rand:     rnd,
 	}
 }
 
