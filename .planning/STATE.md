@@ -80,7 +80,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Phase 2 build waits for the developer's word 'go': build 02-01 (server) and 02-02 (app) in parallel with agents, then 02-03 (cutover, scans, a SHORT device walkthrough).
+- Phase 2 build waits for the developer's word 'go': build 02-01 (server) and 02-02 (app) in parallel with agents, then 02-03 (cutover, scans, a SHORT device walkthrough). UPDATE 2026-10-10: the developer will start it in a NEW session (their start message there is the go) and wants Phase 2 completed while they step out; the phone walkthrough (02-03 Task 3) needs their taps, so leave it for when they are back.
 - Ask the Phase 4 and Phase 5 design questions as ONE message while Phase 2 builds (files in ~/.local/share/rndmroll-phase2/questions/: PHASE4-QUESTIONS.md and PHASE5-QUESTIONS.md), labelled PHASE 4 and PHASE 5, nothing built.
 - Friend comments and notifications: once the rename question above is settled, add FEED-05 (friend comments) and a notifications item (scope: bell list, phone alerts or both; the developer designs it) to REQUIREMENTS.md, the Phase 5 requirement list and a criterion in ROADMAP.md, a PROJECT.md decision row, update ~/.local/share/rndmroll-phase2/questions/PHASE5-QUESTIONS.md (its line 'No comment threads' is now wrong), add 'friends' comments' to the Phase 3 out-of-scope list, and apply the rename in the Phase 3 UI spec if chosen.
 - Developer: delete the unused GOOGLE_CLIENT_ID_* and APPLE_* lines in .env and .env.example (Claude's permissions deny editing env files); harmless if they stay.
