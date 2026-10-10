@@ -13,6 +13,9 @@ func seeded(a, b uint64) Rand { return rand.New(rand.NewPCG(a, b)) }
 // --- Pick and PickOther ---
 
 func TestPick_FollowsTheWeights(t *testing.T) {
+	// Explicit, uneven weights on purpose. They are not the starting wheel
+	// (all six weigh 1 since 2026-10-10): the picker must still follow any
+	// weights from 1 to 10 that a person saves.
 	weights := []int{3, 1, 3, 1, 2, 1}
 	const draws = 120000
 	total := 0
@@ -50,6 +53,7 @@ func TestPick_NothingToPickIsMinusOne(t *testing.T) {
 }
 
 func TestPickOther_NeverReturnsTheCurrentEntry(t *testing.T) {
+	// Explicit, uneven weights on purpose (not the starting wheel).
 	entries := []WheelEntry{
 		{ID: "a", Name: "Meal", Weight: 3}, {ID: "b", Name: "Movie", Weight: 1},
 		{ID: "c", Name: "Song", Weight: 3}, {ID: "d", Name: "Book", Weight: 1},
@@ -141,7 +145,7 @@ func TestDefaultWheel_IsTheStartingWheelInOrder(t *testing.T) {
 	want := []struct {
 		name   string
 		weight int
-	}{{"Meal", 3}, {"Movie", 1}, {"Song", 3}, {"Book", 1}, {"Place", 2}, {"Game", 1}}
+	}{{"Meal", 1}, {"Movie", 1}, {"Song", 1}, {"Book", 1}, {"Place", 1}, {"Game", 1}}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
 	}

@@ -28,16 +28,17 @@ type WheelInput struct {
 	Weight int
 }
 
-// DefaultWheel returns the starting wheel, in order: Meal 3, Movie 1, Song 3,
-// Book 1, Place 2, Game 1. Movie and Book are small wedges on purpose (about
-// one day in five). It is written to a person's wheel on first use.
+// DefaultWheel returns the starting wheel, in order: Meal, Movie, Song, Book,
+// Place, Game. All six weigh 1, so every category has the same chance (the
+// developer's decision of 2026-10-10). It is written to a person's wheel on
+// first use. Weights 1 to 10 are still accepted when a person edits the wheel.
 func DefaultWheel() []WheelInput {
 	return []WheelInput{
-		{Name: "Meal", Weight: 3},
+		{Name: "Meal", Weight: 1},
 		{Name: "Movie", Weight: 1},
-		{Name: "Song", Weight: 3},
+		{Name: "Song", Weight: 1},
 		{Name: "Book", Weight: 1},
-		{Name: "Place", Weight: 2},
+		{Name: "Place", Weight: 1},
 		{Name: "Game", Weight: 1},
 	}
 }

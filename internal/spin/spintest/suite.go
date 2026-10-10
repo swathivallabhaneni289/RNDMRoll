@@ -211,12 +211,13 @@ func wantSpinRows(t *testing.T, e *Env, u string, n int) {
 }
 
 // startOfWheel is the value to queue so the default wheel's picker lands on
-// the entry at index (the start of that entry's share of 0..10).
+// the entry at index: the sum of the weights before it, which is where that
+// entry's share of the draw starts. The weights come from spin.DefaultWheel(),
+// so this follows the starting wheel.
 func startOfWheel(index int) int {
-	weights := []int{3, 1, 3, 1, 2, 1}
 	sum := 0
-	for i := 0; i < index; i++ {
-		sum += weights[i]
+	for _, c := range spin.DefaultWheel()[:index] {
+		sum += c.Weight
 	}
 	return sum
 }
@@ -242,7 +243,7 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		want := []struct {
 			name   string
 			weight int
-		}{{"Meal", 3}, {"Movie", 1}, {"Song", 3}, {"Book", 1}, {"Place", 2}, {"Game", 1}}
+		}{{"Meal", 1}, {"Movie", 1}, {"Song", 1}, {"Book", 1}, {"Place", 1}, {"Game", 1}}
 		if len(first.Categories) != 6 || first.Version != 1 {
 			t.Fatalf("wheel = %+v, want 6 categories at version 1", first)
 		}
@@ -696,8 +697,8 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		id := func(name string) *string { s := byName[name].ID; return &s }
 		saved, err := e.Service.SaveWheel(ctx, u, 1, []spin.WheelInput{
 			{ID: id("Meal"), Name: "Meal", Weight: 5},    // reweight
-			{ID: id("Song"), Name: "  Tune ", Weight: 3}, // rename (trimmed)
-			{ID: id("Place"), Name: "Place", Weight: 2},
+			{ID: id("Song"), Name: "  Tune ", Weight: 1}, // rename (trimmed)
+			{ID: id("Place"), Name: "Place", Weight: 1},
 			{ID: id("Game"), Name: "Game", Weight: 1},
 			{ID: id("Book"), Name: "Book", Weight: 1},
 			{Name: "Walk", Weight: 2}, // add; Movie is left out and archived
@@ -726,7 +727,7 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		if got.Spin.Category.Name != "Song" || got.Spin.ID != made.ID {
 			t.Errorf("today's spin category = %q, want Song", got.Spin.Category.Name)
 		}
-		if len(got.Wheel) != 6 || got.Wheel[1].Name != "Movie" || got.Wheel[2].Name != "Song" || got.Wheel[0].Weight != 3 {
+		if len(got.Wheel) != 6 || got.Wheel[1].Name != "Movie" || got.Wheel[2].Name != "Song" || got.Wheel[0].Weight != 1 {
 			t.Errorf("today's wheel changed: %+v", got.Wheel)
 		}
 		if live := e.wheel(t, u); live.Version != 2 {

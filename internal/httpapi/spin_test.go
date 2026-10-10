@@ -693,7 +693,7 @@ func TestWheelRoutes_ReadAndSave(t *testing.T) {
 		t.Fatalf("wheel = %v", got)
 	}
 	wantNames := []string{"Meal", "Movie", "Song", "Book", "Place", "Game"}
-	wantWeights := []float64{3, 1, 3, 1, 2, 1}
+	wantWeights := []float64{1, 1, 1, 1, 1, 1}
 	for i, c := range cats {
 		m := c.(map[string]any)
 		if m["name"] != wantNames[i] || m["weight"] != wantWeights[i] || m["position"] != float64(i) {
@@ -714,7 +714,7 @@ func TestWheelRoutes_ReadAndSave(t *testing.T) {
 	// new version.
 	list := []any{
 		map[string]any{"id": cats[0].(map[string]any)["id"], "name": "Dinner", "weight": 5},
-		map[string]any{"id": cats[2].(map[string]any)["id"], "name": "Song", "weight": 3},
+		map[string]any{"id": cats[2].(map[string]any)["id"], "name": "Song", "weight": 1},
 		map[string]any{"id": nil, "name": "Walk", "weight": 2},
 	}
 	rec = r.call(http.MethodPatch, "/v1/wheel", p.token, map[string]any{"version": 1, "categories": list})
@@ -796,7 +796,7 @@ func TestWheelRoutes_TodayKeepsTheSpinsOwnWheelAfterAnEdit(t *testing.T) {
 	const ny = "America/New_York"
 	r.setZone(p, ny)
 	r.clockAt(ny, "2026-10-07", 20, 30, 0)
-	r.rig.rand.Queue(4) // Song, in the starting wheel
+	r.rig.rand.Queue(2) // Song: third of six equal wedges in the starting wheel
 	rec := r.call(http.MethodPost, "/v1/spin", p.token, nil)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("spin: %d %s", rec.Code, rec.Body.String())

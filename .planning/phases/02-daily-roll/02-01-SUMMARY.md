@@ -73,4 +73,5 @@ Departure from the paper that is only cosmetic: the Task 1 test file names are `
 - **`MemRepo.InUserTx` rolls back** when the callback returns an error (it works on a copy), so a Phase 3 rollback test can run on both repositories. The test hooks in `spintest.Env` (`SetSpinResult`, `ForceZone`, `FillArchived`) reach storage directly.
 - **No migration after 0004.** Phase 3's 0005 adds `spins.settled_at` and `unique (id, user_id)`; neither is in 0004.
 - **Test mode variables** for the dev API in plan 02-03: `APP_ENV=test SPIN_TEST_TOOLS=1 SPIN_TEST_USER_EMAILS=a@example.com,b@example.com`. With the tools on and `APP_ENV` unset, `config.MustLoad()` panics with the text "SPIN_TEST_TOOLS=1 needs APP_ENV=test", which is the refusal check of 02-03 step 6.
+- **Starting wheel:** since 2026-10-10 all six (Meal, Movie, Song, Book, Place, Game) start at weight 1. This plan built it as Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1. The API still accepts weights 1 to 10.
 - **Not done here, on purpose:** `.env.example` does not list the three new variables (that file was off limits); `docs/` and the phone app were not touched.

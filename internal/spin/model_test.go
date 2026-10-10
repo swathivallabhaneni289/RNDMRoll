@@ -8,11 +8,11 @@ import (
 )
 
 var testWheel = []WheelEntry{
-	{ID: "id-meal", Name: "Meal", Weight: 3},
+	{ID: "id-meal", Name: "Meal", Weight: 1},
 	{ID: "id-movie", Name: "Movie", Weight: 1},
-	{ID: "id-song", Name: "Song", Weight: 3},
+	{ID: "id-song", Name: "Song", Weight: 1},
 	{ID: "id-book", Name: "Book", Weight: 1},
-	{ID: "id-place", Name: "Place", Weight: 2},
+	{ID: "id-place", Name: "Place", Weight: 1},
 	{ID: "id-game", Name: "Game", Weight: 1},
 }
 

@@ -789,7 +789,7 @@ func TestMigrations_0004IsReversible(t *testing.T) {
 			`insert into user_time_zones (user_id, tz_name) values ($1, 'America/New_York')`,
 			`insert into user_spin_state (user_id, seeded_at, seeded_local_date, seeded_tz, weekly_goal)
 				values ($1, now(), current_date, 'America/New_York', 4)`,
-			`insert into wheel_categories (user_id, name, weight, position) values ($1, 'Meal', 3, 0)`,
+			`insert into wheel_categories (user_id, name, weight, position) values ($1, 'Meal', 1, 0)`,
 			`insert into spins (user_id, local_date, tz_name, kind, seq, category_id, category_name, wheel,
 				winner_index, spun_at, window_opens_at, window_closes_at)
 				select $1, current_date, 'America/New_York', 'daily', 0, id, 'Meal', '[]'::jsonb, 0, now(), now(), now()
