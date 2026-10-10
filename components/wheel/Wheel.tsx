@@ -36,6 +36,13 @@ const POINTER_HEIGHT = 12;
 const HUB_HIT = 64;
 /** The dot in the hub, as a share of the wheel's diameter. */
 const HUB_DOT_FRACTION = 0.07;
+/**
+ * The seam between wedges, in dp, drawn in the page colour as a stroke on every wedge. Each
+ * wedge is painted after the one before it, so every shared edge ends up the full width. It
+ * parts two dark wedges where the last wedge of an odd count meets the first. The arc part of
+ * the stroke sits under the rim, and the hub covers the centre.
+ */
+const SEAM_WIDTH = 1.5;
 
 export type WheelCategoryView = { name: string; weight: number };
 
@@ -61,9 +68,7 @@ export type WheelProps = {
 };
 
 function toneColor(tone: Tone): string {
-  if (tone === 'dark') return color.ink;
-  if (tone === 'light') return color.secondary;
-  return color.wheelMid;
+  return tone === 'dark' ? color.ink : color.secondary;
 }
 
 /**
@@ -224,8 +229,8 @@ function WheelImpl({
               key={i}
               d={wedgePath(geometry.starts[i], geometry.starts[i] + angle, outerRadius - RIM_WIDTH / 2)}
               fill={toneColor(geometry.tones[i])}
-              stroke={toneColor(geometry.tones[i])}
-              strokeWidth={0.5}
+              stroke={color.dominant}
+              strokeWidth={SEAM_WIDTH}
             />
           ))}
           <Circle

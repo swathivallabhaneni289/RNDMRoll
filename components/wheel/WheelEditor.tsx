@@ -21,16 +21,21 @@ import { getWheel, saveWheel } from '@/lib/api/spin';
 import type { WheelCategory, WheelLimits } from '@/lib/api/types';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
-import { sharePercent } from '@/lib/wheel/geometry';
 import { clearPendingSpin, useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 /** The limits the server sends; used until the first answer arrives and as a floor if it omits them. */
 const DEFAULT_LIMITS: WheelLimits = { min: 2, max: 12, name_max: 24, weight_min: 1, weight_max: 10 };
 
+/**
+ * Every category has the same chance (D-23), so there is no number to edit and every Save sends
+ * 1 for every row, new and saved. A wheel saved earlier with other numbers is made even by its
+ * next Save.
+ */
+const EQUAL_WEIGHT = 1;
+
 const PREVIEW_SIZE = 240;
 const NAME_FIELD_HEIGHT = 48;
 const ROW_MIN_HEIGHT = 56;
-const STEPPER_SIZE = 44;
 
 const NETWORK_MESSAGE = "Couldn't connect. Check your connection and try again.";
 const GENERIC_MESSAGE = 'Something went wrong. Please try again.';
@@ -43,7 +48,6 @@ type Row = {
   /** The saved category's id, or null for a row added in this visit. */
   id: string | null;
   name: string;
-  weight: number;
   /** The field has been left once, so its error may show. */
   touched: boolean;
 };
@@ -61,13 +65,12 @@ function rowsFrom(categories: WheelCategory[]): Row[] {
       key: nextRowKey(),
       id: category.id,
       name: category.name,
-      weight: category.weight,
       touched: false,
     }));
 }
 
-function signatureOf(rows: ReadonlyArray<Pick<Row, 'id' | 'name' | 'weight'>>): string {
-  return rows.map((row) => `${row.id ?? 'new'}\u0001${row.name.trim()}\u0001${row.weight}`).join('\u0002');
+function signatureOf(rows: ReadonlyArray<Pick<Row, 'id' | 'name'>>): string {
+  return rows.map((row) => `${row.id ?? 'new'}\u0001${row.name.trim()}`).join('\u0002');
 }
 
 const labelText = {
@@ -77,13 +80,14 @@ const labelText = {
 } as const;
 
 /**
- * Edit wheel (02-UI-SPEC section 7): a live preview, one row per category (name, weight
- * stepper, share of spins, Remove), Add a category, and a pinned "Save wheel". Changes stay on the
- * phone until Save, which sends the whole list in one PATCH (all or nothing); a saved category
- * that is removed is simply left out of the list, which archives it on the server. Every way
- * out with unsaved changes (Back, the iOS swipe, a Home or Spin tab press that pops the stack)
- * opens the leave sheet through one `beforeRemove` guard; the swipe is switched off while
- * changes are unsaved.
+ * Edit wheel (02-UI-SPEC section 7): a live preview, one row per category (name field and
+ * Remove), Add a category, and a pinned "Save wheel". There are no numbers on this screen:
+ * every category has the same chance, and Save sends weight 1 for every row. Changes stay on
+ * the phone until Save, which sends the whole list in one PATCH (all or nothing); a saved
+ * category that is removed is simply left out of the list, which archives it on the server.
+ * Every way out with unsaved changes (Back, the iOS swipe, a Home or Spin tab press that pops
+ * the stack) opens the leave sheet through one `beforeRemove` guard; the swipe is switched off
+ * while changes are unsaved.
  */
 export function WheelEditor() {
   const router = useRouter();
@@ -191,17 +195,6 @@ export function WheelEditor() {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }
 
-  function changeWeight(key: string, delta: number) {
-    setSaveMessage(null);
-    setRows((current) =>
-      current.map((row) =>
-        row.key === key
-          ? { ...row, weight: Math.min(limits.weight_max, Math.max(limits.weight_min, row.weight + delta)) }
-          : row
-      )
-    );
-  }
-
   function removeRow(key: string) {
     setSaveMessage(null);
     setRows((current) => (current.length <= limits.min ? current : current.filter((row) => row.key !== key)));
@@ -211,7 +204,7 @@ export function WheelEditor() {
     if (rows.length >= limits.max) return;
     setSaveMessage(null);
     const key = nextRowKey();
-    setRows((current) => [...current, { key, id: null, name: '', weight: limits.weight_min, touched: false }]);
+    setRows((current) => [...current, { key, id: null, name: '', touched: false }]);
     setFocusKey(key);
   }
 
@@ -221,7 +214,7 @@ export function WheelEditor() {
     setSaving(true);
     setSaveMessage(null);
     try {
-      const list = rows.map((row) => ({ id: row.id, name: row.name.trim(), weight: row.weight }));
+      const list = rows.map((row) => ({ id: row.id, name: row.name.trim(), weight: EQUAL_WEIGHT }));
       await saveWheel(version, list);
       // Saved: nothing is left to lose, then back to Today, which reloads its wheel.
       allowLeaveRef.current = true;
@@ -249,11 +242,10 @@ export function WheelEditor() {
   // ---- drawing -------------------------------------------------------------------------------
 
   const previewEntries = useMemo(
-    () => rows.map((row) => ({ name: row.name.trim(), weight: row.weight })),
+    () => rows.map((row) => ({ name: row.name.trim(), weight: EQUAL_WEIGHT })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [signatureOf(rows)]
   );
-  const shares = sharePercent(rows.map((row) => row.weight));
   const previewSize = Math.min(PREVIEW_SIZE, width - 2 * space.lg);
   const atMin = rows.length <= limits.min;
   const atMax = rows.length >= limits.max;
@@ -287,16 +279,13 @@ export function WheelEditor() {
               Edit wheel
             </AppText>
           </View>
-          <View style={{ marginTop: space.xs }}>
-            <AppText role="label" tone="muted">
-              A higher number comes up more often.
-            </AppText>
-            {spunToday ? (
+          {spunToday ? (
+            <View style={{ marginTop: space.xs }}>
               <AppText role="label" tone="muted">
                 Changes show on your next spin.
               </AppText>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
 
           {status === 'loading' ? (
             <View style={{ marginTop: space.xl, alignItems: 'center' }}>
@@ -348,32 +337,6 @@ export function WheelEditor() {
                           onBlur={() => updateRow(row.key, { touched: true })}
                           hasError={problem !== null}
                         />
-                        <View style={{ width: space.sm }} />
-                        <Stepper
-                          name={shownName}
-                          weight={row.weight}
-                          canLower={row.weight > limits.weight_min}
-                          canRaise={row.weight < limits.weight_max}
-                          onLower={() => changeWeight(row.key, -1)}
-                          onRaise={() => changeWeight(row.key, 1)}
-                        />
-                      </View>
-                      {problem ? (
-                        <View style={{ marginTop: space.xs }} accessibilityLiveRegion="polite">
-                          <Text style={{ ...labelText, color: color.destructive }}>{problem}</Text>
-                        </View>
-                      ) : null}
-                      <View
-                        style={{
-                          marginTop: space.xs,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <AppText role="label" tone="muted">
-                          {`About ${shares[index]}% of spins`}
-                        </AppText>
                         <Pressable
                           onPress={() => removeRow(row.key)}
                           disabled={atMin}
@@ -383,18 +346,14 @@ export function WheelEditor() {
                           hitSlop={8}
                           style={{ minHeight: minTouchTarget, justifyContent: 'center', paddingLeft: space.md }}
                         >
-                          <Text
-                            style={{
-                              fontFamily: type.label.fontFamily,
-                              fontSize: type.label.fontSize,
-                              lineHeight: type.label.lineHeight,
-                              color: atMin ? color.muted : color.destructive,
-                            }}
-                          >
-                            Remove
-                          </Text>
+                          <Text style={{ ...labelText, color: atMin ? color.muted : color.destructive }}>Remove</Text>
                         </Pressable>
                       </View>
+                      {problem ? (
+                        <View style={{ marginTop: space.xs }} accessibilityLiveRegion="polite">
+                          <Text style={{ ...labelText, color: color.destructive }}>{problem}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   );
                 })}
@@ -522,68 +481,5 @@ function NameField({
         color: color.ink,
       }}
     />
-  );
-}
-
-function StepButton({
-  icon,
-  label,
-  disabled,
-  onPress,
-}: {
-  icon: 'remove' | 'add';
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={{
-        width: STEPPER_SIZE,
-        height: STEPPER_SIZE,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: color.inkRest,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Ionicons name={icon} size={20} color={disabled ? color.inkInactive : color.ink} />
-    </Pressable>
-  );
-}
-
-function Stepper({
-  name,
-  weight,
-  canLower,
-  canRaise,
-  onLower,
-  onRaise,
-}: {
-  name: string;
-  weight: number;
-  canLower: boolean;
-  canRaise: boolean;
-  onLower: () => void;
-  onRaise: () => void;
-}) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <StepButton icon="remove" label={`Lower weight for ${name}`} disabled={!canLower} onPress={onLower} />
-      <View
-        accessible
-        accessibilityLabel={`${name}, weight ${weight}`}
-        style={{ width: 32, alignItems: 'center', justifyContent: 'center' }}
-      >
-        <AppText role="body">{String(weight)}</AppText>
-      </View>
-      <StepButton icon="add" label={`Raise weight for ${name}`} disabled={!canRaise} onPress={onRaise} />
-    </View>
   );
 }

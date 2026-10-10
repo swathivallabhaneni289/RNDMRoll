@@ -2,7 +2,7 @@
  * Pure geometry for the wheel (02-UI-SPEC section 3). No React, no app imports, no phone
  * clock and no randomness: the winner always comes from the server, and everything here only
  * draws it. Angles are degrees clockwise from 12 o'clock, and a positive rotation turns the
- * disc clockwise. Colours are named here ('dark', 'light', 'mid', 'ink', 'dominant') and mapped
+ * disc clockwise. Colours are named here ('dark', 'light', 'ink', 'dominant') and mapped
  * to tokens by the component, so this file holds no hex values.
  */
 
@@ -26,7 +26,7 @@ const ACROSS_SLACK = 4;
 const ALONG_HUB_GAP = 12;
 const ALONG_RIM_GAP = 10;
 
-export type Tone = 'dark' | 'light' | 'mid';
+export type Tone = 'dark' | 'light';
 export type LabelColorName = 'dominant' | 'ink';
 export type LabelDirection = 'across' | 'along';
 export type LabelPlacement = { direction: LabelDirection; flip: boolean };
@@ -34,9 +34,10 @@ export type LabelPlacement = { direction: LabelDirection; flip: boolean };
 /**
  * The angle each wedge is drawn at. Every wedge is the same size: 360 divided by the number of
  * categories (the developer asked for equal wedges on 2026-10-10, after seeing the weighted
- * wheel). The weights still decide how OFTEN each category comes up (the server picks by them,
- * and Edit wheel shows each share), but not how wide it is drawn. Twelve wedges are 30 degrees
- * each, so every count from 2 to 12 stays above MIN_WEDGE_DEGREES. The angles add up to 360.
+ * wheel). The weights are not used to draw. The app gives every category weight 1 (D-23, equal
+ * chances and no numbers on screen), and the server picks by whatever it holds. Twelve wedges
+ * are 30 degrees each, so every count from 2 to 12 stays above MIN_WEDGE_DEGREES. The angles
+ * add up to 360.
  */
 export function drawnAngles(weights: readonly number[]): number[] {
   const n = weights.length;
@@ -85,18 +86,18 @@ export function wedgePath(a0: number, a1: number, r: number): string {
 
 /**
  * The tone of each wedge, clockwise from the first (02-UI-SPEC section 2). Wedge i is `dark`
- * when i is even and `light` when i is odd, so the first wedge is dark. When the count is odd
- * the last wedge is `mid` instead, so it differs from the wedge before it and from the first
- * wedge it touches at the wrap. Touching wedges therefore never match.
+ * when i is even and `light` when i is odd, for any count, so the first wedge is dark. There is
+ * no third tone. With an odd count the last wedge is dark and touches the first (also dark):
+ * the seam the component draws between all wedges keeps them apart, so every wedge stays its
+ * own shape.
  */
 export function toneIndexes(n: number): Tone[] {
   const tones: Tone[] = [];
   for (let i = 0; i < n; i += 1) tones.push(i % 2 === 0 ? 'dark' : 'light');
-  if (n >= 3 && n % 2 === 1) tones[n - 1] = 'mid';
   return tones;
 }
 
-/** The label colour on a wedge: `dominant` on dark, `ink` on light and on mid. */
+/** The label colour on a wedge: `dominant` on dark, `ink` on light. */
 export function labelColorFor(tone: Tone): LabelColorName {
   return tone === 'dark' ? 'dominant' : 'ink';
 }
@@ -211,11 +212,4 @@ export function truncate(name: string, n: number): string {
 /** The text a wedge shows: the name, cut to the room its direction has. */
 export function labelLine(name: string, direction: LabelDirection, angle: number, radius: number): string {
   return truncate(name, labelCapacity(direction, angle, radius));
-}
-
-/** The true share of each weight as a whole number of percent, for "About 33% of spins". */
-export function sharePercent(weights: readonly number[]): number[] {
-  const total = weights.reduce((sum, w) => sum + w, 0);
-  if (total <= 0) return weights.map(() => 0);
-  return weights.map((w) => Math.round((100 * w) / total));
 }

@@ -39,8 +39,9 @@ export const pinHeadingFontFamily = type.heading.fontFamily satisfies 'Domine_60
 export const pinDisplayFontSize = type.display.fontSize satisfies 40;
 export const pinDisplayFontFamily = type.display.fontFamily satisfies 'Domine_600SemiBold';
 
-// Phase 2 (plan 02-02): one colour and six text roles. A later edit of any value fails tsc.
-export const pinColorWheelMid = color.wheelMid satisfies '#8A8680';
+// Phase 2 (plan 02-02): six text roles. A later edit of any value fails tsc.
+// The medium grey wheel colour and its pin were removed on purpose on 2026-10-10 (D-23): the
+// wheel is only `ink` and `secondary`, with seams in `dominant`.
 export const pinTitleFontFamily = type.title.fontFamily satisfies 'Domine_400Regular';
 export const pinTitleFontSize = type.title.fontSize satisfies 32;
 export const pinCountdownFontFamily = type.countdown.fontFamily satisfies 'Domine_400Regular';

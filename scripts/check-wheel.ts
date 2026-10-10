@@ -16,7 +16,6 @@ import {
   labelPlacement,
   MIN_WEDGE_DEGREES,
   poseOf,
-  sharePercent,
   targetRotation,
   toneIndexes,
   truncate,
@@ -104,23 +103,35 @@ for (let n = 2; n <= 12; n += 1) {
 }
 
 // ---- tones -----------------------------------------------------------------------------------
+// Tones alternate by index for every count: even index dark, odd index light, and there is no
+// third tone. With an odd count the last wedge is dark and meets the first (also dark); the
+// component's seam keeps them apart, so what is checked here is that the last wedge is dark and
+// as big as the first.
 for (let n = 2; n <= 12; n += 1) {
   const tones = toneIndexes(n);
   check(`tones length n=${n}`, tones.length === n);
   check(`first wedge is dark n=${n}`, tones[0] === 'dark');
-  for (let i = 0; i < n; i += 1) {
-    const next = tones[(i + 1) % n];
-    check(`no equal neighbours n=${n} i=${i}`, tones[i] !== next, tones.join(','));
-  }
+  check(`only dark and light n=${n}`, tones.every((t) => t === 'dark' || t === 'light'), tones.join(','));
+  check(`no mid tone n=${n}`, !tones.includes('mid'));
   tones.forEach((tone, i) => {
-    if (tone === 'mid') check(`mid only on the last wedge of an odd count n=${n}`, i === n - 1 && n % 2 === 1);
+    check(`tone alternates by index n=${n} i=${i}`, tone === (i % 2 === 0 ? 'dark' : 'light'), tones.join(','));
   });
-  if (n % 2 === 1) check(`odd count ends mid n=${n}`, tones[n - 1] === 'mid');
-  else check(`even count has no mid n=${n}`, !tones.includes('mid'));
+  // Neighbours differ everywhere except across the wrap of an odd count.
+  for (let i = 0; i < n - 1; i += 1) {
+    check(`no equal neighbours n=${n} i=${i}`, tones[i] !== tones[i + 1], tones.join(','));
+  }
+  if (n % 2 === 1) {
+    const angles = drawnAngles(Array.from({ length: n }, () => 1));
+    check(`odd count: last wedge is dark n=${n}`, tones[n - 1] === 'dark');
+    check(`odd count: last wedge is as big as the first n=${n}`, Math.abs(angles[n - 1] - angles[0]) < 1e-9, `${angles}`);
+    check(`odd count: the wrap joins two dark wedges n=${n}`, tones[n - 1] === tones[0]);
+  } else {
+    check(`even count: last wedge is light n=${n}`, tones[n - 1] === 'light');
+    check(`even count: the wrap differs n=${n}`, tones[n - 1] !== tones[0]);
+  }
 }
 check('label colour on dark', labelColorFor('dark') === 'dominant');
 check('label colour on light', labelColorFor('light') === 'ink');
-check('label colour on mid', labelColorFor('mid') === 'ink');
 
 // ---- label placement -------------------------------------------------------------------------
 {
@@ -159,13 +170,11 @@ check('label colour on mid', labelColorFor('mid') === 'ink');
   console.log(`info: along capacity at the largest wheel = ${labelCapacity('along', 60, 116)} letters`);
 }
 
-// ---- truncate, shares --------------------------------------------------------------------------
+// ---- truncate ----------------------------------------------------------------------------------
 check('truncate keeps a short name', truncate('Meal', 9) === 'Meal');
 check('truncate cuts with an ellipsis', truncate('Concert tickets', 8) === 'Concert…', truncate('Concert tickets', 8));
 check('truncate to one', truncate('Meal', 1) === '…');
 check('truncate counts letters not bytes', truncate('Café au lait', 4) === 'Caf…', truncate('Café au lait', 4));
-check('shares are whole numbers', sharePercent([3, 1, 3, 1, 2, 1]).join(',') === '27,9,27,9,18,9');
-check('shares of nothing', sharePercent([]).length === 0);
 
 // ---- date lines ------------------------------------------------------------------------------
 {

@@ -30,11 +30,6 @@ export const color = {
   onInkDisabled: 'rgba(246,245,242,0.7)',
   /** Modal/sheet backdrop overlay behind a bottom sheet (e.g. the profile screen's log-out confirmation). */
   scrimOverlay: 'rgba(17,17,17,0.4)',
-  /**
-   * Medium grey (Phase 2, UI-SPEC section 2). Used only by the last wedge of a wheel with
-   * an odd number of categories, so no two touching wedges match. Its label is Ink (5.22:1).
-   */
-  wheelMid: '#8A8680',
 } as const;
 
 export const space = {
