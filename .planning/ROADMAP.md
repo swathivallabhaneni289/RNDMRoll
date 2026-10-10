@@ -98,7 +98,7 @@ Plans:
 **Wave 1**
 
 - [ ] 02-01-PLAN.md: The spin server: wheel, time zone, one spin a day, weekly bonus reroll, and test-only clock tools
-- [ ] 02-02-PLAN.md: The spin app: Today screen, wheel, countdown, weekly card, Edit wheel, and the bottom bar
+- [ ] 02-02-PLAN.md: The spin app: Today screen, wheel, countdown, week section, Edit wheel, Notifications page, and the bottom bar
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

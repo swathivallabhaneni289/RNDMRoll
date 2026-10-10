@@ -9,7 +9,7 @@ created: 2026-10-10
 
 # Phase 3: Validation Map (Daily Entry, "log it")
 
-> How each behaviour is proven. PHASE 3. NOTHING IS BUILT. Written on paper on 2026-10-10 against the Phase 2 plans. Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (a throwaway node script, `scripts/check-entry.ts`, checks the pure star, reaction, rule and upload-memory logic), so screen checks are device steps in `03-03-PLAN.md` Task 3 ('group done' or what looked wrong).
+> How each behaviour is proven. PHASE 3. NOTHING IS BUILT. Written on paper on 2026-10-10 against the Phase 2 plans, and revised the same day for the developer's pictures of the after-the-spin, skipped and entry-page screens (Phase 2 UI spec revision 6: Result and Late have no wheel, Posted and Skipped put the sub-line under the heading, the entry page has no bottom bar). Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (a throwaway node script, `scripts/check-entry.ts`, checks the pure star, reaction, rule and upload-memory logic), so screen checks are device steps in `03-03-PLAN.md` Task 3 ('group done' or what looked wrong).
 
 ## Commands
 
@@ -22,8 +22,8 @@ created: 2026-10-10
 | App bundle | `npx expo export --platform ios --output-dir $(mktemp -d)` |
 | Cold launch | `xcrun simctl terminate booted com.rndmroll.app; xcrun simctl launch booted com.rndmroll.app`, with the first frames recorded |
 | Emoji allow-list | `LC_ALL=C grep -rlE --exclude-dir=lab $'\xf0\x9f\|\xe2[\x98-\x9e]' app components lib scripts` prints exactly `lib/entry/reactions.ts`; the same scan over `internal cmd migrations` prints nothing |
-| Radius allow-lists | Phase 2's lists are unchanged: `grep -rln --exclude-dir=lab "radius\.lg" app components lib` prints the same five files and `"radius\.full"` the same three; neither appears in `components/entry`, `components/today` or `app/(app)/today` |
-| Route listings | `ls "app/(app)"` lists exactly `_layout.tsx`, `profile`, `spin.tsx`, `today`; `ls "app/(app)/today"` lists exactly `_layout.tsx`, `edit-entry.tsx`, `edit-wheel.tsx`, `entry.tsx`, `index.tsx`, `log.tsx`; `ls migrations` lists exactly 0001 to 0005 (ten files) |
+| Radius allow-lists | Phase 2's lists are unchanged: `grep -rln --exclude-dir=lab "radius\.lg" app components lib` prints the same five files and `"radius\.full"` the same four (Phase 2 revision 5 added `components/nav/SpinTabButton.tsx`: `IconBadge.tsx`, `DialAvatar.tsx`, `SpinTabButton.tsx`, `tokens.test-assert.ts`); neither appears in `components/entry`, `components/today` or `app/(app)/today` |
+| Route listings | `ls "app/(app)"` lists exactly `_layout.tsx`, `profile`, `spin.tsx`, `today`; `ls "app/(app)/today"` lists exactly `_layout.tsx`, `edit-entry.tsx`, `edit-wheel.tsx`, `entry.tsx`, `index.tsx`, `log.tsx`, `notifications.tsx` (the last is Phase 2's, revision 5); `ls migrations` lists exactly 0001 to 0005 (ten files) |
 | No DELETE in the client | `grep -rn "'DELETE'" lib app components` prints nothing |
 | Key, not link | `grep -rn "photo_url" internal/spin internal/store \| grep -v _test` prints nothing |
 | Photo quality | `grep -c "quality: 0.8" components/entry/PhotoField.tsx` prints 2 |
@@ -58,9 +58,9 @@ Never run `expo lint`. Never run Go tests on `rndmroll_dev`.
 | ENTRY-04 | Skip is free, asks no reason, is final for the day, works in the late window, is refused after it, repeats as the same answer, is refused after a post, and makes a post and a bonus refused | Go suite, HTTP tests | 03-01 Tasks 2, 3 |
 | ENTRY-04 | A skip does not count toward the 4, is not a miss, shows as a dash on the week dots, and the sheet shows the current count before it asks | Go test (week flag, count unchanged), walkthrough steps 10, 11 | 03-01 Task 2; 03-03 Task 3 |
 | ENTRY-04 | Bonus spin then skip: the earlier spin stays open but the day is skipped, the dot is flagged once, and the next morning is not `late` | `BuildToday` test, Go suite | 03-01 Tasks 1, 2 |
-| ENTRY-01, 04 | Posted and Skipped show the right heading, sub-line and lines. Made before midnight, the morning after is 'Your next spin is coming.'. Made after midnight in the late window, they stay until the next spin opens | `BuildToday` table test, walkthrough steps 9, 11, 13, 15 | 03-01 Task 1; 03-03 Task 3 |
-| ENTRY-01, 04 | 'Log it', 'Skip this one' and the late line appear only in Result and Late | Walkthrough steps 1, 12 | 03-03 Task 3 |
-| ENTRY-01 | 'View entry' opens the entry page; it shows photo, title, stars, reaction, comment and date; Edit and Delete work | Walkthrough steps 7, 8, 9 | 03-03 Task 3 |
+| ENTRY-01, 04 | Posted and Skipped show the right heading, the sub-line under it ('Your next spin opens {weekday} at 8:00 PM.') and the word block (plain in Posted, light and struck in Skipped), with no wheel and no 'Edit wheel' link. Made before midnight, the morning after is 'Your next spin is coming.'. Made after midnight in the late window, they stay until the next spin opens | `BuildToday` table test, walkthrough steps 9, 11, 13, 15 | 03-01 Task 1; 03-03 Task 3 |
+| ENTRY-01, 04 | 'Log it', 'Skip this one' and the late line appear only in Result and Late, under the word and its 'Spun at' line | Walkthrough steps 1, 12 | 03-03 Task 3 |
+| ENTRY-01 | 'View entry' opens the entry page with no bottom bar; it shows the edge-to-edge photo, category and full date, title, stars, reaction, comment and a pinned Edit and Delete footer; the Back label says 'Today'; Edit and Delete work | Walkthrough steps 7, 8, 9 | 03-03 Task 3 |
 | Safety | The photo ticket, post, read, edit, delete and skip routes refuse no token (401), a deleted user (401), an unfinished account (403), a body over 16 KB (413), the 11th post in a minute (429); no response carries `photo_key`, birthday, email or password hash | HTTP tests | 03-01 Task 3 |
 | Safety | Another person's entry, photo key or day is never reachable | HTTP tests with two accounts | 03-01 Task 3 |
 | Safety | The test reset clears entries and real posted days | Go suite, HTTP test | 03-01 Tasks 2, 3 |
@@ -68,7 +68,7 @@ Never run `expo lint`. Never run Go tests on `rndmroll_dev`.
 | Safety | The users table, earlier migrations and the four real accounts are untouched | `git diff --stat pre-phase3` on those paths, user count before and after | 03-03 Task 2 |
 | Safety | The dev database moves from 4 to 5 with a dump, a binary backup and a rollback | Cutover steps and the rehearsal on a throwaway copy | 03-03 Task 2 |
 | Safety | No new native module | `git diff --stat pre-phase3 -- package.json package-lock.json app.json ios android` prints nothing | 03-03 Task 2 |
-| Launch | The first screen is still Today with no Unmatched Route or Welcome flash; no launch file is edited; the bar has three items; the entry routes sit in the Home stack | Cold launches (a) and (b), `git diff` on the launch files, the `ls` listings | 03-02 Task 3; 03-03 Task 2 |
+| Launch | The first screen is still Today with no Unmatched Route or Welcome flash; no launch file is edited; the bar has three items; the entry routes sit in the Home stack; the bar is hidden on the entry page only and is back on Today (walkthrough steps 7 and 9) | Cold launches (a) and (b), `git diff` on the launch files, the `ls` listings | 03-02 Task 3; 03-03 Task 2 |
 | Copy | No em dash, no 'roll' on screen, tokens only, no pill, no new use of the 24dp or round radius tokens; the phone computes no date or winner | Scans | 03-03 Task 2 |
 | Copy | Developer approves the strings | Section 16 rows 1 to 10 of the UI spec and the listed choices | 03-03 Task 3 |
 | Risk | A full-size library photo saves under the 50 MB limit (the profile ceiling) | Walkthrough step 17; the result and the photo's size go in the summary | 03-03 Task 3 |

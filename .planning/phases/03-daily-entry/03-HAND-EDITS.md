@@ -2,6 +2,8 @@
 
 **APPLIED 2026-10-10 by the lead:** sections A, B and C (including the optional C9 and C10), in one go. One change: the PROJECT.md row also records the developer's later pick for the entry photo size (50 MB, the same ceiling as profile photos; the old notes said 5 MB), so it does not repeat the 5 MB figure. Section D is a list of facts, not an edit. The text below stays as a record of what was applied.
 
+**Revision 5 note (2026-10-10, later that day):** the Phase 2 UI spec was rewritten as revision 5 (sections 2, 3, 4, 6, 8 and 10 to 13) after the developer sent a new Today picture. Part B was applied to revision 4 and revision 5 already carries its content (the dash mark for a skipped day, the "skipped" wording), so some Find strings in Part B no longer exist. Do not re-apply Part B.
+
 Written 2026-10-10 for the lead. These are the exact edits to SHARED documents that follow from the Phase 3 decisions. Nothing here has been applied. The Phase 3 documents themselves are complete without them, but the shared documents will disagree with Phase 3 until they are applied.
 
 How to use:

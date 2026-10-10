@@ -1,7 +1,7 @@
 # Phase 3: Daily Entry (log it) - Context
 
 **Gathered:** 2026-10-09
-**Written:** 2026-10-10, on paper, against the Phase 2 documents as revised on 2026-10-09. Phase 2 is NOT built. Every Phase 2 file, table and function named here is the Phase 2 PLAN's name. At build time the built code wins; each plan's start_rules say how to re-check.
+**Written:** 2026-10-10, on paper, against the Phase 2 documents as revised on 2026-10-09 and again on 2026-10-10 (UI spec revisions 5 and 6: the developer's new Today pictures). Phase 2 is NOT built. Every Phase 2 file, table and function named here is the Phase 2 PLAN's name. At build time the built code wins; each plan's start_rules say how to re-check.
 **Status:** Ready for the developer to read. NOTHING IS BUILT. PHASE 3.
 **Approval word for a Phase 3 plan:** "go" ("start" and "approved" belong to Phase 1). Phase 2 has its own "go". Phase 3 needs a second, separate "go", said after Phase 2 is built, walked on the phone and closed.
 
@@ -30,7 +30,7 @@ Phase 3 is BUILT only after Phase 2 is built and closed, and after these documen
 
 ### The three answers (developer, 2026-10-09)
 - **D-01 Movie and book days (question 1, option A):** A person may log anything they watched or read lately. No date is asked and nothing says 'earlier'. The skip is there for people who truly have nothing. No requirement edit.
-- **D-02 The reaction (question 2, option A):** One emoji out of exactly six friend-safe ones: heart, laughing, wow, fire, clap, yum. Tap the chosen one again to clear it. The author and friends use the same six (Phase 5 reuses them). ENTRY-01's reaction becomes 'one of six fixed reactions'. The standing rule bans emoji as icons for screen furniture. Here the emoji ARE the reaction content the developer chose, so they appear only as the six characters in the picker and where a chosen reaction is shown, nowhere else. The UI spec says so.
+- **D-02 The reaction (question 2, option A):** One emoji out of exactly six friend-safe ones: love, fire, laughing, wow, sad, sleepy (the six in the developer's picture of 2026-10-10, screen 10; they replace the six tapped on 2026-10-09 and 2026-10-10: heart, laughing, wow, fire, clap, yum). Tap the chosen one again to clear it. The author and friends use the same six (Phase 5 reuses them). ENTRY-01's reaction becomes 'one of six fixed reactions'. The standing rule bans emoji as icons for screen furniture. Here the emoji ARE the reaction content the developer chose, so they appear only as the six characters in the picker and where a chosen reaction is shown, nowhere else. The UI spec says so.
 - **D-03 Editing and deleting (question 3, option A):** The author can change title, stars, reaction, comment and photo at any time, and can delete the post. A deleted post still leaves the day counted as posted and settled, so there is no second post that day. ENTRY-01 gains: 'the author can change or delete a post; a deleted post still counts as a posted day'.
 
 ### Decided earlier (restated, so nothing is asked twice)
@@ -49,7 +49,7 @@ From the question notes (told 2026-10-08, no objection):
 - Title required, 1 to 80 characters, spaces trimmed. Photo required (the feed is photo cards), with a plain placeholder until chosen. Comment optional, up to 140 characters, shown on the entry page (whether the feed card shows it is Phase 5's call).
 - The entry screen is one scrolling page: category word on top (fixed), photo, title, stars, reaction, comment, one dark square Save button.
 - The result screen gets its first button, 'Log it' (a normal 8dp square button), and the line 'Posting it now would count as late.' when it applies.
-- After Log it, Today shows 'Posted.', the updated week card and a plain 'View entry' link to the entry page, which carries Edit and Delete.
+- After Log it, Today shows 'Posted.', the updated week section (Phase 2 revision 5 made the weekly card a plain section) and a plain 'View entry' link to the entry page, which carries Edit and Delete.
 - Skip is a quiet text link, 'Skip this one'. It asks once, then it is final for that day. No reason is asked. It works any time the day is still open, including the late window. After it, Today shows 'Skipped.'. A skip gets its own mark on the week dots and does not count toward the 4.
 - Late is decided by the server clock, never the app. A post sent at 11:59 PM that arrives after midnight counts as late.
 - One entry per day. After spinning again, the entry belongs to the final category, saved with the name it had that day.
@@ -57,8 +57,8 @@ From the question notes (told 2026-10-08, no objection):
 
 Added while writing the plans (2026-10-10, new, told here; change any of them by saying so):
 - **50 MB means 50 x 1024 x 1024 bytes** (52,428,800), one named constant on each side, the same ceiling as profile photos (`maxAvatarBytes` on the server). The developer chose this on 2026-10-09 (the earlier notes said 5 MB, but Phase 1 had dropped its own 5 MB avatar limit after big photos were refused). It is a safety ceiling far above any real photo, so a full-size library photo saves. No resize is possible without a new native module, and none is needed. The walkthrough still tries a full-size library photo and reports the result. Changing the limit later is one constant per side.
-- **Photos show as a square**, centre-cropped, on the entry screen and the entry page. The stored file is the original; Phase 4 and 5 may crop differently.
-- **The six reactions are stored by short name** (`heart`, `laughing`, `wow`, `fire`, `clap`, `yum`). The server and the database hold no emoji. One app file, `lib/entry/reactions.ts`, holds the six characters (exact code points in the UI spec). They draw in the system's own colour, the one sanctioned colour on an otherwise monochrome screen.
+- **Photos show as a square**, centre-cropped, on the entry screen and the entry page. The stored file is the original; Phase 4 and 5 may crop differently. On the entry page (picture 06, 2026-10-10) the square runs edge to edge: no side margins and no radius.
+- **The six reactions are stored by short name** (`love`, `fire`, `laughing`, `wow`, `sad`, `sleepy`). The server and the database hold no emoji. One app file, `lib/entry/reactions.ts`, holds the six characters (exact code points in the UI spec). The list is the reaction row of the developer's picture of 2026-10-10 (screen 10) and Phase 5 uses the same six; it replaces the six they tapped (heart, laughing, wow, fire, clap, yum), because the pictures are newer. They draw in the system's own colour, the one sanctioned colour on an otherwise monochrome screen.
 - **After midnight (late window):** a post or a skip made after midnight keeps Today on 'Posted.' or 'Skipped.' for that spin until the next spin opens. One made before midnight returns to Phase 2's 'Your next spin is coming.' after midnight. This needs one new column, `spins.settled_at`.
 - **The phone sends the spin number it saw** (`spin_seq`) with a post or a skip. If another phone used the bonus spin meanwhile, the server refuses (`spin_changed`) instead of attaching the entry to a category the person never saw.
 - **A retry of Save returns the same entry.** The photo key, which is new for every upload, is the key: same key, same entry, no second post and no error.
@@ -72,7 +72,7 @@ Added while writing the plans (2026-10-10, new, told here; change any of them by
 - **The stars figure:** halves show one decimal ('3.5'), whole numbers show none ('3').
 - **Week edge:** a post or skip made just after midnight on a Monday, for Sunday's spin, belongs to the week that just ended (the server counts it there), but Today's card already shows the new week ('0 of 4') and last week's dots are not shown, so the post can look as if it did not count. The server is right; only the display is off. The skip sheet leaves out its '{n} of {goal}' sentence in that case. Not worth a new screen for a once-a-week window of a few hours; say so if you want it handled.
 - **A pretend posted day for today** (test tools only) makes Today say 'Posted.' with the deleted-entry line. Real use never meets this.
-- **Entry screens live inside the Home stack** (`app/(app)/today/`: `log`, `entry`, `edit-entry`), so the bottom bar stays Home, Spin, Profile and Phase 2's `ls "app/(app)"` check still holds.
+- **Entry screens live inside the Home stack** (`app/(app)/today/`: `log`, `entry`, `edit-entry`), so the bottom bar stays Home, Spin, Profile and Phase 2's `ls "app/(app)"` check still holds. The entry page hides the bar while it shows (a footer takes its place, picture 06); that is done from the screen, not from the layout.
 
 </decisions>
 
@@ -84,6 +84,11 @@ Read before planning or building. Paths are inside the project unless stated.
 ### The questions and answers (outside the project, read only)
 - `/Users/swathivallabhaneni/.local/share/rndmroll-phase2/questions/PHASE3-QUESTIONS.md`: what was decided, the safe defaults and the 'Notes for the plan' (binding). The three answers of 2026-10-09 are D-01 to D-03 above.
 - `/Users/swathivallabhaneni/.local/share/rndmroll-phase2/questions/PHASE4-QUESTIONS.md` and `PHASE5-QUESTIONS.md`: what the diary and the feed expect from Phase 3 (the entry page, the posted-day gate, the key-not-link rule, the six reactions).
+
+### The pictures (inside the repo, untracked like the other reference pictures)
+- `docs/reference/today-screen-1a-1b-2026-10-10.png`: Today before the spin (layout 1a chosen).
+- `docs/reference/today-after-spin-02-2026-10-10.png`: Today after the spin (screen 02): the word, the 'Spun at' stamp row, 'Log it' and 'Skip this one'.
+- `docs/reference/today-skipped-and-entry-05-06-2026-10-10.png`: Today skipped (screen 05) and the entry page (screen 06).
 
 ### Project rules
 - `.planning/PROJECT.md`: stack, standing design rules (no purple gradients, no pill buttons, no emoji-as-icons, no em dashes, no fake counters, no AI-slop copy or photos, no over-the-top animation), launch gate. Light editorial, strict monochrome.
@@ -107,7 +112,7 @@ Read before planning or building. Paths are inside the project unless stated.
 - **Key checks:** `avatarURLAllowed` in `profile.go` shows the rule (own folder prefix, plain file name, no `..`). The entry key rule is the same idea, stricter because the server makes the name.
 - **Text boxes:** `TextField` variant `soft` has the small-caps label, a `hint` on the label row (used for 'Optional' and for the title's '12/80'), the count inside a multiline box, and a `success` note. Single-line boxes draw their text in a 40dp frame (Phase 1 revision 18).
 - **Stars:** Ionicons `star`, `star-half`, `star-outline` all exist in the installed glyph map. The dev-only lab (`lab/components/StarRating.tsx`) shows the read-only idea. The lab is never imported by the app.
-- **Tokens, motion:** `color`, `space`, `radius.md`, `type`, `elevation` from `tokens.ts`; `PressScale`, `FadeInUp`, `ImageReveal` from `lib/motion/primitives.tsx` (its own comment names a planned `RatingSelect`; Phase 3 uses `PressScale` for it, no new primitive). `dateLine()` from Phase 2's `lib/wheel/format.ts` gives 'WED, OCT 8' from a server date.
+- **Tokens, motion:** `color`, `space`, `radius.md`, `type`, `elevation` from `tokens.ts`; `PressScale`, `FadeInUp`, `ImageReveal` from `lib/motion/primitives.tsx` (its own comment names a planned `RatingSelect`; Phase 3 uses `PressScale` for it, no new primitive). `dateLine()` from Phase 2's `lib/wheel/format.ts` gives 'WED, OCT 8' from a server date (it stays the short form; Phase 2 revision 5 added `dateLineLong` for Today's date line, and from this phase's revision 2 the entry page uses `dateLineLong` too, so `dateLine` has no use on screen in this phase).
 - **Today:** Phase 2's store (`lib/wheel/todayStore.ts`), `useToday`, `TodayScreen`, `ResultBlock`, `WeeklyCard`, `StatusMessage`, `ConfirmSheet`, the leave sheet and its `beforeRemove` guard.
 
 ### Gaps to close (nothing of these exists)
@@ -129,9 +134,10 @@ Read before planning or building. Paths are inside the project unless stated.
 ## Specific Ideas
 
 - The stars input is five 44dp stars with a minus button at the left end and a plus button at the right end, so it fits a 375dp-wide phone (308dp of controls in a 327dp column).
-- The skip mark on the week dots is a short ink dash (10dp wide, 2dp tall) in place of the dot. Posted is a filled dot, a past day with nothing is a thin grey ring, a skipped day is the dash. Never colour alone.
+- The skip mark on the week dots is a short ink dash (10dp wide, 2dp tall) in place of the dot. Posted is a filled dot, a past day with nothing is a small grey dot (changed 2026-10-10 by the new Today picture; it was a thin grey ring, and today is the ring), a skipped day is the dash. Never colour alone.
 - The skip sheet says the effect before the person decides: 'You are at 2 of 4 this week. A skipped day doesn't count toward it, and it isn't a miss.'
 - Posted late shows as a plain 'Posted late.' line on Today and on the entry page. The feed's 'Late' badge is Phase 5.
+- The developer's pictures of 2026-10-10 are the look for Today after the spin, Skipped and the entry page. Screens 03 and 04 (probably the entry form and Posted) have not arrived: the entry form stays as the UI spec has it and Posted follows Skipped's layout until they do.
 - Stale, ignore: the 'Rolled 8:26 PM' strings and fake comments in the lab fixtures, and the lab's glass look (feed only, Phase 5).
 
 </specifics>
