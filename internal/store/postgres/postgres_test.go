@@ -742,3 +742,110 @@ func TestMigrations_0003IsReversible(t *testing.T) {
 		}
 	})
 }
+
+// TestMigrations_0004IsReversible walks the test database from the latest
+// version down to 3 and back up to 4. At version 3 the six spin tables are
+// gone and the users are untouched; going back up to 4 makes the tables
+// again, empty. A user and one row in each new table go in first, so the
+// down step has real rows to drop.
+func TestMigrations_0004IsReversible(t *testing.T) {
+	requireMigrationDatabase(t)
+	ctx := context.Background()
+	latest := latestMigration(t)
+	if latest < 4 {
+		t.Fatalf("latest migration is %d, want at least 4", latest)
+	}
+	spinTables := []string{"user_time_zones", "user_spin_state", "wheel_categories", "spins", "posted_days", "goal_weeks"}
+
+	tablesPresent := func(pool *pgxpool.Pool) int {
+		var n int
+		const q = `select count(*) from information_schema.tables
+			where table_schema = 'public' and table_name = any($1::text[])`
+		if err := pool.QueryRow(ctx, q, spinTables).Scan(&n); err != nil {
+			t.Fatalf("table check: %v", err)
+		}
+		return n
+	}
+	rowsIn := func(pool *pgxpool.Pool, table string) int {
+		var n int
+		if err := pool.QueryRow(ctx, `select count(*) from `+table).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		return n
+	}
+
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+		if v, dirty := schemaVersion(t, pool); v != latest || dirty {
+			t.Fatalf("expected version %d (clean) before the test, got %d dirty=%v", latest, v, dirty)
+		}
+		if n := tablesPresent(pool); n != len(spinTables) {
+			t.Fatalf("expected all %d spin tables at the latest version, found %d", len(spinTables), n)
+		}
+		u := mustCreateUser(t, postgres.NewUserRepo(pool), "spin-migration@example.com")
+		stmts := []string{
+			`insert into user_time_zones (user_id, tz_name) values ($1, 'America/New_York')`,
+			`insert into user_spin_state (user_id, seeded_at, seeded_local_date, seeded_tz, weekly_goal)
+				values ($1, now(), current_date, 'America/New_York', 4)`,
+			`insert into wheel_categories (user_id, name, weight, position) values ($1, 'Meal', 3, 0)`,
+			`insert into spins (user_id, local_date, tz_name, kind, seq, category_id, category_name, wheel,
+				winner_index, spun_at, window_opens_at, window_closes_at)
+				select $1, current_date, 'America/New_York', 'daily', 0, id, 'Meal', '[]'::jsonb, 0, now(), now(), now()
+				from wheel_categories where user_id = $1`,
+			`insert into posted_days (user_id, local_date, source) values ($1, current_date, 'test')`,
+			`insert into goal_weeks (user_id, week_start, goal, goal_met_at, bonus_granted)
+				values ($1, current_date, 4, now(), true)`,
+		}
+		for _, s := range stmts {
+			if _, err := pool.Exec(ctx, s, u.ID); err != nil {
+				t.Fatalf("insert a row (%s): %v", strings.Fields(s)[2], err)
+			}
+		}
+		for _, tbl := range spinTables {
+			if rowsIn(pool, tbl) != 1 {
+				t.Fatalf("%s should hold one row before the down step", tbl)
+			}
+		}
+	})
+
+	migrateGoTo(t, 3)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 3 || dirty {
+			t.Fatalf("after goto 3: version %d dirty=%v", v, dirty)
+		}
+		if n := tablesPresent(pool); n != 0 {
+			t.Fatalf("goto 3 must drop all six spin tables, %d remain", n)
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("goto 3 changed the user count to %d, want 1", n)
+		}
+		// set_updated_at() belongs to 0001 and must survive 0004's down file.
+		var fn int
+		if err := pool.QueryRow(ctx, `select count(*) from pg_proc where proname = 'set_updated_at'`).Scan(&fn); err != nil || fn != 1 {
+			t.Fatalf("set_updated_at() count = %d (err %v), want 1", fn, err)
+		}
+	})
+
+	migrateGoTo(t, 4)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 4 || dirty {
+			t.Fatalf("after goto 4: version %d dirty=%v", v, dirty)
+		}
+		if n := tablesPresent(pool); n != len(spinTables) {
+			t.Fatalf("goto 4 must make all six spin tables again, found %d", n)
+		}
+		for _, tbl := range spinTables {
+			if n := rowsIn(pool, tbl); n != 0 {
+				t.Errorf("%s holds %d rows after going back up, want it empty", tbl, n)
+			}
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("user count after goto 4 = %d, want 1", n)
+		}
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("final truncate: %v", err)
+		}
+	})
+}
