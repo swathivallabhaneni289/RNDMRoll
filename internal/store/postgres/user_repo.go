@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,10 @@ func NewUserRepo(pool *pgxpool.Pool) *UserRepo {
 	return &UserRepo{pool: pool}
 }
 
-var _ user.Repository = (*UserRepo)(nil)
+var (
+	_ user.Repository      = (*UserRepo)(nil)
+	_ user.PasswordChanger = (*UserRepo)(nil)
+)
 
 // userColumns is the one column list every query selects or returns, in the
 // order scanUser reads it. It selects whether a birthday is on file, never
@@ -228,4 +232,52 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 		return nil, mapWriteError(err)
 	}
 	return u, nil
+}
+
+// ChangePassword replaces the account's password hash and its sessions in ONE
+// transaction: the new hash is stored, every active refresh token is revoked,
+// and one new token is inserted, so the caller's own session continues and
+// every other phone is signed out at its next refresh. Any error rolls the
+// whole change back (the old hash and the old tokens stay as they were).
+// An account that is gone is user.ErrNotFound and changes nothing.
+//
+// The revoke runs twice, on purpose. A refresh on another phone that is in
+// flight at this moment (it has made its new token and holds the lock on its
+// old one) makes the first revoke wait; the new token it commits was not
+// visible to that statement, so it would survive the change. The second
+// revoke starts after that wait and sees it. A refresh that has not yet
+// locked its old token finds it revoked and rolls back by itself.
+func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	// The users_set_updated_at trigger stamps the row.
+	const setHash = `update users set password_hash = $2 where id = $1`
+	tag, err := tx.Exec(ctx, setHash, userID, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return user.ErrNotFound
+	}
+
+	const revokeAll = `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null`
+	if _, err := tx.Exec(ctx, revokeAll, userID); err != nil {
+		return err
+	}
+
+	const insertToken = `insert into refresh_tokens (user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4::text)`
+	if _, err := tx.Exec(ctx, insertToken, userID, newTokenHash, expiresAt, userAgent); err != nil {
+		return err
+	}
+
+	const revokeOthers = `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null and token_hash <> $2`
+	if _, err := tx.Exec(ctx, revokeOthers, userID, newTokenHash); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

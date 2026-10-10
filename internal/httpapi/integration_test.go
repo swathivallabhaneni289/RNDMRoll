@@ -183,10 +183,14 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	}
 	spinSvc := spin.NewService(postgres.NewSpinRepo(pool), spinClock, rnd)
 
+	// users is the Postgres repository, which is also the PasswordChanger.
+	accountHandler := NewAccountHandler(users, users, refreshSvc, integrationJWTSecret, 15*time.Minute)
+
 	deps := Deps{
 		Auth:      authHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
+		Account:   accountHandler,
 		Spin:      NewSpinHandler(spinSvc),
 		Wheel:     NewWheelHandler(spinSvc),
 		Users:     users,

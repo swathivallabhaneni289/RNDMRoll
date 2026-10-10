@@ -220,3 +220,99 @@ func TestRefresh_RevokeOfAlreadyInvalidTokenStillSucceeds(t *testing.T) {
 		t.Fatalf("Revoke of an unknown/malformed token must tolerate the miss, got: %v", err)
 	}
 }
+
+// --- IssueInTransaction ---
+
+func TestRefresh_IssueInTransactionRawTokenRedeemsAfterASuccessfulPersist(t *testing.T) {
+	repo := newFakeRefreshRepo()
+	const ttl = 30 * 24 * time.Hour
+	svc := NewRefreshService(repo, ttl)
+	userID := uuid.New()
+
+	var gotHash []byte
+	var gotExpiry time.Time
+	before := time.Now()
+	raw, err := svc.IssueInTransaction(context.Background(), func(hash []byte, expiresAt time.Time) error {
+		gotHash, gotExpiry = hash, expiresAt
+		// The caller's own transaction stores it; here the fake does.
+		_, err := repo.Insert(context.Background(), userID, hash, expiresAt, nil)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("IssueInTransaction returned error: %v", err)
+	}
+	if raw == "" {
+		t.Fatal("expected a raw token")
+	}
+	if len(gotHash) != 32 || string(gotHash) == raw {
+		t.Fatalf("persist should receive a SHA-256 digest, got %d bytes", len(gotHash))
+	}
+	if gotExpiry.Before(before.Add(ttl)) || gotExpiry.After(time.Now().Add(ttl)) {
+		t.Fatalf("expiry %v is not now plus the lifetime", gotExpiry)
+	}
+	for _, row := range repo.rows {
+		if row.tokenHash == raw {
+			t.Fatal("stored value must be a digest, never the raw token")
+		}
+	}
+
+	gotUser, newToken, err := svc.Redeem(context.Background(), raw, nil)
+	if err != nil {
+		t.Fatalf("Redeem rejected a token issued in a transaction: %v", err)
+	}
+	if gotUser != userID || newToken == "" || newToken == raw {
+		t.Fatalf("Redeem gave user %s and token %q", gotUser, newToken)
+	}
+}
+
+func TestRefresh_IssueInTransactionReturnsNothingWhenPersistFails(t *testing.T) {
+	repo := newFakeRefreshRepo()
+	svc := NewRefreshService(repo, 30*24*time.Hour)
+	boom := errors.New("transaction failed")
+
+	raw, err := svc.IssueInTransaction(context.Background(), func(hash []byte, expiresAt time.Time) error {
+		return boom
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("expected the persist error, got %v", err)
+	}
+	if raw != "" {
+		t.Fatalf("a token that was never stored must not be handed out, got %q", raw)
+	}
+	if len(repo.rows) != 0 {
+		t.Fatalf("nothing should be stored, found %d rows", len(repo.rows))
+	}
+}
+
+func TestRefresh_IssueInTransactionDoesNothingOnACancelledContext(t *testing.T) {
+	repo := newFakeRefreshRepo()
+	svc := NewRefreshService(repo, 30*24*time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	called := false
+	raw, err := svc.IssueInTransaction(ctx, func(hash []byte, expiresAt time.Time) error {
+		called = true
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || raw != "" || called {
+		t.Fatalf("got token %q, error %v, persist called %v; want no token, context.Canceled, not called", raw, err, called)
+	}
+}
+
+func TestRefresh_IssueInTransactionProducesDistinctTokens(t *testing.T) {
+	svc := NewRefreshService(newFakeRefreshRepo(), 30*24*time.Hour)
+	noop := func(hash []byte, expiresAt time.Time) error { return nil }
+
+	first, err := svc.IssueInTransaction(context.Background(), noop)
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	second, err := svc.IssueInTransaction(context.Background(), noop)
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if first == second {
+		t.Fatal("two tokens made back to back must be distinct")
+	}
+}

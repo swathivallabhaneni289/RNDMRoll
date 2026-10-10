@@ -74,6 +74,26 @@ func (s *RefreshService) Issue(ctx context.Context, userID uuid.UUID, userAgent 
 	return raw, nil
 }
 
+// IssueInTransaction makes a new refresh token and hands its digest and expiry
+// to persist, which stores it as a step of the caller's own transaction (a
+// password change replaces every session with this one token, in one
+// transaction). The raw token is returned only when persist succeeded, so a
+// token that was never stored is never handed out. Only the digest crosses
+// into persist; the raw token never touches storage.
+func (s *RefreshService) IssueInTransaction(ctx context.Context, persist func(hash []byte, expiresAt time.Time) error) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	raw, hash, err := generateRefreshToken()
+	if err != nil {
+		return "", err
+	}
+	if err := persist(hash, time.Now().Add(s.ttl)); err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
 // Redeem exchanges a presented refresh token for the owning user ID and a
 // freshly rotated replacement token, revoking the presented token and
 // inserting the replacement in one transactional call to the repository's

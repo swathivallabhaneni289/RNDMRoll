@@ -74,6 +74,9 @@ func main() {
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
 	usernameHandler := httpapi.NewUsernameHandler(users)
+	// The Postgres user repository is also the PasswordChanger: the password
+	// and the sessions change in one transaction.
+	accountHandler := httpapi.NewAccountHandler(users, users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 
 	// The spin slice has its own clock. Normally it is real time; in test
 	// mode (config.Load has already checked APP_ENV, the allow-list and the
@@ -93,6 +96,7 @@ func main() {
 		Auth:      authHandler,
 		Profile:   profileHandler,
 		Username:  usernameHandler,
+		Account:   accountHandler,
 		Spin:      httpapi.NewSpinHandler(spinService),
 		Wheel:     httpapi.NewWheelHandler(spinService),
 		Users:     users,

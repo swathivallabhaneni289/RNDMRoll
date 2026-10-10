@@ -7,6 +7,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -49,8 +50,12 @@ type fakeUserRepo struct {
 	// no date field, so a test reads it here to prove what was stored.
 	birthdays map[uuid.UUID]string
 	// tokens, when set, lets remove revoke refresh tokens the way the
-	// database does when an account row goes (cascade).
+	// database does when an account row goes (cascade), and lets
+	// ChangePassword replace an account's sessions.
 	tokens *fakeRefreshRepo
+	// changePasswordErr, when set, is what ChangePassword returns before it
+	// changes anything: a test uses it to stand in for a failed transaction.
+	changePasswordErr error
 }
 
 func newFakeUserRepo() *fakeUserRepo {
@@ -263,7 +268,49 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	return &stored, nil
 }
 
-var _ user.Repository = (*fakeUserRepo)(nil)
+// ChangePassword mirrors the Postgres repository's one transaction: the hash,
+// every session and the one new session change together or not at all. It
+// needs the tokens field (the rigs set it) and fails loudly without it, so a
+// rig that forgot to wire it cannot pass by accident.
+func (f *fakeUserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.changePasswordErr != nil {
+		return f.changePasswordErr
+	}
+	if f.tokens == nil {
+		return errors.New("fakeUserRepo.ChangePassword: the tokens field is not wired")
+	}
+	u, ok := f.users[userID]
+	if !ok {
+		return user.ErrNotFound
+	}
+	if err := f.tokens.RevokeAllForUser(ctx, userID); err != nil {
+		return err
+	}
+	if _, err := f.tokens.Insert(ctx, userID, newTokenHash, expiresAt, userAgent); err != nil {
+		return err
+	}
+	hash := passwordHash
+	u.PasswordHash = &hash
+	u.UpdatedAt = time.Now()
+	return nil
+}
+
+// storedPasswordHash returns the password hash on file for id, "" when none.
+func (f *fakeUserRepo) storedPasswordHash(id uuid.UUID) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.users[id]; ok && u.PasswordHash != nil {
+		return *u.PasswordHash
+	}
+	return ""
+}
+
+var (
+	_ user.Repository      = (*fakeUserRepo)(nil)
+	_ user.PasswordChanger = (*fakeUserRepo)(nil)
+)
 
 // --- fakeRefreshRepo: in-memory user.RefreshTokenRepository ---
 
@@ -347,6 +394,20 @@ func (f *fakeRefreshRepo) RevokeAllForUser(ctx context.Context, userID uuid.UUID
 		}
 	}
 	return nil
+}
+
+// activeCount returns how many refresh tokens userID holds that are not
+// revoked.
+func (f *fakeRefreshRepo) activeCount(userID uuid.UUID) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, row := range f.rows {
+		if row.userID == userID && row.revokedAt == nil {
+			n++
+		}
+	}
+	return n
 }
 
 var _ user.RefreshTokenRepository = (*fakeRefreshRepo)(nil)

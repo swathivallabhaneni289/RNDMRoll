@@ -1062,3 +1062,285 @@ func TestMigrations_0005IsReversible(t *testing.T) {
 		}
 	})
 }
+
+// --- change password ---
+
+func activeTokenCount(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int {
+	t.Helper()
+	var n int
+	const q = `select count(*) from refresh_tokens where user_id = $1 and revoked_at is null`
+	if err := pool.QueryRow(context.Background(), q, userID).Scan(&n); err != nil {
+		t.Fatalf("count active tokens: %v", err)
+	}
+	return n
+}
+
+func storedPasswordHash(t *testing.T, pool *pgxpool.Pool, id uuid.UUID) string {
+	t.Helper()
+	var h *string
+	if err := pool.QueryRow(context.Background(), `select password_hash from users where id = $1`, id).Scan(&h); err != nil {
+		t.Fatalf("read password hash: %v", err)
+	}
+	if h == nil {
+		return ""
+	}
+	return *h
+}
+
+func TestUserRepo_ChangePassword_ReplacesHashAndEverySession(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	tokens := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+
+	owner, err := repo.CreateComplete(ctx, newAccount("pw-change@example.com", "pw_change"))
+	if err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	other, err := repo.CreateComplete(ctx, newAccount("pw-other@example.com", "pw_other"))
+	if err != nil {
+		t.Fatalf("create other: %v", err)
+	}
+
+	hashA := []byte("pw-change-token-a-000000000001")
+	hashB := []byte("pw-change-token-b-000000000001")
+	hashC := []byte("pw-change-token-c-000000000001")
+	hashOther := []byte("pw-change-token-o-000000000001")
+	for _, h := range [][]byte{hashA, hashB, hashC} {
+		if _, err := tokens.Insert(ctx, owner.ID, h, expires, nil); err != nil {
+			t.Fatalf("insert token: %v", err)
+		}
+	}
+	if _, err := tokens.Insert(ctx, other.ID, hashOther, expires, nil); err != nil {
+		t.Fatalf("insert other's token: %v", err)
+	}
+	// C was revoked earlier (a log out); the change must leave that moment as
+	// it was, not stamp it again.
+	if err := tokens.RevokeByHash(ctx, hashC); err != nil {
+		t.Fatalf("revoke C: %v", err)
+	}
+	var revokedBefore time.Time
+	const revokedAtQ = `select revoked_at from refresh_tokens where token_hash = $1`
+	if err := pool.QueryRow(ctx, revokedAtQ, hashC).Scan(&revokedBefore); err != nil {
+		t.Fatalf("read C's revoked_at: %v", err)
+	}
+	var updatedBefore time.Time
+	if err := pool.QueryRow(ctx, `select updated_at from users where id = $1`, owner.ID).Scan(&updatedBefore); err != nil {
+		t.Fatalf("read updated_at: %v", err)
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 2 {
+		t.Fatalf("expected 2 active tokens before the change, got %d", n)
+	}
+
+	newTokenHash := []byte("pw-change-token-new-0000000001")
+	agent := "RNDMRoll test phone"
+	if err := repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", newTokenHash, expires, &agent); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	if got := storedPasswordHash(t, pool, owner.ID); got != "new-bcrypt-hash" {
+		t.Fatalf("stored hash = %q, want the new one", got)
+	}
+	for name, h := range map[string][]byte{"A": hashA, "B": hashB, "C": hashC} {
+		if _, err := tokens.GetActiveByHash(ctx, h); !errors.Is(err, user.ErrTokenInvalid) {
+			t.Errorf("token %s after the change: got %v, want ErrTokenInvalid", name, err)
+		}
+	}
+	live, err := tokens.GetActiveByHash(ctx, newTokenHash)
+	if err != nil {
+		t.Fatalf("the new token should be active: %v", err)
+	}
+	if live.UserID != owner.ID {
+		t.Fatalf("the new token belongs to %v, want %v", live.UserID, owner.ID)
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 1 {
+		t.Fatalf("active tokens after the change = %d, want exactly 1", n)
+	}
+	var revokedAfter time.Time
+	if err := pool.QueryRow(ctx, revokedAtQ, hashC).Scan(&revokedAfter); err != nil || !revokedAfter.Equal(revokedBefore) {
+		t.Errorf("C's revoked_at changed from %v to %v (err %v)", revokedBefore, revokedAfter, err)
+	}
+	var storedAgent *string
+	if err := pool.QueryRow(ctx, `select user_agent from refresh_tokens where token_hash = $1`, newTokenHash).Scan(&storedAgent); err != nil || storedAgent == nil || *storedAgent != agent {
+		t.Errorf("the new token's user agent = %v (err %v), want %q", storedAgent, err, agent)
+	}
+	var updatedAfter time.Time
+	if err := pool.QueryRow(ctx, `select updated_at from users where id = $1`, owner.ID).Scan(&updatedAfter); err != nil || !updatedAfter.After(updatedBefore) {
+		t.Errorf("updated_at did not move: %v then %v (err %v)", updatedBefore, updatedAfter, err)
+	}
+
+	// The other account is untouched.
+	if _, err := tokens.GetActiveByHash(ctx, hashOther); err != nil {
+		t.Errorf("another account's token was revoked: %v", err)
+	}
+	if got := storedPasswordHash(t, pool, other.ID); got != "bcrypt-hash" {
+		t.Errorf("another account's hash changed to %q", got)
+	}
+	if n := countUsers(t, pool); n != 2 {
+		t.Errorf("user count = %d, want 2", n)
+	}
+}
+
+func TestUserRepo_ChangePassword_UnknownAccountChangesNothing(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	tokens := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+
+	owner, err := repo.CreateComplete(ctx, newAccount("pw-bystander@example.com", "pw_bystander"))
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	existing := []byte("pw-unknown-existing-0000000001")
+	if _, err := tokens.Insert(ctx, owner.ID, existing, expires, nil); err != nil {
+		t.Fatalf("insert token: %v", err)
+	}
+
+	newTokenHash := []byte("pw-unknown-new-token-000000001")
+	err = repo.ChangePassword(ctx, uuid.New(), "new-bcrypt-hash", newTokenHash, expires, nil)
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Fatalf("ChangePassword for an unknown account: got %v, want ErrNotFound", err)
+	}
+
+	var rows int
+	if err := pool.QueryRow(ctx, `select count(*) from refresh_tokens`).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("refresh_tokens rows = %d (err %v), want 1: nothing may be inserted", rows, err)
+	}
+	if _, err := tokens.GetActiveByHash(ctx, existing); err != nil {
+		t.Errorf("a bystander's token changed: %v", err)
+	}
+	if got := storedPasswordHash(t, pool, owner.ID); got != "bcrypt-hash" {
+		t.Errorf("a bystander's hash changed to %q", got)
+	}
+}
+
+func TestUserRepo_ChangePassword_RollsBackWhenTheTokenInsertFails(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	tokens := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+
+	owner, err := repo.CreateComplete(ctx, newAccount("pw-rollback@example.com", "pw_rollback"))
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	hashA := []byte("pw-rollback-token-a-0000000001")
+	hashB := []byte("pw-rollback-token-b-0000000001")
+	for _, h := range [][]byte{hashA, hashB} {
+		if _, err := tokens.Insert(ctx, owner.ID, h, expires, nil); err != nil {
+			t.Fatalf("insert token: %v", err)
+		}
+	}
+
+	// A new token whose digest is already stored: the insert breaks the unique
+	// index after the hash was written and the sessions revoked.
+	err = repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", hashA, expires, nil)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		t.Fatalf("ChangePassword with a duplicate token hash: got %v, want a unique violation", err)
+	}
+
+	if got := storedPasswordHash(t, pool, owner.ID); got != "bcrypt-hash" {
+		t.Errorf("the hash is %q after a failed change, want the old one", got)
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 2 {
+		t.Errorf("active tokens = %d after a failed change, want the 2 the account had", n)
+	}
+	for name, h := range map[string][]byte{"A": hashA, "B": hashB} {
+		if _, err := tokens.GetActiveByHash(ctx, h); err != nil {
+			t.Errorf("token %s after a failed change: %v", name, err)
+		}
+	}
+}
+
+// waitForALockWait polls until some backend is waiting on a lock, so a test
+// can be sure a statement is blocked before it lets the holder go.
+func waitForALockWait(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var n int
+		const q = `select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`
+		if err := pool.QueryRow(context.Background(), q).Scan(&n); err == nil && n > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("no statement ever waited on a row lock")
+}
+
+// A refresh on another phone that is in flight while the password changes (it
+// has inserted its new token and holds the lock on its old one, and has not
+// committed) must not leave a live session behind. The change waits for that
+// lock; the token the refresh then commits was invisible to the change's
+// first revoke, so only the second revoke can end it.
+func TestUserRepo_ChangePassword_RevokesARefreshThatCommitsWhileItRuns(t *testing.T) {
+	pool := requireTestPool(t)
+	repo := postgres.NewUserRepo(pool)
+	tokens := postgres.NewRefreshTokenRepo(pool)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+
+	owner, err := repo.CreateComplete(ctx, newAccount("pw-inflight@example.com", "pw_inflight"))
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	oldHash := []byte("pw-inflight-old-token-00000001")
+	oldID, err := tokens.Insert(ctx, owner.ID, oldHash, expires, nil)
+	if err != nil {
+		t.Fatalf("insert old token: %v", err)
+	}
+
+	// The other phone's refresh, stopped just before its commit.
+	rotating, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rotating.Rollback(ctx) //nolint:errcheck // a no-op once committed; frees the lock if the test stops early
+	rotatedHash := []byte("pw-inflight-rotated-0000000001")
+	var rotatedID uuid.UUID
+	const insertQ = `insert into refresh_tokens (user_id, token_hash, expires_at) values ($1, $2, $3) returning id`
+	if err := rotating.QueryRow(ctx, insertQ, owner.ID, rotatedHash, expires).Scan(&rotatedID); err != nil {
+		t.Fatalf("in-flight insert: %v", err)
+	}
+	const rotateQ = `update refresh_tokens set revoked_at = now(), rotated_to = $1 where id = $2 and revoked_at is null`
+	if _, err := rotating.Exec(ctx, rotateQ, rotatedID, oldID); err != nil {
+		t.Fatalf("in-flight rotate: %v", err)
+	}
+
+	// The password change starts and has to wait for that row.
+	newHash := []byte("pw-inflight-new-token-00000001")
+	done := make(chan error, 1)
+	go func() {
+		done <- repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", newHash, expires, nil)
+	}()
+	waitForALockWait(t, pool)
+
+	if err := rotating.Commit(ctx); err != nil {
+		t.Fatalf("commit the in-flight refresh: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ChangePassword: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ChangePassword never finished")
+	}
+
+	if got := storedPasswordHash(t, pool, owner.ID); got != "new-bcrypt-hash" {
+		t.Errorf("stored hash = %q, want the new one", got)
+	}
+	if _, err := tokens.GetActiveByHash(ctx, rotatedHash); !errors.Is(err, user.ErrTokenInvalid) {
+		t.Errorf("the token the in-flight refresh committed is still live: got %v, want ErrTokenInvalid", err)
+	}
+	if _, err := tokens.GetActiveByHash(ctx, newHash); err != nil {
+		t.Errorf("the new token should be active: %v", err)
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 1 {
+		t.Errorf("active tokens = %d, want exactly the new one", n)
+	}
+}

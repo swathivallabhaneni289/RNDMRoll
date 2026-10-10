@@ -38,21 +38,25 @@ const (
 // Fixed reasons RespondFieldError understands. Each maps to fixed text, so
 // neither database text nor the caller's own input ever appears in a body.
 const (
-	reasonRequired = "required"
-	reasonInvalid  = "invalid"
-	reasonTooShort = "too_short"
-	reasonTooLong  = "too_long"
-	reasonFuture   = "future"
-	reasonNotAllow = "not_allowed"
+	reasonRequired  = "required"
+	reasonInvalid   = "invalid"
+	reasonTooShort  = "too_short"
+	reasonTooLong   = "too_long"
+	reasonFuture    = "future"
+	reasonNotAllow  = "not_allowed"
+	reasonIncorrect = "incorrect"
+	reasonUnchanged = "unchanged"
 )
 
 var fieldReasonText = map[string]string{
-	reasonRequired: "This field is required.",
-	reasonInvalid:  "This value is not valid.",
-	reasonTooShort: "This value is too short.",
-	reasonTooLong:  "This value is too long.",
-	reasonFuture:   "That date is in the future.",
-	reasonNotAllow: "This value can't be changed here.",
+	reasonRequired:  "This field is required.",
+	reasonInvalid:   "This value is not valid.",
+	reasonTooShort:  "This value is too short.",
+	reasonTooLong:   "This value is too long.",
+	reasonFuture:    "That date is in the future.",
+	reasonNotAllow:  "This value can't be changed here.",
+	reasonIncorrect: "That password is not right.",
+	reasonUnchanged: "Choose a different password.",
 }
 
 // Respond writes body as JSON with status.
@@ -93,8 +97,9 @@ func RespondError(c *gin.Context, err error) {
 
 // RespondFieldError writes a 400 validation_failed response that names the
 // request field that failed. field is one of email, password, birthday,
-// name, username, bio, avatar_url or account_visibility; reason is one of the
-// fixed reason constants above. The message is fixed text.
+// name, username, bio, avatar_url, account_visibility, current_password or
+// new_password; reason is one of the fixed reason constants above. The message
+// is fixed text.
 func RespondFieldError(c *gin.Context, field, reason string) {
 	text, ok := fieldReasonText[reason]
 	if !ok {

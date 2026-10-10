@@ -45,6 +45,8 @@ type fullTestRig struct {
 	srv     *Server
 	users   user.Repository
 	refresh *auth.RefreshService
+	// tokens is the in-memory refresh-token store behind refresh.
+	tokens *fakeRefreshRepo
 
 	spinSvc  *spin.Service
 	spinRepo *spintest.MemRepo
@@ -62,6 +64,11 @@ type rigOptions struct {
 	toolEmails []string
 	// perUser, when set, is the spin clock instead of a Fixed one.
 	perUser *clock.PerUser
+	// account registers the change-password route. The user repository must
+	// then implement user.PasswordChanger (fakeUserRepo does).
+	account bool
+	// logger is the logger handed to NewServer; nil discards.
+	logger *slog.Logger
 }
 
 func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
@@ -82,7 +89,10 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	profileHandler := NewProfileHandler(usersRepo, &fakeAvatarStore{}, testAvatarBaseURL)
 	usernameHandler := NewUsernameHandler(usersRepo)
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := opts.logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 
 	spinRepo := spintest.NewMemRepo()
 	rnd := spintest.NewQueueRand(20261007)
@@ -109,11 +119,19 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
 	}
+	if opts.account {
+		passwords, ok := usersRepo.(user.PasswordChanger)
+		if !ok {
+			t.Fatalf("rigOptions.account needs a user repository that implements user.PasswordChanger, got %T", usersRepo)
+		}
+		deps.Account = NewAccountHandler(usersRepo, passwords, refreshSvc, testServerJWTSecret, 15*time.Minute)
+	}
 
 	return &fullTestRig{
 		srv:      NewServer(deps),
 		users:    usersRepo,
 		refresh:  refreshSvc,
+		tokens:   tokens,
 		spinSvc:  spinSvc,
 		spinRepo: spinRepo,
 		clock:    fixed,

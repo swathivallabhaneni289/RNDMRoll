@@ -107,11 +107,18 @@ func profileBody(u *user.User) gin.H {
 	}
 }
 
-// currentUser returns the caller's account: the row RequireUser already
-// loaded for this request, or a fresh lookup when the route is mounted
-// without it. A missing account answers 401 token_invalid (the account was
-// deleted since the token was minted) and reports ok = false.
+// currentUser returns the caller's account (see callerAccount).
 func (h *ProfileHandler) currentUser(c *gin.Context) (*user.User, bool) {
+	return callerAccount(c, h.users)
+}
+
+// callerAccount returns the signed-in caller's account: the row RequireUser
+// already loaded for this request, or a fresh lookup in users when the route
+// is mounted without it. A missing account answers 401 token_invalid (the
+// account was deleted since the token was minted) and reports ok = false. The
+// id comes only from the token's subject, never from the request. The profile
+// and account handlers both find the caller this way.
+func callerAccount(c *gin.Context, users user.Repository) (*user.User, bool) {
 	if u, err := middleware.UserFromContext(c); err == nil {
 		return u, true
 	}
@@ -120,7 +127,7 @@ func (h *ProfileHandler) currentUser(c *gin.Context) (*user.User, bool) {
 		RespondError(c, user.ErrTokenInvalid)
 		return nil, false
 	}
-	u, err := h.users.GetByID(c.Request.Context(), subject)
+	u, err := users.GetByID(c.Request.Context(), subject)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
 			RespondError(c, user.ErrTokenInvalid)

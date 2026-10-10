@@ -53,6 +53,19 @@ type Repository interface {
 	CreateComplete(ctx context.Context, in NewAccount) (*User, error)
 }
 
+// PasswordChanger replaces an account's password and its sessions in ONE
+// transaction. It is deliberately not part of Repository: only the Postgres
+// repository and the httpapi test fake implement it, so no other Repository
+// double has to grow a method.
+type PasswordChanger interface {
+	// ChangePassword stores passwordHash for userID, revokes every active
+	// refresh token the account holds, and inserts one new token
+	// (newTokenHash, expiresAt, userAgent), all in one transaction: on any
+	// error nothing at all has changed. It returns ErrNotFound when the
+	// account is gone.
+	ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error
+}
+
 // RefreshToken is the domain representation of a refresh_tokens row.
 type RefreshToken struct {
 	ID        uuid.UUID
