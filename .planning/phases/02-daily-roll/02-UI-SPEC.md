@@ -3,13 +3,13 @@ phase: 2
 slug: daily-roll
 status: draft
 created: 2026-10-07
-revision: 7
+revision: 8
 approval_word: go
 ---
 
 # Phase 2 - UI Design Contract (Daily Roll, "the spin")
 
-> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's pictures of 2026-10-10 are the layout source: layout 1a (`docs/reference/today-screen-1a-1b-2026-10-10.png`), the screen after the spin (`docs/reference/today-after-spin-02-2026-10-10.png`) and the skipped and entry-page screens (`docs/reference/today-skipped-and-entry-05-06-2026-10-10.png`); they replace the picture of 2026-10-07 (`today-screen-mockup-2026-10-07.png`). Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed. Revision 4 (2026-10-09, later that day): Phase 1 removed Apple and Google sign-in completely, so the one-time photo-and-bio page follows a sign-up only (sections 1 and 9). No decision changed. Revision 5 (2026-10-10): the developer chose layout 1a of their new picture by tap and said they want the page "very similar" to it. Changes: the bell is in and opens a Notifications page (4.5); the round header photo is gone; nothing sits under the heading in any state (the line moved into the state block); the countdown reads "Opens at 8:00 PM" over the digits; "Edit wheel" sits under the state block; the weekly card becomes an open week section with new dot marks (section 6); the wheel is black and light with a light hub and a dot, and words sit across the wedge (section 3); the Spin button is a circle, outlined while locked and solid black when the spin opens (section 8); the heading and countdown use a lighter serif, which adds three text roles (section 2). Wedge widths still follow the weights. Nothing is built; the choices to check are at the end of section 13. Revision 6 (2026-10-10, later that day): the developer sent the screen after the spin and said "this is how it should look after the spin". Changes: after the spin the wheel is not drawn and the word fills its place in a large lighter serif (new role `hero`), with a rule and "Spun at 8:02 PM" under it (4.3); the "Your category" label and the "Next spin opens" lines are gone from Today; the "Edit wheel" link shows only while the wheel shows; a bonus spin brings the wheel back; the reveal and the server shape change (`spun_local_time`, `next_open_weekday`); three more text roles (`hero`, `heroSmall`, `note`). The Posted and Skipped looks and the entry page are in 03-UI-SPEC. Revision 7 (2026-10-10, evening, D-23): the developer saw Edit wheel on the phone and did not want the chances shown, and asked for one shape for everything and no grey. Every category has the same chance (weight 1), so Edit wheel has no stepper, no percentage and no intro line about higher numbers (section 7, copy in section 10); the wheel is only `ink` and `secondary` for every count, with a 1.5dp `dominant` seam between all wedges and no grey wedge (sections 2 and 3), so the `wheelMid` token of revision 5 is gone. Wedge widths are equal (section 3), not "still following the weights" as the revision 5 note says.
+> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's pictures of 2026-10-10 are the layout source: layout 1a (`docs/reference/today-screen-1a-1b-2026-10-10.png`), the screen after the spin (`docs/reference/today-after-spin-02-2026-10-10.png`) and the skipped and entry-page screens (`docs/reference/today-skipped-and-entry-05-06-2026-10-10.png`); they replace the picture of 2026-10-07 (`today-screen-mockup-2026-10-07.png`). Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed. Revision 4 (2026-10-09, later that day): Phase 1 removed Apple and Google sign-in completely, so the one-time photo-and-bio page follows a sign-up only (sections 1 and 9). No decision changed. Revision 5 (2026-10-10): the developer chose layout 1a of their new picture by tap and said they want the page "very similar" to it. Changes: the bell is in and opens a Notifications page (4.5); the round header photo is gone; nothing sits under the heading in any state (the line moved into the state block); the countdown reads "Opens at 8:00 PM" over the digits; "Edit wheel" sits under the state block; the weekly card becomes an open week section with new dot marks (section 6); the wheel is black and light with a light hub and a dot, and words sit across the wedge (section 3); the Spin button is a circle, outlined while locked and solid black when the spin opens (section 8); the heading and countdown use a lighter serif, which adds three text roles (section 2). Wedge widths still follow the weights. Nothing is built; the choices to check are at the end of section 13. Revision 6 (2026-10-10, later that day): the developer sent the screen after the spin and said "this is how it should look after the spin". Changes: after the spin the wheel is not drawn and the word fills its place in a large lighter serif (new role `hero`), with a rule and "Spun at 8:02 PM" under it (4.3); the "Your category" label and the "Next spin opens" lines are gone from Today; the "Edit wheel" link shows only while the wheel shows; a bonus spin brings the wheel back; the reveal and the server shape change (`spun_local_time`, `next_open_weekday`); three more text roles (`hero`, `heroSmall`, `note`). The Posted and Skipped looks and the entry page are in 03-UI-SPEC. Revision 7 (2026-10-10, evening, D-23): the developer saw Edit wheel on the phone and did not want the chances shown, and asked for one shape for everything and no grey. Every category has the same chance (weight 1), so Edit wheel has no stepper, no percentage and no intro line about higher numbers (section 7, copy in section 10); the wheel is only `ink` and `secondary` for every count, with a 1.5dp `dominant` seam between all wedges and no grey wedge (sections 2 and 3), so the `wheelMid` token of revision 5 is gone. Wedge widths are equal (section 3), not "still following the weights" as the revision 5 note says. Revision 8 (2026-10-10, late, D-24): the developer asked for Diary and Board next to Home, Spin and Profile and said "I don't see a spin button". The bottom bar has five items in the order of their pictures (Home, Diary, Spin, Board, Profile); Diary and Board are plain pages until Phases 4 and 5 (sections 1, 8, 10); and the Spin button is a 64dp light grey circle while locked, as in their pictures, not an outlined 56dp one (sections 8, 11, 13).
 
 ## 1. What this phase puts on screen
 
@@ -20,7 +20,8 @@ approval_word: go
 | Notifications page | pushed from the bell on Today, `app/(app)/today/notifications` | New. Says "Nothing new yet." until Phase 5 (4.5). |
 | Profile tab | the "Make it yours." page in edit mode | Moved into a tab, four small changes (section 9). |
 | First-run page | the "Make it yours." photo-and-bio page (Phase 1's page 2, extras mode), on the Profile route | Phase 1's page, unchanged. Phase 2 only hides the bottom bar on it and ends it on Today (sections 8 and 9). |
-| Bottom bar | Home, Spin, Profile | New. Diary and Board do not exist yet and get no placeholder tabs. |
+| Bottom bar | Home, Diary, Spin, Board, Profile | New. Five items, as in the developer's pictures. Diary and Board open plain pages until Phases 4 and 5 (section 8). |
+| Diary and Board tabs | `app/(app)/diary.tsx`, `app/(app)/board.tsx` | New. A title and the line "Nothing here yet.", nothing else (section 8). |
 | Phase 1 placeholder page | `app/(app)/home.tsx`: "You're in." / "Your daily spin will appear here." | Removed. Today replaces it. |
 
 **Landing (no decision named it):** a signed-in, finished account lands on Today, with one exception: right after a sign-up it lands once on the photo-and-bio page (section 9), and Continue or Skip for now then end on Today. Signed-out flow unchanged.
@@ -223,24 +224,28 @@ Opened by the "Edit wheel" link under the state block on Today (section 4, item 
 
 ## 8. Bottom bar
 
-Three items: Home, Spin, Profile. `dominant` fill, 1dp `divider` top border, 56dp plus the bottom safe area. Nothing for Diary or Board.
+Five items, in this order: Home, Diary, Spin, Board, Profile. `dominant` fill, 1dp `divider` top border, 56dp plus the bottom safe area. (Revisions 2 to 7 had three items and no tabs for Diary and Board; revision 8, D-24, adds them.)
 
 **Hidden on the first-run page.** While the photo-and-bio page (section 9) is on screen the bar is not drawn at all. That page is still part of signing up, it has no Back and no Log out, and a bar would let the person step sideways past it. The bar appears with Today. (Decided as suggested on 2026-10-09; the developer can flip it in the walkthrough.)
 
 | Item (Ionicons, Label size) | Idle | Active |
 |---|---|---|
 | Home | `home-outline`, `muted` | `home-outline`, `ink` |
+| Diary | `book-outline`, `muted` | `book-outline`, `ink` |
+| Board | `people-outline`, `muted` | `people-outline`, `ink` |
 | Profile | `person-outline`, `muted` | `person-outline`, `ink` |
 
 Icons are 24dp inside a 44dp hit area; labels are Label size (14). The picture uses outline glyphs only, so the active tab is shown by colour alone and the label font stays the same. No bouncing icons.
 
-The pictures of 2026-10-10 (screens 02 and 05) show five tabs: Home, Diary, Roll, Board and Profile, the final bar. Phase 2 and 3 build the three above; Diary arrives in Phase 4 and Board in Phase 5, and the middle stays the Spin button. The pictured word "Roll" and its light grey filled circle with an asterisk are not used (spin wording; the looks below are the developer's own words of 2026-10-10).
+The pictures of 2026-10-10 (screens 02, 05 and 09) show this bar of five tabs, and it is built as drawn. Two things differ from the picture: the word under the middle button is "Spin", not "Roll" (spin wording), and the mark inside it is the app's own wheel logo, not the pictured asterisk.
 
-**Spin button, middle.** A circle, 56dp (`radius.full`, a named exception, see Round shapes), its top edge 8dp above the bar's top edge. The label "Spin" sits under it, `muted` in both looks. It is an action and never shows as the selected tab. It has two looks, chosen by the server's state:
-- **Locked** (every state except `open`: Loading, Waiting, Spinning, Result, Late, Posted, Skipped, Offline on load): `dominant` fill, a 1.5dp `ink` outline, and inside it the app's own wheel mark (`BrandMark`, the developer's logo) at 28dp in `ink` with `dominant` wedges. Locked is not dimmed and not disabled; it only says that no spin can start right now.
-- **Open** (state `open`, which includes Offline on spin): solid `ink` fill, no outline, the same mark inverted (`dominant` disc, `ink` wedges).
+**Diary and Board pages.** Each of the two tabs opens a plain page until Phase 4 (Diary) and Phase 5 (Board) fill it: the title ("Diary" or "Board") in the `title` role, `lg` (24) below the top safe area, and one Label line under it in `muted`: "Nothing here yet." The side margins are `lg`. No bell, list, button or picture. The title is a header element. The bar is the same as on Today, and the active tab is shown by colour alone.
 
-There is no shadow or elevation in either look, and no animation between them (with or without Reduce Motion): the fill simply changes when the state does. The top 8dp above the bar must still be tappable (device check).
+**Spin button, middle.** A circle, 64dp (`radius.full`, a named exception, see Round shapes), its top edge 12dp above the bar's top edge, as in the developer's pictures. The label "Spin" sits under it, `muted` in both looks. It is an action and never shows as the selected tab. It has two looks, chosen by the server's state:
+- **Locked** (every state except `open`: Loading, Waiting, Spinning, Result, Late, Posted, Skipped, Offline on load): `secondary` (light grey) fill, no outline, and inside it the app's own wheel mark (`BrandMark`, the developer's logo) at 30dp in `ink` with `secondary` wedges, so the wedges read as cut-outs. Locked is not dimmed and not disabled; it only says that no spin can start right now. (The 1.5dp outline of revisions 5 to 7 is gone: the grey circle is the developer's picture.)
+- **Open** (state `open`, which includes Offline on spin): solid `ink` fill, no outline, the same 30dp mark inverted (`dominant` disc, `ink` wedges).
+
+There is no shadow or elevation in either look, and no animation between them (with or without Reduce Motion): the fill simply changes when the state does. The top 12dp above the bar must still be tappable (device check).
 
 What a press does:
 - Open and unspun: goes to Home and starts the spin once Today has loaded and is still open.
@@ -294,7 +299,9 @@ Every string the person sees. "Spin" wording, plain words, no em dashes, no lega
 | Retry button | Try again |
 | Edit wheel | Edit wheel / Changes show on your next spin. / Remove / Add a category / You can have up to 12 categories. / A wheel needs at least 2 categories. / Removed categories stay in your past spins. / Give this category a name. / You already have a category with this name. / Save wheel |
 | Leave sheet | Leave without saving? / Your changes will be lost. / Leave / Keep editing |
-| Bottom bar | Home / Spin / Profile |
+| Bottom bar | Home / Diary / Spin / Board / Profile |
+| Diary page | Diary / Nothing here yet. (N) |
+| Board page | Board / Nothing here yet. (N) |
 | Profile tab | Saved. (the only new string; Continue, Save changes and everything on the first-run page are Phase 1's) |
 | Removed with the placeholder page | You're in. / Your daily spin will appear here. (Phase 1 strings, still on Phase 1's keep-or-change list; Phase 2 deletes the page they sit on) |
 | Starting category names | Meal, Movie, Song, Book, Place, Game |
@@ -309,9 +316,10 @@ The existing offline string and generic fallback are reused. New server error co
 - **Week section.** One element: "{n} of {goal} this week." (then "You have a bonus spin." when held), then each day by the server's weekday name, "Monday posted, Tuesday not posted" (Phase 3 adds "skipped"), and so on. Filled against ring against small dot, never colour alone.
 - **Bell.** A button, label "Notifications", hint "Opens your notifications.", hit area 44dp.
 - **Spin button.** A button, label "Spin", with the hint of section 8. Its two looks are not told by colour alone: the hint says when it opens.
+- **Diary and Board tabs.** Read as "Diary" and "Board". On their pages the title is a header element and the line under it is plain text.
 - **Edit wheel.** Name field "Category name". "Remove {name}". There is no stepper and no number to read. The preview is hidden from VoiceOver.
 - **Profile tab.** The "Saved." line is a polite live region, so VoiceOver reads it once when it appears.
-- **Targets.** Every tappable is at least 44dp (hub 64, Spin button 56, bell 44, rows 56).
+- **Targets.** Every tappable is at least 44dp (hub 64, Spin button 64, bell 44, rows 56).
 - **Contrast.** `muted` on `dominant` 5.82:1, wedge labels 15.26:1 or better, `ink` text 17.32:1.
 
 ## 12. Notes for the plan (build only after Phase 1 is closed)
@@ -319,7 +327,7 @@ The existing offline string and generic fallback are reused. New server error co
 This contract is built only after Phase 1 is closed and these documents are copied into the main tree by hand, with the REQUIREMENTS, ROADMAP and PROJECT edits listed in the context file (hand edit 7 covers the Phase 1 `01-UI-SPEC.md` "Coordination with Phase 2" line).
 
 - **Cold launch.** Replacing the `(app)` Stack with Tabs and changing the landing in `app/index.tsx` (it now also reads `extrasPending`: `/(app)/profile` during first run, `/(app)/today` otherwise) are launch-file changes. After them, cold-launch the dev client (`xcrun simctl terminate booted com.rndmroll.app; xcrun simctl launch booted com.rndmroll.app`) and confirm the first screen in every case of plan 02-03 Task 2, including "just signed up" (the photo-and-bio page first, no bar, no flash of Today). Never relaunch while a new person is on that page: the flag is in memory and a relaunch skips the page. Redirect to an explicit child such as `/(app)/today`, never a bare `/(app)`.
-- **Placeholder page.** Delete `app/(app)/home.tsx`: under Tabs every file left in `app/(app)/` becomes a tab by itself, and the bar must show exactly three items.
+- **Placeholder page.** Delete `app/(app)/home.tsx`: under Tabs every file left in `app/(app)/` becomes a tab by itself, and the bar must show exactly five items (Home, Diary, Spin, Board, Profile; revision 8).
 - **No new native module.** Tabs come from expo-router; drawing uses react-native-svg and reanimated; icons are Ionicons. Never run `expo lint`.
 - **Screen insets.** `Screen` gets an `edges` choice so the bottom inset is not counted twice inside Tabs. The default stays for signed-out screens and for the first-run page (its bar is hidden, so nothing else adds the bottom inset); Today and the edit-mode Profile page pass the top, left and right edges.
 - **Radius allow-list** (from the code on 2026-10-09). The 24dp token `radius.lg` is used only by `components/ui/PhotoPanel.tsx`, `components/profile/BirthdayPickerField.tsx` (the date sheet, Phase 1 plan 01-21), `components/profile/ProfileForm.tsx` (the log-out sheet) and, new in Phase 2, `components/ui/ConfirmSheet.tsx`. `radius.full` is used only by `components/ui/IconBadge.tsx`, `components/brand/DialAvatar.tsx` and, new in revision 5, `components/nav/SpinTabButton.tsx` (the round Spin button). Plan 02-03 Task 2 scans for exactly these files.
@@ -328,7 +336,7 @@ This contract is built only after Phase 1 is closed and these documents are copi
 - **API.** `lib/api/spin.ts` (not "roll", so the word scans stay meaningful), using GET, POST and PATCH only, so "Save wheel" is one PATCH of the whole list. Spin responses carry the wheel used. The server sends the open time, the close time and its own "now", plus two ready-made strings so the phone does no date or time maths: `spin.spun_local_time` ("8:02 PM") and `next_open_weekday` ("Friday").
 - **Text roles and fonts (revision 5).** `title`, `countdown`, `wheelLabel`, `hero`, `heroSmall` and `note` join the `type` group and are pinned in `tokens.test-assert.ts` in the same task (read that file first: its shape pin changes). `lib/theme/fonts.ts` loads `Domine_400Regular` and its `systemFallback` gets the new roles; `components/ui/AppText.tsx` gets the role names. Colour: no wheel token is added (the six `wheel1` to `wheel6` tokens of revision 4 are not added, and revision 5's `wheelMid` was dropped in revision 7); the wheel uses `ink`, `secondary` and `dominant`.
 - **The mark.** The Spin button reuses `components/brand/BrandMark.tsx` (props `color` and `wedgeColor`), not a new drawing. That file is not edited.
-- **Notifications route.** `app/(app)/today/notifications.tsx` joins the Today Stack beside `edit-wheel`; the list of `app/(app)` stays `_layout.tsx`, `profile`, `spin.tsx` and `today`. The Tabs layout hides the bar by reading the focused route name inside the `today` tab screen (`getFocusedRouteNameFromRoute`) for `notifications` now and for `entry` in Phase 3, so Phase 3 edits no launch file.
+- **Notifications route.** `app/(app)/today/notifications.tsx` joins the Today Stack beside `edit-wheel`; the list of `app/(app)` is `_layout.tsx`, `board.tsx`, `diary.tsx`, `profile`, `spin.tsx` and `today` (`board.tsx` and `diary.tsx` joined in revision 8). The Tabs layout hides the bar by reading the focused route name inside the `today` tab screen (`getFocusedRouteNameFromRoute`) for `notifications` now and for `entry` in Phase 3, so Phase 3 edits no launch file.
 
 ## 13. Strings for approval
 
@@ -348,14 +356,15 @@ Developer: say keep or change for each row. The word go is only for starting the
 | 10 | Profile | Saved. | New. |
 | 11 | Starting wheel | Meal, Movie, Song, Book, Place, Game, in that order | Your picture draws six equal wedges with Movie on top. Ours are equal too, and every category has the same chance. |
 | 12 | Notifications | Notifications / Nothing new yet. | New. Behind the bell. |
+| 13 | Diary and Board | Diary / Board / Nothing here yet. | New. The two tab pages until Phases 4 and 5. |
 
 **Choices made here that you may want to change:**
 - The Today screen follows your pictures of 2026-10-10: layout 1a (the centered wheel) and the screen after the spin.
 - After the spin the wheel is gone and the word fills the screen, as in your "after the spin" picture. So "Edit wheel" is there only while the wheel shows (before the spin), and a bonus spin brings the wheel back for its turn.
 - The word is one line in a large lighter serif (100). A long name shrinks to fit (down to about 36) and is cut with an ellipsis after that.
 - The label "Your category" and the "Next spin opens ..." lines are gone from Today after the spin, because your picture has neither. "Spun at 8:02 PM" is written by the server.
-- Your pictures show five tabs and the word "Roll" and a light grey middle circle; the app keeps three tabs until Diary and Board arrive, the word "Spin", and the outlined or solid circle you described.
-- The Spin button is a circle: outlined while no spin can start, solid black when the spin opens. This replaces the dark rounded square you confirmed on 2026-10-08.
+- Your pictures show five tabs and a light grey middle circle, and the bar is built that way now: Home, Diary, Spin, Board, Profile. Diary and Board are plain pages that say "Nothing here yet." until Phases 4 and 5. The word under the middle button stays "Spin", not "Roll".
+- The Spin button is the light grey circle of your picture while no spin can start (64dp, the wheel mark in black, no outline) and turns solid black when the spin opens. This replaces the dark rounded square you confirmed on 2026-10-08 and the outlined circle of earlier today.
 - The bell opens a Notifications page that only says "Nothing new yet." until Phase 5. There is no unread dot. The page has a back arrow and no tab bar, as in your Notifications picture.
 - The round photo in the header is gone, because your picture has none. Profile is on the bar.
 - The heading and the countdown use a lighter serif (Domine Regular) at 32 and 40, like your picture. That adds three text roles, so the type scale is no longer closed.
