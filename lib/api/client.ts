@@ -29,6 +29,9 @@ const USER_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   invalid_credentials: "That email, username or password isn't right.",
   photo_rejected: "That file can't be used as a photo. Try another one.",
   photo_upload_failed: 'Photo upload failed. Please try again.',
+  // Phase 2 (02-UI-SPEC 4.4). Every other new code uses the generic message below.
+  spin_not_open: "Your spin isn't open yet. It opens at 8:00 PM.",
+  spin_closed: "Today's spin has closed. The next one opens at 8:00 PM.",
 };
 
 /** A silent API host must not hold the splash or a sheet for a minute: abort and report offline. */
@@ -42,14 +45,28 @@ export class ApiError extends Error {
   suggestions?: string[];
   /** The form field a 400 validation_failed names, when the server says which. */
   field?: string;
+  /** The fixed word a 400 wheel_invalid gives for what is wrong with the list. */
+  reason?: string;
+  /** The row of the sent list a 400 wheel_invalid points at, counted from 0. */
+  index?: number;
 
-  constructor(status: number, code: ApiErrorCode, message?: string, suggestions?: string[], field?: string) {
+  constructor(
+    status: number,
+    code: ApiErrorCode,
+    message?: string,
+    suggestions?: string[],
+    field?: string,
+    reason?: string,
+    index?: number
+  ) {
     super(message ?? code);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.suggestions = suggestions;
     this.field = field;
+    this.reason = reason;
+    this.index = index;
   }
 
   get userMessage(): string {
@@ -119,7 +136,15 @@ async function request<T>(
   }
 
   const code = errorBody.error as ApiErrorCode;
-  const apiError = new ApiError(response.status, code, errorBody.message, errorBody.suggestions, errorBody.field);
+  const apiError = new ApiError(
+    response.status,
+    code,
+    errorBody.message,
+    errorBody.suggestions,
+    errorBody.field,
+    errorBody.reason,
+    errorBody.index
+  );
 
   // /auth/refresh answers an expired REFRESH token with the same 401 token_expired. Taking
   // this branch for it (or for any unauthenticated call) would start a second refresh whose

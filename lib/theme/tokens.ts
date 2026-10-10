@@ -30,6 +30,11 @@ export const color = {
   onInkDisabled: 'rgba(246,245,242,0.7)',
   /** Modal/sheet backdrop overlay behind a bottom sheet (e.g. the profile screen's log-out confirmation). */
   scrimOverlay: 'rgba(17,17,17,0.4)',
+  /**
+   * Medium grey (Phase 2, UI-SPEC section 2). Used only by the last wedge of a wheel with
+   * an odd number of categories, so no two touching wedges match. Its label is Ink (5.22:1).
+   */
+  wheelMid: '#8A8680',
 } as const;
 
 export const space = {
@@ -53,7 +58,8 @@ export const radius = {
   sm: 4,
   /**
    * The hard maximum radius for anything tappable (buttons, inputs, chips). No
-   * tappable element may use a larger radius than this in this phase.
+   * tappable element may use a larger radius than this in this phase, except the
+   * round Spin button in `components/nav/SpinTabButton.tsx`.
    */
   md: 8,
   /**
@@ -64,7 +70,8 @@ export const radius = {
   lg: 24,
   /**
    * Exists solely for the circular avatar and icon-badge tokens. Must never be
-   * applied to a button, input, or chip.
+   * applied to a button, input, or chip, except the round Spin button in
+   * `components/nav/SpinTabButton.tsx`.
    */
   full: 9999,
 } as const;
@@ -75,6 +82,19 @@ export const type = {
   button: { fontSize: 16, lineHeight: 24, fontFamily: 'WorkSans_600SemiBold' },
   heading: { fontSize: 22, lineHeight: 28, fontFamily: 'Domine_600SemiBold' },
   display: { fontSize: 40, lineHeight: 46, fontFamily: 'Domine_600SemiBold' },
+  // Phase 2 roles (02-UI-SPEC section 2). The scale is no longer closed at the five above.
+  // The Today heading and the Notifications heading.
+  title: { fontSize: 32, lineHeight: 38, fontFamily: 'Domine_400Regular' },
+  // The countdown digits.
+  countdown: { fontSize: 40, lineHeight: 46, fontFamily: 'Domine_400Regular' },
+  // The words on the wheel. 11dp is below the Label size, allowed only here.
+  wheelLabel: { fontSize: 11, lineHeight: 14, fontFamily: 'WorkSans_400Regular' },
+  // The result word after the spin.
+  hero: { fontSize: 100, lineHeight: 104, fontFamily: 'Domine_400Regular' },
+  // The word in Phase 3's Posted and Skipped. Defined here so tokens are edited once.
+  heroSmall: { fontSize: 80, lineHeight: 84, fontFamily: 'Domine_400Regular' },
+  // The comment on Phase 3's entry page. Defined here so tokens are edited once.
+  note: { fontSize: 20, lineHeight: 28, fontFamily: 'Domine_400Regular' },
 } as const;
 
 export const elevation = {

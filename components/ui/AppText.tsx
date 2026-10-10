@@ -3,7 +3,18 @@ import { Pressable, Text, TextProps } from 'react-native';
 import { color, type } from '@/lib/theme/tokens';
 
 type AppTextProps = {
-  role?: 'body' | 'label' | 'button' | 'heading' | 'display';
+  role?:
+    | 'body'
+    | 'label'
+    | 'button'
+    | 'heading'
+    | 'display'
+    | 'title'
+    | 'countdown'
+    | 'wheelLabel'
+    | 'hero'
+    | 'heroSmall'
+    | 'note';
   tone?: 'default' | 'muted' | 'destructive' | 'success' | 'onInk';
   children?: ReactNode;
 } & Omit<TextProps, 'style' | 'role'>;

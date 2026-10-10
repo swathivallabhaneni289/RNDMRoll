@@ -39,6 +39,21 @@ export const pinHeadingFontFamily = type.heading.fontFamily satisfies 'Domine_60
 export const pinDisplayFontSize = type.display.fontSize satisfies 40;
 export const pinDisplayFontFamily = type.display.fontFamily satisfies 'Domine_600SemiBold';
 
+// Phase 2 (plan 02-02): one colour and six text roles. A later edit of any value fails tsc.
+export const pinColorWheelMid = color.wheelMid satisfies '#8A8680';
+export const pinTitleFontFamily = type.title.fontFamily satisfies 'Domine_400Regular';
+export const pinTitleFontSize = type.title.fontSize satisfies 32;
+export const pinCountdownFontFamily = type.countdown.fontFamily satisfies 'Domine_400Regular';
+export const pinCountdownFontSize = type.countdown.fontSize satisfies 40;
+export const pinWheelLabelFontFamily = type.wheelLabel.fontFamily satisfies 'WorkSans_400Regular';
+export const pinWheelLabelFontSize = type.wheelLabel.fontSize satisfies 11;
+export const pinHeroFontFamily = type.hero.fontFamily satisfies 'Domine_400Regular';
+export const pinHeroFontSize = type.hero.fontSize satisfies 100;
+export const pinHeroSmallFontFamily = type.heroSmall.fontFamily satisfies 'Domine_400Regular';
+export const pinHeroSmallFontSize = type.heroSmall.fontSize satisfies 80;
+export const pinNoteFontFamily = type.note.fontFamily satisfies 'Domine_400Regular';
+export const pinNoteFontSize = type.note.fontSize satisfies 20;
+
 export const pinElevationRaisedShadowOpacity = elevation.raised.shadowOpacity satisfies 0.18;
 export const pinElevationCardShadowRadius = elevation.card.shadowRadius satisfies 6;
 export const pinElevationSubtleElevation = elevation.subtle.elevation satisfies 0;
