@@ -1,9 +1,11 @@
 import { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { color, space } from '@/lib/theme/tokens';
 import { BackgroundDotGrid } from '@/components/brand/BackgroundDotGrid';
 import { WheelBackground } from '@/components/brand/WheelBackground';
+
+const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
 
 /**
  * The shared screen shell: Dominant-surface SafeAreaView with `space.lg`
@@ -11,7 +13,10 @@ import { WheelBackground } from '@/components/brand/WheelBackground';
  * UI-SPEC to the choose-method screen only, hence the false default).
  * `wheels` opts in to the faint wheel illustration used on Welcome and the method
  * chooser (it replaced the dot grid there). `scroll` wraps children in
- * keyboard-avoiding scroll for form screens.
+ * keyboard-avoiding scroll for form screens. `edges` chooses which safe-area insets the shell
+ * adds; the default is all four, so signed-out screens and the first-run page are unchanged.
+ * Inside the bottom tab bar (which adds the bottom inset itself) a screen passes
+ * ['top', 'left', 'right'] so the bottom inset is not counted twice.
  */
 export function Screen({
   children,
@@ -20,6 +25,7 @@ export function Screen({
   wheelLabel = null,
   wheelKick = 0,
   scroll = true,
+  edges = ALL_EDGES,
 }: {
   children?: ReactNode;
   texture?: boolean;
@@ -27,6 +33,7 @@ export function Screen({
   wheelLabel?: string | null;
   wheelKick?: number;
   scroll?: boolean;
+  edges?: readonly Edge[];
 }) {
   const content = scroll ? (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -39,7 +46,10 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.dominant, paddingHorizontal: space.lg }}>
+    <SafeAreaView
+      edges={edges}
+      style={{ flex: 1, backgroundColor: color.dominant, paddingHorizontal: space.lg }}
+    >
       {texture ? <BackgroundDotGrid /> : null}
       {wheels === 'corner' ? <WheelBackground corner /> : wheels ? <WheelBackground active={wheelLabel} kick={wheelKick} /> : null}
       <View style={{ flex: 1 }}>{content}</View>
