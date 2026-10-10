@@ -25,7 +25,7 @@ Phase 2 is BUILT only after Phase 1 is closed and these documents are copied int
 ## Implementation Decisions (all answered 2026-10-07)
 
 ### Cadence, goal and window
-- **D-01 Cadence:** The spin happens every day, once a day, from 8:00 PM local. Not weekly. The wheel is mostly everyday things; movie and book are small wedges (about 1 day in 5). A movie or book day may log the last one watched or read; Phase 3 settles the rule. The streak is forgiving (D-02).
+- **D-01 Cadence:** The spin happens every day, once a day, from 8:00 PM local. Not weekly. The wheel is mostly everyday things; movie and book are small wedges (about 1 day in 5). A movie or book day may log the last one watched or read; Phase 3 settled the rule on 2026-10-09: anything watched or read lately, no date asked. The streak is forgiving (D-02).
 - **D-02 Weekly goal (replaces the capped freeze):** A day counts when the entry is posted. Spinning alone does not count. Post on at least 4 days each week (Monday to Sunday; 4 is a starting number) to keep the streak. Skipping a day is fine. ENTRY-04 becomes a free "skip this one", still visible in the diary (not a silent gap), showing its effect on the week ("2 of 4 this week"). Each week the goal is hit, one bonus reroll is earned. Keep one at a time. An unused one carries over. This makes ROLL-02's "one extra reroll per week" literal.
 - **D-03 Spin window and late:** The wheel opens at 8:00 PM local and stays open until local midnight. The spin belongs to that local date. Posting after midnight but before the next 8:00 PM is late: the feed still unlocks, with a late tag. After that the day is missed. A missed day simply does not count toward the weekly goal.
 - **D-04 Secret test setting:** It moves the clock and marks pretend posted days while testing, for listed throwaway accounts only. It is off for normal use and refused outside test mode. With it, earning a reroll can be tested in Phase 2 with pretend days. The real path connects in Phase 3. No ROADMAP criterion 3 amendment is needed.
@@ -57,7 +57,7 @@ Phase 2 is BUILT only after Phase 1 is closed and these documents are copied int
 - Rename changes the name on the wheel and in the Edit wheel list only. Delete archives. Past spins and entries keep the name they had when written. At least 2 live categories stay.
 - The phone reports its time zone (own small table, never on users). The server computes the local date from its own clock.
 - The server picks and stores the category first; the app only animates to it. Retrying returns the same spin. With no connection: a plain message and a retry.
-- The result screen has no button until Phase 3.
+- The result screen has no button in Phase 2. Phase 3 adds 'Log it' and 'Skip this one' (see 03-CONTEXT).
 - Under Reduce Motion the wheel still shows the winning wedge under the pointer. No confetti, flash or sound.
 - Category names: up to 24 characters, no duplicates ignoring capitals. Weights are whole numbers from 1 to 10.
 - A result name over 12 characters drops to the Heading size, because the type scale stays closed (D-12).

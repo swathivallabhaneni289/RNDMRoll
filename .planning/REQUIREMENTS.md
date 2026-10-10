@@ -20,7 +20,7 @@
 
 ### Daily Entry
 
-- [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction, and an optional comment (a short free-text thought), logged against the day's rolled category
+- [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction (one of six fixed reactions), and an optional comment (a short free-text thought), logged against the day's rolled category. The author can change or delete a post; a deleted post still counts as a posted day
 - [ ] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
 - [ ] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
 - [ ] **ENTRY-04**: User can skip a day when the spun category isn't satisfiable (e.g., wheel says "book," nothing was read that day). No entry is required that day. The skip is visible in the diary (DIARY-01), not a silent gap, and shows its effect on the week (e.g., "2 of 4 this week"). A skip is distinct from a reroll (ROLL-02, which swaps the category and still requires posting).

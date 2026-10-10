@@ -116,11 +116,23 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. User can see today's rolled category before logging an entry
-  2. User can log an entry with a photo (camera or library), title, half-star rating, and optional reaction
+  2. User can log an entry with a photo (camera or library), title, half-star rating, and an optional reaction (one of six)
   3. Logging a repeat title creates a new dated entry rather than overwriting the prior one
   4. User can skip a day when the rolled category isn't satisfiable and sees how it changes the week count (for example, 2 of 4 this week)
+  5. User can change or delete their post afterwards, and a deleted post still counts as a posted day
 
-**Plans**: TBD
+**Plans**: 0/3 plans executed
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md: The entry server: entries table, photo upload ticket, post, edit, delete and skip, and the Today changes
+- [ ] 03-02-PLAN.md: The entry app: Log it, the entry screen with half stars and six reactions, and the Posted state
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-03-PLAN.md: The entry page (view, edit, delete), skip, the skip mark, cutover, gates, device walkthrough and phase close-out
+
 **UI hint**: yes
 
 **Resolved**: Unsatisfiable-category days use a free skip: no entry required, visible in the diary, and it shows its effect on the weekly goal count. Distinct from the ROLL-02 reroll.
@@ -163,6 +175,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation & Accounts | 21/21 | Complete | 2026-10-09 |
 | 2. Daily Roll | 0/TBD | Not started | - |
-| 3. Daily Entry | 0/TBD | Not started | - |
+| 3. Daily Entry | 0/3 | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
 | 5. Friend Feed | 0/TBD | Not started | - |

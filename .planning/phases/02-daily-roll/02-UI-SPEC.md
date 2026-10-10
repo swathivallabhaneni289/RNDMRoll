@@ -118,13 +118,15 @@ The phone shows what the server says and never works out the date, the window or
 | Waiting | before 8:00 PM local, or the day was missed | Your next spin is coming. | Something random, something good. | countdown (4.2) | still |
 | Open | 8:00 PM to local midnight, not spun | Your spin is open. | Tap the centre to spin. | "Open until midnight." | still, hub tappable |
 | Spinning | from the answer arriving until 4.0 s later | Your spin is open. | Tap the centre to spin. | "Spinning." | turning |
-| Result | spun today | Today's spin. | Next spin opens tomorrow at 8:00 PM. | result block (4.3) | still, winner under pointer |
-| Late | after midnight, before the next 8:00 PM, spin not posted | Last night's spin. | Next spin opens at 8:00 PM. | result block | still |
+| Result | spun today | Today's spin. | Next spin opens tomorrow at 8:00 PM. | result block (4.3); Phase 3 adds 'Log it' and 'Skip this one' below it (03-UI-SPEC section 3.2) | still, winner under pointer |
+| Late | after midnight, before the next 8:00 PM, spin not posted | Last night's spin. | Next spin opens at 8:00 PM. | result block; Phase 3 adds the late line, 'Log it' and 'Skip this one' (03-UI-SPEC section 3.2) | still |
+| Posted | Phase 3 only: the shown spin's day has a post | Posted. | Next spin opens tomorrow at 8:00 PM. (last night's spin: Next spin opens at 8:00 PM.) | result block, then the posted block (03-UI-SPEC section 3.3) | still |
+| Skipped | Phase 3 only: the shown spin's day was skipped | Skipped. | same as Posted | result block, then the skipped block (03-UI-SPEC section 3.4) | still |
 | Offline on load | first fetch fails | none | none | message and "Try again" (4.4) | not drawn |
 | Offline on spin | the spin request fails | Your spin is open. | Tap the centre to spin. | message and "Try again" | still |
 
 Notes:
-- There is no button on Result or Late until Phase 3 can post.
+- Phase 2 builds no button on Result or Late. Phase 3 adds 'Log it', 'Skip this one' and the late line there, and the Posted and Skipped states (03-UI-SPEC sections 3.1 to 3.5).
 - When the day closes while the screen is open, the screen asks the server again and shows Late if today's spin is not posted, else Waiting. A spin tapped after close gets the "closed" message in 4.4.
 - The hub is tappable only in Open (disabled, no press effect in Waiting).
 - Today asks the server again on foreground, on tab focus, when a countdown reaches zero, and at the server's `next_open_at` and close time (also in Late, which has no countdown). Plan 02-02 decision 5 has the retry rules.
@@ -135,7 +137,7 @@ Three lines, centred: the Label "Opens in" (capitals by style, letter spacing 1.
 
 ### 4.3 Result block
 
-Centred under the wheel. First the Label "Your category" (capitals by style, letter spacing 1.5, `muted`). Then the category name, `ink`, as the person wrote it (not forced to capitals): in the Display role (40/46) when it has 12 characters or fewer, else in the Heading role (22/28), up to two lines. No other size, so the type scale stays closed. Under it, only if a bonus spin is held and the day is not settled, the text link "Use bonus spin" (Ink, underlined, `WorkSans_600SemiBold`, 44dp high). No other button, no share, no "log it" until Phase 3.
+Centred under the wheel. First the Label "Your category" (capitals by style, letter spacing 1.5, `muted`). Then the category name, `ink`, as the person wrote it (not forced to capitals): in the Display role (40/46) when it has 12 characters or fewer, else in the Heading role (22/28), up to two lines. No other size, so the type scale stays closed. Under it, only if a bonus spin is held and the day is not settled, the text link "Use bonus spin" (Ink, underlined, `WorkSans_600SemiBold`, 44dp high). No other button and no share in Phase 2. Phase 3 adds 'Log it' and 'Skip this one' below this block (03-UI-SPEC section 3.2).
 
 **Bonus spin sheet.** The link opens a bottom sheet. It reuses the log-out sheet's modal, scrim, top corners and padding. Title (Heading role): "Use your bonus spin?". Body (Body role): "You will spin again and get a different word. This uses up your bonus spin." Two full-width rows, each at least 56dp high, separated by hairlines: "Spin again" and "Keep this word". "Spin again" closes the sheet and runs the Spinning state. The server never returns the same category. After it, the link is gone.
 
@@ -171,7 +173,7 @@ Wait, spin, anticipation, reveal: calm before, life only during the spin, quiet 
 **Content, left aligned, `md` padding:**
 - Title, Heading role (22/28): "{n} of {goal} this week", for example "2 of 4 this week". The numbers come from the server; with no posted days it reads "0 of 4 this week".
 - Sub-line, Label role, `muted`, one of: "You have a bonus spin." (a bonus spin is held), else "Goal met this week." (goal met, none held), else "Goal: {goal} posted days a week."
-- Seven day columns, Monday to Sunday: a Label letter above a 12dp dot. The letters come from the server (M T W T F S S now) in `muted`. Dot states: posted is a filled `ink` dot; today, not posted, is a ring in `ink` 1.5dp with an `ink` letter; any other day not posted is a 1dp ring in `muted`. A skipped day gets its own mark in Phase 3. Dots are drawn shapes (react-native-svg), not controls, evenly spaced across the card's inner width.
+- Seven day columns, Monday to Sunday: a Label letter above a 12dp dot. The letters come from the server (M T W T F S S now) in `muted`. Dot states: posted is a filled `ink` dot; today, not posted, is a ring in `ink` 1.5dp with an `ink` letter; any other day not posted is a 1dp ring in `muted`. A skipped day gets its own mark in Phase 3 (an ink dash, 03-UI-SPEC section 8); Phase 2 never shows one. Dots are drawn shapes (react-native-svg), not controls, evenly spaced across the card's inner width.
 
 **Removed from the picture:** the flame, "day streak", "Keep it going." and the arrow. Nothing can be posted in Phase 2, so the weekly count is the only truthful figure; posted dots come only from the test setting's pretend days.
 
@@ -281,7 +283,7 @@ The existing offline string and generic fallback are reused. New server error co
 - **Wheel.** One non-interactive element, label "Wheel with {n} categories: {names in order}". Hidden from VoiceOver during a spin; "Spinning." is read instead.
 - **Hub.** A button, label "Spin the wheel", hint "Opens at 8:00 PM." while waiting (state disabled). Hit area 64dp. Wheel labels, tab labels and countdown digits do not scale with the phone's text size.
 - **Result.** When the spin lands, announce "Your spin is {name}." with `announceForAccessibility`. The result word is a header element with the label "Today's spin: {name}." (late: "Last night's spin: {name}."). Under Reduce Motion the announcement is made when the result appears.
-- **Weekly card.** One element: "{n} of {goal} this week. {sub-line}." then each day by the server's weekday name, "Monday posted, Tuesday not posted", and so on. Filled against ring, never colour alone.
+- **Weekly card.** One element: "{n} of {goal} this week. {sub-line}." then each day by the server's weekday name, "Monday posted, Tuesday not posted" (Phase 3 adds "skipped"), and so on. Filled against ring, never colour alone.
 - **Edit wheel.** Name field "Category name". Steppers "Lower weight for {name}" and "Raise weight for {name}"; value read as "{name}, weight {n}". "Remove {name}". The preview is hidden from VoiceOver.
 - **Profile tab.** The "Saved." line is a polite live region, so VoiceOver reads it once when it appears.
 - **Targets.** Every tappable is at least 44dp (hub 64, Spin button 48, rows 56).
@@ -308,7 +310,7 @@ Developer: say keep or change for each row. The word go is only for starting the
 |---|---|---|---|
 | 1 | Today | Your next spin is coming. / Something random, something good. / Opens in / at 8:00 PM | From your picture, with "spin". |
 | 2 | Today | Your spin is open. / Tap the centre to spin. / Open until midnight. | New. Only the centre is tappable, so it says centre. |
-| 3 | Today | Today's spin. / Last night's spin. / Your category | New. The late line "Posting it now would count as late." is left out until Phase 3, when posting exists. |
+| 3 | Today | Today's spin. / Last night's spin. / Your category | New. The late line "Posting it now would count as late." is left out of Phase 2; Phase 3 adds it (03-UI-SPEC row 1). |
 | 4 | Bonus spin | Use your bonus spin? / Use bonus spin / Spin again / Keep this word | You wrote "Use your bonus reroll?". I used "spin" because "roll" is not allowed on screen. Say if you want your original. |
 | 5 | Weekly card | {n} of {goal} this week / Goal: {goal} posted days a week. / Goal met this week. / You have a bonus spin. | Replaces "4 day streak". No streak word, no instruction Phase 2 cannot follow. |
 | 6 | Messages | Your spin isn't open yet. It opens at 8:00 PM. / Today's spin has closed. The next one opens at 8:00 PM. | New. |
