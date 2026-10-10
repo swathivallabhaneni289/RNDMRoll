@@ -47,8 +47,11 @@ export function SpinTabButton() {
         : "Shows today's spin.";
 
   function handlePress() {
-    router.navigate('/(app)/today');
+    // The request goes first, then the navigation: with unsaved changes in Edit wheel the
+    // navigation opens the leave sheet, whose guard clears the request (plan 02-02 decision 4).
+    // The other way round the guard would clear a flag that is not set yet.
     if (userId !== null) requestPendingSpin(userId);
+    router.navigate('/(app)/today');
   }
 
   const circle = (

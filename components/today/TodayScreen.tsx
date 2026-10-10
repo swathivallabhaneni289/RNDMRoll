@@ -345,7 +345,22 @@ export function TodayScreen() {
       return <View style={{ height: type.label.lineHeight }} />;
     }
     if (viewState === 'waiting') {
-      return <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />;
+      // After "isn't open yet" or "has closed" the refetch usually says waiting, and the message
+      // stays under the countdown until "Try again" or the next answer (UI-SPEC 4.4).
+      return (
+        <View style={{ alignSelf: 'stretch', alignItems: 'center' }}>
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          {failureKind !== null ? (
+            <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>
+              <StatusMessage
+                kind={failureKind}
+                busy={requesting !== null}
+                onRetry={() => tryAgain(bonusAfterSeqRef.current)}
+              />
+            </View>
+          ) : null}
+        </View>
+      );
     }
     // Open, with or without a failed spin.
     return (
