@@ -3,13 +3,13 @@ phase: 2
 slug: daily-roll
 status: draft
 created: 2026-10-07
-revision: 6
+revision: 7
 approval_word: go
 ---
 
 # Phase 2 - UI Design Contract (Daily Roll, "the spin")
 
-> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's pictures of 2026-10-10 are the layout source: layout 1a (`docs/reference/today-screen-1a-1b-2026-10-10.png`), the screen after the spin (`docs/reference/today-after-spin-02-2026-10-10.png`) and the skipped and entry-page screens (`docs/reference/today-skipped-and-entry-05-06-2026-10-10.png`); they replace the picture of 2026-10-07 (`today-screen-mockup-2026-10-07.png`). Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed. Revision 4 (2026-10-09, later that day): Phase 1 removed Apple and Google sign-in completely, so the one-time photo-and-bio page follows a sign-up only (sections 1 and 9). No decision changed. Revision 5 (2026-10-10): the developer chose layout 1a of their new picture by tap and said they want the page "very similar" to it. Changes: the bell is in and opens a Notifications page (4.5); the round header photo is gone; nothing sits under the heading in any state (the line moved into the state block); the countdown reads "Opens at 8:00 PM" over the digits; "Edit wheel" sits under the state block; the weekly card becomes an open week section with new dot marks (section 6); the wheel is black and light with a light hub and a dot, and words sit across the wedge (section 3); the Spin button is a circle, outlined while locked and solid black when the spin opens (section 8); the heading and countdown use a lighter serif, which adds three text roles (section 2). Wedge widths still follow the weights. Nothing is built; the choices to check are at the end of section 13. Revision 6 (2026-10-10, later that day): the developer sent the screen after the spin and said "this is how it should look after the spin". Changes: after the spin the wheel is not drawn and the word fills its place in a large lighter serif (new role `hero`), with a rule and "Spun at 8:02 PM" under it (4.3); the "Your category" label and the "Next spin opens" lines are gone from Today; the "Edit wheel" link shows only while the wheel shows; a bonus spin brings the wheel back; the reveal and the server shape change (`spun_local_time`, `next_open_weekday`); three more text roles (`hero`, `heroSmall`, `note`). The Posted and Skipped looks and the entry page are in 03-UI-SPEC.
+> Design contract the Phase 2 app plan builds from. Nothing here is built. It inherits every token, type size, spacing step, radius and elevation tier from `01-foundation-accounts/01-UI-SPEC.md` (revision 15 or later). The developer's pictures of 2026-10-10 are the layout source: layout 1a (`docs/reference/today-screen-1a-1b-2026-10-10.png`), the screen after the spin (`docs/reference/today-after-spin-02-2026-10-10.png`) and the skipped and entry-page screens (`docs/reference/today-skipped-and-entry-05-06-2026-10-10.png`); they replace the picture of 2026-10-07 (`today-screen-mockup-2026-10-07.png`). Revision 2: pointer sign, 22 degree floor, bar on Edit wheel, Spin button size, strings. Revision 3 (2026-10-09, rebased on the final Phase 1 code): the one-time photo-and-bio page after sign-up comes before Today with no bottom bar (sections 1, 8, 9), the Profile tab's Continue button goes to Today and Phase 1's placeholder page is removed (section 9), the "Saved." line is placed against the real Profile page (section 9), and the radius allow-list is recorded (section 12). No decision changed. Revision 4 (2026-10-09, later that day): Phase 1 removed Apple and Google sign-in completely, so the one-time photo-and-bio page follows a sign-up only (sections 1 and 9). No decision changed. Revision 5 (2026-10-10): the developer chose layout 1a of their new picture by tap and said they want the page "very similar" to it. Changes: the bell is in and opens a Notifications page (4.5); the round header photo is gone; nothing sits under the heading in any state (the line moved into the state block); the countdown reads "Opens at 8:00 PM" over the digits; "Edit wheel" sits under the state block; the weekly card becomes an open week section with new dot marks (section 6); the wheel is black and light with a light hub and a dot, and words sit across the wedge (section 3); the Spin button is a circle, outlined while locked and solid black when the spin opens (section 8); the heading and countdown use a lighter serif, which adds three text roles (section 2). Wedge widths still follow the weights. Nothing is built; the choices to check are at the end of section 13. Revision 6 (2026-10-10, later that day): the developer sent the screen after the spin and said "this is how it should look after the spin". Changes: after the spin the wheel is not drawn and the word fills its place in a large lighter serif (new role `hero`), with a rule and "Spun at 8:02 PM" under it (4.3); the "Your category" label and the "Next spin opens" lines are gone from Today; the "Edit wheel" link shows only while the wheel shows; a bonus spin brings the wheel back; the reveal and the server shape change (`spun_local_time`, `next_open_weekday`); three more text roles (`hero`, `heroSmall`, `note`). The Posted and Skipped looks and the entry page are in 03-UI-SPEC. Revision 7 (2026-10-10, evening, D-23): the developer saw Edit wheel on the phone and did not want the chances shown, and asked for one shape for everything and no grey. Every category has the same chance (weight 1), so Edit wheel has no stepper, no percentage and no intro line about higher numbers (section 7, copy in section 10); the wheel is only `ink` and `secondary` for every count, with a 1.5dp `dominant` seam between all wedges and no grey wedge (sections 2 and 3), so the `wheelMid` token of revision 5 is gone. Wedge widths are equal (section 3), not "still following the weights" as the revision 5 note says.
 
 ## 1. What this phase puts on screen
 
@@ -27,28 +27,23 @@ approval_word: go
 
 ## 2. Tokens added (the only new design values)
 
-Colour. One new token, added inside the `color` group of `lib/theme/tokens.ts` (so the shape pin in `tokens.test-assert.ts` holds) and pinned there with `satisfies`:
+Colour. No new colour token. The wheel is drawn with existing tokens only. (Revision 5 added a medium grey, `wheelMid`; revision 7 removed it with its pin in `tokens.test-assert.ts`, D-23: the wheel has no grey wedge.)
 
-| Token | Value | Plain name | Source |
-|---|---|---|---|
-| `wheelMid` | `#8A8680` | medium grey | new. Used only by the last wedge of a wheel with an odd number of categories. |
+Wedges alternate `ink` and `secondary`; the seams between wedges are `dominant`, the page colour; the rim, the hub dot, the pointer, the day dots and the top rule are `ink`; the hub is `dominant`; the small day dots and the closing rule are `divider`. Screens never write a hex value. (Revision 4's six tones `wheel1` to `wheel6` are gone: the picture shows two.)
 
-Everything else on the wheel is an existing token: wedges alternate `ink` and `secondary`; the rim, the hub dot, the pointer, the day dots and the top rule are `ink`; the hub is `dominant`; the small day dots and the closing rule are `divider`. Screens never write a hex value. (Revision 4's six tones `wheel1` to `wheel6` are gone: the picture shows two.)
-
-**Label colour:** `dominant` on `ink` wedges; `ink` on `secondary` and on `wheelMid`.
+**Label colour:** `dominant` on `ink` wedges; `ink` on `secondary` wedges.
 
 | Wedge | Label | Contrast | AA (4.5:1) |
 |---|---|---|---|
 | `ink` | `dominant` | 17.32 | pass |
 | `secondary` | `ink` | 15.26 | pass |
-| `wheelMid` | `ink` | 5.22 | pass |
 
-**Tones by count (a fixed rule, so a plan can pin it).** Wedge i (from 0, clockwise) is `ink` when i is even and `secondary` when i is odd. When the count is odd the last wedge is `wheelMid` instead, because an `ink` last wedge would meet the first wedge in the same tone. Touching wedges always differ by at least 2:1: `ink` with `secondary` 15.26, `ink` with `wheelMid` 5.22, `secondary` with `wheelMid` 2.92. So no seams are drawn, for every count from 2 to 12 (the last wedge touches the first, and the rule holds there too).
+**Tones by count (a fixed rule, so a plan can pin it).** Wedge i (from 0, clockwise) is `ink` when i is even and `secondary` when i is odd, for every count from 2 to 12. There is no third tone and no grey. With an odd count the last wedge is `ink` and touches the first wedge, which is also `ink`. To keep every wedge a separate shape of equal size, a 1.5dp seam in `dominant` is drawn between ALL wedges, the same way for every count (a `dominant` stroke of 1.5dp on each wedge path), so the wheel looks the same at every count and the wrap needs no special case.
 
 | Wedges | Tones, clockwise from the first wedge |
 |---|---|
-| 2, 4, 6, 8, 10, 12 | ink, light, ink, light, and so on |
-| 3, 5, 7, 9, 11 | ink, light, and so on, then mid for the last wedge |
+| any count from 2 to 12 | ink, light, ink, light, and so on (even place ink, odd place light) |
+| 3, 5, 7, 9, 11 | the same, so the last wedge is ink and meets the first (ink); the seam parts them |
 
 **Text roles added** (in the `type` group of `lib/theme/tokens.ts`, pinned in `tokens.test-assert.ts`, named in `AppText`; `lib/theme/fonts.ts` loads one more file):
 
@@ -67,15 +62,15 @@ Everything else on the wheel is an existing token: wedges alternate `ink` and `s
 
 **Words only.** Every wedge carries its category name and nothing else. Names show in capitals by text style only.
 
-**Size.** Diameter is the smaller of 232dp and the screen width minus 48dp (revision 4: 296dp). The rim is a 4dp `ink` ring. No seams are drawn: touching wedges always differ by at least 2:1 (section 2). The hub is a `dominant` circle, 19 percent of the diameter (44dp at 232), with an `ink` dot 7 percent of the diameter (16dp at 232) in its middle: no ring and no star. The hub and the pointer never rotate; the wedges and labels do.
+**Size.** Diameter is the smaller of 232dp and the screen width minus 48dp (revision 4: 296dp). The rim is a 4dp `ink` ring. Between all wedges there is a 1.5dp seam in `dominant` (section 2), drawn as a `dominant` stroke on every wedge path: the part of that stroke along the outer arc lies under the rim, and the hub covers the centre. The hub is a `dominant` circle, 19 percent of the diameter (44dp at 232), with an `ink` dot 7 percent of the diameter (16dp at 232) in its middle: no ring and no star. The hub and the pointer never rotate; the wedges and labels do.
 
 **Pointer.** An `ink` triangle, apex down, 16dp wide and 12dp tall, centred at 12 o'clock. Its tip touches the rim's outer edge. It sits outside the disc, so it is always `ink` on `dominant` (17.32:1).
 
 **All wedges are the same size** (the developer's request on 2026-10-10, after seeing the weighted wheel: "why some are too big and some are too small, make them all equal").
-- Every wedge is `360 / n` degrees (60 each for six, 30 each for twelve). The number of a category (its weight) decides how OFTEN it comes up, never how wide it is drawn.
-- Edit wheel's chance figures ("About 27% of spins") still use the true shares, so the person can see the odds there.
+- Every wedge is `360 / n` degrees (60 each for six, 30 each for twelve).
+- Every category has the same chance (D-23): the app gives each category weight 1 and shows no number or chance figure anywhere (section 7).
 - Wedges run clockwise in list order; the first starts at angle 0 (12 o'clock).
-- Starting wheel, in this order: Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1: six equal wedges of 60 degrees. The odds stay as the developer decided in D-01 (Movie and Book come up about 1 day in 5 together); only the drawing is equal, as in the picture.
+- Starting wheel, in this order: Meal, Movie, Song, Book, Place, Game: six equal wedges of 60 degrees, each with the same chance (one in six). This replaces the weighted start of D-01 and D-05 (Meal 3, Song 3, Place 2 and one each for the rest); the server's starting weights are set to 1 in the server's own change. An account made before that change keeps its old numbers on the server until its next Save in Edit wheel, which sends 1 for every category.
 
 **Labels.** One rule for 2 to 12 wedges, in the `wheelLabel` role (11/14, letter spacing 1.5, capitals by style, `allowFontScaling={false}`). Labels turn with the wheel.
 - **Across** (as in the picture): the word runs across the wedge, perpendicular to its centre line, with its middle at 70 percent of the radius.
@@ -202,13 +197,13 @@ Opened by the "Edit wheel" link under the state block on Today (section 4, item 
 
 **Layout, top to bottom, scrolling.**
 1. Heading "Edit wheel" (Heading role).
-2. A line: "A higher number comes up more often." (Label, `muted`). If today's spin exists, add under it: "Changes show on your next spin."
+2. Only if today's spin exists, a line: "Changes show on your next spin." (Label, `muted`). Otherwise nothing sits under the heading.
 3. **Live preview**, 240dp, centred: the same wheel as Today (section 3), no pointer, not tappable, redrawing as you change anything. Labels are cut to fit.
-4. **Category rows**, one per category, each at least 56dp high, separated by hairlines (`divider`). A row holds:
+4. **Category rows**, one per category, each at least 56dp high, separated by hairlines (`divider`). A row is one line:
    - the name in a text field (existing input style: `md` radius, `inkRest` border, 48dp high, up to 24 characters; editing it is the rename),
-   - the weight stepper: a minus button, the number (Body role, centred, 32dp wide) and a plus button. Each button is a 44dp square with 8dp radius, `inkRest` border, Ionicons `remove` and `add` in `ink`. Minus is disabled at 1 and plus at 10,
-   - the Label line "About {pct}% of spins" (`muted`), whole number, from the true shares,
-   - a "Remove" text link in `destructive` (44dp hit area).
+   - a "Remove" text link at its right, in `destructive` (44dp hit area).
+
+   A row has no stepper, no number and no chance figure: every category has the same chance (D-23).
 5. **Add row**: a text button "Add a category" with an Ionicons `add` glyph (44dp high). It adds a last row with an empty focused name and weight 1. At 12 categories it is replaced by the Label "You can have up to 12 categories."
 6. A Label, `muted`: "Removed categories stay in your past spins."
 7. **Save**, the existing primary button "Save wheel", pinned above the bar and the keyboard, grey (existing disabled treatment) until something has changed and every row is valid.
@@ -216,11 +211,11 @@ Opened by the "Edit wheel" link under the state block on Today (section 4, item 
 **Limits (the screen enforces them; the server checks again).**
 - 2 to 12 categories. At 2, every "Remove" is disabled and the Label "A wheel needs at least 2 categories." shows under the rows.
 - Name: 1 to 24 characters after trimming spaces. No two names the same, ignoring capitals. The field stops at 24 characters.
-- Weight: whole numbers 1 to 10, changed only with the buttons (no typing).
+- Weight: not shown and not editable. It is always 1 (D-23): a category the person adds has weight 1, and Save sends weight 1 for every category, new and saved, so a wheel saved earlier with other numbers is made even by its next Save. (The server still accepts 1 to 10.)
 - Row errors (Label, `destructive`, under the field, shown on leaving the field or on Save): "Give this category a name." and "You already have a category with this name."
 
 **Behaviour.**
-- Changes stay on the phone until Save, which sends the whole list in one request (all or nothing). Success returns to Today with the wheel redrawn.
+- Changes stay on the phone until Save, which sends the whole list in one request (all or nothing). Success returns to Today with the wheel redrawn. Opening the screen changes nothing: Save stays grey until a name is added, renamed or removed, so an older wheel keeps its numbers on the server until then.
 - "Remove" on a saved category archives it (it keeps its name in old spins). On a row added in this visit it simply deletes the row.
 - Leaving with unsaved changes opens a sheet (same reused parts as 4.3). Title: "Leave without saving?" Body: "Your changes will be lost." Rows: "Leave" and "Keep editing".
 - If Save cannot connect: "Couldn't connect. Check your connection and try again." in `destructive` above the Save button. Other server refusals use "Something went wrong. Please try again."
@@ -297,7 +292,7 @@ Every string the person sees. "Spin" wording, plain words, no em dashes, no lega
 | Week section | This week (N) / {n} of {goal} this week / You have a bonus spin. / M T W T F S S (letters from the server) |
 | Errors | Couldn't connect. Check your connection and try again. / Your spin isn't open yet. It opens at 8:00 PM. / Today's spin has closed. The next one opens at 8:00 PM. / Something went wrong. Please try again. |
 | Retry button | Try again |
-| Edit wheel | Edit wheel / A higher number comes up more often. / Changes show on your next spin. / About {pct}% of spins / Remove / Add a category / You can have up to 12 categories. / A wheel needs at least 2 categories. / Removed categories stay in your past spins. / Give this category a name. / You already have a category with this name. / Save wheel |
+| Edit wheel | Edit wheel / Changes show on your next spin. / Remove / Add a category / You can have up to 12 categories. / A wheel needs at least 2 categories. / Removed categories stay in your past spins. / Give this category a name. / You already have a category with this name. / Save wheel |
 | Leave sheet | Leave without saving? / Your changes will be lost. / Leave / Keep editing |
 | Bottom bar | Home / Spin / Profile |
 | Profile tab | Saved. (the only new string; Continue, Save changes and everything on the first-run page are Phase 1's) |
@@ -314,10 +309,10 @@ The existing offline string and generic fallback are reused. New server error co
 - **Week section.** One element: "{n} of {goal} this week." (then "You have a bonus spin." when held), then each day by the server's weekday name, "Monday posted, Tuesday not posted" (Phase 3 adds "skipped"), and so on. Filled against ring against small dot, never colour alone.
 - **Bell.** A button, label "Notifications", hint "Opens your notifications.", hit area 44dp.
 - **Spin button.** A button, label "Spin", with the hint of section 8. Its two looks are not told by colour alone: the hint says when it opens.
-- **Edit wheel.** Name field "Category name". Steppers "Lower weight for {name}" and "Raise weight for {name}"; value read as "{name}, weight {n}". "Remove {name}". The preview is hidden from VoiceOver.
+- **Edit wheel.** Name field "Category name". "Remove {name}". There is no stepper and no number to read. The preview is hidden from VoiceOver.
 - **Profile tab.** The "Saved." line is a polite live region, so VoiceOver reads it once when it appears.
 - **Targets.** Every tappable is at least 44dp (hub 64, Spin button 56, bell 44, rows 56).
-- **Contrast.** `muted` on `dominant` 5.82:1, wedge labels 5.22:1 or better, `ink` text 17.32:1.
+- **Contrast.** `muted` on `dominant` 5.82:1, wedge labels 15.26:1 or better, `ink` text 17.32:1.
 
 ## 12. Notes for the plan (build only after Phase 1 is closed)
 
@@ -331,7 +326,7 @@ This contract is built only after Phase 1 is closed and these documents are copi
 - **Wheel code.** The Welcome wheel picks its own winner among 8 fixed sectors, so Today's wheel is a new component whose target comes from the server. Reuse its angle idea and `polar`.
 - **Pure logic in pure files** (drawn angles, all equal, tones, label placement, the pointer check, countdown split, truncation), checked by a throwaway script and by device steps for counts 2 to 12, the tone table and the spin.
 - **API.** `lib/api/spin.ts` (not "roll", so the word scans stay meaningful), using GET, POST and PATCH only, so "Save wheel" is one PATCH of the whole list. Spin responses carry the wheel used. The server sends the open time, the close time and its own "now", plus two ready-made strings so the phone does no date or time maths: `spin.spun_local_time` ("8:02 PM") and `next_open_weekday` ("Friday").
-- **Text roles and fonts (revision 5).** `title`, `countdown`, `wheelLabel`, `hero`, `heroSmall` and `note` join the `type` group and are pinned in `tokens.test-assert.ts` in the same task (read that file first: its shape pin changes). `lib/theme/fonts.ts` loads `Domine_400Regular` and its `systemFallback` gets the new roles; `components/ui/AppText.tsx` gets the role names. Colour: `wheelMid` replaces the six `wheel1` to `wheel6` tokens.
+- **Text roles and fonts (revision 5).** `title`, `countdown`, `wheelLabel`, `hero`, `heroSmall` and `note` join the `type` group and are pinned in `tokens.test-assert.ts` in the same task (read that file first: its shape pin changes). `lib/theme/fonts.ts` loads `Domine_400Regular` and its `systemFallback` gets the new roles; `components/ui/AppText.tsx` gets the role names. Colour: no wheel token is added (the six `wheel1` to `wheel6` tokens of revision 4 are not added, and revision 5's `wheelMid` was dropped in revision 7); the wheel uses `ink`, `secondary` and `dominant`.
 - **The mark.** The Spin button reuses `components/brand/BrandMark.tsx` (props `color` and `wedgeColor`), not a new drawing. That file is not edited.
 - **Notifications route.** `app/(app)/today/notifications.tsx` joins the Today Stack beside `edit-wheel`; the list of `app/(app)` stays `_layout.tsx`, `profile`, `spin.tsx` and `today`. The Tabs layout hides the bar by reading the focused route name inside the `today` tab screen (`getFocusedRouteNameFromRoute`) for `notifications` now and for `entry` in Phase 3, so Phase 3 edits no launch file.
 
@@ -347,11 +342,11 @@ Developer: say keep or change for each row. The word go is only for starting the
 | 4 | Bonus spin | Use your bonus spin? / Use bonus spin / Spin again / Keep this word | You wrote "Use your bonus reroll?". I used "spin" because "roll" is not allowed on screen. Say if you want your original. |
 | 5 | Week section | This week / {n} of {goal} this week / You have a bonus spin. | From your picture. "4 day streak", "Goal met this week." and "Goal: {goal} posted days a week." are gone. |
 | 6 | Messages | Your spin isn't open yet. It opens at 8:00 PM. / Today's spin has closed. The next one opens at 8:00 PM. | New. |
-| 7 | Edit wheel | Edit wheel / Save wheel / Add a category / Remove / A higher number comes up more often. / Changes show on your next spin. | New. |
+| 7 | Edit wheel | Edit wheel / Save wheel / Add a category / Remove / Changes show on your next spin. | New. The older lines about numbers and chances are gone: every category has the same chance (D-23). |
 | 8 | Edit wheel | You can have up to 12 categories. / A wheel needs at least 2 categories. / Give this category a name. / You already have a category with this name. | New. |
 | 9 | Edit wheel | Leave without saving? / Your changes will be lost. / Leave / Keep editing | New. |
 | 10 | Profile | Saved. | New. |
-| 11 | Starting wheel | Meal, Movie, Song, Book, Place, Game, in that order | Your picture draws six equal wedges with Movie on top. Ours are equal too; the numbers decide how often each comes up. |
+| 11 | Starting wheel | Meal, Movie, Song, Book, Place, Game, in that order | Your picture draws six equal wedges with Movie on top. Ours are equal too, and every category has the same chance. |
 | 12 | Notifications | Notifications / Nothing new yet. | New. Behind the bell. |
 
 **Choices made here that you may want to change:**
@@ -365,7 +360,8 @@ Developer: say keep or change for each row. The word go is only for starting the
 - The round photo in the header is gone, because your picture has none. Profile is on the bar.
 - The heading and the countdown use a lighter serif (Domine Regular) at 32 and 40, like your picture. That adds three text roles, so the type scale is no longer closed.
 - Words on the wheel are 11dp: across the wedge where they fit and along it where they do not, and never upside down when the wheel stops (your picture's MEAL is upside down).
-- The wheel is black and light, with one mid grey on the last wedge when the count is odd. Wedge widths still follow the weights, so Meal and Song are wider at the start (your picture draws six equal wedges).
+- Every category has the same chance, and Edit wheel shows no numbers: no plus and minus, no percentage, no line about higher numbers. Save sends 1 for every category (D-23).
+- The wheel is black and light only, with no grey wedge. A thin seam in the page colour sits between all wedges, so with an odd count the last wedge and the first (both black) stay two separate wedges of the same size.
 - A day still to come and a past day with nothing look the same: a small grey dot.
 - Nothing sits under the heading in Waiting, Open, Result and Late. Posted and Skipped (Phase 3) have one line under it, as in your skipped picture. In Open, "Open until midnight." sits under the small label.
 - "Something random, something good." is gone from Today, because your new picture does not have it.
