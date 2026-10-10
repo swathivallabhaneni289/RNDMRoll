@@ -8,27 +8,29 @@ import { color, radius, type } from '@/lib/theme/tokens';
 import { requestPendingSpin, useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 /** The circle's size, and how far its top edge stands above the bar's top edge. */
-const CIRCLE = 56;
-const RISE = 8;
+const CIRCLE = 64;
+const RISE = 12;
 /** The bar's own top rule, so the circle's top edge is measured from the rule's outer edge. */
 const BAR_BORDER = 1;
-const MARK = 28;
-const OUTLINE = 1.5;
+const MARK = 30;
 
 /**
- * The middle button of the bottom bar (02-UI-SPEC section 8). A circle of 56dp whose top edge
- * stands 8dp above the bar, with "Spin" under it. It is an action, so it never becomes the
+ * The middle button of the bottom bar (02-UI-SPEC section 8). A circle of 64dp whose top edge
+ * stands 12dp above the bar, with "Spin" under it. It is an action, so it never becomes the
  * selected tab: a press goes to Today and asks it to spin once it has loaded and is still open
  * (`pendingSpin` in the Today store; no timer, no route parameters).
  *
  * Two looks, chosen by the server's state (the one place `radius.full` is used for a tappable):
- *   LOCKED  every state except an open, unspun one: `dominant` fill, a 1.5dp `ink` outline and
- *           the app's own wheel mark in `ink`. Not dimmed and not disabled; it only says that no
+ *   LOCKED  every state except an open, unspun one: a `secondary` (light grey) fill, no outline,
+ *           and the app's own wheel mark in `ink`; its wedges are drawn in `secondary` too, so
+ *           they read as cut-outs of the disc. Not dimmed and not disabled; it only says that no
  *           spin can start right now.
- *   OPEN    state `open` and the wheel not turning: solid `ink` fill, no outline, the mark
- *           inverted.
+ *   OPEN    state `open` and the wheel not turning: solid `ink` fill, the mark inverted.
  * No shadow or elevation in either look, and no animation between them. The spoken hint says
  * what a press does, so the two looks are not told by colour alone.
+ *
+ * The label sits in the strip under the 56dp bar, where the bottom safe area is. A phone with no
+ * such strip (a home-button model) would cut the label off; the button itself still shows.
  */
 export function SpinTabButton() {
   const router = useRouter();
@@ -62,15 +64,13 @@ export function SpinTabButton() {
         borderRadius: radius.full,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: open ? color.ink : color.dominant,
-        borderWidth: open ? 0 : OUTLINE,
-        borderColor: color.ink,
+        backgroundColor: open ? color.ink : color.secondary,
       }}
     >
       <BrandMark
         size={MARK}
         color={open ? color.dominant : color.ink}
-        wedgeColor={open ? color.ink : color.dominant}
+        wedgeColor={open ? color.ink : color.secondary}
       />
     </View>
   );

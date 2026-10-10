@@ -7,16 +7,17 @@ import { useSession } from '@/lib/session/store';
 import { color, type } from '@/lib/theme/tokens';
 
 /**
- * The signed-in app: a bottom bar of Home, Spin and Profile (02-UI-SPEC section 8). Diary and
- * Board join in Phases 4 and 5 and get no placeholder tabs. The landing is Today, reached by
- * the explicit child path `/(app)/today` (a bare `/(app)` shows Unmatched Route here).
+ * The signed-in app: a bottom bar of Home, Diary, Spin, Board and Profile (02-UI-SPEC section 8).
+ * Diary and Board are plain pages ("Nothing here yet.") until Phases 4 and 5 fill them (decision
+ * D-24). The landing is Today, reached by the explicit child path `/(app)/today` (a bare
+ * `/(app)` shows Unmatched Route here).
  *
  *  - The middle button is an action drawn by `SpinTabButton`; it never becomes the selected tab.
  *  - The bar is hidden on the one-time photo-and-bio page (the `profile` screen while
  *    `extrasPending` is true; the bar reads the focused route's options) and on the pages
  *    pushed over Today that have no bar (`notifications` now, `entry` in Phase 3).
  *  - Every file left in this folder becomes a tab by itself, so the folder holds exactly
- *    `today`, `spin` and `profile` (Phase 1's placeholder page is gone).
+ *    `today`, `diary`, `spin`, `board` and `profile` (Phase 1's placeholder page is gone).
  */
 export const unstable_settings = {
   initialRouteName: 'today',
@@ -74,12 +75,26 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="diary"
+        options={{
+          title: 'Diary',
+          tabBarIcon: ({ color: tint }) => <Ionicons name="book-outline" size={24} color={tint} />,
+        }}
+      />
+      <Tabs.Screen
         name="spin"
         options={{
           title: 'Spin',
           tabBarAccessibilityLabel: 'Spin',
           tabBarItemStyle: { paddingTop: 0 },
           tabBarButton: () => <SpinTabButton />,
+        }}
+      />
+      <Tabs.Screen
+        name="board"
+        options={{
+          title: 'Board',
+          tabBarIcon: ({ color: tint }) => <Ionicons name="people-outline" size={24} color={tint} />,
         }}
       />
       <Tabs.Screen
