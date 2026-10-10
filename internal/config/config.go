@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -39,6 +40,16 @@ type Config struct {
 	S3AccessKeyID     string
 	S3SecretAccessKey string
 	S3PublicBaseURL   string
+
+	// AppEnv is "production" (the default), "development" or "test".
+	AppEnv string
+	// SpinTestTools turns on the test-only clock and pretend-day routes. It
+	// loads only with AppEnv "test", a non-empty SpinTestUserEmails and a
+	// database whose name ends in _dev or _test.
+	SpinTestTools bool
+	// SpinTestUserEmails lists the throwaway accounts the test routes answer
+	// to, lower-cased. A real account never goes here.
+	SpinTestUserEmails []string
 }
 
 // Load reads configuration from the process environment. If any required
@@ -121,6 +132,29 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: MAIL_DRIVER must be %q or %q, got %q", "resend", "log", mailDriver)
 	}
 
+	appEnv := withDefault(os.Getenv("APP_ENV"), "production")
+	if appEnv != "production" && appEnv != "development" && appEnv != "test" {
+		return nil, fmt.Errorf("config: APP_ENV must be %q, %q or %q, got %q", "production", "development", "test", appEnv)
+	}
+
+	spinTestTools, err := parseToolsSwitch(os.Getenv("SPIN_TEST_TOOLS"))
+	if err != nil {
+		return nil, err
+	}
+	spinTestEmails := parseEmailList(os.Getenv("SPIN_TEST_USER_EMAILS"))
+	if spinTestTools {
+		if appEnv != "test" {
+			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs APP_ENV=test (APP_ENV is %q), so the test tools cannot run outside test mode", appEnv)
+		}
+		if len(spinTestEmails) == 0 {
+			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs SPIN_TEST_USER_EMAILS to list the throwaway accounts the test tools may use")
+		}
+		name, ok := databaseName(databaseURL)
+		if !ok || (!strings.HasSuffix(name, "_dev") && !strings.HasSuffix(name, "_test")) {
+			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs DATABASE_URL to name a database ending in _dev or _test")
+		}
+	}
+
 	return &Config{
 		Port:            port,
 		DatabaseURL:     databaseURL,
@@ -145,6 +179,10 @@ func Load() (*Config, error) {
 		S3AccessKeyID:     s3AccessKeyID,
 		S3SecretAccessKey: s3SecretAccessKey,
 		S3PublicBaseURL:   s3PublicBaseURL,
+
+		AppEnv:             appEnv,
+		SpinTestTools:      spinTestTools,
+		SpinTestUserEmails: spinTestEmails,
 	}, nil
 }
 
@@ -178,4 +216,54 @@ func parseDurationDefault(key, raw string, def time.Duration) (time.Duration, er
 		return 0, fmt.Errorf("config: invalid %s: %w", key, err)
 	}
 	return d, nil
+}
+
+// parseToolsSwitch reads SPIN_TEST_TOOLS. Empty, "0" and "false" are off;
+// "1" and "true" are on; anything else is an error, so a typo can never turn
+// the tools on by accident or leave a person wondering whether they are on.
+func parseToolsSwitch(raw string) (bool, error) {
+	switch raw {
+	case "", "0", "false":
+		return false, nil
+	case "1", "true":
+		return true, nil
+	}
+	return false, fmt.Errorf("config: SPIN_TEST_TOOLS must be empty, 0, false, 1 or true, got %q", raw)
+}
+
+// parseEmailList splits a comma list, trims each item, lower-cases it and
+// drops empty items.
+func parseEmailList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		item := strings.ToLower(strings.TrimSpace(part))
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// databaseName returns the database a DATABASE_URL names, for the URL form
+// (a dbname query parameter wins, as it does for the driver) and for the
+// key=value form. ok is false when no name can be read, which callers treat
+// as a refusal.
+func databaseName(raw string) (name string, ok bool) {
+	if strings.HasPrefix(raw, "postgres://") || strings.HasPrefix(raw, "postgresql://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "", false
+		}
+		if q := u.Query().Get("dbname"); q != "" {
+			return q, true
+		}
+		name = strings.TrimPrefix(u.Path, "/")
+		return name, name != ""
+	}
+	for _, field := range strings.Fields(raw) {
+		if value, found := strings.CutPrefix(field, "dbname="); found && value != "" {
+			return value, true
+		}
+	}
+	return "", false
 }
