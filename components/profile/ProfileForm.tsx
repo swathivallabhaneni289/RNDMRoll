@@ -93,11 +93,21 @@ function nameProblem(value: string): string | undefined {
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
-export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
+/** How long "Saved." stays under the bottom button after a save in the Profile tab. */
+const SAVED_NOTE_MS = 3000;
+
+/**
+ * `inTab` (edit mode only) is set when this page is the Profile tab of the bottom bar: no Back
+ * control (inside tabs "back" would jump to another tab), the person stays on the page after a
+ * save and sees "Saved." for 3 seconds, and the bottom inset is left to the bar.
+ */
+export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; inTab?: boolean }) {
   const router = useRouter();
   const { user, signIn, signOut, reloadUser, finishExtras } = useSession();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [savedNote, setSavedNote] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const signup = mode === 'signup';
   const edit = mode === 'edit';
@@ -168,6 +178,7 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     }
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -542,7 +553,9 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
       await updateProfile(patch);
       await reloadUser();
     }
-    // The landing route swaps this page for the edit page once the flag clears.
+    // Today first, the flag second, in this order: clearing the flag first would remount this
+    // form as the edit page for a frame before the tab switch (plan 02-02 decision 11).
+    router.navigate('/(app)/today');
     finishExtras();
   }
 
@@ -560,8 +573,15 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
     // Saved: the stored avatar is the new one now, so Save changes goes quiet again. A retry
     // never uploads twice (uploadedRef keeps the URL).
     setPendingAvatarUri(null);
-    // This page is also the app's landing page, so there may be nothing to go back to.
-    if (router.canGoBack()) router.back();
+    if (inTab) {
+      // Inside the tabs "back" would jump to another tab, so the person stays here and sees
+      // "Saved." under the button for a few seconds.
+      setSavedNote(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSavedNote(false), SAVED_NOTE_MS);
+    } else if (router.canGoBack()) {
+      router.back();
+    }
   }
 
   async function handleSubmit() {
@@ -586,8 +606,10 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
   const avatarPreviewUri = pendingAvatarUri ?? initialAvatarUrl;
 
-  // Skip for now: leave the photo and bio for later; the landing route shows the edit page.
+  // Skip for now: leave the photo and bio for later and go to Today (then clear the flag, in
+  // that order, so the edit page never flashes).
   function handleSkipExtras() {
+    router.navigate('/(app)/today');
     finishExtras();
   }
 
@@ -612,10 +634,10 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
   };
 
   return (
-    <Screen wheels="corner">
+    <Screen wheels="corner" edges={edit && inTab ? ['top', 'left', 'right'] : undefined}>
       <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          {(signup || edit) && router.canGoBack() ? (
+          {(signup || (edit && !inTab)) && router.canGoBack() ? (
             <Pressable
               onPress={() => router.back()}
               accessibilityRole="button"
@@ -898,8 +920,8 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
 
         <View style={{ marginTop: space.lg }}>
           {edit && !hasChanges ? (
-            // Nothing to save, so the one button moves on to the next page (no greyed button at rest).
-            <PrimaryButton label="Continue" arrow onPress={() => router.push('/home')} />
+            // Nothing to save, so the one button moves on to Today (no greyed button at rest).
+            <PrimaryButton label="Continue" arrow onPress={() => router.navigate('/(app)/today')} />
           ) : (
             <PrimaryButton
               label={edit ? 'Save changes' : 'Continue'}
@@ -910,6 +932,14 @@ export function ProfileForm({ mode }: { mode: ProfileFormMode }) {
             />
           )}
         </View>
+        {savedNote && !hasChanges ? (
+          // Directly under the button, gone at once when anything is edited again.
+          <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs, alignItems: 'center' }}>
+            <AppText role="label" tone="muted">
+              Saved.
+            </AppText>
+          </View>
+        ) : null}
 
         {signup ? (
           <View style={{ marginTop: space.lg, alignItems: 'center' }}>

@@ -23,8 +23,9 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
  * user through (auth) for a flash, which is exactly what _layout.tsx's
  * gating exists to prevent.
  *
- * Redirects target each group's own explicit initial screen ("/(app)/profile",
- * "/(auth)/welcome") rather than the bare group path ("/(app)", "/(auth)").
+ * Redirects target each group's own explicit initial screen ("/(app)/today",
+ * "/(app)/profile", "/(auth)/welcome") rather than the bare group path ("/(app)",
+ * "/(auth)").
  * Empirically, a bare group path fails to resolve here and falls through to
  * Unmatched Route: the group's own Stack.Protected guard and this redirect
  * both fire from the same gateSettled flip, and the guard hasn't committed
@@ -32,9 +33,15 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
  * child path doesn't depend on that timing. Welcome is the start page on every
  * signed-out launch (UI-SPEC revision 11), so there is no second redirect and
  * no flash of the sign-in page before it.
+ *
+ * A signed-in, finished account lands on Today. The one exception is first run: right after a
+ * sign-up (`extrasPending`, in memory only) the person sees Phase 1's photo-and-bio page once,
+ * on "/(app)/profile", and Continue or Skip for now end on Today. This index route also runs
+ * after every sign-in (the root Stack puts it back when (auth) leaves), so a sign-up and a plain
+ * log in both pass through the one redirect below.
  */
 export default function Index() {
-  const { status, user } = useSession();
+  const { status, user, extrasPending } = useSession();
   const { fontsLoaded, fontError } = useAppFonts();
   const { resolved: introResolved } = useIntroSeen();
 
@@ -48,7 +55,7 @@ export default function Index() {
   }
 
   if (status === 'authenticated' && user?.onboarding_complete === true) {
-    return <Redirect href="/(app)/profile" />;
+    return <Redirect href={extrasPending ? '/(app)/profile' : '/(app)/today'} />;
   }
   return <Redirect href="/(auth)/welcome" />;
 }
