@@ -71,12 +71,11 @@ Everything else on the wheel is an existing token: wedges alternate `ink` and `s
 
 **Pointer.** An `ink` triangle, apex down, 16dp wide and 12dp tall, centred at 12 o'clock. Its tip touches the rim's outer edge. It sits outside the disc, so it is always `ink` on `dominant` (17.32:1).
 
-**Wedge width follows weight** (bigger wedge, higher chance).
-- True angle of a wedge: `360 x weight / total`.
-- No wedge is drawn narrower than 22 degrees. A narrower wedge is drawn at 22 and the others share the rest in proportion. Repeat until nothing is under 22. Twelve wedges need 264 degrees, so it fits. A wedge over 180 degrees (weights 10 and 1) is drawn with the large-arc flag.
-- Edit wheel's chance figures use the true shares, not the drawn angles.
+**All wedges are the same size** (the developer's request on 2026-10-10, after seeing the weighted wheel: "why some are too big and some are too small, make them all equal").
+- Every wedge is `360 / n` degrees (60 each for six, 30 each for twelve). The number of a category (its weight) decides how OFTEN it comes up, never how wide it is drawn.
+- Edit wheel's chance figures ("About 27% of spins") still use the true shares, so the person can see the odds there.
 - Wedges run clockwise in list order; the first starts at angle 0 (12 o'clock).
-- Starting wheel, in this order: Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1: 98, 33, 98, 33, 65 and 33 degrees. The picture draws six equal wedges with Movie on top. That is a drawing: equal wedges would make Movie and Book come up 1 day in 3, and the developer's own rule (D-01) says they are small wedges, about 1 day in 5. So the wedges stay weighted.
+- Starting wheel, in this order: Meal 3, Movie 1, Song 3, Book 1, Place 2, Game 1: six equal wedges of 60 degrees. The odds stay as the developer decided in D-01 (Movie and Book come up about 1 day in 5 together); only the drawing is equal, as in the picture.
 
 **Labels.** One rule for 2 to 12 wedges, in the `wheelLabel` role (11/14, letter spacing 1.5, capitals by style, `allowFontScaling={false}`). Labels turn with the wheel.
 - **Across** (as in the picture): the word runs across the wedge, perpendicular to its centre line, with its middle at 70 percent of the radius.
@@ -330,7 +329,7 @@ This contract is built only after Phase 1 is closed and these documents are copi
 - **Screen insets.** `Screen` gets an `edges` choice so the bottom inset is not counted twice inside Tabs. The default stays for signed-out screens and for the first-run page (its bar is hidden, so nothing else adds the bottom inset); Today and the edit-mode Profile page pass the top, left and right edges.
 - **Radius allow-list** (from the code on 2026-10-09). The 24dp token `radius.lg` is used only by `components/ui/PhotoPanel.tsx`, `components/profile/BirthdayPickerField.tsx` (the date sheet, Phase 1 plan 01-21), `components/profile/ProfileForm.tsx` (the log-out sheet) and, new in Phase 2, `components/ui/ConfirmSheet.tsx`. `radius.full` is used only by `components/ui/IconBadge.tsx`, `components/brand/DialAvatar.tsx` and, new in revision 5, `components/nav/SpinTabButton.tsx` (the round Spin button). Plan 02-03 Task 2 scans for exactly these files.
 - **Wheel code.** The Welcome wheel picks its own winner among 8 fixed sectors, so Today's wheel is a new component whose target comes from the server. Reuse its angle idea and `polar`.
-- **Pure logic in pure files** (drawn angles with the 22 degree floor, tones, label placement, the pointer check, countdown split, truncation), checked by a throwaway script and by device steps for counts 2 to 12, the tone table and the spin.
+- **Pure logic in pure files** (drawn angles, all equal, tones, label placement, the pointer check, countdown split, truncation), checked by a throwaway script and by device steps for counts 2 to 12, the tone table and the spin.
 - **API.** `lib/api/spin.ts` (not "roll", so the word scans stay meaningful), using GET, POST and PATCH only, so "Save wheel" is one PATCH of the whole list. Spin responses carry the wheel used. The server sends the open time, the close time and its own "now", plus two ready-made strings so the phone does no date or time maths: `spin.spun_local_time` ("8:02 PM") and `next_open_weekday` ("Friday").
 - **Text roles and fonts (revision 5).** `title`, `countdown`, `wheelLabel`, `hero`, `heroSmall` and `note` join the `type` group and are pinned in `tokens.test-assert.ts` in the same task (read that file first: its shape pin changes). `lib/theme/fonts.ts` loads `Domine_400Regular` and its `systemFallback` gets the new roles; `components/ui/AppText.tsx` gets the role names. Colour: `wheelMid` replaces the six `wheel1` to `wheel6` tokens.
 - **The mark.** The Spin button reuses `components/brand/BrandMark.tsx` (props `color` and `wedgeColor`), not a new drawing. That file is not edited.
@@ -352,7 +351,7 @@ Developer: say keep or change for each row. The word go is only for starting the
 | 8 | Edit wheel | You can have up to 12 categories. / A wheel needs at least 2 categories. / Give this category a name. / You already have a category with this name. | New. |
 | 9 | Edit wheel | Leave without saving? / Your changes will be lost. / Leave / Keep editing | New. |
 | 10 | Profile | Saved. | New. |
-| 11 | Starting wheel | Meal, Movie, Song, Book, Place, Game, in that order | Your picture draws six equal wedges with Movie on top. Ours follow the weights. |
+| 11 | Starting wheel | Meal, Movie, Song, Book, Place, Game, in that order | Your picture draws six equal wedges with Movie on top. Ours are equal too; the numbers decide how often each comes up. |
 | 12 | Notifications | Notifications / Nothing new yet. | New. Behind the bell. |
 
 **Choices made here that you may want to change:**
