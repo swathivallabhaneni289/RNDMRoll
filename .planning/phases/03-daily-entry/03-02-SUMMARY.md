@@ -195,19 +195,22 @@ it is named here. No later task of this plan touched it.
 - `node --experimental-strip-types scripts/check-entry.ts`: 'reaction names match the server list' and
   'ok: 2701 checks, no failure'. `scripts/check-wheel.ts`: 'ok: 47877 checks, no failure'. (Both print a
   harmless Node warning about the package type.)
-- `components/today`, `components/entry`, `app/(app)/today`: no hex or `rgba(`, none of the banned whole word
-  (the app says 'spin'; also checked in `lib/entry`, `lib/api/entries.ts`), no `Math.random`, `new Date`, `Date.now`, `Date.UTC`, no
-  `radius.lg`; `radius.full` in those folders is exactly `components/entry/PhotoField.tsx` and
+- `components/today`, `components/entry`, `app/(app)/today`: no hex or `rgba(`, none of the banned whole
+  word (the app says 'spin'; also checked in `lib/entry` and `lib/api/entries.ts`), no `Math.random`,
+  `new Date`, `Date.now` or `Date.UTC`, no `radius.lg`; `radius.full` in those folders is exactly
+  `components/entry/PhotoField.tsx` and
   `components/entry/ReactionPicker.tsx`; no 'Edit wheel' in `DayActions.tsx` or `SettledBlock.tsx`; no
   `@/lab` or `lab/` in `components/entry`.
 - Emoji and symbol scan (run with `bash -c`, `--exclude-dir=lab`): exactly `lib/entry/reactions.ts`.
   Em dash scan over app, components, lib, scripts: nothing. No en dash in the files of this task.
 - `ls "app/(app)/today"`: `_layout.tsx`, `edit-wheel.tsx`, `index.tsx`, `log.tsx`, `notifications.tsx`.
   Nothing was added directly under `app/(app)/` since `pre-phase3` (`board.tsx` and `diary.tsx` are older).
-- `git diff pre-phase3 -- "app/(app)/_layout.tsx"`: the hide list line, one hunk.
+- `git diff pre-phase3 -- "app/(app)/_layout.tsx"` shows 11 hunks: ten are commit `a31013d` (Phase 2.2 tab
+  motion, the other window, made after the tag) and this plan's only hunk (`def647f`, checked with
+  `git show def647f` and with `git diff HEAD` before the commit) is the hide list line.
 - `git diff --stat pre-phase3 -- app/index.tsx app/_layout.tsx "app/(auth)/_layout.tsx"
   lib/session/store.ts`: nothing. `components/ui/TextField.tsx` and `PrimaryButton.tsx`: no diff.
-  `package.json`, `package-lock.json`, `app.json`: no diff.
+  `package.json`, `package-lock.json`, `app.json`: no diff against `pre-phase3`.
 - **`lib/api/client.ts` is NOT empty against `pre-phase3`**: commit `ed34a92` (the Settings window,
   Blocked accounts) added `api.delete` and the `'DELETE'` method type. None of this plan's commits touch
   that file. Plan 03-03's scan `grep -rn "'DELETE'" lib app components` will print `client.ts` for that
