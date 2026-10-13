@@ -74,6 +74,8 @@
 - **Types for the summary, notifications and blocks are in `lib/api/summary.ts` and `lib/api/account.ts`**, not `lib/api/types.ts` (that file held another plan's lines; move them when it is clean).
 - The paper's `lib/diary/useSummary.ts` is `components/profile/useProfileSummary.ts`; its `lib/api/diary.ts` summary types are `lib/api/summary.ts`. The Diary build should import from there.
 - Plan 04-02 scans that name `components/settings`, `lib/settings` and the Settings route files as "never edited" are no longer true (decision D-16 edited and removed files there).
+- **The Edit pill says 'Edit' on screen and 'Edit profile' to VoiceOver** (the paper's spoken label, which starts with the visible word). The brief says the button "says only 'Edit'": if the spoken label should be 'Edit' too, flip `accessibilityLabel` in `ProfileScreen.tsx` (one line).
+- **The Username route, screen and check hook were deleted, not just the row** (decision D-16: the feature lives only on the Profile page and the Edit page). `lib/settings/rules.ts` keeps its username constants (the check script imports that file); they are unused now.
 
 ## Waiting for other work
 
@@ -88,7 +90,7 @@
 
 ## Stale papers to fold in (not edited here, outside the allowed list)
 
-`04-CONTEXT.md` (the "Settings holds Edit profile, Username..." sentence), `04-02-PLAN.md` (Task 5 steps 7c and 10, the `components/settings` "never edited" scans, the `'DELETE'` scan, the gear "in the photo row" wording), `04-VALIDATION.md` if it lists the Settings rows. `02.1-02-PLAN.md` and `02.1-VALIDATION.md` still describe the first Settings.
+`04-CONTEXT.md` (the "Settings holds Edit profile, Username..." sentence), `04-02-PLAN.md` (Task 5 steps 7c and 10, the `components/settings` "never edited" scans, the `'DELETE'` scan, the gear "in the photo row" wording), `04-VALIDATION.md` if it lists the Settings rows. In `04-UI-SPEC.md` itself (outside the small edits allowed here): section 1's gear row, section 4.1 and the choices bullet "A Settings gear sits at the far right of the photo row, right of the Edit button" still put the gear in the photo row, and 4.1, 4.2 and section 2 still say `heading` for the name and `title` for the figures; the build has the gear in a slim row above the photo row (as `02.1-UI-SPEC` section 3 says) and `note` for both. `02.1-02-PLAN.md` and `02.1-VALIDATION.md` still describe the first Settings.
 
 ## Device steps (short)
 
