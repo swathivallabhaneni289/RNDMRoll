@@ -13,9 +13,10 @@ const (
 	KindBonus SpinKind = "bonus"
 )
 
-// SpinResult is what became of a spin's day. Phase 2 only ever stores
-// "open"; the entry phase sets "posted" and "skipped" on the day's latest
-// spin.
+// SpinResult is what became of a spin's day. A spin starts "open"; a post or
+// a skip sets "posted" or "skipped" on the day's latest spin (an earlier spin
+// of the same day, such as the daily spin under a bonus spin, stays "open"
+// for good).
 type SpinResult string
 
 const (
@@ -48,6 +49,12 @@ const (
 	// StateLate: after midnight, before the next opening, and yesterday's
 	// spin is still unsettled.
 	StateLate TodayState = "late"
+	// StatePosted: the shown spin's day was posted. The shown spin is the
+	// local date's latest spin, or, until the next opening, last night's
+	// when the post was made after midnight.
+	StatePosted TodayState = "posted"
+	// StateSkipped: the same, for a day that was skipped.
+	StateSkipped TodayState = "skipped"
 )
 
 // WheelEntry is one wedge of a wheel: a category id, the name as written and
@@ -84,7 +91,11 @@ type Spin struct {
 	WindowOpensAt  time.Time
 	WindowClosesAt time.Time
 	Result         SpinResult
-	CreatedAt      time.Time
+	// SettledAt is when the result became posted or skipped (from the service
+	// clock), or nil while the spin is open and for a day settled only by a
+	// pretend posted day.
+	SettledAt *time.Time
+	CreatedAt time.Time
 }
 
 // UserState is a person's one state row. It is the lock for everything the
@@ -157,12 +168,30 @@ type SpinView struct {
 	Result        SpinResult   `json:"result"`
 }
 
-// WeekDayView is one day of the week section.
+// WeekDayView is one day of the week section. Skipped is true for a date
+// whose latest spin was skipped and that has no posted day.
 type WeekDayView struct {
 	Date    Date   `json:"date"`
 	Letter  string `json:"letter"`
 	Weekday string `json:"weekday"`
 	Posted  bool   `json:"posted"`
+	Skipped bool   `json:"skipped"`
+}
+
+// EntryRef is the small summary of a day's entry that Today carries, so the
+// Posted screen needs no second request. Stars is the stored whole number 1
+// to 10. CoverKey is the storage key of the first photo: it is never sent
+// (json "-"), and the HTTP layer turns it into PhotoURL, the cover's link,
+// just before the answer is written. PhotoURL is empty until then.
+type EntryRef struct {
+	ID         string  `json:"id"`
+	Late       bool    `json:"late"`
+	Title      string  `json:"title"`
+	Stars      int     `json:"stars"`
+	Reaction   *string `json:"reaction"`
+	CoverKey   string  `json:"-"`
+	PhotoURL   string  `json:"photo_url"`
+	PhotoCount int     `json:"photo_count"`
 }
 
 // WeekView is the week of the current local date, Monday first. TodayIndex
@@ -185,7 +214,9 @@ type BonusView struct {
 }
 
 // Today is everything the Today screen shows. NextOpenWeekday is written by
-// the server in the person's current zone ("Friday").
+// the server in the person's current zone ("Friday"). Entry is the summary of
+// the entry of the shown spin's date, and null when there is none (including
+// after the entry was deleted) and in every state but posted and skipped.
 type Today struct {
 	Now             Instant      `json:"now"`
 	TimeZone        string       `json:"time_zone"`
@@ -195,6 +226,7 @@ type Today struct {
 	NextOpenAt      Instant      `json:"next_open_at"`
 	NextOpenWeekday string       `json:"next_open_weekday"`
 	Spin            *SpinView    `json:"spin"`
+	Entry           *EntryRef    `json:"entry"`
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
 	Bonus           BonusView    `json:"bonus"`
@@ -213,9 +245,15 @@ type TodayInput struct {
 	// or nil. YesterdaySpin is the latest spin of the date before it
 	// (PrevDate), or nil. Their Result is already what the screen shows:
 	// "posted" when a posted day exists for that date, else the stored
-	// value.
+	// value. SettledAt on each is the stored one.
 	Spin          *Spin
 	YesterdaySpin *Spin
+
+	// Entry is the summary of the entry of the current local date, or nil.
+	// YesterdayEntry is the same for the date before it. Both are nil for a
+	// date with no entry, and a deleted entry is nil too.
+	Entry          *EntryRef
+	YesterdayEntry *EntryRef
 
 	// Settled is whether the current local date is settled (daySettled).
 	Settled bool
@@ -232,6 +270,10 @@ type TodayInput struct {
 
 	// PostedDates are the posted days that fall in the current week.
 	PostedDates []Date
+
+	// SkippedDates are the dates of the current week whose latest spin was
+	// skipped. A date that is also in PostedDates is not flagged skipped.
+	SkippedDates []Date
 }
 
 // gapAllowsSpin reports whether enough time has passed since the last daily
@@ -240,17 +282,47 @@ func gapAllowsSpin(now time.Time, lastDailySpunAt *time.Time) bool {
 	return lastDailySpunAt == nil || now.Sub(*lastDailySpunAt) >= MinSpinGap
 }
 
+// stateOfResult is the state of a shown spin: posted and skipped show as
+// themselves and an open spin is a result.
+func stateOfResult(r SpinResult) TodayState {
+	switch r {
+	case ResultPosted:
+		return StatePosted
+	case ResultSkipped:
+		return StateSkipped
+	}
+	return StateResult
+}
+
+// settledAfterClose reports whether a posted or skipped spin was settled at
+// or after its window closed, so that a post or skip made after midnight
+// keeps Today on posted or skipped until the next opening. A spin settled
+// earlier, or with no settled time (a pretend posted day made by the test
+// tools), does not.
+func settledAfterClose(s *Spin) bool {
+	return (s.Result == ResultPosted || s.Result == ResultSkipped) &&
+		s.SettledAt != nil && !s.SettledAt.Before(s.WindowClosesAt)
+}
+
 // BuildToday turns the facts into the Today screen's data. It is pure: no
 // database, no clock, no randomness.
 //
 // The state is the first of these that holds:
 //
-//  1. a daily spin was made on the local date: result;
+//  1. a spin was made on the local date (its latest spin is shown): posted
+//     or skipped when that spin's result says so, else result;
 //  2. it is 8:00 PM or later and no daily spin was made in the last 12
 //     hours: open;
-//  3. yesterday's spin is unsettled and the late window has not ended
+//  3. yesterday's latest spin is open and the late window has not ended
 //     (whatever zone made it): late;
-//  4. waiting.
+//  4. yesterday's latest spin was posted or skipped at or after its window
+//     closed and the late window has not ended: posted or skipped, showing
+//     that spin, until the next opening;
+//  5. waiting (this includes yesterday settled before midnight, and a
+//     pretend posted day, which has no settled time).
+//
+// The entry summary is shown only in posted and skipped, and is the one of
+// the shown spin's date.
 //
 // next_open_at is the first opening strictly after now and at or after the
 // last daily spin plus 12 hours.
@@ -262,16 +334,24 @@ func BuildToday(in TodayInput) Today {
 
 	state := StateWaiting
 	var shown *Spin
+	var entry *EntryRef
 	switch {
 	case in.Spin != nil:
-		state = StateResult
 		shown = in.Spin
+		state = stateOfResult(in.Spin.Result)
+		if state != StateResult {
+			entry = in.Entry
+		}
 	case !in.Now.Before(win.OpensAt) && gapAllowsSpin(in.Now, in.LastDailySpunAt):
 		state = StateOpen
-	case in.YesterdaySpin != nil && in.YesterdaySpin.Result == ResultOpen &&
-		in.Now.Before(WindowFor(prev, loc).LateUntil):
-		state = StateLate
-		shown = in.YesterdaySpin
+	case in.YesterdaySpin != nil && in.Now.Before(WindowFor(prev, loc).LateUntil):
+		y := in.YesterdaySpin
+		switch {
+		case y.Result == ResultOpen:
+			state, shown = StateLate, y
+		case settledAfterClose(y):
+			state, shown, entry = stateOfResult(y.Result), y, in.YesterdayEntry
+		}
 	}
 
 	next := NextOpen(in.Now, loc)
@@ -295,12 +375,23 @@ func BuildToday(in TodayInput) Today {
 	for _, d := range in.PostedDates {
 		posted[d] = true
 	}
+	skipped := make(map[Date]bool, len(in.SkippedDates))
+	for _, d := range in.SkippedDates {
+		skipped[d] = true
+	}
 	weekStart := WeekStart(today)
 	days := WeekDays(weekStart)
 	dayViews := make([]WeekDayView, len(days))
 	count := 0
 	for i, d := range days {
-		dayViews[i] = WeekDayView{Date: d.Date, Letter: d.Letter, Weekday: d.Weekday, Posted: posted[d.Date]}
+		dayViews[i] = WeekDayView{
+			Date:    d.Date,
+			Letter:  d.Letter,
+			Weekday: d.Weekday,
+			Posted:  posted[d.Date],
+			// A posted day wins: a date that has a posted row is posted.
+			Skipped: skipped[d.Date] && !posted[d.Date],
+		}
 		if posted[d.Date] {
 			count++
 		}
@@ -315,6 +406,7 @@ func BuildToday(in TodayInput) Today {
 		NextOpenAt:      Instant(next),
 		NextOpenWeekday: weekdayName(next, loc),
 		Spin:            spinView,
+		Entry:           entry,
 		Wheel:           wheel,
 		Week: WeekView{
 			Start:      weekStart,
