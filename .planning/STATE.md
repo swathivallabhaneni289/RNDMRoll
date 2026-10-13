@@ -5,22 +5,21 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: daily-roll
 status: planning
-stopped_at: Apple and Google sign-in removed completely 2026-10-09 (pushed to GitHub on 2026-10-10 at the developer's ask); Phase 2 documents renumbered, at UI spec revision 6 since 2026-10-10 (new Today pictures) and waiting for the developer's go; Phase 3 documents at revision 2, written on paper (nothing built)
-last_updated: "2026-10-09T18:21:00.000Z"
+stopped_at: context exhaustion at 75% (2026-10-13)
+last_updated: "2026-10-13T08:52:25.917Z"
 last_activity: 2026-10-09
 last_activity_desc: Apple and Google sign-in removed; Phase 3 planned on paper
 progress:
-  total_phases: 5
-  completed_phases: 1
-  total_plans: 21
-  completed_plans: 21
-  percent: 20
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 38
+  completed_plans: 26
+  percent: 33
 ---
 
 # Project State
 
-> **RESUME HERE (2026-10-13).** Phase 2 CLOSED (server live, app built, API checks passed, six device checks listed as not walked in `02-03-SUMMARY.md`). Phase 2.1 Settings SERVER live on dev (version 5); Settings APP built (02.1-02, tasks 1 to 3, summary may be pending). Phase 3 SERVER (03-01, migration 0006) and Phase 3 APP (03-02) were being built by helper agents; 03-03 (entry page, skip, close-out) is next; then the Phase 4 to 6 papers by the other window. Wheel: equal slices, black and light, thin rim, no numbers, five-tab bar with a grey Spin circle. Test tools are ON in the dev API and `walkthrough-p2@example.com` / `wheel1234` exists: before real use reset the clock, restart the API without the test variables, delete that account by id. Check `git log --oneline -20` for what landed; never `git add -A`; never push.
-
+> **RESUME HERE (2026-10-13).** Phase 2 CLOSED (server live, app built, API checks passed, six device checks listed as not walked in `02-03-SUMMARY.md`). Phase 2.1 Settings SERVER live on dev (version 5); Settings APP built (02.1-02, tasks 1 to 3, summary may be pending). Phase 3 SERVER (03-01, migration 0006) and Phase 3 APP (03-02) were being built by helper agents; 03-03 (entry page, skip, close-out) is next; then the Phase 4 to 6 papers by the other window. Wheel: equal slices, black and light, thin rim, no numbers, five-tab bar with a grey Spin circle. Test tools are ON in the dev API and `walkthrough-p2@example.com` / `wheel1234` exists: before real use reset the clock, restart the API without the test variables, delete that account by id. Check `git log --oneline -20` for what landed; never `git add -A`; never push. LATEST DECISIONS (developer, voice, 2026-10-13): the PROFILE PAGE follows `docs/reference/profile-page-2026-10-13.png` (photo, name beside it, @username, bio under it editable in place, three figures with 'Spins', tastes, recent activity, one 'Edit' button, gear for Settings); 'Edit' opens the Phase 1 form (name, username with the taken-or-free check, bio, 'Edit your picture'); SETTINGS = Notifications (switches: reactions and likes, comments, milestones), Blocked accounts (list, Unblock), Private account (public default), Password, Log out; NO bio, username or edit profile in Settings. Being built by a helper (profile page + settings restructure). STILL TO BUILD: server for notification settings (`GET/PATCH /v1/me/notification-settings`) and blocks (`GET /v1/me/blocks`, `DELETE /v1/me/blocks/{user_id}`, `POST /v1/me/blocks`) as the next free migration after the Phase 3 one, after 03-01 finishes; Phase 4 server (04-01: `GET /v1/diary`, `GET /v1/me/summary`); Phase 3 app 03-03; Phases 5 and 6. Device tests the developer still owes: Reduce Motion, Larger Text, offline, first-run sign-up page, Profile 'Saved.', Settings steps.
 
 ## Project Reference
 
@@ -109,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T18:21:00.000Z
-Stopped at: Apple and Google sign-in removed completely (pushed to GitHub on 2026-10-10 at the developer's ask); Phase 2 documents renumbered, waiting for the developer's go; Phase 3 documents written on paper
+Last session: 2026-10-13T08:52:25.903Z
+Stopped at: context exhaustion at 75% (2026-10-13)
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md
