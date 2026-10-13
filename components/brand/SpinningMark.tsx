@@ -36,7 +36,7 @@ const ROLL_MS = 1500;
  */
 export function SpinningMark({
   size = 240,
-  color = tokenColor.wheelCharcoal,
+  color = tokenColor.ink,
   wedgeColor = tokenColor.secondary,
   background = tokenColor.dominant,
   rollIn = false,

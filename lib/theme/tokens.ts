@@ -12,12 +12,6 @@ export const color = {
   /** Soft profile-form field fill: translucent white over the paper. */
   fieldSoft: 'rgba(255,255,255,0.55)',
   ink: '#111111',
-  /**
-   * The soft charcoal of the wheel (2026-10-10, 02-CONTEXT D-25): the dark wedges, the rim, the
-   * hub dot and the pointer of Today's wheel, and the same parts of the brand wheel on the
-   * first pages. Used for those drawings only, never for text.
-   */
-  wheelCharcoal: '#3B3936',
   muted: '#625F5B',
   divider: '#D3D0C9',
   destructive: '#9A3B32',

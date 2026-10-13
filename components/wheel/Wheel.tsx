@@ -70,7 +70,7 @@ export type WheelProps = {
 
 /** The dark wedges, the rim, the hub dot and the pointer are all the one soft charcoal (D-25). */
 function toneColor(tone: Tone): string {
-  return tone === 'dark' ? color.wheelCharcoal : color.secondary;
+  return tone === 'dark' ? color.ink : color.secondary;
 }
 
 /**
@@ -202,7 +202,7 @@ function WheelImpl({
   const hub = (
     <Svg width={HUB_HIT} height={HUB_HIT} viewBox={`${-HUB_HIT / 2} ${-HUB_HIT / 2} ${HUB_HIT} ${HUB_HIT}`}>
       <Circle cx={0} cy={0} r={hubDiameter / 2} fill={color.dominant} />
-      <Circle cx={0} cy={0} r={dotDiameter / 2} fill={color.wheelCharcoal} />
+      <Circle cx={0} cy={0} r={dotDiameter / 2} fill={color.ink} />
     </Svg>
   );
   const hubStyle = {
@@ -251,7 +251,7 @@ function WheelImpl({
             cy={0}
             r={outerRadius - RIM_WIDTH / 2}
             fill="none"
-            stroke={color.wheelCharcoal}
+            stroke={color.ink}
             strokeWidth={RIM_WIDTH}
           />
         </Svg>
@@ -308,7 +308,7 @@ function WheelImpl({
           <Svg width={POINTER_WIDTH} height={POINTER_HEIGHT} viewBox={`0 0 ${POINTER_WIDTH} ${POINTER_HEIGHT}`}>
             <Polygon
               points={`0,0 ${POINTER_WIDTH},0 ${POINTER_WIDTH / 2},${POINTER_HEIGHT}`}
-              fill={color.wheelCharcoal}
+              fill={color.ink}
             />
           </Svg>
         </View>

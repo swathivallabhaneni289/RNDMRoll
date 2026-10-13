@@ -28,6 +28,8 @@ approval_word: go
 
 ## 2. Tokens added (the only new design values)
 
+> **2026-10-13 note (D-26):** the developer asked for black instead of the soft charcoal, so the wheel's dark parts use `ink` and the `wheelCharcoal` token below is REMOVED. Read every `wheelCharcoal` in this document as `ink`.
+
 Colour. One new colour token, `wheelCharcoal` (`#3B3936`, a soft charcoal, revision 9, D-25), pinned in `tokens.test-assert.ts`. It is the dark of the wheel, so the wheel is no longer pure black. Nothing else is new: the light wedges stay `secondary` and the seams `dominant`. (Revision 5 added a medium grey, `wheelMid`; revision 7 removed it with its pin, D-23: the wheel has no grey wedge. `wheelCharcoal` is the dark tone itself, not a grey wedge.)
 
 Wedges alternate `wheelCharcoal` and `secondary`; the seams between wedges are `dominant`, the page colour; the rim, the hub dot and the pointer are `wheelCharcoal`; the day dots and the top rule are `ink`; the hub is `dominant`; the small day dots and the closing rule are `divider`. Screens never write a hex value. (Revision 4's six tones `wheel1` to `wheel6` are gone: the picture shows two.)

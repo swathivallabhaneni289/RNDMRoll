@@ -3,7 +3,7 @@
  * clock and no randomness: the winner always comes from the server, and everything here only
  * draws it. Angles are degrees clockwise from 12 o'clock, and a positive rotation turns the
  * disc clockwise. Colours are named here ('dark', 'light', 'ink', 'dominant') and mapped
- * to tokens by the component ('dark' is `wheelCharcoal`), so this file holds no hex values.
+ * to tokens by the component ('dark' is `ink`), so this file holds no hex values.
  */
 
 /** No wedge is drawn narrower than this, so a one-in-ten category stays readable. */

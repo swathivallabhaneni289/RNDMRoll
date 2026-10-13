@@ -105,7 +105,7 @@ let markCount = 0;
 
 export function BrandMark({
   size = 64,
-  color = tokenColor.wheelCharcoal,
+  color = tokenColor.ink,
   wedgeColor = tokenColor.secondary,
 }: {
   size?: number;
