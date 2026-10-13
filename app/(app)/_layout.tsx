@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SpinTabButton } from '@/components/nav/SpinTabButton';
 import { isSelectedTab, TabIcon } from '@/components/nav/TabIcon';
 import { spokenTabLabel, TabLabel } from '@/components/nav/TabLabel';
-import { easeOut, tabFadeMs, useNavReduceMotion } from '@/lib/motion/navigation';
 import { useSession } from '@/lib/session/store';
 import { color, type } from '@/lib/theme/tokens';
 
@@ -33,7 +32,6 @@ const BARLESS_TODAY_PAGES = ['notifications', 'entry', 'log', 'edit-entry'];
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const { extrasPending } = useSession();
-  const reduceMotion = useNavReduceMotion();
 
   // A numeric height replaces the bar's own safe-area arithmetic; the bar then pads its content
   // by the inset itself, so the height is the content plus the inset.
@@ -51,9 +49,9 @@ export default function AppLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: color.dominant },
-        // Tab screens cross-fade into each other (Phase 2.2, D-02); instant under Reduce Motion.
-        animation: reduceMotion ? 'none' : 'fade',
-        transitionSpec: { animation: 'timing', config: { duration: tabFadeMs, easing: easeOut } },
+        // Tab screens swap at once. The cross-fade of Phase 2.2 D-02 looked wrong on the phone
+        // (developer, 2026-10-13); the bar's colours still glide. Options kept: 'fade' or 'shift'.
+        animation: 'none',
         tabBarStyle: barStyle,
         tabBarActiveTintColor: color.ink,
         tabBarInactiveTintColor: color.muted,

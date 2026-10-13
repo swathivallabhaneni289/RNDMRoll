@@ -78,16 +78,7 @@ for (const rel of barFiles) {
 
 // ---- the layout wiring ------------------------------------------------------------------------
 const layout = read('app/(app)/_layout.tsx');
-check(
-  'layout fades tabs and turns it off for Reduce Motion',
-  /animation:\s*reduceMotion\s*\?\s*'none'\s*:\s*'fade'/.test(layout),
-);
-check(
-  'layout transitionSpec uses tabFadeMs and easeOut',
-  /transitionSpec:\s*\{\s*animation:\s*'timing'\s*,\s*config:\s*\{\s*duration:\s*tabFadeMs\s*,\s*easing:\s*easeOut\s*\}\s*\}/.test(
-    layout,
-  ),
-);
+check('layout swaps tabs at once (the fade was dropped, 2026-10-13)', /animation:\s*'none'/.test(layout));
 check('layout uses TabIcon four times', (layout.match(/<TabIcon\b/g) ?? []).length === 4);
 check('layout uses TabLabel four times', (layout.match(/<TabLabel\b/g) ?? []).length === 4);
 check('layout still draws the Spin button', /tabBarButton:\s*\(\)\s*=>\s*<SpinTabButton\s*\/>/.test(layout));
