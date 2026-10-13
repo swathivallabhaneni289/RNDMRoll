@@ -20,7 +20,7 @@ import Animated, {
  * Add each when the phase that needs it actually gets planned.
  */
 
-const EASE_OUT = Easing.out(Easing.cubic);
+export const EASE_OUT = Easing.out(Easing.cubic);
 
 function useEntranceProgress(delayMs: number, durationMs: number) {
   const progress = useSharedValue(0);
