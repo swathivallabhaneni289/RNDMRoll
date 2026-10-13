@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 import { useFocusProgress } from '@/lib/motion/navigation';
 import { color, type } from '@/lib/theme/tokens';
@@ -6,6 +6,22 @@ import { color, type } from '@/lib/theme/tokens';
 /** The two ends of the glide, read once so the animation holds plain strings. */
 const MUTED = color.muted;
 const INK = color.ink;
+
+/**
+ * What the bar itself speaks for a tab with a plain text label on iOS ("Home, tab, 1 of 5").
+ * It stops doing that once `tabBarLabel` is a function, so the same sentence is handed over
+ * through `tabBarAccessibilityLabel`. Other platforms get nothing, as before.
+ */
+export function spokenTabLabel(
+  navigation: { getState(): { routes: ReadonlyArray<{ key: string }> } },
+  route: { key: string },
+  title: string,
+): string | undefined {
+  if (Platform.OS !== 'ios') return undefined;
+  const { routes } = navigation.getState();
+  const index = routes.findIndex((r) => r.key === route.key);
+  return `${title}, tab, ${index + 1} of ${routes.length}`;
+}
 
 /**
  * One bottom-bar label (Phase 2.2, D-03). Its colour glides between `muted` and `ink` over
