@@ -31,6 +31,11 @@ func perSubject(requests int) gin.HandlerFunc {
 // POST /spin/bonus.
 type SpinHandler struct {
 	svc *spin.Service
+
+	// PhotoURL turns the storage key of an entry's cover photo into its link.
+	// NewServer sets it from the entry photo store, so every Today this
+	// handler sends carries a link and never a key. Nil leaves the link empty.
+	PhotoURL func(string) string
 }
 
 // NewSpinHandler constructs a SpinHandler over the spin service.
@@ -102,6 +107,7 @@ func (h *SpinHandler) today(c *gin.Context) {
 		respondSpinError(c, err)
 		return
 	}
+	linkToday(&today, h.PhotoURL)
 	Respond(c, http.StatusOK, today)
 }
 
@@ -132,6 +138,7 @@ func (h *SpinHandler) spin(c *gin.Context) {
 		respondSpinError(c, err)
 		return
 	}
+	linkToday(&out.Today, h.PhotoURL)
 	status := http.StatusCreated
 	if out.Already {
 		status = http.StatusOK
@@ -171,6 +178,7 @@ func (h *SpinHandler) bonus(c *gin.Context) {
 		respondSpinError(c, err)
 		return
 	}
+	linkToday(&out.Today, h.PhotoURL)
 	status := http.StatusCreated
 	if out.Already {
 		status = http.StatusOK

@@ -55,6 +55,9 @@ type fullTestRig struct {
 	clock *clock.Fixed
 	// rand lets a test choose the winner of the next spin.
 	rand *spintest.QueueRand
+	// entryPhotos is the fake photo store behind the entry routes: it hands out
+	// upload keys and links and records every file removal.
+	entryPhotos *fakeEntryPhotoStore
 }
 
 // rigOptions changes how newFullTestRigWith wires the spin slice.
@@ -105,6 +108,7 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		spinClock = fixed
 	}
 	spinSvc := spin.NewService(spinRepo, spinClock, rnd)
+	entryPhotos := &fakeEntryPhotoStore{}
 
 	deps := Deps{
 		Auth:      authHandler,
@@ -112,6 +116,7 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		Username:  usernameHandler,
 		Spin:      NewSpinHandler(spinSvc),
 		Wheel:     NewWheelHandler(spinSvc),
+		Entry:     NewEntryHandler(spinSvc, entryPhotos),
 		Users:     usersRepo,
 		JWTSecret: testServerJWTSecret,
 		Logger:    logger,
@@ -136,6 +141,8 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		spinRepo: spinRepo,
 		clock:    fixed,
 		rand:     rnd,
+
+		entryPhotos: entryPhotos,
 	}
 }
 

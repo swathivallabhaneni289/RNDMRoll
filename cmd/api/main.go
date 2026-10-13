@@ -58,16 +58,24 @@ func main() {
 
 	refreshSvc := auth.NewRefreshService(refreshTokens, cfg.RefreshTokenTTL)
 
-	avatarStore, err := storage.NewAvatarStore(storage.Config{
+	// The avatar store and the entry photo store share one set of storage
+	// settings and the same trimmed public base.
+	storageConfig := storage.Config{
 		S3Endpoint:        cfg.S3Endpoint,
 		S3Region:          cfg.S3Region,
 		S3Bucket:          cfg.S3Bucket,
 		S3AccessKeyID:     cfg.S3AccessKeyID,
 		S3SecretAccessKey: cfg.S3SecretAccessKey,
 		S3PublicBaseURL:   strings.TrimRight(cfg.S3PublicBaseURL, "/"),
-	})
+	}
+	avatarStore, err := storage.NewAvatarStore(storageConfig)
 	if err != nil {
 		logger.Error("failed to construct avatar store", "error", err)
+		os.Exit(1)
+	}
+	entryPhotos, err := storage.NewEntryPhotoStore(storageConfig)
+	if err != nil {
+		logger.Error("failed to construct entry photo store", "error", err)
 		os.Exit(1)
 	}
 
@@ -92,6 +100,11 @@ func main() {
 	spinRepo := postgres.NewSpinRepo(pool)
 	spinService := spin.NewService(spinRepo, spinClock, spin.NewSystemRand())
 
+	// The entry handler is built over the same spin service, so a post, a skip
+	// and Today all run under the same person lock and clock. NewServer gives
+	// the spin handler the photo store's links.
+	entryHandler := httpapi.NewEntryHandler(spinService, entryPhotos)
+
 	deps := httpapi.Deps{
 		Auth:      authHandler,
 		Profile:   profileHandler,
@@ -99,6 +112,7 @@ func main() {
 		Account:   accountHandler,
 		Spin:      httpapi.NewSpinHandler(spinService),
 		Wheel:     httpapi.NewWheelHandler(spinService),
+		Entry:     entryHandler,
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,
 		Logger:    logger,

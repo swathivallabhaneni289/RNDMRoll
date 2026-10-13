@@ -136,7 +136,8 @@ func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 
 // buildIntegrationServer wires the real Server -- real pgx repositories --
 // over pool. The avatar-upload dependency is a package-local fake
-// (fakeAvatarStore, declared in profile_test.go, same package) since this
+// (fakeAvatarStore, declared in profile_test.go, same package) and so is the
+// entry photo store (fakeEntryPhotoStore, in entry_test.go), since this
 // environment holds no real storage credentials. The spin slice runs on the
 // real clock.
 func buildIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
@@ -154,6 +155,10 @@ type integrationOptions struct {
 	toolEmails []string
 	// rand lets a test choose winners; nil means the system source.
 	rand spin.Rand
+	// entryPhotos is the fake photo store behind the entry routes. A test that
+	// wants to see the tickets and file removals passes its own; nil means a
+	// fresh one that nobody holds.
+	entryPhotos *fakeEntryPhotoStore
 }
 
 // buildIntegrationServerWith is buildIntegrationServer with the spin slice's
@@ -183,6 +188,11 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	}
 	spinSvc := spin.NewService(postgres.NewSpinRepo(pool), spinClock, rnd)
 
+	entryPhotos := opts.entryPhotos
+	if entryPhotos == nil {
+		entryPhotos = &fakeEntryPhotoStore{}
+	}
+
 	// users is the Postgres repository, which is also the PasswordChanger.
 	accountHandler := NewAccountHandler(users, users, refreshSvc, integrationJWTSecret, 15*time.Minute)
 
@@ -193,6 +203,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Account:   accountHandler,
 		Spin:      NewSpinHandler(spinSvc),
 		Wheel:     NewWheelHandler(spinSvc),
+		Entry:     NewEntryHandler(spinSvc, entryPhotos),
 		Users:     users,
 		JWTSecret: integrationJWTSecret,
 		Logger:    logger,

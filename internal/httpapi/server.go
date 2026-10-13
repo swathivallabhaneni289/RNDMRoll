@@ -37,6 +37,13 @@ type Deps struct {
 	Wheel     *WheelHandler
 	TestTools *SpinTestTools
 
+	// Entry is the daily entry routes: the photo upload ticket, post, read,
+	// edit and delete of an entry, and the skip. It is registered only when it
+	// is not nil. When both Entry and Spin are set, NewServer gives the spin
+	// handler the entry photo store's link builder, so every Today carries the
+	// cover photo's link.
+	Entry *EntryHandler
+
 	Users     user.Repository
 	JWTSecret []byte
 	Logger    *slog.Logger
@@ -76,7 +83,10 @@ type Server struct {
 //     Today, spin, bonus spin, wheel) are mounted on this group when Deps
 //     carries them; so are the test-only clock and pretend-day routes, which
 //     exist only when the server was started in test mode (see
-//     SpinTestTools).
+//     SpinTestTools). The entry routes (photo ticket, post, read, edit,
+//     delete, skip) are mounted on this group when Deps carries an
+//     EntryHandler, and then the spin handler is given that handler's photo
+//     links so Today's entry summary has a link and never a key.
 func NewServer(deps Deps) *Server {
 	engine := gin.New()
 	// A nil list is valid and never errors; handle the error anyway.
@@ -103,10 +113,16 @@ func NewServer(deps Deps) *Server {
 		deps.Account.Register(authed)
 	}
 	if deps.Spin != nil {
+		if deps.Entry != nil && deps.Entry.photos != nil {
+			deps.Spin.PhotoURL = deps.Entry.photos.PublicURL
+		}
 		deps.Spin.Register(authed)
 	}
 	if deps.Wheel != nil {
 		deps.Wheel.Register(authed)
+	}
+	if deps.Entry != nil {
+		deps.Entry.Register(authed)
 	}
 	if deps.TestTools != nil {
 		deps.TestTools.Register(authed)
