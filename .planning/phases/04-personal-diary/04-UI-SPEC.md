@@ -26,12 +26,12 @@ The developer's pictures named above are the visual reference for the build ("us
 | Settings gear | `components/settings/SettingsGear.tsx` (Phase 2.1), at the far right of the Profile page's photo row | Not built here. Opens Phase 2.1's Settings page (`app/(app)/profile/settings`). Not in picture 12. |
 | Bio in place | `components/settings/BioInline.tsx` (Phase 2.1), under the photo row, label off | Not built here. Not in picture 12. |
 | Entry page and Edit entry (from the Profile) | `app/(app)/profile/entry.tsx`, `edit-entry.tsx` | New thin routes, Back label 'Profile'. |
-| Edit profile page | `app/(app)/profile/edit.tsx` | The existing Phase 1 form page in edit mode, pushed from the Profile page's Edit chip and from Phase 2.1's Settings row 'Edit profile'. One change: its bottom button is 'Save changes' only (section 4.6). |
+| Edit profile page | `app/(app)/profile/edit.tsx` | The existing Phase 1 form page in edit mode, pushed from the Profile page's Edit chip (Settings has no 'Edit profile' row since decision D-16 of Phase 2.1). One change: its bottom button is 'Save changes' only, and its photo link reads 'Edit your picture' (section 4.6). |
 | First-run page | `app/(app)/profile/index.tsx` while `extrasPending` | Unchanged (Phase 1's page 2, no bar, ends on Today). |
 | Bottom bar | `app/(app)/_layout.tsx` | Changed: Home, Diary, Spin, Profile (four). Diary is new. |
 | Today | `components/today/*` | Unchanged. The week section stays display only. |
 
-New routes sit inside their own tab's stack, so a push never switches tabs. Under Tabs a file placed directly in `app/(app)/` becomes a tab: the only one added is the `diary` folder (a Stack), which is the new tab on purpose. Phase 2.1's three pages (Settings, Username, Password) sit in the Profile stack beside these and are not part of this phase.
+New routes sit inside their own tab's stack, so a push never switches tabs. Under Tabs a file placed directly in `app/(app)/` becomes a tab: the only one added is the `diary` folder (a Stack), which is the new tab on purpose. Phase 2.1's pages (Settings, Notifications, Blocked accounts, Password; the Username page was removed by its decision D-16) sit in the Profile stack beside these and are not part of this phase.
 
 ## 2. Tokens added (the only new design values)
 
@@ -161,7 +161,7 @@ The page asks the server again when it comes into focus (so a post, a delete or 
 
 ### 4.6 The Edit page
 
-The Edit chip pushes `app/(app)/profile/edit` inside the Profile stack: Phase 1's form page in edit mode, with its Back control, its fields (photo, name, username, bio), its username check, its Log out and the Log out sheet, all unchanged, and the bottom bar showing. Phase 2.1's Settings page has a first row, 'Edit profile', that opens this same page, so it is reached from two places and goes back to whichever opened it. One change: the bottom button always reads 'Save changes' and is grey (the existing disabled look) until a field or the photo has changed. Phase 1's 'Continue' (shown while nothing had changed) is not on this page. No gear is drawn on it. After a successful save the page goes back and puts 'Saved.' into Phase 2.1's notice store, which the page it returns to (the Profile page here, Settings there) shows for 3 seconds (4.5). The bottom bar stays on this page, as on Edit wheel. The Bio box on this page and the bio in place on the Profile page edit the same field. **Log out:** this page keeps Phase 1's Log out button and sheet at its bottom, and Phase 2.1's Settings has its own Log out row and sheet with the same words (its decision D-05); the Profile page itself has none.
+The Edit chip pushes `app/(app)/profile/edit` inside the Profile stack: Phase 1's form page in edit mode, with its Back control, its fields (photo, name, username, bio), its username check, its Log out and the Log out sheet, all unchanged, and the bottom bar showing. It is reached from the Profile page's Edit chip only (Settings has no 'Edit profile' and no 'Username' row: the username and the bio live on the Profile page and on this page, Phase 2.1 decision D-16). Under the photo the link reads 'Edit your picture' (it opens the same camera or library choices), and a free username is confirmed with the green 'Looks good.'. One change: the bottom button always reads 'Save changes' and is grey (the existing disabled look) until a field or the photo has changed. Phase 1's 'Continue' (shown while nothing had changed) is not on this page. No gear is drawn on it. After a successful save the page goes back and puts 'Saved.' into Phase 2.1's notice store, which the Profile page shows for 3 seconds (4.5). The bottom bar stays on this page, as on Edit wheel. The Bio box on this page and the bio in place on the Profile page edit the same field. **Log out:** this page keeps Phase 1's Log out button and sheet at its bottom, and Phase 2.1's Settings has its own Log out row and sheet with the same words; the Profile page itself has none.
 
 ### 4.7 First run
 
@@ -193,7 +193,7 @@ Every string the person sees. 'Spin' wording, plain words, no em dashes, no lega
 | Profile sections | YOUR TASTES \u00B7 AVG RATING (N, capitals by style) / RECENT ACTIVITY (N, capitals by style) / See diary (N) |
 | Profile states | Loading your profile. (N) / Nothing here yet. Your first post will show up here. (E, as the Diary) / Saved. (E, Phase 2) |
 | Profile button | Edit (E, Phase 3 entry page word) |
-| Edit page | Save changes (E, Phase 1) |
+| Edit page | Save changes (E, Phase 1) / Edit your picture (N, the photo link; Phase 1's 'Change photo' and 'Add photo' stay on the first-run page) / Looks good. (E, the green note under a free username) |
 | Entry page, Back label and gone state | Diary / Profile (N, the name of where the person came from; Today is Phase 3's) / Back to Diary / Back to Profile (N) |
 | Gear and bio (printed by Phase 2.1's components; this phase adds none) | Settings (spoken label) / Opens your settings. (spoken hint) / Add a bio / Edit bio / Save / Cancel / Bio / Optional / Tell people what you're spinning for. / Bio must be 160 characters or fewer. (all E, Phase 2.1) |
 | Generic error | Something went wrong. Please try again. (E) |
@@ -262,7 +262,7 @@ Developer: say keep or change for each row. The word go is only for starting the
 - **The Today week section stays display only**: your picture has no arrow on it.
 - **No photo grid and no stats header on the Diary** (your picture has neither; the numbers are on the Profile page).
 - **A brand-new account sees a plain line** ('Nothing here yet. Your first post will show up here.') under the three numbers instead of an empty page.
-- **The Edit button stays exactly as in your picture.** Settings (Phase 2.1) also has an 'Edit profile' row that opens the same page.
-- **A Settings gear sits at the far right of the photo row, right of the Edit button** (both centred on the photo). Your picture 12 draws no gear: you asked for a settings section in words (Phase 2.1). It is Phase 2.1's component, mounted as it is, and it opens Settings (Edit profile, Username, Password, Private account, Log out).
+- **The Edit button stays exactly as in your picture** and says only 'Edit'. It is the one way to the Edit page: Settings (Phase 2.1) has no 'Edit profile' row any more (your words of 2026-10-13: the bio and username are on the profile page, not in the settings).
+- **A Settings gear sits at the far right of the photo row, right of the Edit button** (both centred on the photo). Your picture 12 draws no gear: you asked for a settings section in words (Phase 2.1). It is Phase 2.1's component, mounted as it is, and it opens Settings (Notifications, Blocked accounts, Private account, Password, Log out).
 - **Your bio shows under your name and is edited in place** with Save and Cancel. Your picture 12 draws no bio: you asked in words that the bio can be edited on the profile page (Phase 2.1). It runs the full width under the photo row, because beside the photo and two controls it would wrap into many short lines. The Bio box on the Edit page and this bio are the same field.
 - **'Saved.' comes through Phase 2.1's small notice store**, so it shows on whichever page the Edit page returns to.
