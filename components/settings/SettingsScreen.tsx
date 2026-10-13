@@ -5,7 +5,6 @@ import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
 import { LogOutSheet } from '@/components/settings/LogOutSheet';
-import { PrivateAccountRow } from '@/components/settings/PrivateAccountRow';
 import { SettingsRow } from '@/components/settings/SettingsRow';
 import { useSettingsNotice } from '@/lib/settings/notice';
 import { color, space } from '@/lib/theme/tokens';
@@ -13,7 +12,7 @@ import { color, space } from '@/lib/theme/tokens';
 /**
  * The Settings page (02.1-UI-SPEC section 4, as changed by decision D-16), pushed over the Profile
  * page with the bottom bar showing: Back, the title, the notice line, then the rows in this order:
- * Notifications, Blocked accounts, Private account, Password and Log out.
+ * Notifications, Blocked accounts, Account privacy, Password and Log out.
  *
  * The bio and the username are not here: they live on the Profile page and its Edit page (D-16).
  * The bar adds the bottom safe-area inset itself, so the screen takes the top and side edges only.
@@ -65,7 +64,11 @@ export function SettingsScreen() {
             accessibilityHint="Opens the page."
             onPress={() => router.push('/(app)/profile/blocked-accounts')}
           />
-          <PrivateAccountRow />
+          <SettingsRow
+            label="Account privacy"
+            accessibilityHint="Opens the page."
+            onPress={() => router.push('/(app)/profile/account-privacy')}
+          />
           <SettingsRow
             label="Password"
             accessibilityHint="Opens the page."
