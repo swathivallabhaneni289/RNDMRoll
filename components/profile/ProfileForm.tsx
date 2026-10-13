@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppText, TextLink } from '@/components/ui/AppText';
 import { DialAvatar } from '@/components/brand/DialAvatar';
 import { BirthdayPickerField, birthdayPickerAvailable } from '@/components/profile/BirthdayPickerField';
+import { SettingsGear } from '@/components/settings/SettingsGear';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextButton } from '@/components/ui/TextButton';
@@ -664,6 +665,13 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
               RNDMRoll
             </Text>
             <View style={{ width: 28, height: 1, marginLeft: space.sm, backgroundColor: color.muted }} />
+            {edit && inTab ? (
+              // The 44dp gear overhangs the label row by the same amount above and below, so the
+              // header row keeps its height and nothing on the page moves.
+              <View style={{ marginLeft: space.sm, marginVertical: -15 }}>
+                <SettingsGear />
+              </View>
+            ) : null}
           </View>
         </View>
 
