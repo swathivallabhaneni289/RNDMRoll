@@ -66,7 +66,10 @@ export const radius = {
   /**
    * Exists solely for the circular avatar and icon-badge tokens. Must never be
    * applied to a button, input, or chip, except the round Spin button in
-   * `components/nav/SpinTabButton.tsx`.
+   * `components/nav/SpinTabButton.tsx` and the two named exceptions of the entry
+   * screen (the developer's picture 03): the six round reaction buttons in
+   * `components/entry/ReactionPicker.tsx` and the Camera and Library buttons in
+   * `components/entry/PhotoField.tsx`.
    */
   full: 9999,
 } as const;
