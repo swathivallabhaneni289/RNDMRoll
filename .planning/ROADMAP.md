@@ -14,7 +14,7 @@ RNDMRoll delivers a daily habit-loop mobile app in five phases: first the accoun
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Accounts** - Users can create accounts, log in, and view their profile (completed 2026-10-09)
-- [ ] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel
+- [x] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel (completed 2026-10-13; six device checks not walked, see 02-03-SUMMARY.md)
 - [ ] **Phase 2.1: Settings (INSERTED)** - Users change their username and password, make their account public or private, and edit their bio on the profile page (decided 2026-10-10)
 - [ ] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category
 - [ ] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated
@@ -93,19 +93,21 @@ Plans:
   4. User can customize their wheel's categories and relative weights
   5. Wheel spin screen uses a flat, muted, restrained-motion visual treatment (no prize-wheel/gambling aesthetic)
 
-**Plans**: 0/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md: The spin server: wheel, time zone, one spin a day, weekly bonus reroll, and test-only clock tools
-- [ ] 02-02-PLAN.md: The spin app: Today screen, wheel, countdown, week section, Edit wheel, Notifications page, and the bottom bar
+- [x] 02-01-PLAN.md: The spin server: wheel, time zone, one spin a day, weekly bonus reroll, and test-only clock tools
+- [x] 02-02-PLAN.md: The spin app: Today screen, wheel, countdown, week section, Edit wheel, Notifications page, and the bottom bar
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-03-PLAN.md: Cutover, gates, device walkthrough, and phase close-out
+- [x] 02-03-PLAN.md: Cutover, gates, device walkthrough, and phase close-out
 
 **UI hint**: yes
+
+**Closed 2026-10-13 with device checks open**: not walked with hands: Reduce Motion, the bonus-spin sheet, the Profile tab "Saved." line, offline, the first-run page after a sign-up, and Larger Text. More steps are not on record (the late screen, wheel counts 2 to 12 on screen, logging in as a real account, string approval). See `02-03-SUMMARY.md` and the Status column of `02-VALIDATION.md`.
 
 **Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
 
@@ -196,7 +198,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Accounts | 21/21 | Complete | 2026-10-09 |
-| 2. Daily Roll | 0/TBD | Not started | - |
+| 2. Daily Roll | 3/3 | Complete (device checks open) | 2026-10-13 |
 | 3. Daily Entry | 0/3 | Not started | - |
 | 4. Personal Diary | 0/TBD | Not started | - |
 | 5. Friend Feed | 0/TBD | Not started | - |

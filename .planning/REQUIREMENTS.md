@@ -20,10 +20,10 @@
 
 ### Roll & Wheel
 
-- [ ] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
-- [ ] **ROLL-02**: User can earn one bonus reroll each week the weekly goal is met (an entry posted on at least 4 days, Monday to Sunday), keep one at a time, and spend it to re-spin within the same day
-- [ ] **ROLL-03**: User can customize their wheel by adding, removing, and reweighting categories (bigger wedge = higher probability), starting from a small default set (6-8 categories)
-- [ ] **ROLL-04**: Wheel spin screen shows every category wedge with a deceleration/landing moment, in a flat/muted, typography-led, restrained-motion style (no prize-wheel/gambling aesthetics: no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart wedge icons)
+- [x] **ROLL-01**: User can spin a wheel once per day within a fixed daily window opening at 8:00 PM in the user's own local timezone (not one globally-synced moment), and cannot re-spin until the next window opens unless a reroll token is available. Day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
+- [x] **ROLL-02**: User can earn one bonus reroll each week the weekly goal is met (an entry posted on at least 4 days, Monday to Sunday), keep one at a time, and spend it to re-spin within the same day
+- [x] **ROLL-03**: User can customize their wheel by adding, removing, and reweighting categories (bigger wedge = higher probability), starting from a small default set (6-8 categories)
+- [x] **ROLL-04**: Wheel spin screen shows every category wedge with a deceleration/landing moment, in a flat/muted, typography-led, restrained-motion style (no prize-wheel/gambling aesthetics: no neon colors, no glossy 3D pointer, no confetti/flash-on-land, no clipart wedge icons)
 
 ### Daily Entry
 
@@ -89,10 +89,10 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 |-------------|-------|--------|
 | ACCT-01 | Phase 1 | Complete |
 | ACCT-03 | Phase 1 | Complete |
-| ROLL-01 | Phase 2 | Pending |
-| ROLL-02 | Phase 2 | Pending |
-| ROLL-03 | Phase 2 | Pending |
-| ROLL-04 | Phase 2 | Pending |
+| ROLL-01 | Phase 2 | Complete |
+| ROLL-02 | Phase 2 | Complete |
+| ROLL-03 | Phase 2 | Complete |
+| ROLL-04 | Phase 2 | Complete |
 | SET-01 | Phase 2.1 | Pending |
 | SET-02 | Phase 2.1 | Pending |
 | SET-03 | Phase 2.1 | Pending |
