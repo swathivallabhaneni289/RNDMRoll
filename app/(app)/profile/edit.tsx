@@ -1,11 +1,11 @@
 import { ProfileForm } from '@/components/profile/ProfileForm';
 
 /**
- * The "Make it yours." page in edit mode: photo, name, username, bio, Save changes, Log out.
- * It is also the app's landing page: index.tsx shows the same form, except for the one-time
- * photo-and-bio page right after sign-up. All the behavior lives in
- * components/profile/ProfileForm.tsx.
+ * The Edit page: Phase 1's "Make it yours." form in edit mode, pushed over the Profile page by its
+ * Edit button, with a Back control: photo (with "Edit your picture"), name, username with its live
+ * check, bio, "Save changes" (grey until something changes) and Log out. After a save it goes back
+ * and the Profile page shows "Saved." All the behavior lives in components/profile/ProfileForm.tsx.
  */
 export default function EditProfileScreen() {
-  return <ProfileForm mode="edit" />;
+  return <ProfileForm mode="edit" pushed />;
 }

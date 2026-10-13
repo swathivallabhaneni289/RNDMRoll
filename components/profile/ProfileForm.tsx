@@ -16,6 +16,7 @@ import { api, ApiError } from '@/lib/api/client';
 import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
 import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
+import { setSettingsNotice } from '@/lib/settings/notice';
 import { useSession } from '@/lib/session/store';
 
 /**
@@ -101,8 +102,23 @@ const SAVED_NOTE_MS = 3000;
  * `inTab` (edit mode only) is set when this page is the Profile tab of the bottom bar: no Back
  * control (inside tabs "back" would jump to another tab), the person stays on the page after a
  * save and sees "Saved." for 3 seconds, and the bottom inset is left to the bar.
+ *
+ * `pushed` (edit mode only) is set when the Profile page's Edit button opened this page on top of
+ * it (04-UI-SPEC 4.6): the Back control shows, the bottom bar shows (so the bottom inset is left to
+ * it), the one bottom button always reads "Save changes" and is grey until something has changed
+ * ("Continue" is not on this page), the photo link reads "Edit your picture", a free username is
+ * confirmed with the green "Looks good.", and a successful save goes back to the Profile page with
+ * "Saved." put into the notice store for it to show. Everything else is as it was.
  */
-export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; inTab?: boolean }) {
+export function ProfileForm({
+  mode,
+  inTab = false,
+  pushed = false,
+}: {
+  mode: ProfileFormMode;
+  inTab?: boolean;
+  pushed?: boolean;
+}) {
   const router = useRouter();
   const { user, signIn, signOut, reloadUser, finishExtras } = useSession();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -113,6 +129,7 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
   const signup = mode === 'signup';
   const edit = mode === 'edit';
   const extras = mode === 'extras';
+  const pushedEdit = edit && pushed;
 
   // What is stored right now. A signup has nothing stored; after its signIn the session
   // user appears, but this page is already on its way out, so it keeps reading blanks.
@@ -574,7 +591,12 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
     // Saved: the stored avatar is the new one now, so Save changes goes quiet again. A retry
     // never uploads twice (uploadedRef keeps the URL).
     setPendingAvatarUri(null);
-    if (inTab) {
+    if (pushedEdit) {
+      // Back to the Profile page, which shows "Saved." for 3 seconds from the notice store.
+      setSettingsNotice('Saved.');
+      if (router.canGoBack()) router.back();
+      else router.replace('/(app)/profile');
+    } else if (inTab) {
       // Inside the tabs "back" would jump to another tab, so the person stays here and sees
       // "Saved." under the button for a few seconds.
       setSavedNote(true);
@@ -635,7 +657,7 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
   };
 
   return (
-    <Screen wheels="corner" edges={edit && inTab ? ['top', 'left', 'right'] : undefined}>
+    <Screen wheels="corner" edges={edit && (inTab || pushed) ? ['top', 'left', 'right'] : undefined}>
       <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           {(signup || (edit && !inTab)) && router.canGoBack() ? (
@@ -829,7 +851,11 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
               accessibilityLabel="Change profile photo"
             />
             <View style={{ marginTop: space.sm }}>
-              <TextButton label={avatarPreviewUri ? 'Change photo' : 'Add photo'} tone="muted" onPress={handleChangePhoto} />
+              <TextButton
+                label={pushedEdit ? 'Edit your picture' : avatarPreviewUri ? 'Change photo' : 'Add photo'}
+                tone={pushedEdit ? 'default' : 'muted'}
+                onPress={handleChangePhoto}
+              />
             </View>
             {avatarError ? (
               <View style={{ marginTop: space.xs }}>
@@ -866,7 +892,10 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
                 value={username}
                 onChangeText={handleUsernameChange}
                 onBlur={handleUsernameBlur}
-                status={usernameStatus}
+                // The pushed Edit page confirms a free name with the green "Looks good." (the
+                // field's own note, as the old Username page did); everywhere else it says "Available".
+                status={pushedEdit && usernameStatus === 'available' ? 'idle' : usernameStatus}
+                success={pushedEdit && usernameStatus === 'available' ? LOOKS_GOOD_MESSAGE : undefined}
                 error={usernameError}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -927,8 +956,9 @@ export function ProfileForm({ mode, inTab = false }: { mode: ProfileFormMode; in
         ) : null}
 
         <View style={{ marginTop: space.lg }}>
-          {edit && !hasChanges ? (
-            // Nothing to save, so the one button moves on to Today (no greyed button at rest).
+          {edit && !hasChanges && !pushedEdit ? (
+            // Nothing to save, so the one button moves on to Today (no greyed button at rest). The
+            // pushed Edit page has no such button: "Save changes" stays, grey, until something changes.
             <PrimaryButton label="Continue" arrow onPress={() => router.navigate('/(app)/today')} />
           ) : (
             <PrimaryButton
