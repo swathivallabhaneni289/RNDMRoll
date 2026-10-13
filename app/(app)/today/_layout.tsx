@@ -13,6 +13,7 @@ export default function TodayLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="edit-wheel" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="log" />
     </Stack>
   );
 }

@@ -10,10 +10,13 @@ import { Screen } from '@/components/ui/Screen';
 import { Wheel } from '@/components/wheel/Wheel';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { CountdownBlock } from '@/components/today/CountdownBlock';
+import { DayActions } from '@/components/today/DayActions';
 import { RESULT_WORD_TOP, ResultBlock } from '@/components/today/ResultBlock';
+import { SettledBlock } from '@/components/today/SettledBlock';
 import { StatusMessage, type StatusKind } from '@/components/today/StatusMessage';
 import { WeeklyCard } from '@/components/today/WeeklyCard';
 import type { Today, TodayState } from '@/lib/api/types';
+import { nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
@@ -46,37 +49,47 @@ function isResultState(state: TodayState | null): boolean {
   return state === 'result' || state === 'late' || state === 'posted' || state === 'skipped';
 }
 
-/** The heading for a state (UI-SPEC 4.1). Nothing while loading or offline with no data. */
+/**
+ * The heading for a state (02-UI-SPEC 4.1 and 03-UI-SPEC 3.1). Nothing while loading or offline
+ * with no data. One case for every state, so a new state cannot slip through unnamed.
+ */
 function headingFor(state: TodayState | null): string {
   switch (state) {
     case 'waiting':
       return 'Your next spin is coming.';
     case 'open':
       return 'Your spin is open.';
+    case 'result':
+      return "Today's spin.";
     case 'late':
       return "Last night's spin.";
-    case 'result':
     case 'posted':
+      return 'Posted.';
     case 'skipped':
-      return "Today's spin.";
-    default:
+      return 'Skipped.';
+    case null:
       return '';
   }
 }
 
-/** A box whose opacity runs from `from` to `to` once, when it appears. */
+/**
+ * A box whose opacity runs from `from` to `to` once, when it appears. `grow` lets it fill the
+ * space left in its column (the Skipped block is centred inside it).
+ */
 function FadeBox({
   from,
   to,
   children,
   absolute = false,
   top = 0,
+  grow = false,
 }: {
   from: number;
   to: number;
   children: ReactNode;
   absolute?: boolean;
   top?: number;
+  grow?: boolean;
 }) {
   const opacity = useSharedValue(from);
   useEffect(() => {
@@ -89,7 +102,11 @@ function FadeBox({
       pointerEvents={absolute ? 'none' : 'auto'}
       accessibilityElementsHidden={absolute}
       importantForAccessibility={absolute ? 'no-hide-descendants' : 'auto'}
-      style={[absolute ? { position: 'absolute', left: 0, right: 0, top } : null, animated]}
+      style={[
+        absolute ? { position: 'absolute', left: 0, right: 0, top } : null,
+        grow ? { flexGrow: 1 } : null,
+        animated,
+      ]}
     >
       {children}
     </Animated.View>
@@ -139,12 +156,15 @@ function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: bo
  * Two compositions, chosen by the server's `state`:
  *  - the wheel states (loading, waiting, open, spinning, offline): the wheel, the state block
  *    (slot A a small-caps label, slot B the countdown, slot C a Label line), the Edit wheel link;
- *  - the result states (result, late): no wheel at all. The word fills the screen with the time
- *    it was spun, and Phase 3's buttons will sit under that.
+ *  - the day states (result, late, posted, skipped): no wheel at all. Result and Late show the
+ *    word with the time it was spun and `DayActions` under it (Log it, and the late line); Posted
+ *    shows the entry as a row and Skipped the struck word under its sentence (`SettledBlock`).
  * The week section is last in both. A spin that was already made when the screen arrived shows
- * the result composition at once and animates nothing; a spin made here turns the wheel, waits
+ * the day composition at once and animates nothing; a spin made here turns the wheel, waits
  * 600ms, then fades the wheel out while the word rises in (section 5). A bonus spin brings the
- * wheel back on the previous spin's own wheel and runs the same turn and reveal again.
+ * wheel back on the previous spin's own wheel and runs the same turn and reveal again. When
+ * Result or Late turns into Posted or Skipped while the screen is open, the block cross-fades
+ * over 400ms and the new state is announced once (03-UI-SPEC 12 and 14).
  */
 export function TodayScreen() {
   const router = useRouter();
@@ -181,6 +201,38 @@ export function TodayScreen() {
   const comp: 'wheel' | 'result' = forceWheel ? 'wheel' : isResultState(viewState) ? 'result' : 'wheel';
   const compRef = useRef(comp);
   compRef.current = comp;
+
+  // ---- Posted and Skipped (03-UI-SPEC 3.1, 12 and 14) -----------------------------------------
+
+  // Announce 'Posted.' or 'Skipped.' when the state CHANGES to it while the screen is open: never
+  // on the first load, so a relaunch on a settled day says nothing.
+  const lastStateRef = useRef<TodayState | null>(null);
+  useEffect(() => {
+    const before = lastStateRef.current;
+    lastStateRef.current = viewState;
+    if (before === null || before === viewState) return;
+    if (viewState === 'posted') AccessibilityInfo.announceForAccessibility('Posted.');
+    else if (viewState === 'skipped') AccessibilityInfo.announceForAccessibility('Skipped.');
+  }, [viewState]);
+
+  // Result or Late turning into Posted or Skipped: the old block stays for 400ms and fades out
+  // while the new one fades in. The old day is read when the change is seen, during the render
+  // that brings the new state, so nothing flashes for a frame. Under Reduce Motion it just changes.
+  const lastOpenDayRef = useRef<Today | null>(null);
+  if (view !== null && (viewState === 'result' || viewState === 'late')) lastOpenDayRef.current = view;
+  const [seenState, setSeenState] = useState<TodayState | null>(viewState);
+  const [settleFrom, setSettleFrom] = useState<Today | null>(null);
+  if (seenState !== viewState) {
+    setSeenState(viewState);
+    const turned =
+      (viewState === 'posted' || viewState === 'skipped') && (seenState === 'result' || seenState === 'late');
+    setSettleFrom(turned && !reduceMotion ? lastOpenDayRef.current : null);
+  }
+  useEffect(() => {
+    if (settleFrom === null) return undefined;
+    const id = setTimeout(() => setSettleFrom(null), FADE_MS);
+    return () => clearTimeout(id);
+  }, [settleFrom]);
 
   // ---- landing, calm and reveal ------------------------------------------------------------
 
@@ -362,23 +414,29 @@ export function TodayScreen() {
         </View>
       );
     }
-    // Open, with or without a failed spin.
-    return (
-      <View style={{ alignSelf: 'stretch', alignItems: 'center' }}>
-        <CapsLabel align="center">Tap the centre to spin</CapsLabel>
-        <View style={{ marginTop: space.xs, alignSelf: 'stretch' }}>
-          {failureKind !== null ? (
-            <StatusMessage
-              kind={failureKind}
-              busy={requesting !== null}
-              onRetry={() => tryAgain(bonusAfterSeqRef.current)}
-            />
-          ) : (
-            labelLine('Open until midnight.')
-          )}
+    if (viewState === 'open') {
+      // Open, with or without a failed spin.
+      return (
+        <View style={{ alignSelf: 'stretch', alignItems: 'center' }}>
+          <CapsLabel align="center">Tap the centre to spin</CapsLabel>
+          <View style={{ marginTop: space.xs, alignSelf: 'stretch' }}>
+            {failureKind !== null ? (
+              <StatusMessage
+                kind={failureKind}
+                busy={requesting !== null}
+                onRetry={() => tryAgain(bonusAfterSeqRef.current)}
+              />
+            ) : (
+              labelLine('Open until midnight.')
+            )}
+          </View>
         </View>
-      </View>
-    );
+      );
+    }
+    // Result, Late, Posted and Skipped draw no wheel, so they have no block under one. A wheel
+    // can still be on screen for a moment in these states (the fade-out after a spin made here),
+    // and it must not say 'Tap the centre to spin' then.
+    return <View style={{ height: type.label.lineHeight }} />;
   }
 
   const wheelComposition = (frozen: boolean) => (
@@ -401,30 +459,73 @@ export function TodayScreen() {
     </View>
   );
 
-  const stamp = view?.spin ?? null;
-  const resultComposition = (
-    <View style={{ marginTop: RESULT_WORD_TOP }}>
-      {stamp ? (
+  /**
+   * Result and Late (picture 02): the word, its stamp row, then the day's actions (the late line
+   * and 'Log it'). `live` is false for the copy that fades out over a change: no link, no
+   * handlers, nothing animating.
+   */
+  function dayComposition(day: Today, live: boolean): ReactNode {
+    const spun = day.spin;
+    if (!spun) return null;
+    const dayLate = day.state === 'late';
+    const bonusLinkShown = live && Boolean(day.bonus.can_use) && !busy;
+    const bonusFailed = live && failureKind !== null && spinFailure?.action === 'bonus';
+    return (
+      <View style={{ marginTop: RESULT_WORD_TOP }}>
         <ResultBlock
-          name={stamp.category.name}
-          spunLocalTime={stamp.spun_local_time}
-          late={viewState === 'late'}
-          canUseBonus={Boolean(view?.bonus.can_use) && !busy}
-          onUseBonus={openBonusSheet}
-          animate={animateResult}
+          name={spun.category.name}
+          spunLocalTime={spun.spun_local_time}
+          late={dayLate}
+          canUseBonus={bonusLinkShown}
+          onUseBonus={live ? openBonusSheet : () => {}}
+          animate={live && animateResult}
         />
-      ) : null}
-      {failureKind !== null && spinFailure?.action === 'bonus' ? (
+        {bonusFailed && failureKind !== null ? (
+          <View style={{ marginTop: space.lg }}>
+            <StatusMessage
+              kind={failureKind}
+              busy={requesting !== null}
+              onRetry={() => tryAgain(bonusAfterSeqRef.current)}
+            />
+          </View>
+        ) : null}
+        <DayActions
+          late={dayLate}
+          followsLink={bonusLinkShown || bonusFailed}
+          disabled={!live || busy}
+          animate={live && animateResult}
+        />
+      </View>
+    );
+  }
+
+  // Posted and Skipped. When one of them took the place of Result or Late a moment ago, it fades
+  // in over the copy of the old block that fades out (overlay below).
+  const settleFade = settleFrom !== null;
+  const postedComposition =
+    view !== null ? (
+      <FadeBox key="posted" from={settleFade ? 0 : 1} to={1}>
         <View style={{ marginTop: space.lg }}>
-          <StatusMessage
-            kind={failureKind}
-            busy={requesting !== null}
-            onRetry={() => tryAgain(bonusAfterSeqRef.current)}
-          />
+          <SettledBlock today={view} />
         </View>
-      ) : null}
-    </View>
-  );
+      </FadeBox>
+    ) : null;
+  // The word sits halfway between the sentence under the heading and the week section: one
+  // flexible space above it and one below.
+  const skippedComposition =
+    view !== null ? (
+      <FadeBox key="skipped" from={settleFade ? 0 : 1} to={1} grow>
+        <View style={{ flexGrow: 1 }}>
+          <View style={{ flexGrow: 1, minHeight: space.xl }} />
+          <SettledBlock today={view} />
+          <View style={{ flexGrow: 1, minHeight: space.xl }} />
+        </View>
+      </FadeBox>
+    ) : null;
+  const skippedLine =
+    comp === 'result' && viewState === 'skipped' && view !== null
+      ? nextSpinLine(view.spin?.local_date ?? view.local_date, view.local_date, view.next_open_weekday)
+      : null;
 
   // What fades out while the other composition takes over (400ms).
   let overlay: ReactNode = null;
@@ -434,18 +535,16 @@ export function TodayScreen() {
         {wheelComposition(true)}
       </FadeBox>
     );
-  } else if (phase === 'entering' && stamp) {
+  } else if (phase === 'entering' && view !== null) {
     overlay = (
       <FadeBox from={1} to={0} absolute top={-HEADING_DIFF}>
-        <View style={{ marginTop: RESULT_WORD_TOP }}>
-          <ResultBlock
-            name={stamp.category.name}
-            spunLocalTime={stamp.spun_local_time}
-            late={false}
-            canUseBonus={false}
-            onUseBonus={() => {}}
-          />
-        </View>
+        {dayComposition(view, false)}
+      </FadeBox>
+    );
+  } else if (settleFrom !== null && comp === 'result') {
+    overlay = (
+      <FadeBox from={1} to={0} absolute>
+        {dayComposition(settleFrom, false)}
       </FadeBox>
     );
   }
@@ -470,13 +569,25 @@ export function TodayScreen() {
           <Heading text={headingText} reduceMotion={reduceMotion} lines={headingLines} />
         </View>
 
+        {skippedLine !== null ? (
+          <View style={{ marginTop: space.sm }}>
+            <AppText role="body">{skippedLine}</AppText>
+          </View>
+        ) : null}
+
         <View style={{ flexGrow: 1 }}>
           {offlineOnLoad ? (
             <View style={{ marginTop: space.xl }}>
               <StatusMessage kind={loadFailure} onRetry={() => void refetch('manual')} />
             </View>
           ) : comp === 'result' ? (
-            resultComposition
+            viewState === 'posted' ? (
+              postedComposition
+            ) : viewState === 'skipped' ? (
+              skippedComposition
+            ) : view !== null ? (
+              dayComposition(view, true)
+            ) : null
           ) : (
             // One instance for the whole time the wheel is on screen (it must not remount when
             // the bonus spin's fade-in ends). `from` is read once, when the wheel appears.
@@ -485,7 +596,10 @@ export function TodayScreen() {
             </FadeBox>
           )}
           {overlay}
-          <View style={{ flexGrow: 1, minHeight: comp === 'result' ? space.xl : space.lg }} />
+          {/* Skipped centres its word between two flexible spaces of its own, so none is added here. */}
+          {comp === 'result' && viewState === 'skipped' && !offlineOnLoad ? null : (
+            <View style={{ flexGrow: 1, minHeight: comp === 'result' ? space.xl : space.lg }} />
+          )}
         </View>
 
         {view ? (

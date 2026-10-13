@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { PhotoField } from '@/components/entry/PhotoField';
 import { ReactionPicker } from '@/components/entry/ReactionPicker';
@@ -61,6 +61,12 @@ export function EntryForm({
 }: EntryFormProps) {
   const scrollRef = useRef<ScrollView>(null);
   const commentFocusedRef = useRef(false);
+
+  // A photo message sits under the strip at the top of the form; the person pressed Save in the
+  // footer and may have scrolled down to the comment, so bring the strip into view.
+  useEffect(() => {
+    if (photoMessage) scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [photoMessage]);
 
   const needed = stillNeededLine(draft.missing);
   const canSubmit = !submitting && draft.missing.length === 0 && (mode === 'new' || draft.dirty);

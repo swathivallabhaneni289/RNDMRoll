@@ -28,7 +28,7 @@ export const unstable_settings = {
 /** The bar is this tall above the bottom safe area. */
 const BAR_CONTENT_HEIGHT = 56;
 /** Today's pushed pages that show no bottom bar. */
-const BARLESS_TODAY_PAGES = ['notifications', 'entry'];
+const BARLESS_TODAY_PAGES = ['notifications', 'entry', 'log', 'edit-entry'];
 
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
