@@ -4,6 +4,12 @@
  * No screen or hook re-declares any of these types locally.
  */
 
+/**
+ * Whether an account can appear on Global (Phase 2.1, migration 0005). 'public' is the default for
+ * everyone; the Settings switch "Private account" is ON for 'private'. Only stored and shown for now.
+ */
+export type AccountVisibility = 'public' | 'private';
+
 export interface ApiUser {
   id: string;
   email: string;
@@ -13,6 +19,7 @@ export interface ApiUser {
   avatar_url: string | null;
   email_verified: boolean;
   onboarding_complete: boolean;
+  account_visibility: AccountVisibility;
 }
 
 export interface SessionTokens {

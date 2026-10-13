@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { api, ApiError } from '@/lib/api/client';
-import type { ApiUser, AvatarUploadTicket } from '@/lib/api/types';
+import type { AccountVisibility, ApiUser, AvatarUploadTicket } from '@/lib/api/types';
 
 /**
  * Shared profile read/write calls used by both the profile view and profile
@@ -18,6 +18,8 @@ export interface ProfilePatch {
   username?: string;
   bio?: string;
   avatar_url?: string;
+  /** The Settings switch (plan 02.1-02): 'private' is ON, 'public' is OFF. */
+  account_visibility?: AccountVisibility;
 }
 
 /** The size in bytes of a local file: the exact length the presigned upload signs. */
@@ -46,6 +48,7 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
   if (patch.username !== undefined) body.username = patch.username;
   if (patch.bio !== undefined) body.bio = patch.bio;
   if (patch.avatar_url !== undefined) body.avatar_url = patch.avatar_url;
+  if (patch.account_visibility !== undefined) body.account_visibility = patch.account_visibility;
   return api.patch<ApiUser>('/me', body);
 }
 
