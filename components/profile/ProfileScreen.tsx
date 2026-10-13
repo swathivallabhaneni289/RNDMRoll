@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
-import { BioInline } from '@/components/settings/BioInline';
 import { SettingsGear } from '@/components/settings/SettingsGear';
 import { RecentActivity } from '@/components/profile/RecentActivity';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
@@ -27,6 +26,8 @@ const SAVED_NOTICE = 'Saved.';
 export type ProfileViewProps = {
   name: string;
   username: string;
+  /** The bio as saved, shown as plain text; it is edited on the Edit page. */
+  bio: string;
   avatarUri: string | null;
   /** True until the first answer (or failure) of this visit settles. */
   loading: boolean;
@@ -48,7 +49,7 @@ export type ProfileViewProps = {
  *
  * Top to bottom: a slim row with the Settings gear at the right (and 'Saved.' at the left for a few
  * seconds after the Edit page saves); the photo in a circle with the name beside it and the
- * @username under the name, and the outlined 'Edit' button at the right; the bio, edited in place;
+ * @username under the name, and the outlined 'Edit' button at the right; the bio as plain text (it is edited on the Edit page);
  * a dark rule and the three figures; the tastes; the recent activity with its 'See diary' link.
  *
  * Differences from the picture, on purpose: the gear and the bio (asked for in words, the picture
@@ -57,6 +58,7 @@ export type ProfileViewProps = {
 export function ProfileView({
   name,
   username,
+  bio,
   avatarUri,
   loading,
   summary,
@@ -117,9 +119,11 @@ export function ProfileView({
         </View>
 
         {/* The bio runs the full width under the photo row, so a long one has room (04-UI-SPEC 4.1). */}
-        <View style={{ marginTop: space.sm }}>
-          <BioInline />
-        </View>
+        {bio !== '' ? (
+          <View style={{ marginTop: space.sm }}>
+            <AppText role="body">{bio}</AppText>
+          </View>
+        ) : null}
 
         {loading ? (
           <View style={{ marginTop: space.lg }}>
@@ -164,6 +168,7 @@ export function ProfileScreen() {
     <ProfileView
       name={user?.name ?? ''}
       username={user?.username ?? ''}
+      bio={user?.bio ?? ''}
       avatarUri={user?.avatar_url ?? null}
       loading={loading}
       summary={summary}
