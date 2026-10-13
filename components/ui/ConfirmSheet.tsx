@@ -47,7 +47,7 @@ export function ConfirmSheet({
 }: {
   visible: boolean;
   title: string;
-  body: string;
+  body?: string;
   confirmLabel: string;
   /** Leave out for a sheet with the one action row; the scrim and the back gesture still dismiss. */
   dismissLabel?: string;
@@ -75,9 +75,11 @@ export function ConfirmSheet({
           }}
         >
           <AppText role="heading">{title}</AppText>
-          <View style={{ marginTop: space.sm }}>
-            <AppText role="body">{body}</AppText>
-          </View>
+          {body !== undefined && body !== '' ? (
+            <View style={{ marginTop: space.sm }}>
+              <AppText role="body">{body}</AppText>
+            </View>
+          ) : null}
           <View style={{ marginTop: space.lg }}>
             <SheetRow label={confirmLabel} onPress={onConfirm} disabled={busy} />
             {dismissLabel !== undefined ? (

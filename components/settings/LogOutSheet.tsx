@@ -27,7 +27,6 @@ export function LogOutSheet({ visible, onClose }: { visible: boolean; onClose: (
     <ConfirmSheet
       visible={visible}
       title="Are you sure you want to log out?"
-      body="You'll need to sign back in."
       confirmLabel="Log out"
       onConfirm={confirm}
       onDismiss={onClose}
