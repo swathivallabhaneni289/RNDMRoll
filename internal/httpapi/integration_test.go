@@ -343,7 +343,7 @@ func TestFullOnboardingFlow(t *testing.T) {
 
 	signupRec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", map[string]any{
 		"email":    "onboarding-flow@example.com",
-		"password": "correct-horse-battery-staple",
+		"password": "Correct-horse-battery-staple1",
 		"birthday": validBirthday,
 		"name":     "Onboarding Flow Tester",
 		"username": username,
@@ -390,7 +390,7 @@ func TestSessionSurvivesRelaunch(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	session := integrationOnboardAccount(t, engine, "relaunch@example.com", "correct-horse-battery-staple", "Relaunch Tester", "relaunch_user")
+	session := integrationOnboardAccount(t, engine, "relaunch@example.com", "Correct-horse-battery-staple1", "Relaunch Tester", "relaunch_user")
 
 	// Discard session.AccessToken here, on purpose: only the refresh token
 	// crosses a real cold start.
@@ -422,14 +422,14 @@ func TestUnverifiedAccountCanLogInRefreshAndUseTheApp(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	integrationOnboardAccount(t, engine, "unverified-profile@example.com", "correct-horse-battery-staple", "Unverified Person", "unverified_person")
+	integrationOnboardAccount(t, engine, "unverified-profile@example.com", "Correct-horse-battery-staple1", "Unverified Person", "unverified_person")
 	var verified bool
 	if err := pool.QueryRow(context.Background(), `select email_verified from users where email = $1`, "unverified-profile@example.com").Scan(&verified); err != nil || verified {
 		t.Fatalf("expected an unverified account, verified = %v, err = %v", verified, err)
 	}
 
 	loginRec := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{
-		"email": "unverified-profile@example.com", "password": "correct-horse-battery-staple",
+		"email": "unverified-profile@example.com", "password": "Correct-horse-battery-staple1",
 	})
 	if loginRec.Code != http.StatusOK {
 		t.Fatalf("login of an unverified account: expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
@@ -468,7 +468,7 @@ func TestLoginWithAUsernameReachesTheSameAccountAsTheEmail(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	const password = "correct-horse-battery-staple"
+	const password = "Correct-horse-battery-staple1"
 	integrationOnboardAccount(t, engine, "username-login@example.com", password, "Username Login", "username_login")
 
 	for name, login := range map[string]string{
@@ -513,8 +513,8 @@ func TestCrossAccountIsolation(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	sessionA := integrationOnboardAccount(t, engine, "account-a@example.com", "correct-horse-battery-staple", "Account A", "account_a_user")
-	sessionB := integrationOnboardAccount(t, engine, "account-b@example.com", "correct-horse-battery-staple", "Account B", "account_b_user")
+	sessionA := integrationOnboardAccount(t, engine, "account-a@example.com", "Correct-horse-battery-staple1", "Account A", "account_a_user")
+	sessionB := integrationOnboardAccount(t, engine, "account-b@example.com", "Correct-horse-battery-staple1", "Account B", "account_b_user")
 
 	meABefore := decodeBody(t, integrationDo(t, engine, http.MethodGet, "/v1/me", sessionA.AccessToken, nil))
 	accountAID := meABefore["id"]
@@ -573,7 +573,7 @@ func TestRefreshTokenSingleUse(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	session := integrationOnboardAccount(t, engine, "single-use-refresh@example.com", "correct-horse-battery-staple", "Single Use", "single_use_user")
+	session := integrationOnboardAccount(t, engine, "single-use-refresh@example.com", "Correct-horse-battery-staple1", "Single Use", "single_use_user")
 
 	firstRefreshRec := integrationDo(t, engine, http.MethodPost, "/v1/auth/refresh", "", map[string]any{
 		"refresh_token": session.RefreshToken,
@@ -613,7 +613,7 @@ func TestIntegrationSignup_EmailTakenStoresNothingNew(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
-	integrationOnboardAccount(t, engine, "taken@example.com", "correct-horse-battery-staple", "First Person", "first_person")
+	integrationOnboardAccount(t, engine, "taken@example.com", "Correct-horse-battery-staple1", "First Person", "first_person")
 
 	rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
 		"email": "TAKEN@example.com", "username": "second_person",
@@ -631,7 +631,7 @@ func TestIntegrationSignup_UsernameTakenStoresNothingNew(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
-	integrationOnboardAccount(t, engine, "holder@example.com", "correct-horse-battery-staple", "Holder", "held_name")
+	integrationOnboardAccount(t, engine, "holder@example.com", "Correct-horse-battery-staple1", "Holder", "held_name")
 
 	rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
 		"email": "wants-it@example.com", "username": "HELD_NAME",
@@ -715,12 +715,12 @@ func TestIntegrationNoResponseCarriesABirthdayKey(t *testing.T) {
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	session := integrationOnboardAccount(t, engine, "privacy@example.com", "correct-horse-battery-staple", "Privacy Person", "privacy_person")
+	session := integrationOnboardAccount(t, engine, "privacy@example.com", "Correct-horse-battery-staple1", "Privacy Person", "privacy_person")
 	steps := []struct {
 		label, method, path, token string
 		body                       any
 	}{
-		{"login", http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "privacy@example.com", "password": "correct-horse-battery-staple"}},
+		{"login", http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "privacy@example.com", "password": "Correct-horse-battery-staple1"}},
 		{"me", http.MethodGet, "/v1/me", session.AccessToken, nil},
 		{"patch bio", http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"bio": "hi"}},
 		{"patch birthday on a complete account", http.MethodPatch, "/v1/me", session.AccessToken, map[string]any{"birthday": validBirthday}},

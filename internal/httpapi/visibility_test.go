@@ -147,7 +147,7 @@ func TestVisibility_BodiesCarryTheValue(t *testing.T) {
 			}
 
 			login := serveFrom(t, rig.srv, integrationRemote(), http.MethodPost, "/v1/auth/login", "", map[string]any{
-				"email": tc.email, "password": "correct-horse-battery",
+				"email": tc.email, "password": "Correct-horse-battery1",
 			})
 			if login.Code != http.StatusOK {
 				t.Fatalf("login: %d %s", login.Code, login.Body.String())

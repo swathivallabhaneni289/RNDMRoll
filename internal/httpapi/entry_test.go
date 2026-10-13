@@ -577,8 +577,8 @@ func TestEntryIntegration_PostReadAndSkipOverPostgres(t *testing.T) {
 	server := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk, entryPhotos: store})
 	engine := server.Engine()
 
-	a := integrationOnboardAccount(t, engine, "int-entry-a@example.com", "correct-horse-battery-staple", "Entry A", "int_entry_a")
-	b := integrationOnboardAccount(t, engine, "int-entry-b@example.com", "correct-horse-battery-staple", "Entry B", "int_entry_b")
+	a := integrationOnboardAccount(t, engine, "int-entry-a@example.com", "Correct-horse-battery-staple1", "Entry A", "int_entry_a")
+	b := integrationOnboardAccount(t, engine, "int-entry-b@example.com", "Correct-horse-battery-staple1", "Entry B", "int_entry_b")
 	do := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		t.Helper()
 		return integrationDo(t, engine, method, path, token, body)

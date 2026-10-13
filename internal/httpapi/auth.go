@@ -127,9 +127,10 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,max=72"`
 }
 
-// passwordReason checks a sign-up password: required, 8 to 72 characters. It
-// returns "" when the password is fine. Both of an account's passwords follow
-// this one rule.
+// passwordReason checks a new password: required, 8 to 72 characters, with at
+// least one capital letter, one number and one symbol. It returns "" when the
+// password is fine. Sign-up and change password follow this one rule; log in
+// never checks it, so older, simpler passwords still work.
 func passwordReason(p string) string {
 	n := utf8.RuneCountInString(p)
 	switch {
@@ -139,6 +140,20 @@ func passwordReason(p string) string {
 		return reasonTooShort
 	case n > maxPasswordLength:
 		return reasonTooLong
+	}
+	var upper, digit, symbol bool
+	for _, r := range p {
+		switch {
+		case unicode.IsUpper(r):
+			upper = true
+		case unicode.IsDigit(r):
+			digit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			symbol = true
+		}
+	}
+	if !upper || !digit || !symbol {
+		return reasonTooWeak
 	}
 	return ""
 }

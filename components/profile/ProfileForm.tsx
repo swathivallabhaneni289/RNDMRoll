@@ -16,7 +16,13 @@ import { api, ApiError } from '@/lib/api/client';
 import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
 import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
+import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { setSettingsNotice } from '@/lib/settings/notice';
+import {
+  PASSWORD_LONG_MESSAGE,
+  PASSWORD_WEAK_MESSAGE,
+  passwordProblem as passwordRuleProblem,
+} from '@/lib/settings/rules';
 import { useSession } from '@/lib/session/store';
 
 /**
@@ -35,8 +41,6 @@ export type ProfileFormMode = 'signup' | 'extras' | 'edit';
 const BIO_MAX_LENGTH = 160;
 const NAME_MAX_LENGTH = 50;
 const EMAIL_MAX_LENGTH = 254;
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_MAX_BYTES = 72;
 const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -44,8 +48,6 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOOKS_GOOD_MESSAGE = 'Looks good.';
 const EMAIL_MESSAGE = 'Enter a valid email address.';
 const EMAIL_TAKEN_MESSAGE = 'That email is already in use.';
-const PASSWORD_SHORT_MESSAGE = 'Password must be at least 8 characters.';
-const PASSWORD_LONG_MESSAGE = 'That password is too long. Use 72 characters or fewer.';
 const NAME_EMPTY_MESSAGE = 'Enter your name.';
 const NAME_LONG_MESSAGE = `Name must be ${NAME_MAX_LENGTH} characters or fewer.`;
 const BIO_LONG_MESSAGE = `Bio must be ${BIO_MAX_LENGTH} characters or fewer.`;
@@ -62,17 +64,6 @@ function takenMessage(alternates: string[]): string {
   return alternates.length > 0 ? USERNAME_TAKEN_MESSAGE : USERNAME_TAKEN_NO_ALTERNATES_MESSAGE;
 }
 
-// bcrypt (the server's hash) refuses more than 72 BYTES, and a field's maxLength counts
-// UTF-16 units, so the byte count is taken by hand.
-function utf8Length(value: string): number {
-  let bytes = 0;
-  for (const ch of value) {
-    const cp = ch.codePointAt(0) ?? 0;
-    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
-  }
-  return bytes;
-}
-
 function emailProblem(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 && trimmed.length <= EMAIL_MAX_LENGTH && EMAIL_PATTERN.test(trimmed)
@@ -81,9 +72,8 @@ function emailProblem(value: string): string | undefined {
 }
 
 function passwordProblem(value: string): string | undefined {
-  if (value.length < PASSWORD_MIN_LENGTH) return PASSWORD_SHORT_MESSAGE;
-  if (utf8Length(value) > PASSWORD_MAX_BYTES) return PASSWORD_LONG_MESSAGE;
-  return undefined;
+  const problem = passwordRuleProblem(value);
+  return problem === '' ? undefined : problem;
 }
 
 function nameProblem(value: string): string | undefined {
@@ -475,7 +465,7 @@ export function ProfileForm({
         setEmailError(EMAIL_MESSAGE);
         return true;
       case 'password':
-        setPasswordError(utf8Length(password) > PASSWORD_MAX_BYTES ? PASSWORD_LONG_MESSAGE : PASSWORD_SHORT_MESSAGE);
+        setPasswordError(passwordRuleProblem(password) || PASSWORD_WEAK_MESSAGE);
         return true;
       case 'birthday': {
         // The client check already passed, so the server disagreed (a clock edge): a
@@ -736,7 +726,7 @@ export function ProfileForm({
                 value={password}
                 onChangeText={handlePasswordChange}
                 onBlur={() => setPasswordError(passwordProblem(password))}
-                error={passwordError}
+                error={passwordError === PASSWORD_LONG_MESSAGE ? passwordError : undefined}
                 success={passwordOk ? LOOKS_GOOD_MESSAGE : undefined}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -756,13 +746,7 @@ export function ProfileForm({
                   {showPassword ? 'Hide' : 'Show'}
                 </AppText>
               </Pressable>
-              {!passwordError && !passwordOk ? (
-                <View style={{ marginTop: space.xs }}>
-                  <AppText role="label" tone="muted">
-                    At least 8 characters.
-                  </AppText>
-                </View>
-              ) : null}
+              <PasswordChecklist value={password} />
             </View>
           </View>
         ) : null}

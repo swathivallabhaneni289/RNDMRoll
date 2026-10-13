@@ -98,7 +98,7 @@ const validBirthday = "1990-06-15"
 func signupBody(mods map[string]any) map[string]any {
 	body := map[string]any{
 		"email":    "new-user@example.com",
-		"password": "correct-horse-battery",
+		"password": "Correct-horse-battery1",
 		"birthday": validBirthday,
 		"name":     "New User",
 		"username": "new_user",
@@ -164,7 +164,7 @@ func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T
 	if err != nil {
 		t.Fatalf("expected user to be stored: %v", err)
 	}
-	if stored.PasswordHash == nil || *stored.PasswordHash == "" || *stored.PasswordHash == "correct-horse-battery" {
+	if stored.PasswordHash == nil || *stored.PasswordHash == "" || *stored.PasswordHash == "Correct-horse-battery1" {
 		t.Fatal("expected a bcrypt hash, not the plaintext password")
 	}
 	if stored.EmailVerified {
@@ -184,7 +184,7 @@ func TestSignup_ResponseHasTheSameKeysAsLogin(t *testing.T) {
 	signup := decodeBody(t, doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)))
 	login := decodeBody(t, doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Email:    "new-user@example.com",
-		Password: "correct-horse-battery",
+		Password: "Correct-horse-battery1",
 	}))
 
 	keys := func(m map[string]any) string {
@@ -430,7 +430,7 @@ func TestSignup_DuplicateUsername_Returns409WithSuggestionsAndStoresNothingNew(t
 
 func TestLogin_CorrectCredentials_Returns200WithTokensAndUser(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	password := "correct-horse-battery"
+	password := "Correct-horse-battery1"
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
@@ -593,11 +593,11 @@ func assertLoggedInAs(t *testing.T, rec *httptest.ResponseRecorder, email string
 
 func TestLogin_ByUsername_Returns200WithTokensAndUser(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Login:    "try_five",
-		Password: "correct-horse-battery",
+		Password: "Correct-horse-battery1",
 	})
 
 	assertLoggedInAs(t, rec, "try5@example.com")
@@ -608,11 +608,11 @@ func TestLogin_ByUsername_Returns200WithTokensAndUser(t *testing.T) {
 
 func TestLogin_ByUsernameIgnoresCase(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Login:    "Try_FIVE",
-		Password: "correct-horse-battery",
+		Password: "Correct-horse-battery1",
 	})
 
 	assertLoggedInAs(t, rec, "try5@example.com")
@@ -620,11 +620,11 @@ func TestLogin_ByUsernameIgnoresCase(t *testing.T) {
 
 func TestLogin_LoginFieldTakesAnEmailToo(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Login:    "TRY5@Example.com",
-		Password: "correct-horse-battery",
+		Password: "Correct-horse-battery1",
 	})
 
 	assertLoggedInAs(t, rec, "try5@example.com")
@@ -632,12 +632,12 @@ func TestLogin_LoginFieldTakesAnEmailToo(t *testing.T) {
 
 func TestLogin_OlderEmailFieldStillWorksAndCarriesAUsernameToo(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	for name, typed := range map[string]string{"an email": "try5@example.com", "a username": "try_five"} {
 		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 			Email:    typed,
-			Password: "correct-horse-battery",
+			Password: "Correct-horse-battery1",
 		})
 		t.Run(name, func(t *testing.T) { assertLoggedInAs(t, rec, "try5@example.com") })
 	}
@@ -645,12 +645,12 @@ func TestLogin_OlderEmailFieldStillWorksAndCarriesAUsernameToo(t *testing.T) {
 
 func TestLogin_LoginFieldWinsOverTheOlderEmailField(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Login:    "try_five",
 		Email:    "nobody@example.com",
-		Password: "correct-horse-battery",
+		Password: "Correct-horse-battery1",
 	})
 
 	assertLoggedInAs(t, rec, "try5@example.com")
@@ -680,7 +680,7 @@ func TestLogin_AccountWithoutAPasswordCannotLogIn(t *testing.T) {
 
 func TestLogin_UnknownUsernameByteIdenticalToWrongPassword(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	seedLoginAccount(t, deps, "try5@example.com", "try_five", "correct-horse-battery")
+	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
 
 	wrongPassword := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Login:    "try_five",
@@ -713,7 +713,7 @@ func TestLogin_TextThatCouldNeverBeAUsernameIsAnUnknownAccountNot400(t *testing.
 
 			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 				Login:    typed,
-				Password: "correct-horse-battery",
+				Password: "Correct-horse-battery1",
 			})
 
 			assertInvalidCredentials(t, rec)
@@ -724,7 +724,7 @@ func TestLogin_TextThatCouldNeverBeAUsernameIsAnUnknownAccountNot400(t *testing.
 func TestLogin_EmptyLogin_Returns400NamingTheLoginField(t *testing.T) {
 	router, _, _ := newAuthTestHandler(t)
 
-	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Password: "correct-horse-battery"})
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Password: "Correct-horse-battery1"})
 
 	assertFieldError(t, rec, "login")
 }
@@ -742,7 +742,7 @@ func TestLogin_MalformedEmail_Returns400NamingTheLoginField(t *testing.T) {
 
 			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 				Login:    typed,
-				Password: "correct-horse-battery",
+				Password: "Correct-horse-battery1",
 			})
 
 			assertFieldError(t, rec, "login")

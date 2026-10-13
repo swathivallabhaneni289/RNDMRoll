@@ -21,7 +21,7 @@ func TestIntegration_ChangePassword_EndToEnd(t *testing.T) {
 	ctx := context.Background()
 
 	const email = "change-e2e@example.com"
-	const oldPassword, newPassword = "old-correct-horse-battery", "new-correct-horse-battery"
+	const oldPassword, newPassword = "old-Correct-horse-battery1", "new-Correct-horse-battery1"
 	phoneA := integrationOnboardAccount(t, engine, email, oldPassword, "Change E2E", "change_e2e")
 
 	// A second phone logs in with the old password.

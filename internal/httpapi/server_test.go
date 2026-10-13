@@ -590,7 +590,7 @@ func TestServer_NoResponseBodyCarriesABirthdayKey(t *testing.T) {
 	access, _ := sBody["access_token"].(string)
 	refreshToken, _ := sBody["refresh_token"].(string)
 
-	check("login", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "new-user@example.com", "password": "correct-horse-battery"}))
+	check("login", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "new-user@example.com", "password": "Correct-horse-battery1"}))
 	check("login wrong", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "new-user@example.com", "password": "nope"}))
 	check("me", serveFrom(t, rig.srv, next(), http.MethodGet, "/v1/me", access, nil))
 	check("patch bio", serveFrom(t, rig.srv, next(), http.MethodPatch, "/v1/me", access, map[string]any{"bio": "hi"}))

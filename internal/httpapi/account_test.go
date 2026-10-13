@@ -153,7 +153,7 @@ func keysOf(m map[string]any) string {
 
 func TestChangePassword_Succeeds(t *testing.T) {
 	rig := newAccountRig(t)
-	const oldPassword, newPassword = "old-password-1234", "new-password-5678"
+	const oldPassword, newPassword = "Old-password-1234!", "New-password-5678!"
 	s := rig.signUp(t, "change@example.com", "change_one", oldPassword)
 
 	rec := rig.changePassword(t, s.access, map[string]any{"current_password": oldPassword, "new_password": newPassword})
@@ -216,11 +216,11 @@ func TestChangePassword_Succeeds(t *testing.T) {
 
 func TestChangePassword_WrongCurrentIs400FieldCurrentPassword(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "wrong@example.com", "wrong_one", "right-password-1")
+	s := rig.signUp(t, "wrong@example.com", "wrong_one", "Right-password-1!")
 	hashBefore := rig.fake.storedPasswordHash(s.id)
 	activeBefore := rig.tokens.activeCount(s.id)
 
-	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "not-the-password", "new_password": "another-password-2"})
+	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "not-the-password", "new_password": "Another-password-2!"})
 
 	if rec.Code == http.StatusUnauthorized {
 		t.Fatalf("a wrong current password must never be a 401 (it signs the phone out): %s", rec.Body.String())
@@ -234,13 +234,13 @@ func TestChangePassword_WrongCurrentIs400FieldCurrentPassword(t *testing.T) {
 	if rec := rig.refreshWith(t, s.refresh); rec.Code != http.StatusOK {
 		t.Errorf("the old refresh token should still redeem: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := rig.logIn(t, s.email, "right-password-1"); rec.Code != http.StatusOK {
+	if rec := rig.logIn(t, s.email, "Right-password-1!"); rec.Code != http.StatusOK {
 		t.Errorf("the old password should still log in: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestChangePassword_NewPasswordTooShortTooLongAndBytes(t *testing.T) {
-	const current = "current-password-1"
+	const current = "Current-password-1!"
 	cases := []struct {
 		name    string
 		current string
@@ -252,10 +252,14 @@ func TestChangePassword_NewPasswordTooShortTooLongAndBytes(t *testing.T) {
 		{"73 characters", current, strings.Repeat("a", 73), "new_password", "This value is too long."},
 		// 40 two-byte characters pass the character count and are refused when
 		// they are hashed: bcrypt counts 72 bytes.
-		{"40 two-byte characters, 80 bytes", current, strings.Repeat("é", 40), "new_password", "This value is too long."},
+		{"40 two-byte characters, 80 bytes", current, strings.Repeat("É", 38) + "1!", "new_password", "This value is too long."},
 		// The new password's rule runs before the current one is compared.
 		{"too short with a wrong current password", "not-the-password", "abcdefg", "new_password", "This value is too short."},
 		{"empty", current, "", "new_password", "This field is required."},
+		// Long enough but missing a capital, a number or a symbol.
+		{"no capital", current, "lowercase-pass-1!", "new_password", "Use a capital letter, a number and a symbol."},
+		{"no number", current, "Lowercase-pass-!", "new_password", "Use a capital letter, a number and a symbol."},
+		{"no symbol", current, "Lowercasepass1", "new_password", "Use a capital letter, a number and a symbol."},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,7 +284,7 @@ func TestChangePassword_NewPasswordTooShortTooLongAndBytes(t *testing.T) {
 
 func TestChangePassword_SameAsCurrentIs400FieldNewPassword(t *testing.T) {
 	rig := newAccountRig(t)
-	const current = "current-password-1"
+	const current = "Current-password-1!"
 	s := rig.signUp(t, "same@example.com", "same_one", current)
 	hashBefore := rig.fake.storedPasswordHash(s.id)
 	activeBefore := rig.tokens.activeCount(s.id)
@@ -295,13 +299,13 @@ func TestChangePassword_SameAsCurrentIs400FieldNewPassword(t *testing.T) {
 
 	// A wrong current password is judged first, so an unchanged-looking pair
 	// of wrong values says nothing about the real one.
-	wrong := rig.changePassword(t, s.access, map[string]any{"current_password": "typed-wrong-1", "new_password": "typed-wrong-1"})
+	wrong := rig.changePassword(t, s.access, map[string]any{"current_password": "Typed-wrong-1!", "new_password": "Typed-wrong-1!"})
 	assertFieldError(t, wrong, "current_password")
 }
 
 func TestChangePassword_OtherSessionsAreRevokedAndThisOneKept(t *testing.T) {
 	rig := newAccountRig(t)
-	const oldPassword, newPassword = "old-password-1234", "new-password-5678"
+	const oldPassword, newPassword = "Old-password-1234!", "New-password-5678!"
 	a := rig.signUp(t, "sessions@example.com", "sessions_one", oldPassword)
 
 	// Two more phones log in.
@@ -349,7 +353,7 @@ func TestChangePassword_IsRateLimitedPerCallerAndPerAddress(t *testing.T) {
 
 	// Per caller: 5 a minute. Each call comes from its own address, so only
 	// the caller's limit can stop the 6th.
-	x := rig.signUp(t, "limit-x@example.com", "limit_x", "password-for-x-1")
+	x := rig.signUp(t, "limit-x@example.com", "limit_x", "Password-for-x-1!")
 	for i := 1; i <= 5; i++ {
 		rec := rig.changePassword(t, x.access, empty)
 		assertFieldError(t, rec, "current_password")
@@ -362,7 +366,7 @@ func TestChangePassword_IsRateLimitedPerCallerAndPerAddress(t *testing.T) {
 		t.Fatalf("the 6th call: error = %v, want rate_limited", got)
 	}
 	// Another caller is not limited.
-	y := rig.signUp(t, "limit-y@example.com", "limit_y", "password-for-y-1")
+	y := rig.signUp(t, "limit-y@example.com", "limit_y", "Password-for-y-1!")
 	assertFieldError(t, rig.changePassword(t, y.access, empty), "current_password")
 
 	// Per address: 20 a minute. Four callers use their 5 calls each from one
@@ -371,7 +375,7 @@ func TestChangePassword_IsRateLimitedPerCallerAndPerAddress(t *testing.T) {
 	callers := make([]accountSession, 5)
 	for i := range callers {
 		n := string(rune('1' + i))
-		callers[i] = rig.signUp(t, "limit-p"+n+"@example.com", "limit_p"+n, "password-for-p-1")
+		callers[i] = rig.signUp(t, "limit-p"+n+"@example.com", "limit_p"+n, "Password-for-p-1!")
 	}
 	const address = "198.51.100.77:4000"
 	for i, c := range callers[:4] {
@@ -397,8 +401,8 @@ func TestChangePassword_IsRateLimitedPerCallerAndPerAddress(t *testing.T) {
 
 func TestChangePassword_NoTokenIs401AndDeletedAccountIs401(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "gone@example.com", "gone_one", "current-password-1")
-	body := map[string]any{"current_password": "current-password-1", "new_password": "another-password-2"}
+	s := rig.signUp(t, "gone@example.com", "gone_one", "Current-password-1!")
+	body := map[string]any{"current_password": "Current-password-1!", "new_password": "Another-password-2!"}
 
 	for name, token := range map[string]string{"no token": "", "not a token": "not-a-token"} {
 		rec := rig.changePassword(t, token, body)
@@ -435,7 +439,7 @@ func TestChangePassword_NoPasswordInAnyBodyOrLog(t *testing.T) {
 	a := rig.signUp(t, "nolog-a@example.com", "nolog_a", current)
 	note(rig.changePassword(t, a.access, map[string]any{"current_password": wrong, "new_password": next}))
 	note(rig.changePassword(t, a.access, map[string]any{"current_password": current, "new_password": "short1"}))
-	note(rig.changePassword(t, a.access, map[string]any{"current_password": current, "new_password": strings.Repeat("é", 40)}))
+	note(rig.changePassword(t, a.access, map[string]any{"current_password": current, "new_password": strings.Repeat("É", 38) + "1!"}))
 	note(rig.changePassword(t, a.access, map[string]any{"current_password": current, "new_password": current}))
 	note(rig.changePassword(t, a.access, map[string]any{"current_password": current}))
 
@@ -473,7 +477,7 @@ func TestChangePassword_NoPasswordInAnyBodyOrLog(t *testing.T) {
 
 func TestChangePassword_MissingFieldsAreRequiredErrors(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "missing@example.com", "missing_one", "current-password-1")
+	s := rig.signUp(t, "missing@example.com", "missing_one", "Current-password-1!")
 
 	cases := []struct {
 		name  string
@@ -481,10 +485,10 @@ func TestChangePassword_MissingFieldsAreRequiredErrors(t *testing.T) {
 		field string
 	}{
 		{"empty object", map[string]any{}, "current_password"},
-		{"no new password", map[string]any{"current_password": "current-password-1"}, "new_password"},
-		{"no current password", map[string]any{"new_password": "another-password-2"}, "current_password"},
+		{"no new password", map[string]any{"current_password": "Current-password-1!"}, "new_password"},
+		{"no current password", map[string]any{"new_password": "Another-password-2!"}, "current_password"},
 		{"both empty", map[string]any{"current_password": "", "new_password": ""}, "current_password"},
-		{"new password null", map[string]any{"current_password": "current-password-1", "new_password": nil}, "new_password"},
+		{"new password null", map[string]any{"current_password": "Current-password-1!", "new_password": nil}, "new_password"},
 	}
 	for _, tc := range cases {
 		rec := rig.changePassword(t, s.access, tc.body)
@@ -499,10 +503,10 @@ func TestChangePassword_MissingFieldsAreRequiredErrors(t *testing.T) {
 
 	// A wrong type, an unreadable body and no body at all are the one generic
 	// refusal, which names no field.
-	other := rig.signUp(t, "missing2@example.com", "missing_two", "current-password-1")
+	other := rig.signUp(t, "missing2@example.com", "missing_two", "Current-password-1!")
 	for name, body := range map[string]any{
-		"a number":      map[string]any{"current_password": 5, "new_password": "another-password-2"},
-		"a list":        []string{"current-password-1"},
+		"a number":      map[string]any{"current_password": 5, "new_password": "Another-password-2!"},
+		"a list":        []string{"Current-password-1!"},
 		"nothing sent":  nil,
 		"not an object": "just text",
 	} {
@@ -516,11 +520,11 @@ func TestChangePassword_MissingFieldsAreRequiredErrors(t *testing.T) {
 
 func TestChangePassword_BodyOver16KBIs413(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "big@example.com", "big_one", "current-password-1")
+	s := rig.signUp(t, "big@example.com", "big_one", "Current-password-1!")
 	hashBefore := rig.fake.storedPasswordHash(s.id)
 	activeBefore := rig.tokens.activeCount(s.id)
 
-	big := `{"current_password":"` + strings.Repeat("a", 20<<10) + `","new_password":"another-password-2"}`
+	big := `{"current_password":"` + strings.Repeat("a", 20<<10) + `","new_password":"Another-password-2!"}`
 	for _, chunked := range []bool{false, true} {
 		var body io.Reader = strings.NewReader(big)
 		if chunked {
@@ -547,12 +551,12 @@ func TestChangePassword_BodyOver16KBIs413(t *testing.T) {
 
 func TestChangePassword_RepositoryFailureIs500AndChangesNothing(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "fail@example.com", "fail_one", "current-password-1")
+	s := rig.signUp(t, "fail@example.com", "fail_one", "Current-password-1!")
 	hashBefore := rig.fake.storedPasswordHash(s.id)
 	activeBefore := rig.tokens.activeCount(s.id)
 	rig.fake.changePasswordErr = errors.New("storage unavailable")
 
-	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "current-password-1", "new_password": "another-password-2"})
+	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "Current-password-1!", "new_password": "Another-password-2!"})
 
 	if rec.Code != http.StatusInternalServerError || rec.Body.String() != `{"error":"server_error"}` {
 		t.Fatalf("expected the fixed 500 body, got %d: %s", rec.Code, rec.Body.String())
@@ -562,11 +566,11 @@ func TestChangePassword_RepositoryFailureIs500AndChangesNothing(t *testing.T) {
 
 func TestChangePassword_AccountGoneDuringTheChangeIs401TokenInvalid(t *testing.T) {
 	rig := newAccountRig(t)
-	s := rig.signUp(t, "race@example.com", "race_one", "current-password-1")
+	s := rig.signUp(t, "race@example.com", "race_one", "Current-password-1!")
 	// RequireUser found the account; the transaction does not.
 	rig.fake.changePasswordErr = user.ErrNotFound
 
-	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "current-password-1", "new_password": "another-password-2"})
+	rec := rig.changePassword(t, s.access, map[string]any{"current_password": "Current-password-1!", "new_password": "Another-password-2!"})
 
 	if rec.Code != http.StatusUnauthorized || decodeBody(t, rec)["error"] != "token_invalid" {
 		t.Fatalf("expected 401 token_invalid, got %d: %s", rec.Code, rec.Body.String())
@@ -587,7 +591,7 @@ func TestChangePassword_AccountWithNoStoredPasswordIsRefusedEvenForTheDummyText(
 	// The text the dummy hash was made from must not unlock anything.
 	rec := rig.changePassword(t, token, map[string]any{
 		"current_password": "dummy-password-for-constant-time-comparison",
-		"new_password":     "another-password-2",
+		"new_password":     "Another-password-2!",
 	})
 
 	assertFieldError(t, rec, "current_password")
@@ -609,7 +613,7 @@ func TestServer_PasswordRouteIsNotMountedWhenTheAccountHandlerIsNotWired(t *test
 	}
 
 	rec := serveFrom(t, srv, remoteN(60), http.MethodPost, "/v1/me/password", token, map[string]any{
-		"current_password": "x", "new_password": "another-password-2",
+		"current_password": "x", "new_password": "Another-password-2!",
 	})
 
 	if rec.Code != http.StatusNotFound {

@@ -6,6 +6,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { BackRow } from '@/components/settings/BackRow';
+import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { ApiError } from '@/lib/api/client';
 import { changePassword } from '@/lib/api/account';
 import { setSettingsNotice } from '@/lib/settings/notice';
@@ -15,6 +16,8 @@ import {
   LOOKS_GOOD_MESSAGE,
   NEW_PASSWORD_REFUSED_MESSAGE,
   newPasswordProblem,
+  PASSWORD_SHORT_MESSAGE,
+  PASSWORD_WEAK_MESSAGE,
   PASSWORD_NOTICE,
 } from '@/lib/settings/rules';
 import { useSession } from '@/lib/session/store';
@@ -29,6 +32,10 @@ import { space } from '@/lib/theme/tokens';
  * phone is signed out. Neither password is put in a route, a log or a notice, and a failed save
  * never clears the boxes.
  */
+function isChecklistProblem(problem: string): boolean {
+  return problem === PASSWORD_SHORT_MESSAGE || problem === PASSWORD_WEAK_MESSAGE;
+}
+
 export function PasswordScreen() {
   const router = useRouter();
   const { signIn } = useSession();
@@ -45,7 +52,9 @@ export function PasswordScreen() {
   const busyRef = useRef(false);
 
   const nextProblem = newPasswordProblem(next, current);
-  const nextError = nextServerError !== '' ? nextServerError : nextTouched ? nextProblem : '';
+  // The checklist under the box already says what is missing, so only the other problems show red.
+  const nextError =
+    nextServerError !== '' ? nextServerError : nextTouched && nextProblem !== '' && !isChecklistProblem(nextProblem) ? nextProblem : '';
   const nextOk = next !== '' && nextProblem === '' && nextServerError === '';
   const canSave = current !== '' && next !== '' && nextProblem === '' && !saving;
 
@@ -161,13 +170,7 @@ export function PasswordScreen() {
               {showNext ? 'Hide' : 'Show'}
             </AppText>
           </Pressable>
-          {nextError === '' && !nextOk ? (
-            <View style={{ marginTop: space.xs }}>
-              <AppText role="label" tone="muted">
-                At least 8 characters.
-              </AppText>
-            </View>
-          ) : null}
+          <PasswordChecklist value={next} />
         </View>
 
         {formError !== '' ? (

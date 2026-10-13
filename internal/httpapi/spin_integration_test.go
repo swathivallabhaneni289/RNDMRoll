@@ -25,8 +25,8 @@ func TestSpinIntegration_FullDayOverPostgres(t *testing.T) {
 	server := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk, toolEmails: []string{email}})
 	engine := server.Engine()
 
-	session := integrationOnboardAccount(t, engine, email, "correct-horse-battery-staple", "Spin Person", "spin_person")
-	other := integrationOnboardAccount(t, engine, "int-spin-other@example.com", "correct-horse-battery-staple", "Other Person", "other_person")
+	session := integrationOnboardAccount(t, engine, email, "Correct-horse-battery-staple1", "Spin Person", "spin_person")
+	other := integrationOnboardAccount(t, engine, "int-spin-other@example.com", "Correct-horse-battery-staple1", "Other Person", "other_person")
 	usersBefore := integrationUserCount(t, pool)
 
 	at := func(date string, h, m, s int) {

@@ -33,8 +33,8 @@ func TestEntryIntegration_FullDayThenResetOverPostgres(t *testing.T) {
 		entryPhotos: store,
 	})
 	engine := server.Engine()
-	session := integrationOnboardAccount(t, engine, email, "correct-horse-battery-staple", "Entry Day", "entry_day")
-	other := integrationOnboardAccount(t, engine, "int-entry-other@example.com", "correct-horse-battery-staple", "Entry Other", "entry_other")
+	session := integrationOnboardAccount(t, engine, email, "Correct-horse-battery-staple1", "Entry Day", "entry_day")
+	other := integrationOnboardAccount(t, engine, "int-entry-other@example.com", "Correct-horse-battery-staple1", "Entry Other", "entry_other")
 	usersBefore := integrationUserCount(t, pool)
 	var userID uuid.UUID
 	if err := pool.QueryRow(ctx, `select id from users where email = $1`, email).Scan(&userID); err != nil {

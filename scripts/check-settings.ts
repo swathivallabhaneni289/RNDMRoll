@@ -39,6 +39,8 @@ const {
   utf8Length,
   USERNAME_FORMAT_MESSAGE,
   PASSWORD_SHORT_MESSAGE,
+  PASSWORD_WEAK_MESSAGE,
+  passwordChecks,
   PASSWORD_LONG_MESSAGE,
   PASSWORD_SAME_MESSAGE,
   BIO_LONG_MESSAGE,
@@ -64,22 +66,26 @@ eq('utf8 ascii', utf8Length('abc'), 3);
 eq('utf8 two byte', utf8Length('é'), 2);
 eq('utf8 three byte', utf8Length('€'), 3);
 eq('utf8 four byte', utf8Length('\u{1F600}'), 4);
-eq('password 7 is short', passwordProblem('a'.repeat(7)), PASSWORD_SHORT_MESSAGE);
+eq('password 7 is short', passwordProblem('Aa1!aaa'), PASSWORD_SHORT_MESSAGE);
 eq('password empty is short', passwordProblem(''), PASSWORD_SHORT_MESSAGE);
-eq('password 8 is ok', passwordProblem('a'.repeat(8)), '');
-eq('password 72 ascii is ok', passwordProblem('a'.repeat(72)), '');
-eq('password 73 ascii is long', passwordProblem('a'.repeat(73)), PASSWORD_LONG_MESSAGE);
-eq('password 40 two-byte (80 bytes) is long', passwordProblem('é'.repeat(40)), PASSWORD_LONG_MESSAGE);
-eq('password 36 two-byte (72 bytes) is ok', passwordProblem('é'.repeat(36)), '');
-eq('password 4 emoji (4 characters) is short', passwordProblem('\u{1F600}'.repeat(4)), PASSWORD_SHORT_MESSAGE);
-eq('password 8 emoji (32 bytes) is ok', passwordProblem('\u{1F600}'.repeat(8)), '');
+eq('password 8 strong is ok', passwordProblem('Aa1!aaaa'), '');
+eq('password 72 strong ascii is ok', passwordProblem('Aa1!' + 'a'.repeat(68)), '');
+eq('password 73 ascii is long', passwordProblem('Aa1!' + 'a'.repeat(69)), PASSWORD_LONG_MESSAGE);
+eq('password 40 two-byte (80 bytes) is long', passwordProblem('\u00c9'.repeat(38) + '1!'), PASSWORD_LONG_MESSAGE);
+eq('password 8 plain lowercase is weak', passwordProblem('a'.repeat(8)), PASSWORD_WEAK_MESSAGE);
+eq('password without a capital is weak', passwordProblem('aaaaaa1!'), PASSWORD_WEAK_MESSAGE);
+eq('password without a number is weak', passwordProblem('Aaaaaaa!'), PASSWORD_WEAK_MESSAGE);
+eq('password without a symbol is weak', passwordProblem('Aaaaaaa1'), PASSWORD_WEAK_MESSAGE);
+eq('password with an emoji as the symbol is ok', passwordProblem('Aaaaaa1\u{1F600}'), '');
+eq('password checks all met', passwordChecks('Aa1!aaaa').every((c) => c.met), true);
+eq('password checks none met', passwordChecks('').some((c) => c.met), false);
 
 // newPasswordProblem: the same rules plus "different from the current one".
-eq('new password same as current', newPasswordProblem('wheel1234', 'wheel1234'), PASSWORD_SAME_MESSAGE);
-eq('new password different', newPasswordProblem('wheel12345', 'wheel1234'), '');
+eq('new password same as current', newPasswordProblem('Wheel1234!', 'Wheel1234!'), PASSWORD_SAME_MESSAGE);
+eq('new password different', newPasswordProblem('Wheel12345!', 'Wheel1234!'), '');
 eq('new password short wins over same', newPasswordProblem('abc', 'abc'), PASSWORD_SHORT_MESSAGE);
-eq('new password long', newPasswordProblem('a'.repeat(73), 'wheel1234'), PASSWORD_LONG_MESSAGE);
-eq('new password differs only by case', newPasswordProblem('Wheel1234', 'wheel1234'), '');
+eq('new password long', newPasswordProblem('Aa1!' + 'a'.repeat(69), 'Wheel1234!'), PASSWORD_LONG_MESSAGE);
+eq('new password differs only by case', newPasswordProblem('Wheel1234!', 'wheel1234!'), '');
 
 // bioProblem at 160 and 161, and sameText.
 eq('BIO_MAX', BIO_MAX, 160);

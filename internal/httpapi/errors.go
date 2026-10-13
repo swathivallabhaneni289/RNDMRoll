@@ -42,6 +42,7 @@ const (
 	reasonInvalid   = "invalid"
 	reasonTooShort  = "too_short"
 	reasonTooLong   = "too_long"
+	reasonTooWeak   = "too_weak"
 	reasonFuture    = "future"
 	reasonNotAllow  = "not_allowed"
 	reasonIncorrect = "incorrect"
@@ -53,6 +54,7 @@ var fieldReasonText = map[string]string{
 	reasonInvalid:   "This value is not valid.",
 	reasonTooShort:  "This value is too short.",
 	reasonTooLong:   "This value is too long.",
+	reasonTooWeak:   "Use a capital letter, a number and a symbol.",
 	reasonFuture:    "That date is in the future.",
 	reasonNotAllow:  "This value can't be changed here.",
 	reasonIncorrect: "That password is not right.",

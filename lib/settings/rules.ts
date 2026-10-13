@@ -4,7 +4,7 @@
  *
  * The numbers repeat rules that live in other places, and all of them must change together:
  *   - the username pattern: the server (internal/user) and components/profile/ProfileForm.tsx;
- *   - a password of 8 characters up to 72 BYTES (bcrypt's limit): the server's passwordReason
+ *   - a password of 8 characters up to 72 BYTES (bcrypt's limit), with a capital letter, a number and a symbol: the server's passwordReason
  *     (internal/httpapi) and ProfileForm.tsx;
  *   - a bio of 160 characters: the server's profile check and ProfileForm.tsx.
  * The words are the strings of 02.1-UI-SPEC section 10, verbatim.
@@ -24,6 +24,7 @@ export const USERNAME_CHECK_FAILED_MESSAGE = "Couldn't check that username. Try 
 export const USERNAME_NOTICE = 'Username changed.';
 
 export const PASSWORD_SHORT_MESSAGE = 'Password must be at least 8 characters.';
+export const PASSWORD_WEAK_MESSAGE = 'Add a capital letter, a number and a symbol.';
 export const PASSWORD_LONG_MESSAGE = 'That password is too long. Use 72 characters or fewer.';
 export const PASSWORD_SAME_MESSAGE = 'Choose a password that is different from your current one.';
 export const CURRENT_PASSWORD_WRONG_MESSAGE = 'That is not your current password.';
@@ -58,10 +59,31 @@ export function usernameProblem(value: string, stored: string): string {
   return USERNAME_PATTERN.test(value) ? '' : USERNAME_FORMAT_MESSAGE;
 }
 
-/** '' for a good password, else the short or the long message (long means over 72 BYTES). */
+export type PasswordCheck = { label: string; met: boolean };
+
+/**
+ * The four things a new password needs, in the order the checklist shows them. The server's
+ * passwordReason (internal/httpapi/auth.go) holds the same rule: 8 characters, a capital letter,
+ * a number and a symbol (any punctuation or symbol character).
+ */
+export function passwordChecks(value: string): PasswordCheck[] {
+  const chars = Array.from(value);
+  return [
+    { label: 'At least 8 characters', met: chars.length >= PASSWORD_MIN_LENGTH },
+    { label: 'One capital letter', met: /\p{Lu}/u.test(value) },
+    { label: 'One number', met: /\p{Nd}/u.test(value) },
+    { label: 'One symbol', met: /[\p{P}\p{S}]/u.test(value) },
+  ];
+}
+
+/**
+ * '' for a good new password, else the short message, the long one (over 72 BYTES) or the weak
+ * one (a capital letter, a number or a symbol is missing).
+ */
 export function passwordProblem(value: string): string {
   if (Array.from(value).length < PASSWORD_MIN_LENGTH) return PASSWORD_SHORT_MESSAGE;
   if (utf8Length(value) > PASSWORD_MAX_BYTES) return PASSWORD_LONG_MESSAGE;
+  if (passwordChecks(value).some((check) => !check.met)) return PASSWORD_WEAK_MESSAGE;
   return '';
 }
 
