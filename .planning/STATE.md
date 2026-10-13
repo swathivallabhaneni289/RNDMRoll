@@ -19,6 +19,9 @@ progress:
 
 # Project State
 
+> **RESUME HERE (2026-10-13).** Phase 2 CLOSED (server live, app built, API checks passed, six device checks listed as not walked in `02-03-SUMMARY.md`). Phase 2.1 Settings SERVER live on dev (version 5); Settings APP built (02.1-02, tasks 1 to 3, summary may be pending). Phase 3 SERVER (03-01, migration 0006) and Phase 3 APP (03-02) were being built by helper agents; 03-03 (entry page, skip, close-out) is next; then the Phase 4 to 6 papers by the other window. Wheel: equal slices, black and light, thin rim, no numbers, five-tab bar with a grey Spin circle. Test tools are ON in the dev API and `walkthrough-p2@example.com` / `wheel1234` exists: before real use reset the clock, restart the API without the test variables, delete that account by id. Check `git log --oneline -20` for what landed; never `git add -A`; never push.
+
+
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-09-15)
