@@ -237,6 +237,8 @@ Use:
 
 The center Roll action can have slightly more visual emphasis because it is the core action.
 
+> **Amended 2026-10-13 (developer, voice: "it should be like a smooth transition ... moving around very smoothly").** Resolution: the screens cross-fade (200ms) when the tab changes and the bar's icon and label colours glide (220ms). Nothing slides across the screen and nothing bounces, which keeps "do not animate the entire interface" in spirit. The numbers and the options ("slide", "line", "expand") are in `.planning/phases/02.2-navigation-motion/02.2-CONTEXT.md`.
+
 ### 9. Empty states
 
 Do not use generic illustrations or stock graphics.

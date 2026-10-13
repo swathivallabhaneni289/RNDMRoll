@@ -173,6 +173,8 @@ Four items, in this order: Home, Diary, Spin, Profile. All of Phase 2 section 8 
 
 ## 6. Motion
 
+Tab switches, the bar's active state and pushed pages follow `.planning/phases/02.2-navigation-motion/02.2-CONTEXT.md` (the screens cross-fade in 200ms, the bar's colours glide over 220ms, pages use the platform push); nothing in this section overrides them.
+
 Nothing new. Chips change at once; rows have no entrance animation; list photos have no fade; pages push with the stack's default. The entry page's own reveal is Phase 3's. Reduce Motion needs no special case in this phase (nothing here animates).
 
 ## 7. Copy contract

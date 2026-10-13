@@ -193,6 +193,8 @@ A LOCAL notification the phone schedules itself, daily at 20:00 in the phone's o
 
 ## 10. Motion
 
+Tab switches, the bar's active state and pushed pages follow `.planning/phases/02.2-navigation-motion/02.2-CONTEXT.md` (the screens cross-fade in 200ms, the bar's colours glide over 220ms, pages use the platform push); nothing in this section overrides them.
+
 Calm, as everywhere. Nothing new is invented.
 - The Friends and Global halves and the reminder switch change at once. Content swaps with no animation.
 - Sheets use `ConfirmSheet`'s existing motion.

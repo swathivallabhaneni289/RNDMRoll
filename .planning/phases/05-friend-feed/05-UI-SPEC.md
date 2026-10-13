@@ -303,6 +303,8 @@ The bar is hidden (not drawn) on: the first-run page and the entry page (as befo
 
 ## 12. Motion
 
+Tab switches, the bar's active state and pushed pages follow `.planning/phases/02.2-navigation-motion/02.2-CONTEXT.md` (the screens cross-fade in 200ms, the bar's colours glide over 220ms, pages use the platform push); nothing in this section overrides them.
+
 Calm, nothing invented. A card press and a reaction press use the existing `PressScale` (0.97 over 90ms). A photo on the post page reveals with `ImageReveal` (450ms); the title row and details rise with `FadeInUp` (14dp, 400ms) 90ms apart. A comment you just added rises with `FadeInUp` once; comments loaded from the server do not. The locked card fades in over 400ms with the state change. List photos do not fade. No confetti, flash, sound, vibration, counter animation or bounce. Reduce Motion on: no scale, fade or rise anywhere in this phase.
 
 ## 13. Copy contract
