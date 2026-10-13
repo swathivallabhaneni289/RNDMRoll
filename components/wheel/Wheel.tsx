@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { Circle, Path, Polygon, Svg } from 'react-native-svg';
+import { Circle, Line, Path, Polygon, Svg } from 'react-native-svg';
 import { PressScale } from '@/lib/motion/primitives';
 import { readReduceMotion, useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, radius, type } from '@/lib/theme/tokens';
@@ -229,10 +229,21 @@ function WheelImpl({
               key={i}
               d={wedgePath(geometry.starts[i], geometry.starts[i] + angle, outerRadius - RIM_WIDTH / 2)}
               fill={toneColor(geometry.tones[i])}
+            />
+          ))}
+          {/* No gaps between a dark and a light wedge (smooth, like the picture). A thin page-colour
+              line is drawn only where two wedges of the SAME tone meet: the last and the first of
+              an odd count, which meet at 12 o'clock. */}
+          {geometry.tones.length > 1 && geometry.tones[0] === geometry.tones[geometry.tones.length - 1] ? (
+            <Line
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={-(outerRadius - RIM_WIDTH / 2)}
               stroke={color.dominant}
               strokeWidth={SEAM_WIDTH}
             />
-          ))}
+          ) : null}
           <Circle
             cx={0}
             cy={0}
