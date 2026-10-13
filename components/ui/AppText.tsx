@@ -37,6 +37,8 @@ export function AppText({ role = 'body', tone = 'default', children, ...rest }: 
   const typeStyle = type[role];
   return (
     <Text
+      // Larger Text is honoured, but capped so a header or a bar label never breaks the layout.
+      maxFontSizeMultiplier={1.3}
       {...rest}
       style={{
         fontSize: typeStyle.fontSize,
