@@ -49,7 +49,8 @@ export function ConfirmSheet({
   title: string;
   body: string;
   confirmLabel: string;
-  dismissLabel: string;
+  /** Leave out for a sheet with the one action row; the scrim and the back gesture still dismiss. */
+  dismissLabel?: string;
   onConfirm: () => void;
   onDismiss: () => void;
   busy?: boolean;
@@ -60,7 +61,7 @@ export function ConfirmSheet({
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
-          accessibilityLabel={dismissLabel}
+          accessibilityLabel={dismissLabel ?? 'Close'}
           style={{ flex: 1 }}
         />
         <View
@@ -79,7 +80,9 @@ export function ConfirmSheet({
           </View>
           <View style={{ marginTop: space.lg }}>
             <SheetRow label={confirmLabel} onPress={onConfirm} disabled={busy} />
-            <SheetRow label={dismissLabel} onPress={onDismiss} disabled={busy} />
+            {dismissLabel !== undefined ? (
+              <SheetRow label={dismissLabel} onPress={onDismiss} disabled={busy} />
+            ) : null}
           </View>
         </View>
       </View>
