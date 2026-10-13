@@ -89,7 +89,7 @@ interface RequestOptions {
 let refreshPromise: Promise<void> | null = null;
 
 async function request<T>(
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body: unknown,
   opts: RequestOptions
@@ -179,5 +179,9 @@ export const api = {
   },
   patch<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
     return request<T>('PATCH', path, body, opts);
+  },
+  /** Added for DELETE /me/blocks/{user_id} (Settings > Blocked accounts); answers 204. */
+  delete<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+    return request<T>('DELETE', path, undefined, opts);
   },
 };

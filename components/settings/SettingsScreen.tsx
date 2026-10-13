@@ -4,23 +4,22 @@ import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
-import { BioInline } from '@/components/settings/BioInline';
 import { LogOutSheet } from '@/components/settings/LogOutSheet';
 import { PrivateAccountRow } from '@/components/settings/PrivateAccountRow';
 import { SettingsRow } from '@/components/settings/SettingsRow';
 import { useSettingsNotice } from '@/lib/settings/notice';
-import { useSession } from '@/lib/session/store';
 import { color, space } from '@/lib/theme/tokens';
 
 /**
- * The Settings page (02.1-UI-SPEC section 4), pushed over the Profile page with the bottom bar
- * showing: Back, the title, the notice line, the bio (edited in place), then the rows: Edit
- * profile, Username, Password, Private account and Log out. The bar adds the bottom safe-area
- * inset itself, so the screen takes the top and side edges only.
+ * The Settings page (02.1-UI-SPEC section 4, as changed by decision D-16), pushed over the Profile
+ * page with the bottom bar showing: Back, the title, the notice line, then the rows in this order:
+ * Notifications, Blocked accounts, Private account, Password and Log out.
+ *
+ * The bio and the username are not here: they live on the Profile page and its Edit page (D-16).
+ * The bar adds the bottom safe-area inset itself, so the screen takes the top and side edges only.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const { user } = useSession();
   const notice = useSettingsNotice();
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -28,8 +27,6 @@ export function SettingsScreen() {
   useEffect(() => {
     if (notice !== '') AccessibilityInfo.announceForAccessibility(notice);
   }, [notice]);
-
-  const username = user?.username ?? '';
 
   return (
     <Screen edges={['top', 'left', 'right']}>
@@ -51,10 +48,6 @@ export function SettingsScreen() {
           ) : null}
         </View>
 
-        <View style={{ marginTop: space.lg }}>
-          <BioInline label />
-        </View>
-
         <View
           style={{
             marginTop: space.lg,
@@ -63,23 +56,21 @@ export function SettingsScreen() {
           }}
         >
           <SettingsRow
-            label="Edit profile"
+            label="Notifications"
             accessibilityHint="Opens the page."
-            onPress={() => router.push('/(app)/profile/edit')}
+            onPress={() => router.push('/(app)/profile/notification-settings')}
           />
           <SettingsRow
-            label="Username"
-            value={username !== '' ? `@${username}` : undefined}
-            accessibilityLabel={username !== '' ? `Username, ${username}` : 'Username'}
+            label="Blocked accounts"
             accessibilityHint="Opens the page."
-            onPress={() => router.push('/(app)/profile/username')}
+            onPress={() => router.push('/(app)/profile/blocked-accounts')}
           />
+          <PrivateAccountRow />
           <SettingsRow
             label="Password"
             accessibilityHint="Opens the page."
             onPress={() => router.push('/(app)/profile/password')}
           />
-          <PrivateAccountRow />
           <SettingsRow
             label="Log out"
             tone="destructive"
