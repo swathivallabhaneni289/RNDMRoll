@@ -1063,6 +1063,127 @@ func TestMigrations_0005IsReversible(t *testing.T) {
 	})
 }
 
+// TestMigrations_0006IsReversible walks the test database from the latest
+// version down to 5 and back up to 6. At version 5 the entries and
+// entry_photos tables, spins.settled_at and the unique pair key on spins are
+// gone while the users and their spins are untouched (and Phase 2.1's
+// account_visibility column is still there); going back up makes them again,
+// the two tables empty. A user, a spin, an entry and two photo rows go in
+// first, so the down step has real rows to drop.
+func TestMigrations_0006IsReversible(t *testing.T) {
+	requireMigrationDatabase(t)
+	ctx := context.Background()
+	latest := latestMigration(t)
+	if latest < 6 {
+		t.Fatalf("latest migration is %d, want at least 6", latest)
+	}
+
+	count := func(pool *pgxpool.Pool, q string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, q, args...).Scan(&n); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+		return n
+	}
+	tablePresent := func(pool *pgxpool.Pool, name string) bool {
+		return count(pool, `select count(*) from information_schema.tables where table_schema = 'public' and table_name = $1`, name) == 1
+	}
+	columnPresent := func(pool *pgxpool.Pool, table, column string) bool {
+		return count(pool, `select count(*) from information_schema.columns where table_name = $1 and column_name = $2`, table, column) == 1
+	}
+	constraintPresent := func(pool *pgxpool.Pool, name string) bool {
+		return count(pool, `select count(*) from pg_constraint where conname = $1`, name) == 1
+	}
+	rowsIn := func(pool *pgxpool.Pool, table string) int {
+		t.Helper()
+		return count(pool, `select count(*) from `+table)
+	}
+
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+		if v, dirty := schemaVersion(t, pool); v != latest || dirty {
+			t.Fatalf("expected version %d (clean) before the test, got %d dirty=%v", latest, v, dirty)
+		}
+		if !tablePresent(pool, "entries") || !tablePresent(pool, "entry_photos") ||
+			!columnPresent(pool, "spins", "settled_at") || !constraintPresent(pool, "spins_id_user_unique") {
+			t.Fatal("expected the entry tables, spins.settled_at and spins_id_user_unique at the latest version")
+		}
+		u := mustCreateUser(t, postgres.NewUserRepo(pool), "entry-migration@example.com")
+		stmts := []string{
+			`insert into wheel_categories (user_id, name, weight, position) values ($1, 'Meal', 1, 0)`,
+			`insert into spins (user_id, local_date, tz_name, kind, seq, category_id, category_name, wheel,
+				winner_index, spun_at, window_opens_at, window_closes_at)
+				select $1, '2026-10-08'::date, 'America/New_York', 'daily', 0, id, 'Meal', '[]'::jsonb, 0, now(), now(), now()
+				from wheel_categories where user_id = $1`,
+			`insert into entries (user_id, spin_id, local_date, title, stars, created_at, updated_at)
+				select $1, id, local_date, 'Dune', 7, now(), now() from spins where user_id = $1`,
+			`insert into entry_photos (entry_id, user_id, position, storage_key, content_type, source, created_at)
+				select e.id, e.user_id, g, 'entries/migration/' || g || '.jpg', 'image/jpeg', 'camera', now()
+				from entries e, generate_series(0, 1) g where e.user_id = $1`,
+		}
+		for _, s := range stmts {
+			if _, err := pool.Exec(ctx, s, u.ID); err != nil {
+				t.Fatalf("insert a row (%s): %v", strings.Fields(s)[2], err)
+			}
+		}
+		if rowsIn(pool, "entries") != 1 || rowsIn(pool, "entry_photos") != 2 || rowsIn(pool, "spins") != 1 {
+			t.Fatal("expected one entry, two photo rows and one spin before the down step")
+		}
+	})
+
+	migrateGoTo(t, 5)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 5 || dirty {
+			t.Fatalf("after goto 5: version %d dirty=%v", v, dirty)
+		}
+		if tablePresent(pool, "entries") || tablePresent(pool, "entry_photos") {
+			t.Fatal("goto 5 must drop the entries and entry_photos tables")
+		}
+		if columnPresent(pool, "spins", "settled_at") || constraintPresent(pool, "spins_id_user_unique") {
+			t.Fatal("goto 5 must drop spins.settled_at and spins_id_user_unique")
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("goto 5 changed the user count to %d, want 1", n)
+		}
+		if n := rowsIn(pool, "spins"); n != 1 {
+			t.Fatalf("goto 5 changed the spin count to %d, want 1", n)
+		}
+		if !columnPresent(pool, "users", "account_visibility") {
+			t.Fatal("goto 5 must keep users.account_visibility (it belongs to 0005)")
+		}
+	})
+
+	migrateGoTo(t, 6)
+	withFreshPool(t, func(pool *pgxpool.Pool) {
+		if v, dirty := schemaVersion(t, pool); v != 6 || dirty {
+			t.Fatalf("after goto 6: version %d dirty=%v", v, dirty)
+		}
+		if !tablePresent(pool, "entries") || !tablePresent(pool, "entry_photos") {
+			t.Fatal("goto 6 must make the entries and entry_photos tables again")
+		}
+		if !columnPresent(pool, "spins", "settled_at") || !constraintPresent(pool, "spins_id_user_unique") {
+			t.Fatal("goto 6 must restore spins.settled_at and spins_id_user_unique")
+		}
+		for _, tbl := range []string{"entries", "entry_photos"} {
+			if n := rowsIn(pool, tbl); n != 0 {
+				t.Errorf("%s holds %d rows after going back up, want it empty", tbl, n)
+			}
+		}
+		if n := countUsers(t, pool); n != 1 {
+			t.Fatalf("user count after goto 6 = %d, want 1", n)
+		}
+		if n := count(pool, `select count(*) from spins where settled_at is not null`); n != 0 {
+			t.Fatalf("%d spins have a settled_at after going back up, want none", n)
+		}
+		if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+			t.Fatalf("final truncate: %v", err)
+		}
+	})
+}
+
 // --- change password ---
 
 func activeTokenCount(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int {

@@ -17,7 +17,8 @@ import (
 
 // SpinRepo is a pgx-backed implementation of spin.Repository. It reads and
 // writes only the Phase 2 tables (user_time_zones, user_spin_state,
-// wheel_categories, spins, posted_days, goal_weeks) and never touches users.
+// wheel_categories, spins, posted_days, goal_weeks) and the Phase 3 tables
+// (entries, entry_photos; see entry_repo.go) and never touches users.
 type SpinRepo struct {
 	pool *pgxpool.Pool
 }
@@ -301,13 +302,13 @@ func (t *pgTx) BumpWheelVersion() (int, error) {
 // scanSpin reads it. The wheel is selected as text so it can be decoded with
 // encoding/json whatever the wire format of jsonb is.
 const spinColumns = `id::text, local_date::text, tz_name, kind, seq, category_id::text, category_name,
-	wheel::text, winner_index, spun_at, window_opens_at, window_closes_at, result, created_at`
+	wheel::text, winner_index, spun_at, window_opens_at, window_closes_at, result, settled_at, created_at`
 
 func scanSpin(row pgx.Row) (*spin.Spin, error) {
 	var s spin.Spin
 	var dateStr, kind, wheelText, result string
 	if err := row.Scan(&s.ID, &dateStr, &s.TZName, &kind, &s.Seq, &s.CategoryID, &s.CategoryName,
-		&wheelText, &s.WinnerIndex, &s.SpunAt, &s.WindowOpensAt, &s.WindowClosesAt, &result, &s.CreatedAt); err != nil {
+		&wheelText, &s.WinnerIndex, &s.SpunAt, &s.WindowOpensAt, &s.WindowClosesAt, &result, &s.SettledAt, &s.CreatedAt); err != nil {
 		return nil, err
 	}
 	d, err := spin.ParseDate(dateStr)
@@ -321,6 +322,10 @@ func scanSpin(row pgx.Row) (*spin.Spin, error) {
 		return nil, fmt.Errorf("spin: stored wheel is not valid: %w", err)
 	}
 	s.SpunAt, s.WindowOpensAt, s.WindowClosesAt, s.CreatedAt = s.SpunAt.UTC(), s.WindowOpensAt.UTC(), s.WindowClosesAt.UTC(), s.CreatedAt.UTC()
+	if s.SettledAt != nil {
+		settled := s.SettledAt.UTC()
+		s.SettledAt = &settled
+	}
 	return &s, nil
 }
 
@@ -477,10 +482,14 @@ func (t *pgTx) InsertGoalWeek(g spin.GoalWeek) (bool, error) {
 	return tag.RowsAffected() == 1, nil
 }
 
+// ClearTestData deletes the person's entries first (their photo rows go with
+// them by cascade, and an entry points at a spin), then ALL their posted days
+// of any source, then spins and goal weeks, and sets bonus_held to 0.
 func (t *pgTx) ClearTestData() error {
 	for _, q := range []string{
+		`delete from entries where user_id = $1`,
+		`delete from posted_days where user_id = $1`,
 		`delete from spins where user_id = $1`,
-		`delete from posted_days where user_id = $1 and source = 'test'`,
 		`delete from goal_weeks where user_id = $1`,
 		`update user_spin_state set bonus_held = 0 where user_id = $1`,
 	} {

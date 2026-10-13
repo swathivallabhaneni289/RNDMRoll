@@ -135,6 +135,20 @@ func entriesOf(cats []Category) []WheelEntry {
 	return entries
 }
 
+// entrySummaryOf returns the summary of the entry of date d, or nil. It reads
+// the entry only when the date's latest spin, as dayFacts returns it, is
+// posted or skipped: no other state shows an entry.
+func entrySummaryOf(tx Tx, d Date, latest *Spin) (*EntryRef, error) {
+	if latest == nil || (latest.Result != ResultPosted && latest.Result != ResultSkipped) {
+		return nil, nil
+	}
+	e, err := tx.EntryOfDate(d)
+	if err != nil {
+		return nil, err
+	}
+	return EntryRefOf(e), nil
+}
+
 // todayIn builds the Today screen from the facts under the lock.
 func (s *Service) todayIn(c *call) (Today, error) {
 	tx := c.tx
@@ -145,6 +159,14 @@ func (s *Service) todayIn(c *call) (Today, error) {
 		return Today{}, err
 	}
 	yesterday, _, err := dayFacts(tx, prev)
+	if err != nil {
+		return Today{}, err
+	}
+	entry, err := entrySummaryOf(tx, c.today, spin)
+	if err != nil {
+		return Today{}, err
+	}
+	yesterdayEntry, err := entrySummaryOf(tx, prev, yesterday)
 	if err != nil {
 		return Today{}, err
 	}
@@ -161,13 +183,18 @@ func (s *Service) todayIn(c *call) (Today, error) {
 		return Today{}, err
 	}
 	weekStart := WeekStart(c.today)
-	posted, err := tx.PostedDays(weekStart, weekStart.AddDays(daysInWeek-1))
+	weekEnd := weekStart.AddDays(daysInWeek - 1)
+	posted, err := tx.PostedDays(weekStart, weekEnd)
 	if err != nil {
 		return Today{}, err
 	}
 	dates := make([]Date, len(posted))
 	for i, p := range posted {
 		dates[i] = p.Date
+	}
+	skipped, err := tx.SkippedDates(weekStart, weekEnd)
+	if err != nil {
+		return Today{}, err
 	}
 
 	return BuildToday(TodayInput{
@@ -176,12 +203,15 @@ func (s *Service) todayIn(c *call) (Today, error) {
 		TZName:          c.tzName,
 		Spin:            spin,
 		YesterdaySpin:   yesterday,
+		Entry:           entry,
+		YesterdayEntry:  yesterdayEntry,
 		Settled:         settled,
 		LastDailySpunAt: last,
 		Wheel:           entriesOf(cats),
 		BonusHeld:       st.BonusHeld == 1,
 		Goal:            st.WeeklyGoal,
 		PostedDates:     dates,
+		SkippedDates:    skipped,
 	}), nil
 }
 
@@ -771,9 +801,11 @@ func (s *Service) MarkTestDays(ctx context.Context, userID string, dates []Date)
 	return out, err
 }
 
-// ResetTestData clears the person's spins, test posted days and goal weeks
+// ResetTestData clears the person's entries (their photo rows go with them),
+// then ALL their posted days of any source, then their spins and goal weeks,
 // and sets the held bonus spin to none. The wheel, the zone and the seeded_*
-// values stay.
+// values stay. The service knows only keys, so the photo files stay in
+// storage.
 func (s *Service) ResetTestData(ctx context.Context, userID string) error {
 	return s.run(ctx, userID, false, func(c *call) error {
 		return c.tx.ClearTestData()

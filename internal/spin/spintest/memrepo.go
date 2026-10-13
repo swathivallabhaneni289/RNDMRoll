@@ -42,6 +42,7 @@ type memData struct {
 	spins   []spin.Spin
 	posted  map[spin.Date]spin.PostedDay
 	goals   map[spin.Date]spin.GoalWeek
+	entries []memEntry // entries with their photos (memrepo_entry.go)
 }
 
 func (d *memData) clone() *memData {
@@ -57,8 +58,13 @@ func (d *memData) clone() *memData {
 	c.spins = make([]spin.Spin, len(d.spins))
 	for i, s := range d.spins {
 		s.Wheel = append([]spin.WheelEntry(nil), s.Wheel...)
+		if s.SettledAt != nil {
+			at := *s.SettledAt
+			s.SettledAt = &at
+		}
 		c.spins[i] = s
 	}
+	c.entries = cloneEntries(d.entries)
 	c.posted = make(map[spin.Date]spin.PostedDay, len(d.posted))
 	for k, v := range d.posted {
 		c.posted[k] = v
@@ -350,6 +356,7 @@ func (t *memTx) InsertSpin(s spin.Spin) (spin.Spin, bool, error) {
 	}
 	s.ID = uuid.NewString()
 	s.Result = spin.ResultOpen
+	s.SettledAt = nil
 	s.CreatedAt = s.SpunAt
 	s.Wheel = append([]spin.WheelEntry(nil), s.Wheel...)
 	t.d.spins = append(t.d.spins, s)
@@ -406,13 +413,13 @@ func (t *memTx) InsertGoalWeek(g spin.GoalWeek) (bool, error) {
 	return true, nil
 }
 
+// ClearTestData removes the person's entries (their photo rows with them),
+// then ALL their posted days of any source, then spins and goal weeks, and
+// sets bonus_held to 0. The wheel, the zone and the seeded_* values stay.
 func (t *memTx) ClearTestData() error {
+	t.d.entries = nil
+	t.d.posted = make(map[spin.Date]spin.PostedDay)
 	t.d.spins = nil
-	for d, p := range t.d.posted {
-		if p.Source == spin.SourceTest {
-			delete(t.d.posted, d)
-		}
-	}
 	t.d.goals = make(map[spin.Date]spin.GoalWeek)
 	t.d.state.BonusHeld = 0
 	return nil
