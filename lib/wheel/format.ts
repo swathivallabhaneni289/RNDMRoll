@@ -68,3 +68,15 @@ export function dateLineLong(localDate: string): string {
   const weekday = WEEKDAYS_LONG[weekdayIndex(c.year, c.month, c.day)];
   return `${weekday}, ${MONTHS_LONG[c.month - 1]} ${c.day}`;
 }
+
+/**
+ * "THU · OCT 8" (the entry screen's header date: short weekday, a middle dot U+00B7 with a space
+ * each side, short month, day without a leading zero). Same arithmetic and arrays as `dateLine`.
+ * Empty string when the date does not parse.
+ */
+export function dateDot(localDate: string): string {
+  const c = parseCivil(localDate);
+  if (!c) return '';
+  const weekday = WEEKDAYS_SHORT[weekdayIndex(c.year, c.month, c.day)];
+  return `${weekday} \u00B7 ${MONTHS_SHORT[c.month - 1]} ${c.day}`;
+}

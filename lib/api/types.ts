@@ -4,6 +4,8 @@
  * No screen or hook re-declares any of these types locally.
  */
 
+import type { ReactionName } from '@/lib/entry/reactions';
+
 /**
  * Whether an account can appear on Global (Phase 2.1, migration 0005). 'public' is the default for
  * everyone; the Settings switch "Private account" is ON for 'private'. Only stored and shown for now.
@@ -93,7 +95,11 @@ export type ApiErrorCode =
   | 'day_settled'
   | 'wheel_stale'
   | 'wheel_invalid'
-  | 'profile_incomplete';
+  | 'profile_incomplete'
+  // Phase 3 (entries and skips; sent by the server, plan 03-01 Task 3a). `day_settled` is Phase 2's.
+  | 'no_spin'
+  | 'day_closed'
+  | 'spin_changed';
 
 // ---------------------------------------------------------------------------
 // Phase 2: the daily spin and the wheel (plan 02-01 Task 3b and 3c, the exact wire shapes).
@@ -141,8 +147,11 @@ export interface WeekDay {
   /** "Monday" ... from the server. */
   weekday: string;
   posted: boolean;
-  /** Phase 3 only. */
-  skipped?: boolean;
+  /**
+   * Phase 3: the day's spin was skipped (and the day has no post). A Phase 2 server leaves the key
+   * out, so read it as `day.skipped === true`.
+   */
+  skipped: boolean;
 }
 
 export interface Week {
@@ -163,6 +172,21 @@ export interface Bonus {
   can_use: boolean;
 }
 
+/**
+ * The summary of the entry of the shown spin's date that Today carries (plan 03-01 Task 3b), so
+ * the Posted row draws with no second request. `stars` is the stored whole number 1 to 10 (7 means
+ * 3.5 stars), `photo_url` is the cover photo's link and `photo_count` is 1 to 10.
+ */
+export interface TodayEntry {
+  id: string;
+  late: boolean;
+  title: string;
+  stars: number;
+  reaction: ReactionName | null;
+  photo_url: string;
+  photo_count: number;
+}
+
 export interface Today {
   now: string;
   time_zone: string;
@@ -174,6 +198,11 @@ export interface Today {
   /** "Friday", written by the server. Printed as sent. */
   next_open_weekday: string;
   spin: Spin | null;
+  /**
+   * Phase 3: the entry of the shown spin's date, or null (no entry, or it was deleted). A Phase 2
+   * server leaves the key out, so read it with `!today.entry`.
+   */
+  entry: TodayEntry | null;
   /** The spin's own wheel when a spin is shown, else the live wheel. */
   wheel: WheelEntry[];
   week: Week;

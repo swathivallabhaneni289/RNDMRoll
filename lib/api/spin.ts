@@ -16,6 +16,7 @@ export type {
   Spin,
   SpinResponse,
   Today,
+  TodayEntry,
   TodayState,
   Week,
   WeekDay,
