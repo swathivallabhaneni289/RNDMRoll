@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { OfflineScreen } from '@/components/session/OfflineScreen';
 import { SessionProvider, useSession } from '@/lib/session/store';
 import { useAppFonts } from '@/lib/theme/fonts';
 import { useIntroSeen } from '@/lib/onboarding/intro-seen';
@@ -44,6 +46,7 @@ function RootNavigator() {
   // gating on `gateSettled` inside each guard is enough: nothing wrong
   // flashes, but the route tree exists from the first render onward.
   return (
+    <>
     <Stack screenOptions={{ headerShown: false }}>
       {/* Unconditional: see app/index.tsx for why this route needs to always
           resolve, independent of the Protected guards below. */}
@@ -55,6 +58,13 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
+    {/* Tokens are stored but the server could not be reached: not signed out, so no Welcome page. */}
+    {gateSettled && status === 'offline' ? (
+      <View style={StyleSheet.absoluteFill}>
+        <OfflineScreen />
+      </View>
+    ) : null}
+    </>
   );
 }
 

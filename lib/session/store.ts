@@ -27,7 +27,12 @@ const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated';
+/**
+ * 'offline' means tokens are stored but the server could not be reached to confirm them (no
+ * connection, a timeout, a 5xx). The person is NOT signed out: the app shows an offline page
+ * with Try again, and tries again by itself when the app returns to the foreground.
+ */
+export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated' | 'offline';
 
 // ---------------------------------------------------------------------------
 // Module-level accessors lib/api/client.ts imports. These exist so the fetch
@@ -111,6 +116,8 @@ interface SessionContextValue {
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
   reloadUser: () => Promise<void>;
+  /** Tries the launch restore again (the offline page's Try again). */
+  retryRestore: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -171,7 +178,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const doRefreshSession = useCallback(async () => {
+  // One refresh at a time. The server rotates the refresh token on every call, so a second
+  // refresh with the same stored token is answered 401 and would be read as "signed out".
+  // The launch restore and the client's own 401 path can both ask at once: they share one call.
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+
+  const refreshOnce = useCallback(async () => {
     const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!storedRefreshToken) {
       // Nothing to refresh with: the device is already signed out, so clear state.
@@ -204,6 +216,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
     setAccessToken(result.access_token);
   }, [doSignOut]);
+
+  const doRefreshSession = useCallback((): Promise<void> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const attempt = refreshOnce().finally(() => {
+      refreshInFlightRef.current = null;
+    });
+    refreshInFlightRef.current = attempt;
+    return attempt;
+  }, [refreshOnce]);
 
   const reloadUser = useCallback(async () => {
     const freshUser = await api.get<ApiUser>('/me');
@@ -238,8 +259,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await doRefreshSession();
         await reloadUser();
         if (mountedRef.current) setStatus('authenticated');
-      } catch {
-        if (mountedRef.current && epoch === signInEpochRef.current) setStatus('unauthenticated');
+      } catch (err) {
+        if (mountedRef.current && epoch === signInEpochRef.current) {
+          // Only a definitive rejection (the tokens are gone by now) means signed out. Any other
+          // failure keeps the tokens, so the person sees the offline page, not Welcome.
+          const stillHasTokens = (await SecureStore.getItemAsync(REFRESH_TOKEN_KEY)) !== null;
+          setStatus(!isDefinitiveAuthFailure(err) && stillHasTokens ? 'offline' : 'unauthenticated');
+        }
       }
     } finally {
       restoringRef.current = false;
@@ -257,7 +283,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (next === 'background') wasBackgrounded = true;
       if (next === 'active' && wasBackgrounded) {
         wasBackgrounded = false;
-        if (statusRef.current === 'unauthenticated') restore();
+        if (statusRef.current === 'unauthenticated' || statusRef.current === 'offline') restore();
       }
     });
 
@@ -277,6 +303,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     signOut: doSignOut,
     refreshSession: doRefreshSession,
     reloadUser,
+    retryRestore: restore,
   };
 
   return createElement(SessionContext.Provider, { value }, children);
