@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Accounts** - Users can create accounts, log in, and view their profile (completed 2026-10-09)
 - [x] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel (completed 2026-10-13; six device checks not walked, see 02-03-SUMMARY.md)
-- [x] **Phase 2.1: Settings (INSERTED)** - Users change their username and password, make their account public or private, and edit their bio on the profile page (completed 2026-10-13; walked on the simulator: Account privacy, Password, Notifications, Blocked accounts, Username. Log out, bio edit and the sign-up password checklist not walked)
+- [x] **Phase 2.1: Settings (INSERTED)** - Users change their username and password, make their account public or private, and edit their bio on the profile page (completed 2026-10-13; walked on the simulator: Account privacy, Password, Notifications, Blocked accounts, Username, Log out. Bio edit and the sign-up password checklist not walked)
 - [x] **Phase 2.2: Navigation motion (INSERTED)** - Moving between tabs and pages feels smooth and consistent (completed 2026-10-13; tabs swap at once, the bar's colours glide, pushed pages keep the iOS slide; the cross-fade was tried and dropped)
 - [ ] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category
 - [ ] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated
