@@ -30,12 +30,13 @@ import {
 const TURN_MS = 4000;
 const TURN_EASING = Easing.bezier(0.3, 0, 0.1, 1);
 
-const POINTER_WIDTH = 16;
-const POINTER_HEIGHT = 12;
+/** A slim pointer (02-CONTEXT D-25; it was 16 by 12), its tip on the rim. */
+const POINTER_WIDTH = 12;
+const POINTER_HEIGHT = 10;
 /** The transparent square over the hub that takes the tap. */
 const HUB_HIT = 64;
-/** The dot in the hub, as a share of the wheel's diameter. */
-const HUB_DOT_FRACTION = 0.07;
+/** The dot in the hub, as a share of the wheel's diameter (it was 0.07 before D-25). */
+const HUB_DOT_FRACTION = 0.05;
 /**
  * The seam between wedges, in dp, drawn in the page colour as a stroke on every wedge. Each
  * wedge is painted after the one before it, so every shared edge ends up the full width. It
@@ -67,8 +68,9 @@ export type WheelProps = {
   decorative?: boolean;
 };
 
+/** The dark wedges, the rim, the hub dot and the pointer are all the one soft charcoal (D-25). */
 function toneColor(tone: Tone): string {
-  return tone === 'dark' ? color.ink : color.secondary;
+  return tone === 'dark' ? color.wheelCharcoal : color.secondary;
 }
 
 /**
@@ -200,7 +202,7 @@ function WheelImpl({
   const hub = (
     <Svg width={HUB_HIT} height={HUB_HIT} viewBox={`${-HUB_HIT / 2} ${-HUB_HIT / 2} ${HUB_HIT} ${HUB_HIT}`}>
       <Circle cx={0} cy={0} r={hubDiameter / 2} fill={color.dominant} />
-      <Circle cx={0} cy={0} r={dotDiameter / 2} fill={color.ink} />
+      <Circle cx={0} cy={0} r={dotDiameter / 2} fill={color.wheelCharcoal} />
     </Svg>
   );
   const hubStyle = {
@@ -249,7 +251,7 @@ function WheelImpl({
             cy={0}
             r={outerRadius - RIM_WIDTH / 2}
             fill="none"
-            stroke={color.ink}
+            stroke={color.wheelCharcoal}
             strokeWidth={RIM_WIDTH}
           />
         </Svg>
@@ -304,7 +306,10 @@ function WheelImpl({
           style={{ position: 'absolute', left: outerRadius - POINTER_WIDTH / 2, top: 0 }}
         >
           <Svg width={POINTER_WIDTH} height={POINTER_HEIGHT} viewBox={`0 0 ${POINTER_WIDTH} ${POINTER_HEIGHT}`}>
-            <Polygon points={`0,0 ${POINTER_WIDTH},0 ${POINTER_WIDTH / 2},${POINTER_HEIGHT}`} fill={color.ink} />
+            <Polygon
+              points={`0,0 ${POINTER_WIDTH},0 ${POINTER_WIDTH / 2},${POINTER_HEIGHT}`}
+              fill={color.wheelCharcoal}
+            />
           </Svg>
         </View>
       ) : null}

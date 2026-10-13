@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Circle, Path, Svg } from 'react-native-svg';
-import { HUB_RING, WEDGE_OUT, WEDGES } from '@/components/brand/BrandMark';
+import { HUB_RING, WEDGES } from '@/components/brand/BrandMark';
 import { color } from '@/lib/theme/tokens';
 
 /**
@@ -76,8 +76,11 @@ function tickPath(cx: number, cy: number, R: number) {
   return d;
 }
 
+/** How far the ghost wedges reach, as a share of the ghost wheel's radius (as it was, so the ghosts keep their shape). */
+const GHOST_WEDGE_OUT = 0.816;
+
 function GhostWheel({ cx, cy, R }: { cx: number; cy: number; R: number }) {
-  const out = R * WEDGE_OUT * 0.9;
+  const out = R * GHOST_WEDGE_OUT;
   return (
     <>
       {WEDGES.map(([a0, a1], i) => (

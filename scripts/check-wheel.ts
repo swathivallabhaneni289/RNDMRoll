@@ -165,8 +165,8 @@ check('label colour on light', labelColorFor('light') === 'ink');
   }
   check('both directions occur', across > 0 && along > 0, `across ${across} along ${along}`);
   // The wide-wedge cap: the words never reach out of the rim.
-  check('across room is capped by the rim', acrossRoom(200, 116) <= 2 * Math.sqrt(112 * 112 - 81.2 * 81.2) + 1e-6);
-  check('along room at the largest wheel', Math.abs(alongRoom(116) - 68.04) < 0.2, `${alongRoom(116)}`);
+  check('across room is capped by the rim', acrossRoom(200, 116) <= 2 * Math.sqrt(114.5 * 114.5 - 81.2 * 81.2) + 1e-6);
+  check('along room at the largest wheel', Math.abs(alongRoom(116) - 76.26) < 0.2, `${alongRoom(116)}`);
   console.log(`info: along capacity at the largest wheel = ${labelCapacity('along', 60, 116)} letters`);
 }
 

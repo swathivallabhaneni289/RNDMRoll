@@ -9,14 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Circle, Path, Polygon, Svg } from 'react-native-svg';
-import {
-  HUB_DOT,
-  HUB_RING,
-  NOTCH_STROKE,
-  POINTER_POINTS,
-  POINTER_STROKE,
-  WEDGE_PATHS,
-} from '@/components/brand/BrandMark';
+import { markShape } from '@/components/brand/BrandMark';
 import { CategoryIcon, type Category } from '@/components/brand/CategoryRow';
 import { color as tokenColor } from '@/lib/theme/tokens';
 
@@ -43,7 +36,7 @@ const ROLL_MS = 1500;
  */
 export function SpinningMark({
   size = 240,
-  color = tokenColor.ink,
+  color = tokenColor.wheelCharcoal,
   wedgeColor = tokenColor.secondary,
   background = tokenColor.dominant,
   rollIn = false,
@@ -63,6 +56,8 @@ export function SpinningMark({
 }) {
   const reducedMotion = useReducedMotion();
   const radiusPx = size * 0.42; // the disc radius on screen
+  // The disc's view box is 2.1 units across 0.84 x size, so the disc radius (one unit) is 0.4 x size dp.
+  const shape = markShape(size * 0.4);
   const rollStart = -2 * Math.PI * radiusPx;
   const rolling = rollIn && !reducedMotion;
   const pickRef = useRef(Math.floor(Math.random() * 8));
@@ -141,11 +136,11 @@ export function SpinningMark({
         <Animated.View style={[{ position: 'absolute', left: size * 0.08, top: size * 0.16, width: disc, height: disc }, discStyle]}>
           <Svg viewBox="-1.05 -1.05 2.1 2.1" width={disc} height={disc}>
             <Circle cx={0} cy={0} r={1} fill={color} />
-            {WEDGE_PATHS.map((d, i) => (
+            {shape.wedgePaths.map((d, i) => (
               <Path key={i} d={d} fill={wedgeColor} />
             ))}
-            <Circle cx={0} cy={0} r={HUB_RING} fill={wedgeColor} />
-            <Circle cx={0} cy={0} r={HUB_DOT} fill={color} />
+            <Circle cx={0} cy={0} r={shape.hubRing} fill={wedgeColor} />
+            <Circle cx={0} cy={0} r={shape.hubDot} fill={color} />
           </Svg>
           {sectors ? (
             <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, width: disc, height: disc }, iconsStyle]}>
@@ -161,8 +156,8 @@ export function SpinningMark({
         </Animated.View>
         <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, width: size, height: size }, pointerStyle]}>
           <Svg viewBox="-1.25 -1.45 2.5 2.5" width={size} height={size}>
-            <Polygon points={POINTER_POINTS} fill={background} stroke={background} strokeWidth={NOTCH_STROKE} strokeLinejoin="round" />
-            <Polygon points={POINTER_POINTS} fill={color} stroke={color} strokeWidth={POINTER_STROKE} strokeLinejoin="round" />
+            <Polygon points={shape.pointerPoints} fill={background} stroke={background} strokeWidth={shape.notchStroke} strokeLinejoin="round" />
+            <Polygon points={shape.pointerPoints} fill={color} stroke={color} strokeWidth={shape.pointerStroke} strokeLinejoin="round" />
           </Svg>
         </Animated.View>
       </View>

@@ -20,6 +20,7 @@ export const pinColorDominant = color.dominant satisfies '#F6F5F2';
 export const pinColorSecondary = color.secondary satisfies '#E8E7E3';
 export const pinColorCard = color.card satisfies '#FFFFFF';
 export const pinColorInk = color.ink satisfies '#111111';
+export const pinColorWheelCharcoal = color.wheelCharcoal satisfies '#3B3936';
 export const pinColorMuted = color.muted satisfies '#625F5B';
 export const pinColorDivider = color.divider satisfies '#D3D0C9';
 export const pinColorDestructive = color.destructive satisfies '#9A3B32';
@@ -41,7 +42,8 @@ export const pinDisplayFontFamily = type.display.fontFamily satisfies 'Domine_60
 
 // Phase 2 (plan 02-02): six text roles. A later edit of any value fails tsc.
 // The medium grey wheel colour and its pin were removed on purpose on 2026-10-10 (D-23): the
-// wheel is only `ink` and `secondary`, with seams in `dominant`.
+// wheel has no grey wedge, only a dark tone and `secondary`, with seams in `dominant`. The dark
+// tone is `wheelCharcoal` since D-25 (the one wheel colour, pinned above, not a grey wedge).
 export const pinTitleFontFamily = type.title.fontFamily satisfies 'Domine_400Regular';
 export const pinTitleFontSize = type.title.fontSize satisfies 32;
 export const pinCountdownFontFamily = type.countdown.fontFamily satisfies 'Domine_400Regular';

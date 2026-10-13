@@ -3,7 +3,7 @@
  * clock and no randomness: the winner always comes from the server, and everything here only
  * draws it. Angles are degrees clockwise from 12 o'clock, and a positive rotation turns the
  * disc clockwise. Colours are named here ('dark', 'light', 'ink', 'dominant') and mapped
- * to tokens by the component, so this file holds no hex values.
+ * to tokens by the component ('dark' is `wheelCharcoal`), so this file holds no hex values.
  */
 
 /** No wedge is drawn narrower than this, so a one-in-ten category stays readable. */
@@ -11,10 +11,10 @@ export const MIN_WEDGE_DEGREES = 22;
 /** The turn is at least this many full clockwise turns. */
 export const MIN_TURNS = 5;
 
-/** Width of the ink rim, in dp. The wedges live inside it. */
-export const RIM_WIDTH = 4;
-/** The hub is this share of the wheel's diameter. */
-export const HUB_FRACTION = 0.19;
+/** Width of the charcoal rim, in dp (a fine line since D-25; it was 4). The wedges live inside it. */
+export const RIM_WIDTH = 1.5;
+/** The hub is this share of the wheel's diameter (it was 0.19 before D-25). */
+export const HUB_FRACTION = 0.14;
 
 /** An across label has its middle at this share of the wheel's radius. */
 const ACROSS_RADIUS_FRACTION = 0.7;
