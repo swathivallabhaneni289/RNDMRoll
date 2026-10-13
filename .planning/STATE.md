@@ -113,3 +113,5 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-10-13T08:52:25.903Z
 Stopped at: context exhaustion at 75% (2026-10-13)
 Resume file: .planning/phases/01-foundation-accounts/.continue-here.md
+
+- **Phase 3 server cutover DONE 2026-10-13 (evening):** dev database at version 6 (migration 0006). Backups in `~/.local/share/rndmroll-api`: `api.pre-phase3` (binary) and `dev-pre-0006.sql` (dump). Rehearsal on a throwaway copy went 5, 6, 5, 6 with the same 5 users. API rebuilt from HEAD and started with the test variables (`APP_ENV=test SPIN_TEST_TOOLS=1`, test users cutover-p2 and walkthrough-p2). Smoke test passed on a throwaway account (deleted, users back to 5, test clock reset): ticket and upload for 2 photos, post, Today shows posted, read, repeat is `already`, delete (day still posted), skip. The stronger password rule (capital, number, symbol) is live on the server. Next: plan 03-03 (entry page, edit, delete, skip, photos gallery).
