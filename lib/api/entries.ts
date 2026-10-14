@@ -10,7 +10,7 @@ import type { ReactionName } from '@/lib/entry/reactions';
  * Task 3b exactly. The phone sends the date and the spin number it showed and never works out
  * the date, the window, the state or whether a post is late: all of that comes back from the server.
  *
- * Plan 03-03 adds get, update, delete and skip to this file.
+ * Plan 03-03 adds get, update, delete and skip to this file (the end of it).
  */
 
 /** Where a photo came from. Stored with the photo and never shown. */
@@ -125,6 +125,7 @@ export async function createEntry(body: CreateEntryRequest): Promise<CreateEntry
 
 /** The four answers that end the attempt: UI spec 3.6, word for word. */
 const TERMINAL_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
+  not_found: "This entry isn't here any more.",
   day_settled: 'This day already has a post or a skip.',
   day_closed: "This day has closed. It can't be posted or skipped any more.",
   no_spin: 'There is no spin for this day.',
@@ -160,4 +161,47 @@ export function entryErrorMessage(err: unknown): { text: string; terminal: boole
     }
   }
   return { text: clientText('server_error'), terminal: false };
+}
+
+// ---- Plan 03-03: get, update, delete and skip (wire shapes of 03-01-SUMMARY) -----------------------
+
+/** What an edit may send. Only the keys that changed are present; `''` clears a reaction or comment. */
+export type UpdateEntryRequest = {
+  title?: string;
+  stars?: number;
+  reaction?: ReactionName | '';
+  comment?: string;
+  /**
+   * The whole ordered list the entry should end with: `{ id }` keeps a photo, `{ photo_key,
+   * photo_source }` adds one, a photo left out is removed. Present only when the photos changed.
+   */
+  photos?: ({ id: string } | { photo_key: string; photo_source: PhotoSource })[];
+};
+
+/** One entry (GET /entries/{id}). A 404 `not_found` is an entry that is gone or never was. */
+export async function getEntry(id: string): Promise<Entry> {
+  const answer = await api.get<{ entry: Entry }>(`/entries/${id}`);
+  return answer.entry;
+}
+
+/** Edits an entry (PATCH /entries/{id}) and returns it as stored. An empty patch changes nothing. */
+export async function updateEntry(id: string, patch: UpdateEntryRequest): Promise<Entry> {
+  const answer = await api.patch<{ entry: Entry }>(`/entries/${id}`, patch);
+  return answer.entry;
+}
+
+/**
+ * Deletes an entry (POST /entries/{id}/delete: the client has no DELETE call for this). The day
+ * still counts as posted. The answer carries the new Today.
+ */
+export async function deleteEntry(id: string): Promise<{ today: Today }> {
+  return api.post<{ today: Today }>(`/entries/${id}/delete`, {});
+}
+
+/**
+ * Skips the day (POST /spin/skip) for the date and spin number that were on screen. 200 both for a
+ * new skip and for the same skip again (`already`). The answer carries the new Today.
+ */
+export async function skipDay(forDate: string, spinSeq: number): Promise<{ already: boolean; today: Today }> {
+  return api.post<{ already: boolean; today: Today }>('/spin/skip', { for_date: forDate, spin_seq: spinSeq });
 }

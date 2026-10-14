@@ -71,3 +71,49 @@ export function nextSpinLine(
 export function settledLabel(spinLocalDate: string, localDate: string): string {
   return spinLocalDate === localDate ? "Today's spin was" : "Last night's spin was";
 }
+
+// ---- Plan 03-03: the entry page, edit and skip --------------------------------------------------
+
+const ENTRY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * An entry id is a 36 character UUID. A route that is handed anything else shows 'This entry isn't
+ * here any more.' and never sends the id to the server (the server answers not found for it too).
+ */
+export function isEntryId(value: unknown): value is string {
+  return typeof value === 'string' && ENTRY_ID.test(value);
+}
+
+/**
+ * The body of the skip confirmation. The first sentence names the person's count this week and is
+ * left out when the shown spin is from the week before the week section's week (a plain string
+ * compare of two server dates: a skip just after midnight on Monday for Sunday's spin).
+ */
+export function skipBody(spinLocalDate: string, weekStart: string, posted: number, goal: number): string {
+  const rest = "A skipped day doesn't count toward it, and it isn't a miss. You can't post for this day afterwards.";
+  if (spinLocalDate < weekStart) {
+    return "A skipped day doesn't count toward your week, and it isn't a miss. You can't post for this day afterwards.";
+  }
+  return `You are at ${posted} of ${goal} this week. ${rest}`;
+}
+
+/** The fields an edit may send; `''` clears a reaction or a comment. */
+export type EntryFieldPatch = { title?: string; stars?: number; reaction?: string; comment?: string };
+
+/**
+ * Only what the person changed. The title is compared and sent trimmed, the comment the same way;
+ * a cleared reaction or comment is sent as the empty string. No key when nothing differs.
+ */
+export function changedFields(
+  original: { title: string; stars: number; reaction: string | null; comment: string | null },
+  current: { title: string; stars: number; reaction: string | null; comment: string }
+): EntryFieldPatch {
+  const patch: EntryFieldPatch = {};
+  const title = cleanTitle(current.title);
+  if (title !== cleanTitle(original.title)) patch.title = title;
+  if (current.stars !== original.stars) patch.stars = current.stars;
+  if (current.reaction !== original.reaction) patch.reaction = current.reaction ?? '';
+  const comment = current.comment.trim();
+  if (comment !== (original.comment ?? '').trim()) patch.comment = comment;
+  return patch;
+}

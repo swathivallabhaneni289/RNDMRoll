@@ -13,10 +13,13 @@ import { REACTIONS, isReactionName } from '../lib/entry/reactions.ts';
 import {
   COMMENT_MAX,
   TITLE_MAX,
+  changedFields,
   cleanTitle,
+  isEntryId,
   missingParts,
   nextSpinLine,
   settledLabel,
+  skipBody,
   stillNeededLine,
 } from '../lib/entry/rules.ts';
 import {
@@ -397,6 +400,48 @@ async function memoryChecks(): Promise<void> {
 }
 
 await memoryChecks();
+
+// ---- plan 03-03: entry id, skip sheet text, edit patch -----------------------------------------
+{
+  const good = '0b6f1c1e-52a4-4a0e-9d0c-1f7a3e5b9c2d';
+  check('a UUID is an entry id', isEntryId(good));
+  check('a UUID in capitals is an entry id', isEntryId(good.toUpperCase()));
+  check('an empty string is not an entry id', !isEntryId(''));
+  check('a short id is not an entry id', !isEntryId('123'));
+  check('an id with a path in it is not an entry id', !isEntryId(`${good}/delete`));
+  check('a number is not an entry id', !isEntryId(7));
+  check('undefined is not an entry id', !isEntryId(undefined));
+  check('a 36 character non-UUID is not an entry id', !isEntryId('zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz'));
+
+  check(
+    'skip text names the count',
+    skipBody('2026-10-08', '2026-10-05', 2, 4) ===
+      "You are at 2 of 4 this week. A skipped day doesn't count toward it, and it isn't a miss. You can't post for this day afterwards."
+  );
+  check(
+    'skip text for the day before the shown week leaves the count out',
+    !skipBody('2026-10-04', '2026-10-05', 0, 4).includes('this week.') &&
+      skipBody('2026-10-04', '2026-10-05', 0, 4).startsWith("A skipped day doesn't count")
+  );
+  check('skip text on the first day of the week keeps the count', skipBody('2026-10-05', '2026-10-05', 0, 4).startsWith('You are at 0 of 4'));
+
+  const was = { title: 'Ramen', stars: 9, reaction: 'love', comment: 'Warm.' };
+  check('nothing changed gives an empty patch', same(changedFields(was, { ...was, comment: 'Warm.' }), {}));
+  check('spaces around the title are not a change', same(changedFields(was, { ...was, title: '  Ramen ', comment: 'Warm.' }), {}));
+  check('a new title is sent trimmed', same(changedFields(was, { ...was, title: ' Pho ', comment: 'Warm.' }), { title: 'Pho' }));
+  check('new stars are sent', same(changedFields(was, { ...was, stars: 7, comment: 'Warm.' }), { stars: 7 }));
+  check('a cleared reaction is the empty string', same(changedFields(was, { ...was, reaction: null, comment: 'Warm.' }), { reaction: '' }));
+  check('a new reaction is sent by name', same(changedFields(was, { ...was, reaction: 'fire', comment: 'Warm.' }), { reaction: 'fire' }));
+  check('a cleared comment is the empty string', same(changedFields(was, { ...was, comment: '  ' }), { comment: '' }));
+  check(
+    'a comment added to an entry with none is sent',
+    same(changedFields({ ...was, comment: null }, { ...was, comment: 'Nice' }), { comment: 'Nice' })
+  );
+  check(
+    'no comment on both sides is no change',
+    same(changedFields({ ...was, comment: null, reaction: null }, { ...was, comment: '', reaction: null }), {})
+  );
+}
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);
 if (failures > 0) process.exitCode = 1;
