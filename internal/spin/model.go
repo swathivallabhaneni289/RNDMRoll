@@ -184,14 +184,16 @@ type WeekDayView struct {
 // (json "-"), and the HTTP layer turns it into PhotoURL, the cover's link,
 // just before the answer is written. PhotoURL is empty until then.
 type EntryRef struct {
-	ID         string  `json:"id"`
-	Late       bool    `json:"late"`
-	Title      string  `json:"title"`
-	Stars      int     `json:"stars"`
-	Reaction   *string `json:"reaction"`
-	CoverKey   string  `json:"-"`
-	PhotoURL   string  `json:"photo_url"`
-	PhotoCount int     `json:"photo_count"`
+	ID          string  `json:"id"`
+	Late        bool    `json:"late"`
+	Archived    bool    `json:"archived"`
+	CommentsOff bool    `json:"comments_off"`
+	Title       string  `json:"title"`
+	Stars       int     `json:"stars"`
+	Reaction    *string `json:"reaction"`
+	CoverKey    string  `json:"-"`
+	PhotoURL    string  `json:"photo_url"`
+	PhotoCount  int     `json:"photo_count"`
 }
 
 // WeekView is the week of the current local date, Monday first. TodayIndex

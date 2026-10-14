@@ -60,6 +60,9 @@ func (h *EntryHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/entries/:id", perSubject(60), h.get)
 	rg.PATCH("/entries/:id", perSubject(20), h.patch)
 	rg.POST("/entries/:id/delete", perSubject(20), h.deleteEntry)
+	rg.POST("/entries/:id/archive", perSubject(20), h.archive)
+	rg.POST("/entries/:id/unarchive", perSubject(20), h.unarchive)
+	rg.GET("/me/archive", perSubject(60), h.archiveList)
 	rg.POST("/spin/skip", perSubject(10), h.skip)
 }
 
@@ -93,6 +96,8 @@ type UpdateEntryRequest struct {
 	Reaction *string         `json:"reaction"`
 	Comment  *string         `json:"comment"`
 	Photos   json.RawMessage `json:"photos"`
+	// CommentsOff is the owner's comments switch; missing or null is unchanged.
+	CommentsOff *bool `json:"comments_off"`
 }
 
 // DeleteEntryRequest is the POST /entries/:id/delete body. Nothing is read
@@ -300,6 +305,8 @@ type entryView struct {
 	PhotoURL    string           `json:"photo_url"`
 	PhotoSource string           `json:"photo_source"`
 	Late        bool             `json:"late"`
+	Archived    bool             `json:"archived"`
+	CommentsOff bool             `json:"comments_off"`
 	CreatedAt   spin.Instant     `json:"created_at"`
 	UpdatedAt   spin.Instant     `json:"updated_at"`
 }
@@ -316,17 +323,19 @@ func newEntryView(e spin.Entry, photoURL func(string) string) entryView {
 		views[i] = entryPhotoView{ID: p.ID, URL: photoURL(p.Key), Position: p.Position}
 	}
 	v := entryView{
-		ID:        e.ID,
-		LocalDate: e.LocalDate,
-		Category:  spin.CategoryRef{ID: e.CategoryID, Name: e.CategoryName},
-		Title:     e.Title,
-		Stars:     e.Stars,
-		Reaction:  e.Reaction,
-		Comment:   e.Comment,
-		Photos:    views,
-		Late:      e.Late,
-		CreatedAt: spin.Instant(e.CreatedAt),
-		UpdatedAt: spin.Instant(e.UpdatedAt),
+		ID:          e.ID,
+		LocalDate:   e.LocalDate,
+		Category:    spin.CategoryRef{ID: e.CategoryID, Name: e.CategoryName},
+		Title:       e.Title,
+		Stars:       e.Stars,
+		Reaction:    e.Reaction,
+		Comment:     e.Comment,
+		Photos:      views,
+		Late:        e.Late,
+		Archived:    e.Archived,
+		CommentsOff: e.CommentsOff,
+		CreatedAt:   spin.Instant(e.CreatedAt),
+		UpdatedAt:   spin.Instant(e.UpdatedAt),
 	}
 	if len(views) > 0 {
 		v.PhotoURL = views[0].URL
@@ -497,10 +506,11 @@ func (h *EntryHandler) patch(c *gin.Context) {
 		return
 	}
 	patch := spin.EntryPatch{
-		Title:    req.Title,
-		Stars:    req.Stars,
-		Reaction: req.Reaction,
-		Comment:  req.Comment,
+		Title:       req.Title,
+		Stars:       req.Stars,
+		Reaction:    req.Reaction,
+		Comment:     req.Comment,
+		CommentsOff: req.CommentsOff,
 	}
 	if isPresent(req.Photos) {
 		refs, reason := decodePhotoList(req.Photos, u.ID, true)
@@ -544,6 +554,68 @@ func (h *EntryHandler) deleteEntry(c *gin.Context) {
 	h.removeFiles(c.Request.Context(), out.Dropped)
 	linkToday(&out.Today, h.photos.PublicURL)
 	Respond(c, http.StatusOK, gin.H{"today": out.Today})
+}
+
+// archive answers POST /entries/:id/archive with {"entry", "today"}. It is
+// idempotent. The day still counts: Today stays posted and carries the entry
+// with archived true.
+func (h *EntryHandler) archive(c *gin.Context) {
+	h.setArchived(c, true)
+}
+
+// unarchive answers POST /entries/:id/unarchive with {"entry", "today"}.
+func (h *EntryHandler) unarchive(c *gin.Context) {
+	h.setArchived(c, false)
+}
+
+func (h *EntryHandler) setArchived(c *gin.Context, archived bool) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := entryIDOf(c)
+	if !ok {
+		return
+	}
+	var req DeleteEntryRequest
+	if !bindEntryBody(c, &req) {
+		return
+	}
+	var out spin.ArchiveOutcome
+	var err error
+	if archived {
+		out, err = h.svc.ArchiveEntry(c.Request.Context(), u.ID.String(), id)
+	} else {
+		out, err = h.svc.UnarchiveEntry(c.Request.Context(), u.ID.String(), id)
+	}
+	if err != nil {
+		respondEntryError(c, err)
+		return
+	}
+	linkToday(&out.Today, h.photos.PublicURL)
+	Respond(c, http.StatusOK, gin.H{
+		"entry": newEntryView(out.Entry, h.photos.PublicURL),
+		"today": out.Today,
+	})
+}
+
+// archiveList answers GET /me/archive with {"entries"}: the caller's archived
+// entries, newest date first.
+func (h *EntryHandler) archiveList(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	list, err := h.svc.ArchivedEntries(c.Request.Context(), u.ID.String())
+	if err != nil {
+		respondEntryError(c, err)
+		return
+	}
+	views := make([]entryView, len(list))
+	for i, e := range list {
+		views[i] = newEntryView(e, h.photos.PublicURL)
+	}
+	Respond(c, http.StatusOK, gin.H{"entries": views})
 }
 
 // skip answers POST /spin/skip with 200 and {"already", "today"}, whether the

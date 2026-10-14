@@ -55,6 +55,8 @@ type EntryUpdate struct {
 	Stars    int
 	Reaction *string
 	Comment  *string
+	// CommentsOff is the owner's comments switch, written with the rest.
+	CommentsOff bool
 }
 
 // NewStoredPhoto is one photo row InsertPhotos writes. Position is its place
@@ -250,6 +252,17 @@ type Tx interface {
 	// leaves the posted day, the spin and its result, and the goal weeks as
 	// they are.
 	DeleteEntry(id string) (removedKeys []string, err error)
+
+	// SetEntryArchived archives (true) or unarchives (false) this person's
+	// entry. It is idempotent: archiving an archived entry keeps its first
+	// archive time. It changes nothing else (not updated_at, the posted day,
+	// the spin or the photos). ErrEntryNotFound when no such entry belongs to
+	// this person.
+	SetEntryArchived(id string, archived bool, now time.Time) error
+
+	// ArchivedEntries returns this person's archived entries, complete as
+	// EntryOfDate describes them, newest local date first.
+	ArchivedEntries() ([]Entry, error)
 
 	// SettleSpin sets one of this person's spins to result (ResultPosted or
 	// ResultSkipped) with settled_at = at, but only while its stored result is

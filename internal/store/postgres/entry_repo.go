@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 )
@@ -32,7 +33,8 @@ func parseID(what, s string) (uuid.UUID, error) {
 // flag of the date's posted-day row, false when the date has none.
 const entrySelect = `
 	select e.id::text, e.spin_id::text, e.local_date::text, s.category_id::text, s.category_name,
-	       e.title, e.stars, e.reaction, e.comment, coalesce(p.late, false), e.created_at, e.updated_at
+	       e.title, e.stars, e.reaction, e.comment, coalesce(p.late, false), e.created_at, e.updated_at,
+	       e.archived_at is not null, e.comments_off
 	from entries e
 	join spins s on s.id = e.spin_id and s.user_id = e.user_id
 	left join posted_days p on p.user_id = e.user_id and p.local_date = e.local_date
@@ -45,7 +47,7 @@ func (t *pgTx) entryRow(where string, args ...any) (*spin.Entry, error) {
 	var dateStr string
 	err := t.tx.QueryRow(t.ctx, entrySelect+where, append([]any{t.uid}, args...)...).
 		Scan(&e.ID, &e.SpinID, &dateStr, &e.CategoryID, &e.CategoryName, &e.Title, &e.Stars,
-			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt)
+			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt, &e.Archived, &e.CommentsOff)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -187,9 +189,10 @@ func (t *pgTx) UpdateEntry(id string, u spin.EntryUpdate, now time.Time) error {
 		return err
 	}
 	tag, err := t.tx.Exec(t.ctx, `
-		update entries set title = $3, stars = $4, reaction = $5, comment = $6, updated_at = $7
+		update entries set title = $3, stars = $4, reaction = $5, comment = $6, updated_at = $7,
+		       comments_off = $8
 		where id = $1 and user_id = $2`,
-		eid, t.uid, u.Title, u.Stars, u.Reaction, u.Comment, now.UTC())
+		eid, t.uid, u.Title, u.Stars, u.Reaction, u.Comment, now.UTC(), u.CommentsOff)
 	if err != nil {
 		return err
 	}
@@ -426,4 +429,60 @@ func (t *pgTx) SkippedDates(from, to spin.Date) ([]spin.Date, error) {
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+func (t *pgTx) SetEntryArchived(id string, archived bool, now time.Time) error {
+	eid, err := parseID("entry", id)
+	if err != nil {
+		return err
+	}
+	var tag pgconn.CommandTag
+	if archived {
+		// An archived entry keeps its first archive time.
+		tag, err = t.tx.Exec(t.ctx, `
+			update entries set archived_at = coalesce(archived_at, $3)
+			where id = $1 and user_id = $2`, eid, t.uid, now.UTC())
+	} else {
+		tag, err = t.tx.Exec(t.ctx, `
+			update entries set archived_at = null
+			where id = $1 and user_id = $2`, eid, t.uid)
+	}
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return spin.ErrEntryNotFound
+	}
+	return nil
+}
+
+func (t *pgTx) ArchivedEntries() ([]spin.Entry, error) {
+	rows, err := t.tx.Query(t.ctx,
+		`select e.id::text from entries e where e.user_id = $1 and e.archived_at is not null
+		 order by e.local_date desc`, t.uid)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]spin.Entry, 0, len(ids))
+	for _, id := range ids {
+		e, err := t.EntryByID(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *e)
+	}
+	return out, nil
 }

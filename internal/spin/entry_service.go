@@ -302,7 +302,10 @@ func (s *Service) editEntryIn(c *call, id string, patch EntryPatch, contentTypes
 	}
 
 	// The scalar values the entry should end with.
-	update := EntryUpdate{Title: entry.Title, Stars: entry.Stars, Reaction: entry.Reaction, Comment: entry.Comment}
+	update := EntryUpdate{Title: entry.Title, Stars: entry.Stars, Reaction: entry.Reaction, Comment: entry.Comment, CommentsOff: entry.CommentsOff}
+	if patch.CommentsOff != nil {
+		update.CommentsOff = *patch.CommentsOff
+	}
 	if patch.Title != nil {
 		update.Title = *patch.Title
 	}
@@ -316,7 +319,8 @@ func (s *Service) editEntryIn(c *call, id string, patch EntryPatch, contentTypes
 		update.Comment = nilIfEmpty(*patch.Comment)
 	}
 	scalarsChanged := update.Title != entry.Title || update.Stars != entry.Stars ||
-		!sameText(update.Reaction, entry.Reaction) || !sameText(update.Comment, entry.Comment)
+		!sameText(update.Reaction, entry.Reaction) || !sameText(update.Comment, entry.Comment) ||
+		update.CommentsOff != entry.CommentsOff
 
 	// The photo list the entry should end with. Every check is finished
 	// before anything is written.
@@ -485,6 +489,72 @@ func (s *Service) SkipDay(ctx context.Context, userID string, forDate Date, spin
 	})
 	if err != nil {
 		return SkipOutcome{}, err
+	}
+	return out, nil
+}
+
+// ArchiveOutcome is the answer to ArchiveEntry and UnarchiveEntry: the entry
+// after the change and Today as of the same instant.
+type ArchiveOutcome struct {
+	Entry Entry
+	Today Today
+}
+
+// ArchiveEntry puts one of the person's entries in the archive. It is
+// idempotent. The day still counts: the posted day and the spin's result are
+// not touched, so the day is not free for another entry. An id that is not a
+// canonical UUID, that has no entry or that is someone else's is
+// ErrEntryNotFound.
+func (s *Service) ArchiveEntry(ctx context.Context, userID, id string) (ArchiveOutcome, error) {
+	return s.setArchived(ctx, userID, id, true)
+}
+
+// UnarchiveEntry takes an entry out of the archive. It is idempotent and
+// creates nothing.
+func (s *Service) UnarchiveEntry(ctx context.Context, userID, id string) (ArchiveOutcome, error) {
+	return s.setArchived(ctx, userID, id, false)
+}
+
+func (s *Service) setArchived(ctx context.Context, userID, id string, archived bool) (ArchiveOutcome, error) {
+	cid, ok := canonicalUUID(id)
+	if !ok {
+		return ArchiveOutcome{}, ErrEntryNotFound
+	}
+	var out ArchiveOutcome
+	err := s.run(ctx, userID, true, func(c *call) error {
+		if err := c.tx.SetEntryArchived(cid, archived, c.now); err != nil {
+			return err
+		}
+		e, err := c.tx.EntryByID(cid)
+		if err != nil {
+			return err
+		}
+		t, err := s.todayIn(c)
+		if err != nil {
+			return err
+		}
+		out = ArchiveOutcome{Entry: *e, Today: t}
+		return nil
+	})
+	if err != nil {
+		return ArchiveOutcome{}, err
+	}
+	return out, nil
+}
+
+// ArchivedEntries lists the person's archived entries, newest date first.
+func (s *Service) ArchivedEntries(ctx context.Context, userID string) ([]Entry, error) {
+	var out []Entry
+	err := s.run(ctx, userID, false, func(c *call) error {
+		list, err := c.tx.ArchivedEntries()
+		if err != nil {
+			return err
+		}
+		out = list
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

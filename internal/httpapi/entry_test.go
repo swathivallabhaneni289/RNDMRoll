@@ -220,7 +220,7 @@ func entryObject(t *testing.T, v any) map[string]any {
 
 // entryKeysWant is the exact member list of an Entry in every answer.
 var entryKeysWant = []string{
-	"category", "comment", "created_at", "id", "late", "local_date", "photo_source",
+	"archived", "category", "comment", "comments_off", "created_at", "id", "late", "local_date", "photo_source",
 	"photo_url", "photos", "reaction", "stars", "title", "updated_at",
 }
 
@@ -871,7 +871,7 @@ func wantEntrySummary(t *testing.T, label string, today map[string]any, want ent
 	if !ok {
 		t.Fatalf("%s: entry = %v, want the summary", label, today["entry"])
 	}
-	if got := entrySortedKeys(sum); !slices.Equal(got, []string{"id", "late", "photo_count", "photo_url", "reaction", "stars", "title"}) {
+	if got := entrySortedKeys(sum); !slices.Equal(got, []string{"archived", "comments_off", "id", "late", "photo_count", "photo_url", "reaction", "stars", "title"}) {
 		t.Fatalf("%s: summary members = %v", label, got)
 	}
 	if sum["title"] != want.title || sum["stars"] != want.stars || sum["reaction"] != want.reaction ||

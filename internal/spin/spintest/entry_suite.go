@@ -366,6 +366,56 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		})
 	}
 
+	// --- archive and the comments switch ---
+
+	run("archive and unarchive keep the day posted and the list ordered by date", func(t *testing.T, e *EntryEnv) {
+		u := e.ready(t, ny)
+		e.openDay(t, u, "2026-10-06")
+		first := e.post(t, u, "2026-10-06", 0, e.input(u, 1)).Entry
+		e.openDay(t, u, "2026-10-07")
+		second := e.post(t, u, "2026-10-07", 0, e.input(u, 2)).Entry
+
+		for _, id := range []string{first.ID, second.ID, second.ID} {
+			out, err := e.Service.ArchiveEntry(ctx, u, id)
+			if err != nil {
+				t.Fatalf("ArchiveEntry: %v", err)
+			}
+			if !out.Entry.Archived {
+				t.Fatalf("archive out = %+v", out)
+			}
+			if id == second.ID && (out.Today.State != spin.StatePosted || out.Today.Entry == nil || !out.Today.Entry.Archived) {
+				t.Fatalf("today after archive = %+v", out.Today)
+			}
+		}
+		list, err := e.Service.ArchivedEntries(ctx, u)
+		if err != nil || len(list) != 2 || list[0].ID != second.ID || list[1].ID != first.ID {
+			t.Fatalf("archived list = %+v, %v; want newest date first", list, err)
+		}
+		wantPhotos(t, "archived photos", list[0].Photos, keysOfPhotos(second.Photos))
+		if e.postedRow(t, u, "2026-10-07") == nil || e.entryOn(t, u, "2026-10-07") == nil {
+			t.Fatal("archiving removed the posted day or the entry")
+		}
+
+		out, err := e.Service.UnarchiveEntry(ctx, u, second.ID)
+		if err != nil || out.Entry.Archived {
+			t.Fatalf("UnarchiveEntry = %+v, %v", out, err)
+		}
+		list, _ = e.Service.ArchivedEntries(ctx, u)
+		if len(list) != 1 || list[0].ID != first.ID {
+			t.Fatalf("list after unarchive = %+v", list)
+		}
+		if _, err := e.Service.ArchiveEntry(ctx, "00000000-0000-4000-8000-000000000001", first.ID); err == nil {
+			t.Fatal("another person archived the entry")
+		}
+
+		// The comments switch is an edit and survives archive and reads.
+		off := true
+		edited := e.edit(t, u, first.ID, spin.EntryPatch{CommentsOff: &off}).Entry
+		if !edited.CommentsOff || !e.get(t, u, first.ID).CommentsOff || !e.get(t, u, first.ID).Archived {
+			t.Fatalf("comments switch = %+v", edited)
+		}
+	})
+
 	// --- posting ---
 
 	run("a post with three photos writes the entry and three photo rows in order", func(t *testing.T, e *EntryEnv) {

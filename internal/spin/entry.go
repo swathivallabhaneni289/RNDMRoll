@@ -72,6 +72,8 @@ type Entry struct {
 	Reaction     *string
 	Comment      *string
 	Late         bool
+	Archived     bool
+	CommentsOff  bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Photos       []EntryPhoto
@@ -130,6 +132,8 @@ type EntryPatch struct {
 	Reaction *string
 	Comment  *string
 	Photos   *[]PhotoRef
+	// CommentsOff, when set, switches comments on the entry off or on.
+	CommentsOff *bool
 }
 
 // CleanEntryInput checks and tidies a new entry before anything is written.
@@ -220,6 +224,10 @@ func CleanEntryPatch(p EntryPatch) (EntryPatch, error) {
 			return EntryPatch{}, problem(fieldComment, reason)
 		}
 		out.Comment = &text
+	}
+	if p.CommentsOff != nil {
+		off := *p.CommentsOff
+		out.CommentsOff = &off
 	}
 	if p.Photos != nil {
 		refs, reason := cleanPhotoRefs(*p.Photos)
@@ -406,11 +414,13 @@ func EntryRefOf(e *Entry) *EntryRef {
 		return nil
 	}
 	ref := &EntryRef{
-		ID:         e.ID,
-		Late:       e.Late,
-		Title:      e.Title,
-		Stars:      e.Stars,
-		PhotoCount: len(e.Photos),
+		ID:          e.ID,
+		Late:        e.Late,
+		Archived:    e.Archived,
+		CommentsOff: e.CommentsOff,
+		Title:       e.Title,
+		Stars:       e.Stars,
+		PhotoCount:  len(e.Photos),
 	}
 	if e.Reaction != nil {
 		reaction := *e.Reaction

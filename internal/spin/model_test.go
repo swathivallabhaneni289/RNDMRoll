@@ -902,7 +902,7 @@ func TestBuildToday_WireShapeOfTheEntrySummaryAndTheSkippedFlag(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	if want := []string{"id", "late", "photo_count", "photo_url", "reaction", "stars", "title"}; !reflect.DeepEqual(keys, want) {
+	if want := []string{"archived", "comments_off", "id", "late", "photo_count", "photo_url", "reaction", "stars", "title"}; !reflect.DeepEqual(keys, want) {
 		t.Errorf("entry keys = %v, want %v", keys, want)
 	}
 	if entry["id"] != "e1" || entry["late"] != false || entry["title"] != "Dune" || entry["stars"] != float64(7) ||

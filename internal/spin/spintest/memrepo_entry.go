@@ -16,16 +16,18 @@ import (
 // ascending position order. Like the rest of memData it is cloned for every
 // transaction, so a callback that fails leaves nothing behind.
 type memEntry struct {
-	id        string
-	spinID    string
-	date      spin.Date
-	title     string
-	stars     int
-	reaction  *string
-	comment   *string
-	createdAt time.Time
-	updatedAt time.Time
-	photos    []memPhoto
+	id          string
+	spinID      string
+	date        spin.Date
+	title       string
+	stars       int
+	reaction    *string
+	comment     *string
+	createdAt   time.Time
+	updatedAt   time.Time
+	photos      []memPhoto
+	archived    bool
+	commentsOff bool
 }
 
 // memPhoto is one photo row. The storage key is never a link.
@@ -143,16 +145,18 @@ func (t *memTx) keysHeld(skip int) map[string]bool {
 // written name from the entry's spin. Every value is a copy.
 func (t *memTx) entryView(e memEntry) spin.Entry {
 	out := spin.Entry{
-		ID:        e.id,
-		SpinID:    e.spinID,
-		LocalDate: e.date,
-		Title:     e.title,
-		Stars:     e.stars,
-		Reaction:  copyText(e.reaction),
-		Comment:   copyText(e.comment),
-		CreatedAt: e.createdAt,
-		UpdatedAt: e.updatedAt,
-		Photos:    make([]spin.EntryPhoto, len(e.photos)),
+		ID:          e.id,
+		SpinID:      e.spinID,
+		LocalDate:   e.date,
+		Title:       e.title,
+		Stars:       e.stars,
+		Reaction:    copyText(e.reaction),
+		Comment:     copyText(e.comment),
+		CreatedAt:   e.createdAt,
+		UpdatedAt:   e.updatedAt,
+		Archived:    e.archived,
+		CommentsOff: e.commentsOff,
+		Photos:      make([]spin.EntryPhoto, len(e.photos)),
 	}
 	if p, ok := t.d.posted[e.date]; ok {
 		out.Late = p.Late
@@ -240,8 +244,29 @@ func (t *memTx) UpdateEntry(id string, u spin.EntryUpdate, now time.Time) error 
 	e := &t.d.entries[i]
 	e.title, e.stars = u.Title, u.Stars
 	e.reaction, e.comment = copyText(u.Reaction), copyText(u.Comment)
+	e.commentsOff = u.CommentsOff
 	e.updatedAt = now
 	return nil
+}
+
+func (t *memTx) SetEntryArchived(id string, archived bool, now time.Time) error {
+	i := t.entryIndex(id)
+	if i < 0 {
+		return spin.ErrEntryNotFound
+	}
+	t.d.entries[i].archived = archived
+	return nil
+}
+
+func (t *memTx) ArchivedEntries() ([]spin.Entry, error) {
+	out := []spin.Entry{}
+	for _, e := range t.d.entries {
+		if e.archived {
+			out = append(out, t.entryView(e))
+		}
+	}
+	sort.SliceStable(out, func(a, b int) bool { return out[b].LocalDate.Before(out[a].LocalDate) })
+	return out, nil
 }
 
 func (t *memTx) PhotosOfEntry(entryID string) ([]spin.EntryPhoto, error) {
