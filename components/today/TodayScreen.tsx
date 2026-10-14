@@ -72,24 +72,19 @@ function headingFor(state: TodayState | null): string {
   }
 }
 
-/**
- * A box whose opacity runs from `from` to `to` once, when it appears. `grow` lets it fill the
- * space left in its column (the Skipped block is centred inside it).
- */
+/** A box whose opacity runs from `from` to `to` once, when it appears. */
 function FadeBox({
   from,
   to,
   children,
   absolute = false,
   top = 0,
-  grow = false,
 }: {
   from: number;
   to: number;
   children: ReactNode;
   absolute?: boolean;
   top?: number;
-  grow?: boolean;
 }) {
   const opacity = useSharedValue(from);
   useEffect(() => {
@@ -104,7 +99,6 @@ function FadeBox({
       importantForAccessibility={absolute ? 'no-hide-descendants' : 'auto'}
       style={[
         absolute ? { position: 'absolute', left: 0, right: 0, top } : null,
-        grow ? { flexGrow: 1 } : null,
         animated,
       ]}
     >
@@ -113,6 +107,12 @@ function FadeBox({
   );
 }
 
+/**
+ * Posted and Skipped swap in and out at once (the developer: fades between Today states look
+ * weird). Every other change of heading keeps Phase 2's fade.
+ */
+const SETTLED_HEADINGS: readonly string[] = ['Posted.', 'Skipped.'];
+
 /** The heading. A new text fades out and in (the existing 400ms swap), at once under Reduce Motion. */
 function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: boolean; lines: number }) {
   const [shown, setShown] = useState(text);
@@ -120,7 +120,13 @@ function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: bo
 
   useEffect(() => {
     if (text === shown) return;
-    if (reduceMotion || shown === '' || text === '') {
+    if (
+      reduceMotion ||
+      shown === '' ||
+      text === '' ||
+      SETTLED_HEADINGS.includes(text) ||
+      SETTLED_HEADINGS.includes(shown)
+    ) {
       setShown(text);
       return;
     }
@@ -163,8 +169,8 @@ function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: bo
  * the day composition at once and animates nothing; a spin made here turns the wheel, waits
  * 600ms, then fades the wheel out while the word rises in (section 5). A bonus spin brings the
  * wheel back on the previous spin's own wheel and runs the same turn and reveal again. When
- * Result or Late turns into Posted or Skipped while the screen is open, the block cross-fades
- * over 400ms and the new state is announced once (03-UI-SPEC 12 and 14).
+ * Result or Late turns into Posted or Skipped while the screen is open, the new state shows at
+ * once (no cross-fade) and is announced once (03-UI-SPEC 14).
  */
 export function TodayScreen() {
   const router = useRouter();
@@ -202,7 +208,7 @@ export function TodayScreen() {
   const compRef = useRef(comp);
   compRef.current = comp;
 
-  // ---- Posted and Skipped (03-UI-SPEC 3.1, 12 and 14) -----------------------------------------
+  // ---- Posted and Skipped (03-UI-SPEC 3.1 and 14) -----------------------------------------
 
   // Announce 'Posted.' or 'Skipped.' when the state CHANGES to it while the screen is open: never
   // on the first load, so a relaunch on a settled day says nothing.
@@ -214,25 +220,6 @@ export function TodayScreen() {
     if (viewState === 'posted') AccessibilityInfo.announceForAccessibility('Posted.');
     else if (viewState === 'skipped') AccessibilityInfo.announceForAccessibility('Skipped.');
   }, [viewState]);
-
-  // Result or Late turning into Posted or Skipped: the old block stays for 400ms and fades out
-  // while the new one fades in. The old day is read when the change is seen, during the render
-  // that brings the new state, so nothing flashes for a frame. Under Reduce Motion it just changes.
-  const lastOpenDayRef = useRef<Today | null>(null);
-  if (view !== null && (viewState === 'result' || viewState === 'late')) lastOpenDayRef.current = view;
-  const [seenState, setSeenState] = useState<TodayState | null>(viewState);
-  const [settleFrom, setSettleFrom] = useState<Today | null>(null);
-  if (seenState !== viewState) {
-    setSeenState(viewState);
-    const turned =
-      (viewState === 'posted' || viewState === 'skipped') && (seenState === 'result' || seenState === 'late');
-    setSettleFrom(turned && !reduceMotion ? lastOpenDayRef.current : null);
-  }
-  useEffect(() => {
-    if (settleFrom === null) return undefined;
-    const id = setTimeout(() => setSettleFrom(null), FADE_MS);
-    return () => clearTimeout(id);
-  }, [settleFrom]);
 
   // ---- landing, calm and reveal ------------------------------------------------------------
 
@@ -490,6 +477,8 @@ export function TodayScreen() {
           </View>
         ) : null}
         <DayActions
+          day={day}
+          userId={userId}
           late={dayLate}
           followsLink={bonusLinkShown || bonusFailed}
           disabled={!live || busy}
@@ -499,28 +488,23 @@ export function TodayScreen() {
     );
   }
 
-  // Posted and Skipped. When one of them took the place of Result or Late a moment ago, it fades
-  // in over the copy of the old block that fades out (overlay below).
-  const settleFade = settleFrom !== null;
+  // Posted and Skipped take the place of Result or Late at once: no cross-fade between Today
+  // states (the developer: fades look weird). The row and the struck word are drawn plainly.
   const postedComposition =
     view !== null ? (
-      <FadeBox key="posted" from={settleFade ? 0 : 1} to={1}>
-        <View style={{ marginTop: space.lg }}>
-          <SettledBlock today={view} />
-        </View>
-      </FadeBox>
+      <View style={{ marginTop: space.lg }}>
+        <SettledBlock today={view} />
+      </View>
     ) : null;
   // The word sits halfway between the sentence under the heading and the week section: one
   // flexible space above it and one below.
   const skippedComposition =
     view !== null ? (
-      <FadeBox key="skipped" from={settleFade ? 0 : 1} to={1} grow>
-        <View style={{ flexGrow: 1 }}>
-          <View style={{ flexGrow: 1, minHeight: space.xl }} />
-          <SettledBlock today={view} />
-          <View style={{ flexGrow: 1, minHeight: space.xl }} />
-        </View>
-      </FadeBox>
+      <View style={{ flexGrow: 1 }}>
+        <View style={{ flexGrow: 1, minHeight: space.xl }} />
+        <SettledBlock today={view} />
+        <View style={{ flexGrow: 1, minHeight: space.xl }} />
+      </View>
     ) : null;
   const skippedLine =
     comp === 'result' && viewState === 'skipped' && view !== null
@@ -539,12 +523,6 @@ export function TodayScreen() {
     overlay = (
       <FadeBox from={1} to={0} absolute top={-HEADING_DIFF}>
         {dayComposition(view, false)}
-      </FadeBox>
-    );
-  } else if (settleFrom !== null && comp === 'result') {
-    overlay = (
-      <FadeBox from={1} to={0} absolute>
-        {dayComposition(settleFrom, false)}
       </FadeBox>
     );
   }

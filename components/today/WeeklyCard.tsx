@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { Circle, Svg } from 'react-native-svg';
+import { Circle, Rect, Svg } from 'react-native-svg';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import type { Week } from '@/lib/api/types';
 import { color, space, type } from '@/lib/theme/tokens';
@@ -9,13 +9,24 @@ const MARK_SLOT = 12;
 const DOT_DIAMETER = 10;
 const RING_STROKE = 1.5;
 const SMALL_DOT_DIAMETER = 5;
+/** A skipped day (03-UI-SPEC 8): a short `ink` dash, 10dp wide and 2dp tall, square ends. */
+const DASH_WIDTH = 10;
+const DASH_HEIGHT = 2;
 
-function Mark({ kind }: { kind: 'posted' | 'today' | 'other' }) {
+function Mark({ kind }: { kind: 'posted' | 'skipped' | 'today' | 'other' }) {
   const mid = MARK_SLOT / 2;
   return (
     <Svg width={MARK_SLOT} height={MARK_SLOT} viewBox={`0 0 ${MARK_SLOT} ${MARK_SLOT}`}>
       {kind === 'posted' ? (
         <Circle cx={mid} cy={mid} r={DOT_DIAMETER / 2} fill={color.ink} />
+      ) : kind === 'skipped' ? (
+        <Rect
+          x={mid - DASH_WIDTH / 2}
+          y={mid - DASH_HEIGHT / 2}
+          width={DASH_WIDTH}
+          height={DASH_HEIGHT}
+          fill={color.ink}
+        />
       ) : kind === 'today' ? (
         <Circle
           cx={mid}
@@ -38,15 +49,18 @@ function Mark({ kind }: { kind: 'posted' | 'today' | 'other' }) {
  * 2 has a place to send it). Everything comes from the server: the letters, the weekday names,
  * the counts and which day is today (`week.today_index`), so there is no date maths here.
  *
- * Marks, by precedence: a posted day is a filled ink dot; today, not posted, is an ink ring;
- * any other day (still to come, or past with nothing) is a small `divider` dot. Phase 3 adds
- * the dash for a skipped day.
+ * Marks, by precedence: a posted day is a filled ink dot; a skipped day is a short ink dash
+ * (`days[i].skipped`, whatever else is true of it); today, not posted and not skipped, is an ink
+ * ring; any other day (still to come, or past with nothing) is a small `divider` dot. Every
+ * letter stays `muted`. The spoken description names each day as posted, skipped or not posted.
  */
 export function WeeklyCard({ week, bonusHeld }: { week: Week; bonusHeld: boolean }) {
   const spoken = [
     `${week.posted} of ${week.goal} this week.`,
     bonusHeld ? 'You have a bonus spin.' : null,
-    week.days.map((day) => `${day.weekday} ${day.posted ? 'posted' : 'not posted'}`).join(', '),
+    week.days
+      .map((day) => `${day.weekday} ${day.posted ? 'posted' : day.skipped === true ? 'skipped' : 'not posted'}`)
+      .join(', '),
   ]
     .filter((part): part is string => part !== null)
     .join(' ');
@@ -90,7 +104,13 @@ export function WeeklyCard({ week, bonusHeld }: { week: Week; bonusHeld: boolean
 
       <View style={{ marginTop: space.sm, flexDirection: 'row' }}>
         {week.days.map((day, index) => {
-          const kind = day.posted ? 'posted' : index === week.today_index ? 'today' : 'other';
+          const kind = day.posted
+            ? 'posted'
+            : day.skipped === true
+              ? 'skipped'
+              : index === week.today_index
+                ? 'today'
+                : 'other';
           return (
             <View key={day.date} style={{ flex: 1, alignItems: 'center' }}>
               <Text

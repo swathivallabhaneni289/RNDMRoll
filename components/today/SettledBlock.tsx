@@ -1,5 +1,6 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { StarDisplay } from '@/components/entry/StarDisplay';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { AppText } from '@/components/ui/AppText';
@@ -26,10 +27,12 @@ const STRIKE_OVERHANG = 4;
  * right the category, the title, the stars and the reaction. Everything comes from `Today.entry`
  * and the shown spin's category name: no second request and no loading state. 'Posted late.' sits
  * under the row, a hairline closes it; an entry that was deleted leaves one line in its place
- * (the day still counts). Plan 03-03 adds the link that opens the entry page, in the text column.
+ * (the day still counts). 'View entry' sits at the bottom of the text column, outside the spoken
+ * group so it stays its own button, and opens the entry page with `from` = 'today'.
  */
 function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; categoryName: string }) {
   const reduceMotion = useReduceMotion();
+  const router = useRouter();
 
   if (entry === null) {
     return (
@@ -111,6 +114,28 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
                 </Text>
               ) : null}
             </View>
+          </View>
+          <View style={{ marginTop: space.sm, alignItems: 'flex-start' }}>
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: '/(app)/today/entry', params: { id: entry.id, from: 'today' } })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="View entry"
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 16 }}
+            >
+              <Text
+                style={{
+                  fontFamily: type.body.fontFamily,
+                  fontSize: type.body.fontSize,
+                  lineHeight: type.body.lineHeight,
+                  color: color.ink,
+                  textDecorationLine: 'underline',
+                }}
+              >
+                View entry
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
