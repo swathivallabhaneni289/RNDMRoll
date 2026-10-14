@@ -40,11 +40,12 @@ export function SpinTabButton() {
   const snapshot = useTodaySnapshot(userId);
 
   const state = snapshot.today?.state ?? null;
+  const settled = state === 'posted' || state === 'skipped';
   const open = state === 'open' && !snapshot.spinning;
   const hint =
     state === 'open'
       ? "Spins today's wheel."
-      : state === 'waiting'
+      : state === 'waiting' || settled
         ? 'Shows the wheel. It opens at 8:00 PM.'
         : "Shows today's spin.";
 
@@ -52,6 +53,11 @@ export function SpinTabButton() {
     // The request goes first, then the navigation: with unsaved changes in Edit wheel the
     // navigation opens the leave sheet, whose guard clears the request (plan 02-02 decision 4).
     // The other way round the guard would clear a flag that is not set yet.
+    if (settled) {
+      // Home already shows the posted or skipped day; the Spin button shows the wheel at rest.
+      router.navigate('/(app)/today/wheel');
+      return;
+    }
     if (userId !== null) requestPendingSpin(userId);
     router.navigate('/(app)/today');
   }
