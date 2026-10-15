@@ -31,6 +31,7 @@ import (
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -204,6 +205,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Spin:      NewSpinHandler(spinSvc),
 		Wheel:     NewWheelHandler(spinSvc),
 		Entry:     NewEntryHandler(spinSvc, entryPhotos),
+		Diary:     NewDiaryHandler(diary.NewService(postgres.NewDiaryReader(pool), spinClock, diary.ZeroFriends{}), entryPhotos),
 		Users:     users,
 		JWTSecret: integrationJWTSecret,
 		Logger:    logger,

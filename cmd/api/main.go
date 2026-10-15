@@ -17,6 +17,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/config"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
@@ -105,6 +106,10 @@ func main() {
 	// the spin handler the photo store's links.
 	entryHandler := httpapi.NewEntryHandler(spinService, entryPhotos)
 
+	// The diary and the Profile summary only read, through the pool, on the
+	// same clock as the spin service. Friends are 0 until Phase 5.
+	diaryService := diary.NewService(postgres.NewDiaryReader(pool), spinClock, diary.ZeroFriends{})
+
 	deps := httpapi.Deps{
 		Auth:      authHandler,
 		Profile:   profileHandler,
@@ -113,6 +118,7 @@ func main() {
 		Spin:      httpapi.NewSpinHandler(spinService),
 		Wheel:     httpapi.NewWheelHandler(spinService),
 		Entry:     entryHandler,
+		Diary:     httpapi.NewDiaryHandler(diaryService, entryPhotos),
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,
 		Logger:    logger,

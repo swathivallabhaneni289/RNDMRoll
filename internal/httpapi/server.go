@@ -44,6 +44,9 @@ type Deps struct {
 	// cover photo's link.
 	Entry *EntryHandler
 
+	// Diary is GET /diary and GET /me/summary. Registered only when not nil.
+	Diary *DiaryHandler
+
 	Users     user.Repository
 	JWTSecret []byte
 	Logger    *slog.Logger
@@ -123,6 +126,9 @@ func NewServer(deps Deps) *Server {
 	}
 	if deps.Entry != nil {
 		deps.Entry.Register(authed)
+	}
+	if deps.Diary != nil {
+		deps.Diary.Register(authed)
 	}
 	if deps.TestTools != nil {
 		deps.TestTools.Register(authed)
