@@ -285,3 +285,59 @@ no block. The rest is unchanged:
 15. The shared test database is restored to migration version 7 after the suite run, so the main
     tree, which has no 0008 file yet, can still run its tests. The suite migrates it to 8 again on
     its next run from this branch.
+
+## Replies (added 2026-10-16)
+
+Instagram-style replies to comments, one level. Server commit `44c8f20`, app commit `80e3662`.
+
+- Migration `0009_comment_replies` (up and down): `post_comments.parent_id uuid null references
+  post_comments(id) on delete cascade`, and the index `post_comments_parent_idx (parent_id,
+  created_at, id) where parent_id is not null`. Down drops both; replies stay as plain comments.
+- `POST /v1/posts/{entry_id}/comments` body: `{"text": string, "parent_id": uuid|null}`.
+  `parent_id` is optional; missing or null is a top-level comment.
+  - A `parent_id` that is not a string, or a string that is not a UUID (`""` too), is 400 field
+    `parent_id` (`invalid`). It is checked at the bind, before anything else.
+  - Check order after the bind: post not visible (404), `comments_off` (409, for replies too, and
+    before the parent is looked at), parent not found (404 `not_found`), then the text (400, the
+    same rules as a comment).
+  - "Not found" for the parent means: not on this post, missing, or not shown to the caller (its
+    writer, or for a reply its top-level comment's writer, has a block with the caller).
+  - A reply to a reply is stored under that reply's top-level comment. The answer's `parent_id`
+    is always a top-level comment id.
+- `Comment` = `{"id","author":Person,"text","at","at_label","can_delete","parent_id": uuid|null}`.
+  The key is always present: null on a top-level comment, the top-level comment's id on a reply.
+- `Post.comments` stays ONE flat list: top-level comments oldest first, each followed directly
+  by its replies oldest first.
+- Blocks hide a reply like a comment. A reply under a top-level comment hidden from the viewer is
+  left out too, and is not counted. `Card.comment_count` and the post's count include replies and
+  use the same rule.
+- Delete is unchanged (`POST /v1/comments/{id}/delete`, the writer or the post's owner). Deleting
+  a top-level comment deletes its replies (cascade). The top-level comment's writer cannot delete
+  replies under it.
+- New notification kind `"reply"`: `Item.kind` adds `"reply"`.
+  - `id` is `reply:<reply comment id>` and `actor` is the reply's writer.
+  - It also carries `entry_id`, `category_name` (as written) and `text` (cut at 60 plus `...`, as
+    for `comment`); `reaction` and `request_id` are null.
+  - It goes to the writer of the top-level comment the reply is stored under, unless they wrote
+    the reply.
+  - It shows only while that post is visible to them by the `CanView` rule, and with no block
+    with the reply's writer.
+  - The post's owner still gets a `comment` item (`comment:<reply id>`) for a reply by someone
+    else. The exception: when the owner wrote the top-level comment, the owner gets only the
+    `reply` item. A reply under a top-level comment whose writer has a block with the owner makes
+    no item.
+  - The `comments` setting off hides `reply` items too, and they no longer count for the unread
+    flag.
+- The item does not say whose post it is. The app reads `GET /v1/posts/{entry_id}` on tap:
+  `card.mine` opens your entry page, otherwise the post page. The Spin stack gains
+  `app/(app)/today/post.tsx`.
+- Tests:
+  - `internal/httpapi/replies_integration_test.go`: the round trip, the order, a reply to a reply
+    flattened, a parent on another post (404), a bad `parent_id` (400), `comments_off`, deleting
+    replies, blocks, notifications with no duplicate for the owner, and the settings filter;
+  - `internal/store/postgres/comment_replies_test.go`: 0009 down and up, plus cascade;
+  - `TestThread` in `internal/board`.
+- Full suite on `rndmroll_test` with `-p 1`: 417 top-level tests pass, 984 with subtests, 0 fail,
+  0 skip.
+- The shared test database is put back to migration version **8** after the run. The suite
+  migrates it to 9 again on its next run from this branch.
