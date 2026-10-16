@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { AppText } from '@/components/ui/AppText';
@@ -11,6 +12,11 @@ import { COMMENT_MAX } from '@/lib/entry/rules';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 const AVATAR = 28;
+/** A reply's round initial is smaller, and the reply sits one step in under its comment. */
+const REPLY_AVATAR = 20;
+const REPLY_INSET = space.xl;
+/** The close mark on the 'Replying to' line. */
+const REPLY_CLOSE = 18;
 const FIELD_HEIGHT = 44;
 const REACTION_SIZE = 22;
 
@@ -51,23 +57,31 @@ export function CommentsRule({ count }: { count: number | null }) {
 /**
  * The comments, oldest first (05-UI-SPEC 4.1): the round initial, the first name ('You' for your
  * own), the server's time label, 'Delete' where the server says the caller may, and the text. Delete
- * asks first with the phone's own alert (no red button, no fade).
+ * asks first with the phone's own alert (no red button, no fade). Replies come in the server's
+ * order, right after their comment, one step in with a smaller initial and no rule above them.
+ * With `onReply` (commenting is on) every comment and reply has a quiet 'Reply' under its text;
+ * deleting a comment takes its replies with it.
  */
 export function CommentList({
   comments,
   myId,
   onDelete,
+  onReply,
 }: {
   comments: Comment[];
   myId: string | null;
   onDelete: (id: string) => Promise<string | null>;
+  onReply?: (comment: Comment) => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
   function askDelete(comment: Comment) {
     if (busyId !== null) return;
-    Alert.alert('Delete this comment?', 'It will be gone for good.', [
+    const hasReplies = comment.parent_id === null && comments.some((item) => item.parent_id === comment.id);
+    const title = comment.parent_id !== null ? 'Delete this reply?' : 'Delete this comment?';
+    const detail = hasReplies ? 'It will be gone for good, with its replies.' : 'It will be gone for good.';
+    Alert.alert(title, detail, [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Delete',
@@ -90,19 +104,23 @@ export function CommentList({
       {comments.map((comment, index) => {
         const mine = myId !== null && comment.author.id === myId;
         const name = mine ? 'You' : firstName(comment.author);
+        const isReply = comment.parent_id !== null;
+        const kind = isReply ? 'reply' : 'comment';
         return (
           <View
             key={comment.id}
             style={{
               flexDirection: 'row',
-              paddingVertical: space.md,
-              borderTopWidth: index === 0 ? 0 : 1,
+              marginLeft: isReply ? REPLY_INSET : 0,
+              paddingTop: isReply ? space.xs : space.md,
+              paddingBottom: space.md,
+              borderTopWidth: index === 0 || isReply ? 0 : 1,
               borderTopColor: color.divider,
             }}
           >
             <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <SizedAvatar
-                size={AVATAR}
+                size={isReply ? REPLY_AVATAR : AVATAR}
                 name={comment.author.name || comment.author.username}
                 uri={comment.author.photo_url}
                 placeholder="initials"
@@ -112,7 +130,7 @@ export function CommentList({
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View
                   accessible
-                  accessibilityLabel={`${name}, ${comment.at_label}: ${comment.text}`}
+                  accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${comment.at_label}: ${comment.text}`}
                   style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline' }}
                 >
                   <AppText role="button" numberOfLines={1}>
@@ -129,7 +147,7 @@ export function CommentList({
                     onPress={() => askDelete(comment)}
                     disabled={busyId !== null}
                     accessibilityRole="button"
-                    accessibilityLabel={`Delete comment by ${name}`}
+                    accessibilityLabel={`Delete ${kind} by ${name}`}
                     hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
                   >
                     <Text style={{ ...labelText, color: color.muted, textDecorationLine: 'underline' }}>
@@ -141,6 +159,17 @@ export function CommentList({
               <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
                 <AppText role="body">{comment.text.replace(/\s*\n\s*/g, ' ')}</AppText>
               </View>
+              {onReply ? (
+                <Pressable
+                  onPress={() => onReply(comment)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reply to ${mine ? 'your' : `${name}'s`} ${kind}`}
+                  hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
+                  style={{ alignSelf: 'flex-start', marginTop: space.xs }}
+                >
+                  <Text style={{ ...labelText, color: color.muted }}>Reply</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         );
@@ -158,14 +187,42 @@ export function CommentList({
  * The comment bar (05-UI-SPEC 4.2): a round field 'Add a comment' and the word 'Post'. It sends
  * once (a ref blocks a second tap) and clears only when the server took it; a failure keeps the
  * text and shows one quiet line above the bar. Pinned at the bottom of the page above the safe area.
+ *
+ * Reply mode (`replyTo` set, from a comment's 'Reply'): a small line 'Replying to {name}' with a
+ * close mark sits above the field, the field gets '@username ' in front and the keyboard comes up;
+ * the send is a reply. The close mark ends reply mode (and takes away the '@username ' if nothing
+ * else was typed).
  */
-export function CommentBar({ onSend }: { onSend: (text: string) => Promise<string | null> }) {
+export function CommentBar({
+  onSend,
+  replyTo = null,
+  onCancelReply,
+}: {
+  onSend: (text: string) => Promise<string | null>;
+  replyTo?: Comment | null;
+  onCancelReply?: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const sendingRef = useRef(false);
+  const inputRef = useRef<TextInput>(null);
   const canSend = text.trim().length > 0 && text.trim().length <= COMMENT_MAX && !sending;
+  const mention = replyTo !== null && replyTo.author.username !== '' ? `@${replyTo.author.username}` : '';
+
+  // Each Reply tap is a new object, so tapping Reply again refills and focuses the field.
+  useEffect(() => {
+    if (replyTo === null) return;
+    const username = replyTo.author.username;
+    if (username !== '') setText((before) => `@${username} ${before.replace(/^@\S+\s*/, '')}`.slice(0, COMMENT_MAX));
+    inputRef.current?.focus();
+  }, [replyTo]);
+
+  function cancelReply() {
+    if (mention !== '' && text.trim() === mention) setText('');
+    onCancelReply?.();
+  }
 
   async function send() {
     if (!canSend || sendingRef.current) return;
@@ -178,6 +235,8 @@ export function CommentBar({ onSend }: { onSend: (text: string) => Promise<strin
     if (failure === null) setText('');
     else setMessage(failure);
   }
+
+  const replyName = replyTo !== null ? firstName(replyTo.author) || replyTo.author.username : '';
 
   return (
     <View
@@ -195,13 +254,32 @@ export function CommentBar({ onSend }: { onSend: (text: string) => Promise<strin
           <QuietNote text={message} />
         </View>
       ) : null}
+      {replyTo !== null ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.sm }}>
+          <View style={{ flex: 1 }} accessibilityLiveRegion="polite">
+            <AppText role="label" tone="muted" numberOfLines={1}>
+              {`Replying to ${replyName}`}
+            </AppText>
+          </View>
+          <Pressable
+            onPress={cancelReply}
+            accessibilityRole="button"
+            accessibilityLabel={`Stop replying to ${replyName}`}
+            hitSlop={(minTouchTarget - REPLY_CLOSE) / 2}
+            style={{ marginLeft: space.sm }}
+          >
+            <Ionicons name="close" size={REPLY_CLOSE} color={color.muted} />
+          </Pressable>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TextInput
+          ref={inputRef}
           value={text}
           onChangeText={setText}
-          placeholder="Add a comment"
+          placeholder={replyTo !== null ? 'Add a reply' : 'Add a comment'}
           placeholderTextColor={color.muted}
-          accessibilityLabel="Add a comment"
+          accessibilityLabel={replyTo !== null ? `Reply to ${replyName}` : 'Add a comment'}
           maxLength={COMMENT_MAX}
           autoCapitalize="sentences"
           multiline
@@ -226,7 +304,7 @@ export function CommentBar({ onSend }: { onSend: (text: string) => Promise<strin
           onPress={() => void send()}
           disabled={!canSend}
           accessibilityRole="button"
-          accessibilityLabel="Post comment"
+          accessibilityLabel={replyTo !== null ? 'Post reply' : 'Post comment'}
           accessibilityState={{ disabled: !canSend, busy: sending }}
           hitSlop={8}
           style={{ marginLeft: space.md, minHeight: minTouchTarget, minWidth: minTouchTarget, alignItems: 'center', justifyContent: 'center' }}

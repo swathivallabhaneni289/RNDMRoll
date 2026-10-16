@@ -13,6 +13,7 @@ import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
 export type NotificationKind =
   | 'reaction'
   | 'comment'
+  | 'reply'
   | 'follow'
   | 'follow_request'
   | 'follow_accepted'
@@ -33,7 +34,10 @@ export type NotificationItem = {
   entry_id: string | null;
   category_name: string | null;
   reaction: ReactionName | null;
-  /** A comment's text, already cut by the server. */
+  /**
+   * A comment's or reply's text, already cut by the server. A `reply` item is a reply to your
+   * comment, on your own entry or on someone else's post (`entry_id` is that post).
+   */
   text: string | null;
   /** Set on `follow_request` items (they exist only while the request is pending). */
   request_id: string | null;
@@ -42,6 +46,7 @@ export type NotificationItem = {
 const KINDS: readonly NotificationKind[] = [
   'reaction',
   'comment',
+  'reply',
   'follow',
   'follow_request',
   'follow_accepted',

@@ -9,6 +9,7 @@ import { UnreadDot } from '@/components/notifications/BellButton';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
+import { getPost } from '@/lib/api/board';
 import { ApiError } from '@/lib/api/client';
 import {
   getNotifications,
@@ -53,6 +54,10 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
       };
     case 'comment': {
       const rest = item.text ? ` commented on your ${category}: "${item.text}"` : ` commented on your ${category}.`;
+      return { name, rest, spoken: `${name}${rest}` };
+    }
+    case 'reply': {
+      const rest = item.text ? ` replied to your comment: "${item.text}"` : ' replied to your comment.';
       return { name, rest, spoken: `${name}${rest}` };
     }
     case 'follow':
@@ -110,7 +115,8 @@ function RowMark({ item }: { item: NotificationItem }) {
  * Opening it marks everything seen, so the bell's dot goes out; the dots it loaded with stay until
  * the person leaves. Follow requests are one row at the top ("Follow requests", the first name,
  * the count) that opens their own page with Accept and Decline. A tap opens your own entry page
- * (a reaction or comment), People (a follow), or the Spin page (your spin is open, a bonus spin).
+ * (a reaction or comment), the post a reply is on (your entry page when it is yours), People (a
+ * follow), or the Spin page (your spin is open, a bonus spin).
  * No bottom bar, so the page keeps all four safe-area edges.
  */
 export function NotificationsScreen() {
@@ -121,6 +127,7 @@ export function NotificationsScreen() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
   const itemsRef = useRef<NotificationItem[] | null>(null);
+  const openingRef = useRef(false);
 
   const load = useCallback(async () => {
     if (userId === null) return;
@@ -156,13 +163,51 @@ export function NotificationsScreen() {
     else router.replace('/(app)/today');
   }
 
+  /** Your own entry page, in this stack, with Back reading 'Notifications'. */
+  function openEntry(entryId: string) {
+    router.push({
+      pathname: '/(app)/today/entry',
+      params: { id: entryId, via: 'notifications' },
+    });
+  }
+
+  /** Someone else's post, in this stack, with Back reading 'Notifications'. */
+  function openPost(entryId: string) {
+    router.push({
+      pathname: '/(app)/today/post',
+      params: { id: entryId, via: 'notifications' },
+    });
+  }
+
+  /**
+   * A reply can be on your own entry or on someone else's post, and the item does not say which:
+   * one read of the post decides (your own opens your entry page). If the read fails, the post
+   * page opens and shows its own gone or offline state.
+   */
+  async function openReply(entryId: string) {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    let mine = false;
+    try {
+      mine = (await getPost(entryId)).card.mine;
+    } catch {
+      mine = false;
+    } finally {
+      openingRef.current = false;
+    }
+    if (mine) openEntry(entryId);
+    else openPost(entryId);
+  }
+
   function open(item: NotificationItem) {
     if (item.kind === 'reaction' || item.kind === 'comment') {
       if (item.entry_id === null) return;
-      router.push({
-        pathname: '/(app)/today/entry',
-        params: { id: item.entry_id, via: 'notifications' },
-      });
+      openEntry(item.entry_id);
+      return;
+    }
+    if (item.kind === 'reply') {
+      if (item.entry_id === null) return;
+      void openReply(item.entry_id);
       return;
     }
     if (item.kind === 'spin_open' || item.kind === 'bonus_spin') {

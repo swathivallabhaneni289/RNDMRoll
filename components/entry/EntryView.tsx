@@ -239,7 +239,8 @@ function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean 
 /**
  * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the details, who
  * reacted (a name and the character, or 'No reactions yet.') and the comments, oldest first, each
- * with 'Delete' (the owner may delete any). Read from GET /posts/{entry_id}; until that answers, or
+ * with 'Delete' (the owner may delete any), its replies under it, and 'Reply' while commenting is
+ * on (the bar at the bottom then sends a reply). Read from GET /posts/{entry_id}; until that answers, or
  * if it cannot, nothing is drawn here and the rest of the page is unchanged.
  */
 function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null }) {
@@ -254,7 +255,12 @@ function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null
           <CommentsRule count={post.card.comment_count ?? comments.length} />
         </View>
       ) : null}
-      <CommentList comments={comments} myId={myId} onDelete={social.remove} />
+      <CommentList
+        comments={comments}
+        myId={myId}
+        onDelete={social.remove}
+        onReply={post.can_comment ? social.startReply : undefined}
+      />
     </View>
   );
 }
@@ -472,7 +478,7 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
           ) : null}
           {social.status === 'ready' && social.post !== null ? (
             social.post.can_comment ? (
-              <CommentBar onSend={social.comment} />
+              <CommentBar onSend={social.comment} replyTo={social.replyTo} onCancelReply={social.cancelReply} />
             ) : (
               <CommentsOffBar />
             )

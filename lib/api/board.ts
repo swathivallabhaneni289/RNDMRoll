@@ -48,6 +48,11 @@ export type Comment = {
   /** "8:52 PM", "Mon" or "Oct 3" in the viewer's zone, written by the server. */
   at_label: string;
   can_delete: boolean;
+  /**
+   * Set on a reply: the top-level comment it sits under (one level; the server stores a reply to a
+   * reply under that top-level comment). Null for a top-level comment.
+   */
+  parent_id: string | null;
 };
 
 export type Received = { person: Person; reaction: ReactionName; at: string };
@@ -56,7 +61,10 @@ export type Post = {
   card: Card;
   /** The author's own comment on the entry. */
   note: string | null;
-  /** Null when the caller may not see comments (Phase 6). Oldest first. */
+  /**
+   * Null when the caller may not see comments (Phase 6). One flat list: the top-level comments
+   * oldest first, each followed directly by its replies oldest first.
+   */
   comments: Comment[] | null;
   can_react: boolean;
   /** False when the owner switched commenting off (or the caller may not comment). */
@@ -152,6 +160,7 @@ function readComment(raw: Raw): Comment | null {
     at: text(raw.at),
     at_label: text(raw.at_label),
     can_delete: raw.can_delete === true,
+    parent_id: textOrNull(raw.parent_id),
   };
 }
 
@@ -254,10 +263,16 @@ export async function setReaction(entryId: string, next: ReactionName | null): P
   return reaction(raw?.my_reaction);
 }
 
-/** POST /posts/{entry_id}/comments {text}: 201 with the stored comment; 409 `comments_off`. */
-export async function addComment(entryId: string, body: string): Promise<Comment> {
+/**
+ * POST /posts/{entry_id}/comments {text, parent_id?}: 201 with the stored comment; 409
+ * `comments_off`. With `parentId` it is a reply to that comment (404 when that comment is gone).
+ */
+export async function addComment(entryId: string, body: string, parentId: string | null = null): Promise<Comment> {
   checkId(entryId);
-  const raw = await api.post<Raw>(`/posts/${entryId}/comments`, { text: body });
+  const raw = await api.post<Raw>(
+    `/posts/${entryId}/comments`,
+    parentId !== null ? { text: body, parent_id: parentId } : { text: body }
+  );
   const comment = readComment((raw?.comment ?? {}) as Raw);
   if (comment === null) throw new ApiError(0, 'server_error');
   return comment;
@@ -274,13 +289,15 @@ export async function deleteComment(commentId: string): Promise<void> {
 }
 
 /** The line for a failed reaction or comment. No red: the screens print it in ink. */
-export function socialErrorMessage(err: unknown, what: 'reaction' | 'comment' | 'other'): string {
+export function socialErrorMessage(err: unknown, what: 'reaction' | 'comment' | 'reply' | 'other'): string {
   if (err instanceof ApiError) {
     if (err.code === 'network_unavailable') return err.userMessage;
     if (err.code === 'comments_off') return 'Commenting is off.';
+    if (what === 'reply' && err.code === 'not_found') return "That comment isn't here any more.";
     if (err.code === 'rate_limited') return err.userMessage;
   }
   if (what === 'reaction') return "Couldn't save that. Please try again.";
   if (what === 'comment') return "Couldn't post your comment. Please try again.";
+  if (what === 'reply') return "Couldn't post your reply. Please try again.";
   return 'Something went wrong. Please try again.';
 }

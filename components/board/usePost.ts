@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
-import { addComment, deleteComment, getPost, setReaction, socialErrorMessage, type Post } from '@/lib/api/board';
+import { addComment, deleteComment, getPost, setReaction, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import type { ReactionName } from '@/lib/entry/reactions';
 import { isEntryId } from '@/lib/entry/rules';
 
@@ -12,11 +12,33 @@ export type PostLoad = {
   reload: () => void;
   /** Sets your reaction at once and sends it; on a failure it goes back and the line is returned. */
   react: (next: ReactionName | null) => Promise<string | null>;
-  /** Sends a comment once; on success it is added at the end. Returns the failure line or null. */
+  /**
+   * Sends a comment once, or a reply to `replyTo` while one is chosen; on success a comment is
+   * added at the end and a reply after the last reply of its top-level comment, and reply mode
+   * ends. Returns the failure line or null.
+   */
   comment: (text: string) => Promise<string | null>;
-  /** Deletes a comment; 'not found' counts as done. Returns the failure line or null. */
+  /** Deletes a comment (and, for a top-level one, its replies); 'not found' counts as done. */
   remove: (commentId: string) => Promise<string | null>;
+  /** The comment the bar is replying to, or null for a plain comment. */
+  replyTo: Comment | null;
+  /** Puts the bar into reply mode for `comment` (each tap is a new choice, so the bar refills). */
+  startReply: (comment: Comment) => void;
+  cancelReply: () => void;
 };
+
+/** `list` with `saved` placed after the last comment of its thread (a reply), or at the end. */
+function placeComment(list: Comment[], saved: Comment): Comment[] {
+  const rest = list.filter((item) => item.id !== saved.id);
+  const top = saved.parent_id;
+  if (top === null) return [...rest, saved];
+  let at = -1;
+  rest.forEach((item, index) => {
+    if (item.id === top || item.parent_id === top) at = index;
+  });
+  if (at === -1) return [...rest, saved];
+  return [...rest.slice(0, at + 1), saved, ...rest.slice(at + 1)];
+}
 
 /**
  * One post (GET /posts/{entry_id}) for the post page and for the extras of your own entry page.
@@ -35,6 +57,8 @@ export function usePost(id: string): PostLoad {
   const mountedRef = useRef(true);
   const reactingRef = useRef(false);
   const commentingRef = useRef(false);
+  const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  const replyToRef = useRef<Comment | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -103,31 +127,46 @@ export function usePost(id: string): PostLoad {
     [id, put]
   );
 
+  const chooseReply = useCallback((next: Comment | null) => {
+    replyToRef.current = next;
+    setReplyTo(next);
+  }, []);
+
+  const startReply = useCallback((target: Comment) => chooseReply({ ...target }), [chooseReply]);
+  const cancelReply = useCallback(() => chooseReply(null), [chooseReply]);
+
   const comment = useCallback(
     async (text: string): Promise<string | null> => {
       const body = text.trim();
       if (body === '' || commentingRef.current || postRef.current === null) return null;
       commentingRef.current = true;
+      const parent = replyToRef.current;
       try {
-        const saved = await addComment(id, body);
+        const saved = await addComment(id, body, parent?.id ?? null);
         const now = postRef.current;
         if (mountedRef.current && now !== null) {
           const list = now.comments ?? [];
           put({
             ...now,
-            comments: [...list.filter((item) => item.id !== saved.id), saved],
+            comments: placeComment(list, saved),
             card: { ...now.card, comment_count: (now.card.comment_count ?? list.length) + 1 },
           });
         }
+        if (mountedRef.current && replyToRef.current === parent) chooseReply(null);
         return null;
       } catch (err) {
         if (err instanceof ApiError && err.code === 'comments_off') void load();
-        return socialErrorMessage(err, 'comment');
+        if (parent !== null && err instanceof ApiError && err.code === 'not_found') {
+          // The comment being answered went away: reply mode ends and the list is read again.
+          if (mountedRef.current && replyToRef.current === parent) chooseReply(null);
+          void load();
+        }
+        return socialErrorMessage(err, parent !== null ? 'reply' : 'comment');
       } finally {
         commentingRef.current = false;
       }
     },
-    [id, put, load]
+    [id, put, load, chooseReply]
   );
 
   const remove = useCallback(
@@ -137,7 +176,10 @@ export function usePost(id: string): PostLoad {
         const now = postRef.current;
         if (mountedRef.current && now !== null) {
           const list = now.comments ?? [];
-          const left = list.filter((item) => item.id !== commentId);
+          // A top-level comment goes with its replies.
+          const left = list.filter((item) => item.id !== commentId && item.parent_id !== commentId);
+          const target = replyToRef.current;
+          if (target !== null && !left.some((item) => item.id === target.id)) chooseReply(null);
           put({
             ...now,
             comments: left,
@@ -149,8 +191,8 @@ export function usePost(id: string): PostLoad {
         return socialErrorMessage(err, 'other');
       }
     },
-    [put]
+    [put, chooseReply]
   );
 
-  return { status, failure, post, reload: () => void load(), react, comment, remove };
+  return { status, failure, post, reload: () => void load(), react, comment, remove, replyTo, startReply, cancelReply };
 }

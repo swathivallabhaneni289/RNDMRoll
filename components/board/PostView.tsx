@@ -13,7 +13,7 @@ import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
-import type { Post } from '@/lib/api/board';
+import type { Comment, Post } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { starsSpoken } from '@/lib/entry/stars';
@@ -31,11 +31,13 @@ function Details({
   myId,
   onReact,
   onDelete,
+  onReply,
 }: {
   post: Post;
   myId: string | null;
   onReact: (next: Post['card']['my_reaction']) => void;
   onDelete: (id: string) => Promise<string | null>;
+  onReply: (comment: Comment) => void;
 }) {
   const card = post.card;
   const own = REACTIONS.find((item) => item.name === card.reaction) ?? null;
@@ -106,7 +108,7 @@ function Details({
         <View style={{ marginTop: space.md }}>
           <CommentsRule count={card.comment_count ?? comments.length} />
         </View>
-        <CommentList comments={comments} myId={myId} onDelete={onDelete} />
+        <CommentList comments={comments} myId={myId} onDelete={onDelete} onReply={post.can_comment ? onReply : undefined} />
       </View>
     </View>
   );
@@ -116,10 +118,12 @@ function Details({
  * Someone else's post (05-UI-SPEC section 4, the developer's picture 10), pushed in the Board's
  * stack with no bottom bar: the Back row, the author row, the photos edge to edge (swipe for more),
  * the title with the stars and their reaction, their note, the row of six reactions (yours ringed;
- * tap to set, tap again to clear), the comments oldest first, and the comment bar at the bottom.
- * When the owner switched commenting off the bar is replaced by 'Commenting is off.'.
+ * tap to set, tap again to clear), the comments oldest first with their replies under each, and
+ * the comment bar at the bottom ('Reply' on a comment turns it into a reply). When the owner
+ * switched commenting off the bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
+ * The Spin stack mounts it too (`place` 'today', a reply notification on someone else's post).
  */
-export function PostView({ id, backName }: { id: string; backName: string }) {
+export function PostView({ id, backName, place = 'board' }: { id: string; backName: string; place?: 'board' | 'today' }) {
   const router = useRouter();
   const { user } = useSession();
   const load = usePost(id);
@@ -127,7 +131,7 @@ export function PostView({ id, backName }: { id: string; backName: string }) {
 
   function goBack() {
     if (router.canGoBack()) router.back();
-    else router.replace('/(app)/board');
+    else router.replace(place === 'today' ? '/(app)/today' : '/(app)/board');
   }
 
   async function onReact(next: Post['card']['my_reaction']) {
@@ -159,14 +163,24 @@ export function PostView({ id, backName }: { id: string; backName: string }) {
       {ready ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Details post={post} myId={user?.id ?? null} onReact={(next) => void onReact(next)} onDelete={load.remove} />
+            <Details
+              post={post}
+              myId={user?.id ?? null}
+              onReact={(next) => void onReact(next)}
+              onDelete={load.remove}
+              onReply={load.startReply}
+            />
           </ScrollView>
           {message !== '' ? (
             <View style={{ paddingHorizontal: space.lg, paddingVertical: space.sm }}>
               <QuietNote text={message} />
             </View>
           ) : null}
-          {post.can_comment ? <CommentBar onSend={load.comment} /> : <CommentsOffBar />}
+          {post.can_comment ? (
+            <CommentBar onSend={load.comment} replyTo={load.replyTo} onCancelReply={load.cancelReply} />
+          ) : (
+            <CommentsOffBar />
+          )}
         </KeyboardAvoidingView>
       ) : (
         <View style={{ paddingHorizontal: space.lg, marginTop: space.xl }}>

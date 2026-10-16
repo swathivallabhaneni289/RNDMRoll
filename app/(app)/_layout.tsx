@@ -31,7 +31,7 @@ export const unstable_settings = {
 /** The bar is this tall above the bottom safe area. */
 const BAR_CONTENT_HEIGHT = 56;
 /** Today's pushed pages that show no bottom bar. */
-const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'entry', 'log', 'edit-entry'];
+const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'post', 'entry', 'log', 'edit-entry'];
 /** Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry'];
 /** The Board's pushed pages that show no bottom bar: a post, your entry page and edit entry. */
