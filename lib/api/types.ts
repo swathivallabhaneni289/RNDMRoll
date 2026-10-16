@@ -185,6 +185,9 @@ export interface TodayEntry {
   reaction: ReactionName | null;
   photo_url: string;
   photo_count: number;
+  /** Archived by the owner: the day still counts, and the row says so instead of showing the entry. */
+  archived: boolean;
+  comments_off: boolean;
 }
 
 export interface Today {

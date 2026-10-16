@@ -42,6 +42,14 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
     );
   }
 
+  if (entry.archived) {
+    return (
+      <AppText role="label" tone="muted">
+        This entry is archived. The day still counts.
+      </AppText>
+    );
+  }
+
   const reaction = entry.reaction === null ? null : (REACTIONS.find((item) => item.name === entry.reaction) ?? null);
   const others = entry.photo_count - 1;
   const spoken = [

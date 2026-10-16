@@ -13,7 +13,7 @@ export const STATUS_MESSAGES: Record<StatusKind, string> = {
 };
 
 /**
- * One plain Label line in `destructive`, centred, with the app's primary button "Try again".
+ * One plain Label line in `ink`, centred, with the app's primary button "Try again".
  * What "Try again" does is the caller's business (a retry after a lost connection sends the
  * same request again; the other messages ask the server for Today).
  */
@@ -34,7 +34,7 @@ export function StatusMessage({
           fontFamily: type.label.fontFamily,
           fontSize: type.label.fontSize,
           lineHeight: type.label.lineHeight,
-          color: color.destructive,
+          color: color.ink,
           textAlign: 'center',
         }}
       >

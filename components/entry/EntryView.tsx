@@ -3,18 +3,18 @@ import { Alert, Pressable, ScrollView, Text, useWindowDimensions, View } from 'r
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StarDisplay } from '@/components/entry/StarDisplay';
-import { goToToday } from '@/components/entry/goToToday';
+import { editEntryPath, fromName, fromRoot, goToStart, type EntryFrom } from '@/components/entry/entryFrom';
 import { useEntry } from '@/components/entry/useEntry';
 import { StatusMessage } from '@/components/today/StatusMessage';
+import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import { ApiError } from '@/lib/api/client';
-import { deleteEntry, entryErrorMessage, type Entry } from '@/lib/api/entries';
+import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { formatStars, starsSpoken } from '@/lib/entry/stars';
-import { FadeInUp, ImageReveal, staggerDelay } from '@/lib/motion/primitives';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
@@ -22,14 +22,10 @@ import { dateLineLong } from '@/lib/wheel/format';
 import { applyToday } from '@/lib/wheel/todayStore';
 import { refetchToday } from '@/lib/wheel/useToday';
 
-/** The footer's two halves are at least this tall (UI spec 9), plus the bottom safe area. */
-const FOOTER_MIN_HEIGHT = 56;
 const COUNTER_INSET = 12;
 const COUNTER_PADDING = 6;
 const REACTION_SIZE = 24;
 const RULE_HEIGHT = 20;
-/** The details rise one after another, starting a little after the photo (UI spec 12). */
-const RISE_BASE_MS = 200;
 
 type EntryPhoto = Entry['photos'][number];
 
@@ -120,7 +116,7 @@ function Gallery({ photos, title, reduceMotion }: { photos: EntryPhoto[]; title:
           );
           return (
             <View key={photo.id} style={{ width, height: width, backgroundColor: color.secondary }}>
-              {index === 0 && !reduceMotion ? <ImageReveal style={{ flex: 1 }}>{image}</ImageReveal> : image}
+              {image}
             </View>
           );
         })}
@@ -143,10 +139,9 @@ function Gallery({ photos, title, reduceMotion }: { photos: EntryPhoto[]; title:
   );
 }
 
-/** One detail of the page: it rises after the photo, in order, and just appears under Reduce Motion. */
-function Rise({ index, reduceMotion, children }: { index: number; reduceMotion: boolean; children: ReactNode }) {
-  if (reduceMotion) return <View>{children}</View>;
-  return <FadeInUp delay={staggerDelay(index, RISE_BASE_MS)}>{children}</FadeInUp>;
+/** One detail of the page. It appears at once: the developer does not want fades on the entry page. */
+function Rise({ children }: { index: number; reduceMotion: boolean; children: ReactNode }) {
+  return <View>{children}</View>;
 }
 
 /** The text and rating below the photo (UI spec 9, steps 3 to 7). */
@@ -231,19 +226,20 @@ function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean 
 
 /**
  * The entry page (03-UI-SPEC section 9, the developer's picture 06). A component with a thin route
- * (`app/(app)/today/entry.tsx`), so the Phase 4 diary mounts the same page with `from` = 'diary'.
+ * (`app/(app)/today/entry.tsx`), mounted again by the Diary and Profile stacks with `from` =
+ * 'diary' or 'profile' (Phase 4). `from` names the Back row and the gone-state button and keeps
+ * Edit inside the same stack.
  *
  * Top to bottom: the Back row (the place the person came from), the photos edge to edge, the
  * category and long date, the title, the rating and reaction, the comment, and a pinned
- * 'Edit | Delete' footer where the bottom bar would be (the Tabs layout hides the bar for the
+ * three-dots menu in the Back row (Edit, Delete; the Tabs layout hides the bar for the
  * route name `entry`). The page reloads when it comes back into focus.
  *
  * Delete asks with the phone's own alert (Cancel, and a red Delete). The delete is POST
  * /entries/{id}/delete; the answer's Today goes into the store; 'not found' counts as done.
  */
-export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' }) {
+export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const { user } = useSession();
   const userId = user?.id ?? null;
@@ -260,11 +256,11 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
     };
   }, []);
 
-  const backName = from === 'diary' ? 'Diary' : 'Today';
+  const backName = fromName(from);
 
   function goBack() {
     if (router.canGoBack()) router.back();
-    else router.replace('/(app)/today');
+    else router.replace(fromRoot(from));
   }
 
   async function runDelete() {
@@ -300,11 +296,71 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
       "It will be gone for good. The day still counts as posted, so you can't post again for this day.",
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void runDelete() },
+        { text: 'Delete', onPress: () => void runDelete() },
       ],
       { cancelable: true }
     );
   }
+
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  /** Run after the menu has closed, so an alert or a page never opens under its dim cover. */
+  function fromMenu(action: () => void) {
+    return () => {
+      setMenuOpen(false);
+      setTimeout(action, 0);
+    };
+  }
+
+  /** Archive or put back, then leave: the day stays posted either way. */
+  async function runArchive(archive: boolean) {
+    if (userId === null || deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteMessage(null);
+    const mark = performance.now();
+    try {
+      const answer = archive ? await archiveEntry(id) : await unarchiveEntry(id);
+      applyToday(userId, answer.today, mark);
+      void refetchToday(userId, 'manual');
+      if (archive) goBack();
+      else load.reload();
+    } catch (err) {
+      if (mountedRef.current) setDeleteMessage(entryErrorMessage(err).text);
+    } finally {
+      deletingRef.current = false;
+      if (mountedRef.current) setDeleting(false);
+    }
+  }
+
+  /** Switch commenting on or off. It is saved now and shows once comments exist. */
+  async function runComments(off: boolean) {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteMessage(null);
+    try {
+      await updateEntry(id, { comments_off: off });
+      load.reload();
+    } catch (err) {
+      if (mountedRef.current) setDeleteMessage(entryErrorMessage(err).text);
+    } finally {
+      deletingRef.current = false;
+      if (mountedRef.current) setDeleting(false);
+    }
+  }
+
+  const archived = load.entry?.archived === true;
+  const commentsOff = load.entry?.comments_off === true;
+  const menuItems: MenuItem[] = [
+    { label: 'Edit', onPress: fromMenu(() => router.push({ pathname: editEntryPath(from), params: { id } })) },
+    { label: archived ? 'Restore' : 'Archive', onPress: fromMenu(() => void runArchive(!archived)) },
+    {
+      label: commentsOff ? 'Turn on commenting' : 'Turn off commenting',
+      onPress: fromMenu(() => void runComments(!commentsOff)),
+    },
+    { label: 'Delete', onPress: fromMenu(askDelete) },
+  ];
 
   const entry = load.entry;
   const ready = load.status === 'ready' && entry !== null;
@@ -325,6 +381,25 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
             <AppText role="body">{backName}</AppText>
           </View>
         </Pressable>
+        {ready ? (
+          <Pressable
+            onPress={() => !deletingRef.current && setMenuOpen(true)}
+            disabled={deleting}
+            accessibilityRole="button"
+            accessibilityLabel="More"
+            hitSlop={8}
+            style={{
+              position: 'absolute',
+              right: space.lg,
+              width: minTouchTarget,
+              height: minTouchTarget,
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={deleting ? color.muted : color.ink} />
+          </Pressable>
+        ) : null}
       </View>
 
       {ready ? (
@@ -341,7 +416,7 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
                   fontFamily: type.label.fontFamily,
                   fontSize: type.label.fontSize,
                   lineHeight: type.label.lineHeight,
-                  color: color.destructive,
+                  color: color.ink,
                   textAlign: 'center',
                 }}
               >
@@ -349,38 +424,6 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
               </Text>
             </View>
           ) : null}
-
-          <View style={{ borderTopWidth: 1, borderTopColor: color.divider, backgroundColor: color.dominant }}>
-            <View style={{ flexDirection: 'row', minHeight: FOOTER_MIN_HEIGHT }}>
-              <Pressable
-                onPress={() => router.push({ pathname: '/(app)/today/edit-entry', params: { id } })}
-                disabled={deleting}
-                accessibilityRole="button"
-                accessibilityLabel="Edit"
-                accessibilityState={{ disabled: deleting }}
-                style={{ flex: 1, minHeight: FOOTER_MIN_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <AppText role="button" tone={deleting ? 'muted' : 'default'}>
-                  Edit
-                </AppText>
-              </Pressable>
-              <View style={{ width: 1, marginVertical: space.sm, backgroundColor: color.divider }} />
-              <Pressable
-                onPress={askDelete}
-                disabled={deleting}
-                accessibilityRole="button"
-                accessibilityLabel="Delete"
-                accessibilityHint="Asks first."
-                accessibilityState={{ disabled: deleting }}
-                style={{ flex: 1, minHeight: FOOTER_MIN_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <AppText role="button" tone={deleting ? 'muted' : 'destructive'}>
-                  Delete
-                </AppText>
-              </Pressable>
-            </View>
-            <View style={{ height: insets.bottom }} />
-          </View>
         </>
       ) : (
         <View style={{ paddingHorizontal: space.lg, marginTop: space.xl }}>
@@ -394,12 +437,13 @@ export function EntryView({ id, from }: { id: string; from: 'today' | 'diary' })
             <View style={{ alignItems: 'flex-start' }}>
               <AppText role="body">This entry isn't here any more.</AppText>
               <View style={{ marginTop: space.lg }}>
-                <TextButton label="Back to Today" onPress={() => goToToday(router)} />
+                <TextButton label={`Back to ${backName}`} onPress={() => goToStart(router, from)} />
               </View>
             </View>
           )}
         </View>
       )}
+      <MenuSheet visible={menuOpen} items={menuItems} onClose={() => setMenuOpen(false)} />
     </SafeAreaView>
   );
 }

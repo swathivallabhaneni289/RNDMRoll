@@ -494,6 +494,10 @@ export function TodayScreen() {
     view !== null ? (
       <View style={{ marginTop: space.lg }}>
         <SettledBlock today={view} />
+        {/* Once the day is settled the page counts down to the next spin. */}
+        <View style={{ marginTop: space.xl, alignItems: 'center' }}>
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+        </View>
       </View>
     ) : null;
   // The word sits halfway between the sentence under the heading and the week section: one
@@ -503,6 +507,9 @@ export function TodayScreen() {
       <View style={{ flexGrow: 1 }}>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
         <SettledBlock today={view} />
+        <View style={{ marginTop: space.xl, alignItems: 'center' }}>
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+        </View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
       </View>
     ) : null;

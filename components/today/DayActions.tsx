@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { entryErrorMessage, skipDay } from '@/lib/api/entries';
@@ -28,11 +28,11 @@ const labelLine = {
 /**
  * What sits under the stamp row of Result and Late (03-UI-SPEC section 3.2, the developer's picture
  * `today-after-spin-02`): in Late the line 'Posting it now would count as late.', then the 'Log it'
- * button, which pushes the entry screen, and under it the quiet underlined link 'Skip this one'.
+ * button, which pushes the entry screen, and under it the outlined button 'Skip it'.
  *
- * Skip asks once with the phone's own alert (Cancel, and a red 'Skip it'), sends the date and
+ * Skip asks once with the phone's own alert (Cancel, and 'Skip it'), sends the date and
  * spin number of the spin that is on screen, and puts the answer's Today into the store; Today
- * then shows Skipped. A skip is final. A failure shows its line under the link; the four state
+ * then shows Skipped. A skip is final. A failure shows its line under the buttons; the four state
  * answers also ask the server for Today again. While a skip runs both controls are inert.
  *
  * Spacing: `xxl` between the stamp row and 'Log it'; when the late line, the bonus link or a
@@ -102,11 +102,11 @@ export function DayActions({
   function askSkip() {
     if (inert || busyRef.current || spin === null) return;
     Alert.alert(
-      'Skip this one?',
+      late ? 'Skip this spin?' : "Skip today's spin?",
       skipBody(spin.local_date, day.week.start, day.week.posted, day.week.goal),
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Skip it', style: 'destructive', onPress: () => void runSkip() },
+        { text: 'Skip it', onPress: () => void runSkip() },
       ],
       { cancelable: true }
     );
@@ -124,33 +124,15 @@ export function DayActions({
         <PrimaryButton label="Log it" onPress={() => router.push('/(app)/today/log')} disabled={inert} />
       </View>
 
-      <View style={{ marginTop: space.md, alignItems: 'center' }}>
-        <Pressable
-          onPress={askSkip}
-          disabled={inert}
-          accessibilityRole="button"
-          accessibilityLabel="Skip this one"
-          accessibilityHint="Asks first."
-          accessibilityState={{ disabled: inert }}
-          hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
-        >
-          <Text
-            style={{
-              fontFamily: type.label.fontFamily,
-              fontSize: type.label.fontSize,
-              lineHeight: type.label.lineHeight,
-              color: color.muted,
-              textDecorationLine: 'underline',
-            }}
-          >
-            Skip this one
-          </Text>
-        </Pressable>
+      {/* The quiet second choice under 'Log it': the same size, outlined, so it reads as a real
+          option and not as fine print. */}
+      <View style={{ marginTop: space.sm }}>
+        <PrimaryButton label="Skip it" variant="outline" onPress={askSkip} disabled={inert} />
       </View>
 
       {message !== null ? (
         <View style={{ marginTop: space.md }} accessibilityLiveRegion="polite">
-          <Text style={{ ...labelLine, color: color.destructive }}>{message}</Text>
+          <Text style={{ ...labelLine, color: color.ink }}>{message}</Text>
         </View>
       ) : null}
     </Step>

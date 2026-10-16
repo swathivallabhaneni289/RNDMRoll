@@ -149,7 +149,7 @@ export default function LoginScreen() {
 
         {formError ? (
           <View style={{ marginTop: space.md }}>
-            <AppText role="body" tone="destructive">
+            <AppText role="body" tone="default">
               {formError}
             </AppText>
           </View>

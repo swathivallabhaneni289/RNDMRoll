@@ -12,7 +12,6 @@ export default function TodayLayout() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.dominant } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="edit-wheel" />
-      <Stack.Screen name="wheel" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="log" />
       <Stack.Screen name="entry" />

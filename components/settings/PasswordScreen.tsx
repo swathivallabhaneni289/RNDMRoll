@@ -175,7 +175,7 @@ export function PasswordScreen() {
 
         {formError !== '' ? (
           <View accessibilityLiveRegion="polite" style={{ marginTop: space.md }}>
-            <AppText role="body" tone="destructive">
+            <AppText role="body" tone="default">
               {formError}
             </AppText>
           </View>

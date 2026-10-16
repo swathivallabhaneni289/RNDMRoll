@@ -295,7 +295,7 @@ export function WheelEditor() {
             </View>
           ) : status === 'error' ? (
             <View style={{ marginTop: space.xl }}>
-              <Text style={{ ...labelText, color: color.destructive, textAlign: 'center' }}>{loadMessage}</Text>
+              <Text style={{ ...labelText, color: color.ink, textAlign: 'center' }}>{loadMessage}</Text>
               <View style={{ marginTop: space.md }}>
                 <PrimaryButton label="Try again" onPress={() => void load()} />
               </View>
@@ -346,12 +346,12 @@ export function WheelEditor() {
                           hitSlop={8}
                           style={{ minHeight: minTouchTarget, justifyContent: 'center', paddingLeft: space.md }}
                         >
-                          <Text style={{ ...labelText, color: atMin ? color.muted : color.destructive }}>Remove</Text>
+                          <Text style={{ ...labelText, color: atMin ? color.muted : color.ink }}>Remove</Text>
                         </Pressable>
                       </View>
                       {problem ? (
                         <View style={{ marginTop: space.xs }} accessibilityLiveRegion="polite">
-                          <Text style={{ ...labelText, color: color.destructive }}>{problem}</Text>
+                          <Text style={{ ...labelText, color: color.ink }}>{problem}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -414,7 +414,7 @@ export function WheelEditor() {
           <View style={{ paddingTop: space.sm, paddingBottom: space.md, backgroundColor: color.dominant }}>
             {saveMessage ? (
               <View style={{ marginBottom: space.sm }} accessibilityLiveRegion="polite">
-                <Text style={{ ...labelText, color: color.destructive, textAlign: 'center' }}>{saveMessage}</Text>
+                <Text style={{ ...labelText, color: color.ink, textAlign: 'center' }}>{saveMessage}</Text>
               </View>
             ) : null}
             <PrimaryButton label="Save wheel" onPress={() => void save()} disabled={!canSave} loading={saving} />
@@ -474,7 +474,7 @@ function NameField({
         height: NAME_FIELD_HEIGHT,
         borderRadius: radius.md,
         borderWidth: focused || hasError ? 1.5 : 1,
-        borderColor: hasError ? color.destructive : focused ? color.ink : color.inkRest,
+        borderColor: hasError ? color.ink : focused ? color.ink : color.inkRest,
         paddingHorizontal: 12,
         fontFamily: type.body.fontFamily,
         fontSize: type.body.fontSize,

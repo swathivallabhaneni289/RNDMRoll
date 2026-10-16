@@ -8,9 +8,8 @@ import { SettingsGear } from '@/components/settings/SettingsGear';
 import { RecentActivity } from '@/components/profile/RecentActivity';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatsRow } from '@/components/profile/StatsRow';
-import { TastesSection } from '@/components/profile/TastesSection';
 import { useProfileSummary } from '@/components/profile/useProfileSummary';
-import type { MeSummary, Taste } from '@/lib/api/summary';
+import type { MeSummary } from '@/lib/api/summary';
 import { useSettingsNotice } from '@/lib/settings/notice';
 import { useSession } from '@/lib/session/store';
 import { minTouchTarget, space } from '@/lib/theme/tokens';
@@ -36,11 +35,8 @@ export type ProfileViewProps = {
   /** The Edit page has just saved. */
   saved: boolean;
   onEdit: () => void;
-  onSeeDiary: () => void;
-  /** Given once the entry page exists; the recent rows are plain until then. */
+  /** Opens a recent post on the entry page; without it the recent rows are plain. */
   onOpenEntry?: (entryId: string) => void;
-  /** Given once the Diary can open on a category; the taste boxes are plain until then. */
-  onSelectTaste?: (taste: Taste) => void;
 };
 
 /**
@@ -50,7 +46,7 @@ export type ProfileViewProps = {
  * Top to bottom: a slim row with the Settings gear at the right (and 'Saved.' at the left for a few
  * seconds after the Edit page saves); the photo in a circle with the name beside it and the
  * @username under the name, and the outlined 'Edit' button at the right; the bio as plain text (it is edited on the Edit page);
- * a dark rule and the three figures; the tastes; the recent activity with its 'See diary' link.
+ * a dark rule and the three figures; the recent activity.
  *
  * Differences from the picture, on purpose: the gear and the bio (asked for in words, the picture
  * draws neither), 'Spins' for 'Rolls', and the section labels at the app's Label size.
@@ -64,9 +60,7 @@ export function ProfileView({
   summary,
   saved,
   onEdit,
-  onSeeDiary,
   onOpenEntry,
-  onSelectTaste,
 }: ProfileViewProps) {
   const shown = summary ?? EMPTY_SUMMARY;
 
@@ -137,10 +131,7 @@ export function ProfileView({
               <StatsRow spins={shown.spins} weekStreak={shown.week_streak} friends={shown.friends} />
             </View>
             <View style={{ marginTop: space.lg }}>
-              <TastesSection tastes={shown.tastes} onSelect={onSelectTaste} />
-            </View>
-            <View style={{ marginTop: space.lg }}>
-              <RecentActivity recent={shown.recent} onSeeDiary={onSeeDiary} onOpenEntry={onOpenEntry} />
+              <RecentActivity recent={shown.recent} onOpenEntry={onOpenEntry} />
             </View>
           </>
         )}
@@ -154,9 +145,9 @@ export function ProfileView({
  * figures and lists, and the 'Saved.' notice from the Edit page. A summary the server cannot give
  * yet (a 404, or no connection) shows zeros and empty lines, never an error screen.
  *
- * Not wired yet, on purpose: `onOpenEntry` waits for Phase 3's entry page and its thin route
- * (`/(app)/profile/entry` with `from: 'profile'`), and `onSelectTaste` waits for the Diary's
- * category filter. Until then those rows and boxes are plain, so nothing here is a dead control.
+ * A recent row opens the entry page inside the Profile stack (`/(app)/profile/entry` with
+ * `from: 'profile'`), so Back reads 'Profile'. There is no tastes section: an average per
+ * category was dropped.
  */
 export function ProfileScreen() {
   const router = useRouter();
@@ -174,7 +165,7 @@ export function ProfileScreen() {
       summary={summary}
       saved={notice === SAVED_NOTICE}
       onEdit={() => router.push('/(app)/profile/edit')}
-      onSeeDiary={() => router.navigate('/(app)/diary')}
+      onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/entry', params: { id, from: 'profile' } })}
     />
   );
 }

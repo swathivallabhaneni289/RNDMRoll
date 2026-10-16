@@ -79,7 +79,7 @@ export function PrivateAccountRow() {
       </View>
       {error !== '' ? (
         <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
-          <AppText role="label" tone="destructive">
+          <AppText role="label" tone="default">
             {error}
           </AppText>
         </View>

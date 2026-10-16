@@ -39,6 +39,10 @@ export type Entry = {
   /** The cover's source. */
   photo_source: PhotoSource;
   late: boolean;
+  /** Hidden from the profile and the diary until put back. The day still counts. */
+  archived: boolean;
+  /** The owner switched commenting off for this entry. */
+  comments_off: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -171,6 +175,8 @@ export type UpdateEntryRequest = {
   stars?: number;
   reaction?: ReactionName | '';
   comment?: string;
+  /** Commenting on or off. Saved now; it shows once comments exist. */
+  comments_off?: boolean;
   /**
    * The whole ordered list the entry should end with: `{ id }` keeps a photo, `{ photo_key,
    * photo_source }` adds one, a photo left out is removed. Present only when the photos changed.
@@ -204,4 +210,20 @@ export async function deleteEntry(id: string): Promise<{ today: Today }> {
  */
 export async function skipDay(forDate: string, spinSeq: number): Promise<{ already: boolean; today: Today }> {
   return api.post<{ already: boolean; today: Today }>('/spin/skip', { for_date: forDate, spin_seq: spinSeq });
+}
+
+/** Hides an entry (POST /entries/{id}/archive). The day still counts; nobody is told. */
+export async function archiveEntry(id: string): Promise<{ entry: Entry; today: Today }> {
+  return api.post<{ entry: Entry; today: Today }>(`/entries/${id}/archive`, {});
+}
+
+/** Puts an archived entry back (POST /entries/{id}/unarchive). No notification is made. */
+export async function unarchiveEntry(id: string): Promise<{ entry: Entry; today: Today }> {
+  return api.post<{ entry: Entry; today: Today }>(`/entries/${id}/unarchive`, {});
+}
+
+/** The caller's archived entries, newest day first (GET /me/archive). */
+export async function getArchive(): Promise<Entry[]> {
+  const answer = await api.get<{ entries: Entry[] }>('/me/archive');
+  return answer.entries;
 }

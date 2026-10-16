@@ -72,7 +72,7 @@ function Row({
       </View>
       {error !== '' ? (
         <View accessibilityLiveRegion="polite" style={{ paddingBottom: space.sm }}>
-          <AppText role="label" tone="destructive">
+          <AppText role="label" tone="default">
             {error}
           </AppText>
         </View>

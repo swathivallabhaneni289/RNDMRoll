@@ -288,7 +288,7 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
 
       {shown ? (
         <View style={{ marginTop: space.sm }} accessibilityLiveRegion="polite">
-          <AppText role="label" tone="destructive">
+          <AppText role="label" tone="default">
             {shown}
           </AppText>
         </View>

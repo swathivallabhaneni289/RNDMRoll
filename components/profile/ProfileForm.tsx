@@ -806,7 +806,7 @@ export function ProfileForm({
                 </View>
                 {birthdayError ? (
                   <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
-                    <AppText role="label" tone="destructive">
+                    <AppText role="label" tone="default">
                       {birthdayError}
                     </AppText>
                   </View>
@@ -843,7 +843,7 @@ export function ProfileForm({
             </View>
             {avatarError ? (
               <View style={{ marginTop: space.xs }}>
-                <AppText role="label" tone="destructive">
+                <AppText role="label" tone="default">
                   {avatarError}
                 </AppText>
               </View>
@@ -933,7 +933,7 @@ export function ProfileForm({
 
         {formError ? (
           <View style={{ marginTop: space.md }}>
-            <AppText role="body" tone="destructive">
+            <AppText role="body" tone="default">
               {formError}
             </AppText>
           </View>

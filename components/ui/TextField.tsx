@@ -49,7 +49,7 @@ export function FieldSuccess({ text, label }: { text: string; label: string }) {
 /**
  * Labeled text input with the UI-SPEC rest/focus border step (1dp
  * `color.inkRest` at rest, 1.5dp `color.ink` when focused) and the
- * destructive error slot below the field. The optional `status` prop
+ * error slot (in ink) below the field. The optional `status` prop
  * drives the inline trailing adornment used only by the username step;
  * `taken` renders nothing here because the taken state uses the error
  * slot instead.
@@ -127,7 +127,7 @@ export function TextField({
             fontSize: type.label.fontSize,
             lineHeight: type.label.lineHeight,
             fontFamily: type.label.fontFamily,
-            color: color.destructive,
+            color: color.ink,
             textAlign: 'left',
             marginTop: 4,
           }}

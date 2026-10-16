@@ -21,7 +21,7 @@ type EntryFormProps = {
   /** 'Save' for a new entry, 'Save changes' for edit. */
   submitLabel: string;
   submitting: boolean;
-  /** A failure line shown above the button, in `destructive`. */
+  /** A failure line shown above the button, in `ink`. */
   message?: string | null;
   /** The attempt cannot go on (the day moved on): the button reads 'Back to Today' and calls `onTerminal`. */
   terminal?: boolean;
@@ -166,7 +166,7 @@ export function EntryForm({
         ) : null}
         {message ? (
           <View style={{ marginBottom: space.sm }} accessibilityLiveRegion="polite">
-            <Text style={{ ...labelLine, color: color.destructive }}>{message}</Text>
+            <Text style={{ ...labelLine, color: color.ink }}>{message}</Text>
           </View>
         ) : null}
         <PrimaryButton

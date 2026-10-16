@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
 import { SectionLabel } from '@/components/profile/SectionLabel';
 import { recentLabel, recentSpoken } from '@/components/profile/summaryText';
 import type { RecentEntry } from '@/lib/api/summary';
-import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
+import { color, radius, space } from '@/lib/theme/tokens';
 
 const THUMB = 48;
 
@@ -80,47 +80,23 @@ function Row({ entry, onPress }: { entry: RecentEntry; onPress?: () => void }) {
 }
 
 /**
- * "RECENT ACTIVITY" (04-UI-SPEC 4.4): the label with the 'See diary' link at the right, then the
+ * "RECENT ACTIVITY" (04-UI-SPEC 4.4): the label (no 'See diary' link: the Diary has its tab), then the
  * person's last posts (at most three, newest first): a small photo, the title in the light serif
  * and "MEAL \u00B7 OCT 8" under it, a hairline under each row. With none, one quiet line.
  *
- * A row becomes a button only when `onOpenEntry` is given. The entry page is Phase 3's and is not
- * built yet, so until it is the rows are plain (a tap would have nowhere to go).
+ * A row becomes a button only when `onOpenEntry` is given (the Profile page gives it: the row
+ * opens Phase 3's entry page inside the Profile stack).
  */
 export function RecentActivity({
   recent,
-  onSeeDiary,
   onOpenEntry,
 }: {
   recent: RecentEntry[];
-  onSeeDiary: () => void;
   onOpenEntry?: (entryId: string) => void;
 }) {
   return (
     <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <SectionLabel header>Recent activity</SectionLabel>
-        <Pressable
-          onPress={onSeeDiary}
-          accessibilityRole="button"
-          accessibilityLabel="See diary"
-          accessibilityHint="Opens your diary."
-          // The word is one line tall; the touch target is topped up to 44dp around it.
-          hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-        >
-          <Text
-            style={{
-              fontFamily: type.label.fontFamily,
-              fontSize: type.label.fontSize,
-              lineHeight: type.label.lineHeight,
-              color: color.ink,
-              textDecorationLine: 'underline',
-            }}
-          >
-            See diary
-          </Text>
-        </Pressable>
-      </View>
+      <SectionLabel header>Recent activity</SectionLabel>
       {recent.length === 0 ? (
         <View style={{ marginTop: space.sm }}>
           <AppText role="label" tone="muted">
