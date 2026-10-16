@@ -486,10 +486,10 @@ export function TodayScreen() {
   }
 
   // The wheel stays on the page once the day is settled (developer, 2026-10-16: "we should see this
-  // wheel all the time"): at rest on the day's word, smaller, and not tappable.
+  // wheel all the time"): at rest on the day's word, smaller, not tappable, just above the timer.
   const restWheel =
     view !== null && view.wheel.length > 0 ? (
-      <View style={{ alignItems: 'center', marginBottom: space.xl }}>
+      <View style={{ alignItems: 'center', marginBottom: space.lg }}>
         <Wheel
           entries={view.wheel}
           spinId={turn.id}
@@ -508,10 +508,10 @@ export function TodayScreen() {
   const postedComposition =
     view !== null ? (
       <View style={{ marginTop: space.lg }}>
-        {restWheel}
         <SettledBlock today={view} />
         {/* Once the day is settled the page counts down to the next spin. */}
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
+          {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
         </View>
       </View>
@@ -521,10 +521,10 @@ export function TodayScreen() {
   const skippedComposition =
     view !== null ? (
       <View style={{ flexGrow: 1 }}>
-        <View style={{ marginTop: space.lg }}>{restWheel}</View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
         <SettledBlock today={view} />
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
+          {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
         </View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
