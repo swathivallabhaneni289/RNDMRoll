@@ -4,9 +4,11 @@ import { AppText } from '@/components/ui/AppText';
 import type { Entry } from '@/lib/api/entries';
 import { color, space, type } from '@/lib/theme/tokens';
 
-/** Three square tiles a row with a thin gap, like Instagram's profile grid. */
+/** Three tiles a row, close together (developer, 2026-10-17: bigger pictures, the thin gap is fine). */
 const COLUMNS = 3;
 const GAP = 2;
+/** Tiles are a little taller than wide (4 to 5), so the pictures read larger. */
+const TILE_RATIO = 1.25;
 
 /**
  * Every post the person has made, as a grid of cover photos, newest first (developer,
@@ -20,19 +22,22 @@ export function PostGrid({
   onOpen,
 }: {
   posts: Entry[];
-  /** The width the grid fills (the page width inside its side margins). */
+  /** The width the grid fills (the full page width: it runs edge to edge). */
   width: number;
   onOpen: (id: string) => void;
 }) {
   if (posts.length === 0) {
     return (
-      <AppText role="label" tone="muted">
-        Your posts will show here.
-      </AppText>
+      <View style={{ paddingHorizontal: space.lg }}>
+        <AppText role="label" tone="muted">
+          Your posts will show here.
+        </AppText>
+      </View>
     );
   }
 
   const tile = Math.floor((width - GAP * (COLUMNS - 1)) / COLUMNS);
+  const tileHeight = Math.round(tile * TILE_RATIO);
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
@@ -43,7 +48,7 @@ export function PostGrid({
           accessibilityRole="button"
           accessibilityLabel={`${post.category.name}. ${post.title}.`}
           accessibilityHint="Opens the post."
-          style={{ width: tile, height: tile, backgroundColor: color.secondary }}
+          style={{ width: tile, height: tileHeight, backgroundColor: color.secondary }}
         >
           {post.photo_url !== '' ? (
             <Image source={{ uri: post.photo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />

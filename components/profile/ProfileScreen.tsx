@@ -3,7 +3,7 @@ import { AccessibilityInfo, ScrollView, useWindowDimensions, View, type NativeSc
 import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
-import { Screen } from '@/components/ui/Screen';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { SettingsGear } from '@/components/settings/SettingsGear';
 import { useDiary } from '@/components/diary/useDiary';
 import { PostGrid } from '@/components/profile/PostGrid';
@@ -14,7 +14,7 @@ import type { Entry } from '@/lib/api/entries';
 import type { MeSummary } from '@/lib/api/summary';
 import { useSettingsNotice } from '@/lib/settings/notice';
 import { useSession } from '@/lib/session/store';
-import { minTouchTarget, space } from '@/lib/theme/tokens';
+import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 /** Drawn for a person with no answer from the server (not live yet, offline, or nothing posted). */
 const EMPTY_SUMMARY: MeSummary = { spins: 0, week_streak: 0, followers: 0, tastes: [], recent: [] };
@@ -89,78 +89,84 @@ export function ProfileView({
   }, [saved]);
 
   return (
-    <Screen edges={['top', 'left', 'right']} scroll={false}>
+    // No side padding on the page itself: the header keeps the usual margins and the grid runs
+    // edge to edge, so the pictures are as large as three a row allows.
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: color.dominant }}>
       <ScrollView onScroll={handleScroll} scrollEventThrottle={200} contentContainerStyle={{ paddingBottom: space.xl }}>
-        {/* A slim row above the photo: 'Saved.' on the left for 3 seconds, the Settings gear on the right. */}
-        <View
-          style={{
-            minHeight: minTouchTarget,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View accessibilityLiveRegion="polite" style={{ flex: 1 }}>
-            {saved ? (
-              <AppText role="label" tone="muted">
-                {SAVED_NOTICE}
-              </AppText>
-            ) : null}
-          </View>
-          <SettingsGear />
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <SizedAvatar size={AVATAR_SIZE} name={name} uri={avatarUri} placeholder="camera" />
-          <View style={{ flex: 1, marginLeft: space.md }}>
-            {name !== '' ? (
-              <AppText role="note" numberOfLines={2} ellipsizeMode="tail" accessibilityRole="header">
-                {name}
-              </AppText>
-            ) : null}
-            {username !== '' ? (
-              <View style={{ marginTop: name !== '' ? space.xs : 0 }}>
-                <AppText role="body" tone="muted" numberOfLines={1} ellipsizeMode="tail">
-                  {`@${username}`}
+        <View style={{ paddingHorizontal: space.lg }}>
+          {/* A slim row above the photo: 'Saved.' on the left for 3 seconds, the Settings gear on the right. */}
+          <View
+            style={{
+              minHeight: minTouchTarget,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View accessibilityLiveRegion="polite" style={{ flex: 1 }}>
+              {saved ? (
+                <AppText role="label" tone="muted">
+                  {SAVED_NOTICE}
                 </AppText>
+              ) : null}
+            </View>
+            <SettingsGear />
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <SizedAvatar size={AVATAR_SIZE} name={name} uri={avatarUri} placeholder="camera" />
+            <View style={{ flex: 1, marginLeft: space.md }}>
+              {name !== '' ? (
+                <AppText role="note" numberOfLines={2} ellipsizeMode="tail" accessibilityRole="header">
+                  {name}
+                </AppText>
+              ) : null}
+              {username !== '' ? (
+                <View style={{ marginTop: name !== '' ? space.xs : 0 }}>
+                  <AppText role="body" tone="muted" numberOfLines={1} ellipsizeMode="tail">
+                    {`@${username}`}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ marginLeft: space.md }}>
+              <Chip label="Edit" tone="strong" onPress={onEdit} accessibilityLabel="Edit profile" />
+            </View>
+          </View>
+
+          {/* The bio runs the full width under the photo row, so a long one has room (04-UI-SPEC 4.1). */}
+          {bio !== '' ? (
+            <View style={{ marginTop: space.sm }}>
+              <AppText role="body">{bio}</AppText>
+            </View>
+          ) : null}
+
+          {loading ? (
+            <View style={{ marginTop: space.lg }}>
+              <AppText role="label" tone="muted">
+                Loading your profile.
+              </AppText>
+            </View>
+          ) : (
+            <>
+              <View style={{ marginTop: space.lg }}>
+                <StatsRow
+                  spins={shown.spins}
+                  weekStreak={shown.week_streak}
+                  followers={shown.followers}
+                  onOpenFollowers={onOpenPeople}
+                />
               </View>
-            ) : null}
-          </View>
-          <View style={{ marginLeft: space.md }}>
-            <Chip label="Edit" tone="strong" onPress={onEdit} accessibilityLabel="Edit profile" />
-          </View>
+            </>
+          )}
         </View>
-
-        {/* The bio runs the full width under the photo row, so a long one has room (04-UI-SPEC 4.1). */}
-        {bio !== '' ? (
-          <View style={{ marginTop: space.sm }}>
-            <AppText role="body">{bio}</AppText>
-          </View>
-        ) : null}
-
-        {loading ? (
+        {loading ? null : (
           <View style={{ marginTop: space.lg }}>
-            <AppText role="label" tone="muted">
-              Loading your profile.
-            </AppText>
+            <PostGrid posts={posts} width={width} onOpen={onOpenEntry} />
           </View>
-        ) : (
-          <>
-            <View style={{ marginTop: space.lg }}>
-              <StatsRow
-                spins={shown.spins}
-                weekStreak={shown.week_streak}
-                followers={shown.followers}
-                onOpenFollowers={onOpenPeople}
-              />
-            </View>
-            <View style={{ marginTop: space.lg }}>
-              <PostGrid posts={posts} width={width - 2 * space.lg} onOpen={onOpenEntry} />
-            </View>
-          </>
         )}
       </ScrollView>
-    </Screen>
+    </SafeAreaView>
   );
 }
 
