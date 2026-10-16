@@ -22,6 +22,12 @@ non-follower sees ONLY the header (photo, name, @username, figures) and the Foll
 accepted follower sees Tastes and the posts grid (each post through the visibility function).
 The `private` field in wire shapes can be dropped or always true.
 
+PERSON PAGE GRID (developer, 2026-10-16/17): the Diary tab is gone; your own Profile shows every
+post as a three-column picture grid (`components/profile/PostGrid.tsx`). The person page reuses
+that grid for an accepted follower, with the SAME post-first rule as the Board: a follower sees
+your post for a day only if they also posted that day (developer's choice over "all posts").
+Days they did not post simply do not appear in the grid. No "Recent activity", no Tastes.
+
 Phase 6 builds: the person page, report a post or a comment, block from those places, and the
 8 PM reminder. Wherever sections 1 to 9 mention Global, Public accounts or the switch, skip it.
 
