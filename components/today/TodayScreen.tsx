@@ -25,6 +25,9 @@ import { useUnread } from '@/lib/notifications/unreadStore';
 
 /** The wheel is the smaller of this and the screen width minus the margins and 24dp (UI-SPEC 3). */
 const WHEEL_MAX = 232;
+/** The settled day's wheel, at rest above the entry or the struck word. */
+const REST_WHEEL_SCALE = 0.6;
+const noop = () => {};
 /** The failsafe: a turn is 4 seconds, so a wheel that has not reported by now is not coming. */
 const LANDING_FAILSAFE_MS = 6000;
 /** After the landing nothing moves for this long, then the reveal runs (UI-SPEC 5). */
@@ -482,11 +485,30 @@ export function TodayScreen() {
     );
   }
 
+  // The wheel stays on the page once the day is settled (developer, 2026-10-16: "we should see this
+  // wheel all the time"): at rest on the day's word, smaller, and not tappable.
+  const restWheel =
+    view !== null && view.wheel.length > 0 ? (
+      <View style={{ alignItems: 'center', marginBottom: space.xl }}>
+        <Wheel
+          entries={view.wheel}
+          spinId={turn.id}
+          winnerIndex={view.spin ? view.spin.winner_index : null}
+          size={Math.round(wheelSize * REST_WHEEL_SCALE)}
+          interactive={false}
+          onHubPress={noop}
+          showPointer
+          onLanded={noop}
+        />
+      </View>
+    ) : null;
+
   // Posted and Skipped take the place of Result or Late at once: no cross-fade between Today
   // states (the developer: fades look weird). The row and the struck word are drawn plainly.
   const postedComposition =
     view !== null ? (
       <View style={{ marginTop: space.lg }}>
+        {restWheel}
         <SettledBlock today={view} />
         {/* Once the day is settled the page counts down to the next spin. */}
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
@@ -499,6 +521,7 @@ export function TodayScreen() {
   const skippedComposition =
     view !== null ? (
       <View style={{ flexGrow: 1 }}>
+        <View style={{ marginTop: space.lg }}>{restWheel}</View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
         <SettledBlock today={view} />
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>

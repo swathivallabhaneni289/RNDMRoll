@@ -1,18 +1,20 @@
 import { Tabs } from 'expo-router';
 import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SpinTabButton } from '@/components/nav/SpinTabButton';
+import { SpinTabIcon } from '@/components/nav/SpinTabIcon';
 import { isSelectedTab, TabIcon } from '@/components/nav/TabIcon';
 import { spokenTabLabel, TabLabel } from '@/components/nav/TabLabel';
 import { useSession } from '@/lib/session/store';
+import { requestPendingSpin } from '@/lib/wheel/todayStore';
 import { color, type } from '@/lib/theme/tokens';
 
 /**
  * The signed-in app: a bottom bar of Diary, Spin, Board and Profile (developer, 2026-10-16: Home
  * was dropped because it repeated the Spin page). The `today` folder IS the Spin page and the
  * landing, reached by the explicit child path `/(app)/today` (a bare `/(app)` shows Unmatched
- * Route here). Its bar slot is the raised Spin circle drawn by `SpinTabButton`, an action that
- * goes to the page (and spins when the wheel is open); it never shows a selected look.
+ * Route here). Its bar slot is a plain tab like the others (developer, 2026-10-16: no raised
+ * circle), with the wheel mark as its icon; a press also asks the page to spin once it has
+ * loaded and is still open (`pendingSpin` in the Today store).
  *
  *  - The bar is hidden on the one-time photo-and-bio page (the `profile` screen while
  *    `extrasPending` is true; the bar reads the focused route's options), on the pages pushed
@@ -20,7 +22,7 @@ import { color, type } from '@/lib/theme/tokens';
  *    pushed (the Diary and Profile stacks mount them too).
  *  - Every file left in this folder becomes a tab by itself, so the folder holds exactly
  *    `today`, `diary`, `board` and `profile`, each a folder with its own stack. The Board's stack
- *    (Phase 5) hides the bar on a post, your entry page, edit entry and Notifications.
+ *    (Phase 5) hides the bar on a post, your entry page and edit entry.
  */
 export const unstable_settings = {
   initialRouteName: 'today',
@@ -32,8 +34,8 @@ const BAR_CONTENT_HEIGHT = 56;
 const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'entry', 'log', 'edit-entry'];
 /** The Diary's and Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry'];
-/** The Board's pushed pages that show no bottom bar: a post, your entry page and Notifications. */
-const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry', 'notifications', 'follow-requests'];
+/** The Board's pushed pages that show no bottom bar: a post, your entry page and edit entry. */
+const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry'];
 
 /** True while the tab's own stack shows one of `pages`. */
 function showsPage(route: Parameters<typeof getFocusedRouteNameFromRoute>[0], pages: string[]): boolean {
@@ -43,7 +45,8 @@ function showsPage(route: Parameters<typeof getFocusedRouteNameFromRoute>[0], pa
 
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
-  const { extrasPending } = useSession();
+  const { extrasPending, user } = useSession();
+  const userId = user?.id ?? null;
 
   // A numeric height replaces the bar's own safe-area arithmetic; the bar then pads its content
   // by the inset itself, so the height is the content plus the inset.
@@ -93,15 +96,25 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="today"
-        options={({ route }) => ({
+        listeners={{
+          // The request goes before the navigation, as the old Spin button did: with unsaved
+          // changes in Edit wheel the leave sheet's guard clears it.
+          tabPress: () => {
+            if (userId !== null) requestPendingSpin(userId);
+          },
+        }}
+        options={({ route, navigation }) => {
           // The Spin page: the wheel, the word, Log it and Skip it, the posted or skipped day, the
-          // countdown and the week, all on one page. Its bar slot is the raised circle.
-          title: 'Spin',
-          tabBarAccessibilityLabel: 'Spin',
-          tabBarItemStyle: { paddingTop: 0 },
-          tabBarButton: () => <SpinTabButton />,
-          tabBarStyle: showsPage(route, BARLESS_TODAY_PAGES) ? hiddenBarStyle : barStyle,
-        })}
+          // countdown and the week, all on one page.
+          const selected = isSelectedTab(navigation, route);
+          return {
+            title: 'Spin',
+            tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Spin'),
+            tabBarIcon: () => <SpinTabIcon focused={selected} />,
+            tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
+            tabBarStyle: showsPage(route, BARLESS_TODAY_PAGES) ? hiddenBarStyle : barStyle,
+          };
+        }}
       />
       <Tabs.Screen
         name="board"

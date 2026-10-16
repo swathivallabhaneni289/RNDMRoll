@@ -80,8 +80,8 @@ for (const rel of barFiles) {
 const layout = read('app/(app)/_layout.tsx');
 check('layout swaps tabs at once (the fade was dropped, 2026-10-13)', /animation:\s*'none'/.test(layout));
 check('layout uses TabIcon three times (Diary, Board, Profile; Home was dropped 2026-10-16)', (layout.match(/<TabIcon\b/g) ?? []).length === 3);
-check('layout uses TabLabel three times', (layout.match(/<TabLabel\b/g) ?? []).length === 3);
-check('layout still draws the Spin button', /tabBarButton:\s*\(\)\s*=>\s*<SpinTabButton\s*\/>/.test(layout));
+check('layout uses TabLabel four times (Spin is a plain tab since 2026-10-16)', (layout.match(/<TabLabel\b/g) ?? []).length === 4);
+check('layout draws the Spin tab with the wheel mark, no raised button', /<SpinTabIcon\b/.test(layout) && !/tabBarButton/.test(layout));
 
 // ---- tokens only, plain wording ---------------------------------------------------------------
 const wording = [

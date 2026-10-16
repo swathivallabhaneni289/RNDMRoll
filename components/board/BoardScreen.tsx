@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LockedBlock, NoFollowsBlock, SkippedBlock } from '@/components/board/BoardBlocks';
 import { PostCard, capsText } from '@/components/board/PostCard';
 import { useBoard } from '@/components/board/useBoard';
-import { BellButton } from '@/components/notifications/BellButton';
 import { STATUS_MESSAGES, StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
@@ -50,8 +49,6 @@ function QuietLine({ children }: { children: string }) {
 }
 
 export type BoardScreenProps = {
-  unread: boolean;
-  onBell: () => void;
   onFindPeople: () => void;
   onOpenCard: (card: Card) => void;
   onLog: () => void;
@@ -60,13 +57,13 @@ export type BoardScreenProps = {
 
 /**
  * The Board tab (05-UI-SPEC section 3 with the follow wording of 05-FOLLOW-OVERRIDES, the
- * developer's pictures 08 and 09). A fixed header (the overline, 'Board', a person-add button to
- * People and the bell), then what the server says: no follows (a prompt and 'Find people'), locked
+ * developer's pictures 08 and 09). A fixed header (the overline, 'Board' and a person-add button to
+ * People; the bell lives on the Spin page only, 2026-10-16), then what the server says: no follows (a prompt and 'Find people'), locked
  * (the locked card over grey tiles), skipped, or unlocked (the two-column grid). Under a lock or a
  * skip the earlier days the person posted still follow. Plain light cards, nothing blurs or fades.
  * The list pages as the end comes into view, pulls to refresh and reloads on every focus.
  */
-export function BoardScreen({ unread, onBell, onFindPeople, onOpenCard, onLog, onSpin }: BoardScreenProps) {
+export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardScreenProps) {
   const { width } = useWindowDimensions();
   const load = useBoard();
   const board = load.board;
@@ -92,7 +89,6 @@ export function BoardScreen({ unread, onBell, onFindPeople, onOpenCard, onLog, o
         >
           <Ionicons name="person-add-outline" size={22} color={color.ink} />
         </Pressable>
-        <BellButton unread={unread} onPress={onBell} />
       </View>
     </View>
   );

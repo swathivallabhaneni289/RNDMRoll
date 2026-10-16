@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
 import { BoardScreen } from '@/components/board/BoardScreen';
-import { useUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { readToday } from '@/lib/wheel/todayStore';
 import { refetchToday } from '@/lib/wheel/useToday';
@@ -13,7 +12,6 @@ import { refetchToday } from '@/lib/wheel/useToday';
  */
 export default function BoardRoute() {
   const router = useRouter();
-  const unread = useUnread();
   const { user } = useSession();
   const userId = user?.id ?? null;
 
@@ -27,8 +25,6 @@ export default function BoardRoute() {
 
   return (
     <BoardScreen
-      unread={unread}
-      onBell={() => router.push('/(app)/board/notifications')}
       onFindPeople={() => router.push('/(app)/board/people')}
       onOpenCard={(card) =>
         card.mine

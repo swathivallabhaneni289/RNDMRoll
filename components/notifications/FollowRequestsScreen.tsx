@@ -32,7 +32,7 @@ type Accepted = { person: Person; relation: Relation };
  * "Requested" when that is already true) until the person leaves; a declined row goes at once,
  * and the other person is never told. No bottom bar, so the page keeps all four safe-area edges.
  */
-export function FollowRequestsScreen({ place = 'today' }: { place?: 'today' | 'board' }) {
+export function FollowRequestsScreen() {
   const router = useRouter();
   const [requests, setRequests] = useState<FollowRequest[] | null>(null);
   const [accepted, setAccepted] = useState<Record<string, Accepted>>({});
@@ -64,7 +64,7 @@ export function FollowRequestsScreen({ place = 'today' }: { place?: 'today' | 'b
 
   function goBack() {
     if (router.canGoBack()) router.back();
-    else router.replace(place === 'board' ? '/(app)/board/notifications' : '/(app)/today/notifications');
+    else router.replace('/(app)/today/notifications');
   }
 
   /** Runs one action at a time; a failure shows one plain line. */

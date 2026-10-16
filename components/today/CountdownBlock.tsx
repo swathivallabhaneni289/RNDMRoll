@@ -54,8 +54,8 @@ function Colon() {
 }
 
 /**
- * Slot A and slot B of the Waiting state (02-UI-SPEC 4.2): the label "Opens at 8:00 PM" over the
- * digits "05:04:01". The time left is counted from the server's `now` with a monotonic clock
+ * The countdown to the next spin: the label "Next spin in" over the digits "05:04:01", and the
+ * line "Opens at 8:00 PM." under them (developer, 2026-10-16: say plainly what the timer is). The time left is counted from the server's `now` with a monotonic clock
  * (the anchor), never the phone's clock, so a wrong phone clock changes nothing. The tick lives
  * in this component and re-renders nothing else; the spoken line changes once a minute.
  * `onZero` is called once when the count reaches zero (Today then asks the server again).
@@ -91,20 +91,34 @@ export function CountdownBlock({
   const parts = remaining === null ? null : split(remaining);
   const spoken =
     remaining === null
-      ? 'Opens at 8:00 PM'
+      ? 'Your next spin opens at 8:00 PM.'
       : remaining <= 0
-        ? 'Opens at 8:00 PM, now'
-        : `Opens at 8:00 PM, in ${spokenMinutes(remaining)}`;
+        ? 'Your next spin is opening now.'
+        : `Your next spin opens in ${spokenMinutes(remaining)}, at 8:00 PM.`;
 
   return (
     <View accessible accessibilityLabel={spoken} style={{ alignItems: 'center' }}>
-      <CapsLabel align="center">Opens at 8:00 PM</CapsLabel>
+      <CapsLabel align="center">Next spin in</CapsLabel>
       <View style={{ marginTop: space.xs, flexDirection: 'row', alignItems: 'center' }}>
         <Cell text={parts ? parts.hours : PLACEHOLDER} />
         <Colon />
         <Cell text={parts ? parts.minutes : PLACEHOLDER} />
         <Colon />
         <Cell text={parts ? parts.seconds : PLACEHOLDER} />
+      </View>
+      <View style={{ marginTop: space.xs }}>
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{
+            fontFamily: type.label.fontFamily,
+            fontSize: type.label.fontSize,
+            lineHeight: type.label.lineHeight,
+            color: color.muted,
+            textAlign: 'center',
+          }}
+        >
+          Opens at 8:00 PM.
+        </Text>
       </View>
     </View>
   );

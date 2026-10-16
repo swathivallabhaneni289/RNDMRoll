@@ -105,7 +105,7 @@ function RowMark({ item }: { item: NotificationItem }) {
 
 /**
  * The page behind the bell (05-UI-SPEC section 10, the developer's picture 11), on the Spin page's
- * stack and on the Board's. The server builds the list, its sections and every time label; this
+ * stack only (the Board's bell was removed 2026-10-16). The server builds the list, its sections and every time label; this
  * page prints it in three sections (Today, This week, Earlier) with a small dot on unread rows.
  * Opening it marks everything seen, so the bell's dot goes out; the dots it loaded with stay until
  * the person leaves. Follow requests are one row at the top ("Follow requests", the first name,
@@ -113,7 +113,7 @@ function RowMark({ item }: { item: NotificationItem }) {
  * (a reaction or comment), People (a follow), or the Spin page (your spin is open, a bonus spin).
  * No bottom bar, so the page keeps all four safe-area edges.
  */
-export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'board' }) {
+export function NotificationsScreen() {
   const router = useRouter();
   const { user } = useSession();
   const userId = user?.id ?? null;
@@ -153,14 +153,14 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
 
   function goBack() {
     if (router.canGoBack()) router.back();
-    else router.replace(place === 'board' ? '/(app)/board' : '/(app)/today');
+    else router.replace('/(app)/today');
   }
 
   function open(item: NotificationItem) {
     if (item.kind === 'reaction' || item.kind === 'comment') {
       if (item.entry_id === null) return;
       router.push({
-        pathname: place === 'board' ? '/(app)/board/entry' : '/(app)/today/entry',
+        pathname: '/(app)/today/entry',
         params: { id: item.entry_id, via: 'notifications' },
       });
       return;
@@ -169,7 +169,7 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
       router.navigate('/(app)/today');
       return;
     }
-    router.push(place === 'board' ? '/(app)/board/people' : '/(app)/profile/people');
+    router.push('/(app)/profile/people');
   }
 
   function renderRow(item: NotificationItem) {
@@ -221,7 +221,7 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
     const line = others === 0 ? who : others === 1 ? `${who} and 1 other` : `${who} and ${others} others`;
     return (
       <Pressable
-        onPress={() => router.push(place === 'board' ? '/(app)/board/follow-requests' : '/(app)/today/follow-requests')}
+        onPress={() => router.push('/(app)/today/follow-requests')}
         accessibilityRole="button"
         accessibilityLabel={`Follow requests, ${requests.length}. ${line}`}
         accessibilityHint="Opens the page to accept or decline."

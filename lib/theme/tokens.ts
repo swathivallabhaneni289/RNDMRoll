@@ -53,8 +53,7 @@ export const radius = {
   sm: 4,
   /**
    * The hard maximum radius for anything tappable (buttons, inputs, chips). No
-   * tappable element may use a larger radius than this in this phase, except the
-   * round Spin button in `components/nav/SpinTabButton.tsx`.
+   * tappable element may use a larger radius than this in this phase.
    */
   md: 8,
   /**
@@ -65,8 +64,7 @@ export const radius = {
   lg: 24,
   /**
    * Exists solely for the circular avatar and icon-badge tokens. Must never be
-   * applied to a button, input, or chip, except the round Spin button in
-   * `components/nav/SpinTabButton.tsx` and the two named exceptions of the entry
+   * applied to a button, input, or chip, except the two named exceptions of the entry
    * screen (the developer's picture 03): the six round reaction buttons in
    * `components/entry/ReactionPicker.tsx` and the Camera and Library buttons in
    * `components/entry/PhotoField.tsx`. Phase 5 adds two drawn shapes from the developer's
