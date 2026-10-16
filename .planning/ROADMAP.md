@@ -17,8 +17,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Daily Roll** - Users get a once-daily category from a customizable, restrained-motion spin wheel (completed 2026-10-13; six device checks not walked, see 02-03-SUMMARY.md)
 - [x] **Phase 2.1: Settings (INSERTED)** - Users change their username and password, make their account public or private, and edit their bio on the profile page (completed 2026-10-13; walked on the simulator: Account privacy, Password, Notifications, Blocked accounts, Username, Log out, the sign-up password checklist. The bio is plain text on Profile and edited only on the Edit page, by decision 2026-10-13)
 - [x] **Phase 2.2: Navigation motion (INSERTED)** - Moving between tabs and pages feels smooth and consistent (completed 2026-10-13; tabs swap at once, the bar's colours glide, pushed pages keep the iOS slide; the cross-fade was tried and dropped)
-- [ ] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category
-- [ ] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated
+- [x] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category (completed 2026-10-16; walked on the simulator: post with 3 full-size photos, View entry, edit, delete, skip, archive and restore. Added by the developer: a three-dots slide-up menu (Edit, Archive, commenting, Delete), Settings > Archive with a restore arrow, no red text except Log out, 'Skip it' as an outlined button. The commenting switch is saved but checked only once comments exist)
+- [x] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated (completed 2026-10-16; walked: Diary list with three dots per post, open, edit, Profile recent rows. By decision the category chips, the tastes with averages and 'See diary' were removed; the server still filters by category. Home was dropped: the bar is Diary, Spin, Board, Profile and the Spin page holds all of today)
 - [ ] **Phase 5: Friend Feed** - Users build a friend circle and see a reciprocity-gated daily feed of what friends rolled and rated
 
 ## Phase Details
@@ -146,17 +146,17 @@ Plans:
   4. User can skip a day when the rolled category isn't satisfiable and sees how it changes the week count (for example, 2 of 4 this week)
   5. User can change or delete their post afterwards, and a deleted post still counts as a posted day
 
-**Plans**: 0/3 plans executed
+**Plans**: 3/3 plans executed, plus 03-04 (archive and the commenting switch)
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md: The entry server: entries table, photo upload ticket, post, edit, delete and skip, and the Today changes
-- [ ] 03-02-PLAN.md: The entry app: Log it, the entry screen with half stars and six reactions, and the Posted state
+- [x] 03-01-PLAN.md: The entry server: entries table, photo upload ticket, post, edit, delete and skip, and the Today changes
+- [x] 03-02-PLAN.md: The entry app: Log it, the entry screen with half stars and six reactions, and the Posted state
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-03-PLAN.md: The entry page (view, edit, delete), skip, the skip mark, cutover, gates, device walkthrough and phase close-out
+- [x] 03-03-PLAN.md: The entry page (view, edit, delete), skip, the skip mark, cutover, gates, device walkthrough and phase close-out
 
 **UI hint**: yes
 
