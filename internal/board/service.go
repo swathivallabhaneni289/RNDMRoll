@@ -34,15 +34,19 @@ type Repository interface {
 	// NamesOnDay are the names of people the viewer follows with a visible
 	// entry on date, in posting order.
 	NamesOnDay(ctx context.Context, viewer uuid.UUID, date string, limit int) ([]string, error)
-	// Comments of an entry, oldest first, without writers who have a block
-	// with the viewer.
+	// Comments of an entry, oldest first (top-level comments and replies
+	// alike, with ParentID set on a reply), without writers who have a block
+	// with the viewer. Thread puts them in page order.
 	Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]CommentRow, error)
 	// Received are the reactions on owner's entry, newest change first,
 	// without people who have a block with the owner.
 	Received(ctx context.Context, owner, entryID uuid.UUID) ([]Received, error)
 	SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) error
 	ClearReaction(ctx context.Context, entryID, userID uuid.UUID) error
-	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time) (uuid.UUID, error)
+	// InsertComment writes a comment; parentID is the top-level comment of a
+	// reply, nil for a top-level comment. ErrNotFound when the entry or the
+	// parent went away.
+	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID) (uuid.UUID, error)
 	// CommentByID reads a comment with its entry's owner. ErrNotFound when
 	// missing.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
@@ -236,7 +240,7 @@ func (s *Service) Post(ctx context.Context, viewer, entryID uuid.UUID) (Post, er
 	if err != nil {
 		return Post{}, err
 	}
-	rows, err := s.repo.Comments(ctx, viewer, row.ID)
+	rows, err := s.visibleComments(ctx, viewer, row.ID)
 	if err != nil {
 		return Post{}, err
 	}
@@ -264,6 +268,16 @@ func (s *Service) Post(ctx context.Context, viewer, entryID uuid.UUID) (Post, er
 	return p, nil
 }
 
+// visibleComments are the comments of an entry the viewer may see, in page
+// order (Thread): each top-level comment followed by its replies.
+func (s *Service) visibleComments(ctx context.Context, viewer, entryID uuid.UUID) ([]CommentRow, error) {
+	rows, err := s.repo.Comments(ctx, viewer, entryID)
+	if err != nil {
+		return nil, err
+	}
+	return Thread(rows), nil
+}
+
 func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time, zone *time.Location) Comment {
 	return Comment{
 		ID:        c.ID,
@@ -272,6 +286,7 @@ func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time
 		At:        c.CreatedAt,
 		AtLabel:   spin.ViewerLabel(c.CreatedAt, now, zone),
 		CanDelete: social.CanDeleteComment(c.Author.ID == viewer, owner == viewer),
+		ParentID:  c.ParentID,
 	}
 }
 
@@ -298,9 +313,11 @@ func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, re
 	return &name, nil
 }
 
-// AddComment writes a comment. Order: the post must be visible, comments on,
-// then the text valid.
-func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, text string) (Comment, error) {
+// AddComment writes a comment, or a reply when parentID is set. Order: the
+// post must be visible, comments on, the parent (when set) a comment on this
+// post the viewer can see, then the text valid. A reply to a reply is stored
+// under that reply's top-level comment (one level).
+func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, text string, parentID *uuid.UUID) (Comment, error) {
 	row, f, err := s.visible(ctx, viewer, entryID)
 	if err != nil {
 		return Comment{}, err
@@ -310,6 +327,12 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 	}
 	if !social.CanComment(f, row.CommentsOff) {
 		return Comment{}, ErrNotFound
+	}
+	var top *uuid.UUID
+	if parentID != nil {
+		if top, err = s.replyParent(ctx, viewer, row.ID, *parentID); err != nil {
+			return Comment{}, err
+		}
 	}
 	body, problem := CleanComment(text)
 	if problem != nil {
@@ -323,7 +346,7 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 		return Comment{}, err
 	}
 	now = now.UTC()
-	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now)
+	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top)
 	if err != nil {
 		return Comment{}, err
 	}
@@ -331,11 +354,34 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 	if err != nil {
 		return Comment{}, err
 	}
-	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: now},
+	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: now, ParentID: top},
 		viewer, row.Owner.ID, now, zone), nil
 }
 
+// replyParent finds the comment a reply answers among the comments of the
+// entry the viewer can see (the same list as the post page) and returns the
+// top-level comment the reply is stored under. ErrNotFound when it is not
+// there: missing, on another post, or hidden by a block.
+func (s *Service) replyParent(ctx context.Context, viewer, entryID, parentID uuid.UUID) (*uuid.UUID, error) {
+	rows, err := s.visibleComments(ctx, viewer, entryID)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range rows {
+		if c.ID != parentID {
+			continue
+		}
+		top := c.ID
+		if c.ParentID != nil {
+			top = *c.ParentID
+		}
+		return &top, nil
+	}
+	return nil, ErrNotFound
+}
+
 // DeleteComment deletes a comment for its writer or the post's owner.
+// Deleting a top-level comment deletes its replies (the database cascades).
 func (s *Service) DeleteComment(ctx context.Context, viewer, commentID uuid.UUID) error {
 	c, err := s.repo.CommentByID(ctx, commentID)
 	if err != nil {

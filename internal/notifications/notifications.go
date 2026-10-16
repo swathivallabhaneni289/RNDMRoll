@@ -1,5 +1,6 @@
 // Package notifications builds the bell's list from data that already exists
-// (reactions, comments, follows, requests, the spin window, goal weeks). No
+// (reactions, comments, replies, follows, requests, the spin window, goal
+// weeks). No
 // notification is stored and no job runs; the only state is one seen time
 // per person. The notification settings filter the list and the unread flag.
 package notifications
@@ -22,6 +23,7 @@ import (
 const (
 	KindReaction       = "reaction"
 	KindComment        = "comment"
+	KindReply          = "reply"
 	KindFollow         = "follow"
 	KindFollowRequest  = "follow_request"
 	KindFollowAccepted = "follow_accepted"
@@ -90,7 +92,11 @@ type List struct {
 // returns at most limit rows newest first.
 type Repository interface {
 	Reactions(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
+	// Comments on the viewer's entries, replies included, except a reply to
+	// the viewer's own comment (that one is a Replies item only).
 	Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
+	// Replies to the viewer's comments on posts the viewer can still see.
+	Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Follows: people who followed the viewer at once (a public account).
 	Follows(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Requests: pending requests to the viewer, whatever their age.
@@ -169,6 +175,9 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 	}
 	if settings.Comments {
 		if err := add(s.repo.Comments(ctx, viewer, since, MaxItems)); err != nil {
+			return List{}, err
+		}
+		if err := add(s.repo.Replies(ctx, viewer, since, MaxItems)); err != nil {
 			return List{}, err
 		}
 	}

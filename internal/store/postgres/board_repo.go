@@ -157,9 +157,13 @@ func (r *BoardRepo) CommentCounts(ctx context.Context, viewer uuid.UUID, entryID
 	if len(entryIDs) == 0 {
 		return out, nil
 	}
+	// The same comments as the post page: a reply counts only while its
+	// top-level comment is shown (board.Thread).
 	rows, err := r.pool.Query(ctx, `
 		select c.entry_id, count(*) from post_comments c
+		left join post_comments p on p.id = c.parent_id
 		where c.entry_id = any($2::uuid[]) and not `+blockedEither("$1::uuid", "c.user_id")+`
+		  and (c.parent_id is null or not `+blockedEither("$1::uuid", "p.user_id")+`)
 		group by c.entry_id`, viewer, entryIDs)
 	if err != nil {
 		return nil, err
@@ -238,7 +242,7 @@ func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date strin
 // Comments implements board.Repository.
 func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]board.CommentRow, error) {
 	rows, err := r.pool.Query(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.entry_id = $2 and not `+blockedEither("$1::uuid", "c.user_id")+`
 		order by c.created_at, c.id`, viewer, entryID)
@@ -260,7 +264,7 @@ func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]
 func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) {
 	var c board.CommentRow
 	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoURL,
-		&c.EntryOwner, &c.Body, &c.CreatedAt)
+		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID)
 	c.CreatedAt = c.CreatedAt.UTC()
 	return c, err
 }
@@ -306,19 +310,19 @@ func (r *BoardRepo) ClearReaction(ctx context.Context, entryID, userID uuid.UUID
 }
 
 // InsertComment implements board.Repository.
-func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time) (uuid.UUID, error) {
+func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := r.pool.QueryRow(ctx, `
-		insert into post_comments (entry_id, user_id, body, created_at) values ($1, $2, $3, $4)
-		returning id`, entryID, userID, body, at).Scan(&id)
+		insert into post_comments (entry_id, user_id, body, created_at, parent_id) values ($1, $2, $3, $4, $5)
+		returning id`, entryID, userID, body, at, parentID).Scan(&id)
 	if err != nil && isForeignKeyViolation(err) {
 		return uuid.UUID{}, board.ErrNotFound
 	}
 	return id, err
 }
 
-// isForeignKeyViolation reports a foreign key failure (the entry went away
-// between the visibility read and the insert).
+// isForeignKeyViolation reports a foreign key failure (the entry or the
+// parent comment went away between the visibility read and the insert).
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
@@ -327,7 +331,7 @@ func isForeignKeyViolation(err error) bool {
 // CommentByID implements board.Repository.
 func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.CommentRow, error) {
 	c, err := scanComment(r.pool.QueryRow(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {

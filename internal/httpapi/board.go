@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
@@ -41,9 +42,12 @@ type ReactionRequest struct {
 	Reaction json.RawMessage `json:"reaction"`
 }
 
-// CommentRequest is the POST /posts/:id/comments body.
+// CommentRequest is the POST /posts/:id/comments body. ParentID, when set,
+// makes the comment a reply to that comment (missing or null: a top-level
+// comment).
 type CommentRequest struct {
-	Text *string `json:"text"`
+	Text     *string `json:"text"`
+	ParentID *string `json:"parent_id"`
 }
 
 type cardView struct {
@@ -89,13 +93,21 @@ type commentView struct {
 	At        spin.Instant `json:"at"`
 	AtLabel   string       `json:"at_label"`
 	CanDelete bool         `json:"can_delete"`
+	// ParentID is the top-level comment of a reply, null for a top-level
+	// comment.
+	ParentID *string `json:"parent_id"`
 }
 
 func newCommentView(c board.Comment) commentView {
-	return commentView{
+	v := commentView{
 		ID: c.ID.String(), Author: newPersonView(c.Author), Text: c.Text,
 		At: spin.Instant(c.At), AtLabel: c.AtLabel, CanDelete: c.CanDelete,
 	}
+	if c.ParentID != nil {
+		parent := c.ParentID.String()
+		v.ParentID = &parent
+	}
+	return v
 }
 
 type receivedView struct {
@@ -264,7 +276,17 @@ func (h *BoardHandler) comment(c *gin.Context) {
 	if req.Text != nil {
 		text = *req.Text
 	}
-	cm, err := h.svc.AddComment(c.Request.Context(), u.ID, id, text)
+	var parent *uuid.UUID
+	if req.ParentID != nil {
+		s, ok := canonicalID(*req.ParentID)
+		if !ok {
+			RespondFieldError(c, "parent_id", reasonInvalid)
+			return
+		}
+		p := uuid.MustParse(s)
+		parent = &p
+	}
+	cm, err := h.svc.AddComment(c.Request.Context(), u.ID, id, text, parent)
 	if err != nil {
 		respondFeedError(c, err)
 		return

@@ -55,17 +55,51 @@ func (r *NotificationsRepo) Reactions(ctx context.Context, owner uuid.UUID, sinc
 	return out, rows.Err()
 }
 
-// Comments implements notifications.Repository.
+// Comments implements notifications.Repository. A reply counts as a comment
+// for the post's owner while its top-level comment is shown to the owner
+// (no block with its writer), and not at all when the owner wrote that
+// top-level comment: the owner then gets the reply item only.
 func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
-	rows, err := r.pool.Query(ctx, `
+	return r.commentRows(ctx, notifications.KindComment, `
 		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name
 		from entries e
 		join post_comments c on c.entry_id = e.id
+		left join post_comments p on p.id = c.parent_id
 		join spins s on s.id = e.spin_id
 		where e.user_id = $1 and c.user_id <> $1 and c.created_at > $2
 		  and not `+blockedEither("$1::uuid", "c.user_id")+`
+		  and (c.parent_id is null or (p.user_id <> $1 and not `+blockedEither("$1::uuid", "p.user_id")+`))
 		order by c.created_at desc, c.id desc
 		limit $3`, owner, since, limit)
+}
+
+// Replies implements notifications.Repository: replies by someone else to a
+// top-level comment the viewer wrote, with no block between the viewer and
+// the reply's writer, on a post the viewer can still see (the rule of
+// social.CanView: the viewer's own, or a followed owner's with no block, not
+// archived, on a day the viewer posted).
+func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
+	return r.commentRows(ctx, notifications.KindReply, `
+		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name
+		from post_comments p
+		join post_comments c on c.parent_id = p.id
+		join entries e on e.id = c.entry_id
+		join spins s on s.id = e.spin_id
+		where p.user_id = $1 and c.user_id <> $1 and c.created_at > $2
+		  and not `+blockedEither("$1::uuid", "c.user_id")+`
+		  and (e.user_id = $1 or (
+		    e.archived_at is null
+		    and exists (select 1 from follows f where f.follower_id = $1 and f.followee_id = e.user_id and f.status = 'accepted')
+		    and not `+blockedEither("$1::uuid", "e.user_id")+`
+		    and exists (select 1 from posted_days pd where pd.user_id = $1 and pd.local_date = e.local_date)))
+		order by c.created_at desc, c.id desc
+		limit $3`, viewer, since, limit)
+}
+
+// commentRows reads (comment id, entry, writer, body, instant, category)
+// rows into items of kind with the id kind:<comment id> and the text cut.
+func (r *NotificationsRepo) commentRows(ctx context.Context, kind string, q string, args ...any) ([]notifications.Raw, error) {
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +114,7 @@ func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since
 		}
 		text := notifications.CutText(body, notifications.TextRunes)
 		out = append(out, notifications.Raw{
-			Kind: notifications.KindComment, ID: "comment:" + id.String(),
+			Kind: kind, ID: kind + ":" + id.String(),
 			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Text: &text,
 		})
 	}

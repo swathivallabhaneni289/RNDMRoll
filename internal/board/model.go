@@ -93,6 +93,9 @@ type CommentRow struct {
 	EntryOwner uuid.UUID
 	Body       string
 	CreatedAt  time.Time
+	// ParentID is the top-level comment a reply belongs to; nil for a
+	// top-level comment. Replies are one level: a parent is never a reply.
+	ParentID *uuid.UUID
 }
 
 // Card is one post on the Board.
@@ -129,6 +132,8 @@ type Comment struct {
 	At        time.Time
 	AtLabel   string
 	CanDelete bool
+	// ParentID is set on a reply: the top-level comment it sits under.
+	ParentID *uuid.UUID
 }
 
 // Received is one reaction on the viewer's own post.

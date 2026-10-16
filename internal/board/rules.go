@@ -5,6 +5,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 )
 
@@ -29,6 +31,32 @@ func CleanComment(s string) (string, *FieldProblem) {
 		}
 	}
 	return s, nil
+}
+
+// Thread orders the comments the viewer may see into one flat list: the
+// top-level comments in the order given (oldest first), each followed
+// directly by its replies in the order given. A reply whose top-level
+// comment is not in rows (its writer has a block with the viewer) is left
+// out, so a reply is never drawn under the wrong comment.
+func Thread(rows []CommentRow) []CommentRow {
+	tops := make(map[uuid.UUID]bool, len(rows))
+	replies := map[uuid.UUID][]CommentRow{}
+	for _, c := range rows {
+		if c.ParentID == nil {
+			tops[c.ID] = true
+		} else {
+			replies[*c.ParentID] = append(replies[*c.ParentID], c)
+		}
+	}
+	out := make([]CommentRow, 0, len(rows))
+	for _, c := range rows {
+		if c.ParentID != nil || !tops[c.ID] {
+			continue
+		}
+		out = append(out, c)
+		out = append(out, replies[c.ID]...)
+	}
+	return out
 }
 
 // Decide is the Board's state, checked in order: following nobody, posted

@@ -4,8 +4,35 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 )
+
+// TestThread puts each top-level comment before its replies, keeps the given
+// order inside each group, and drops a reply whose top-level comment is not
+// in the list.
+func TestThread(t *testing.T) {
+	id := func() uuid.UUID { return uuid.New() }
+	top1, top2, hidden := id(), id(), id()
+	r1, r2, orphan := id(), id(), id()
+	row := func(i uuid.UUID, parent *uuid.UUID) CommentRow { return CommentRow{ID: i, ParentID: parent} }
+	// Oldest first, as the repository reads them.
+	rows := []CommentRow{row(top1, nil), row(top2, nil), row(r1, &top1), row(orphan, &hidden), row(r2, &top1)}
+	got := Thread(rows)
+	want := []uuid.UUID{top1, r1, r2, top2}
+	if len(got) != len(want) {
+		t.Fatalf("got %d comments, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].ID != want[i] {
+			t.Fatalf("position %d: got %v, want %v", i, got[i].ID, want[i])
+		}
+	}
+	if len(Thread(nil)) != 0 {
+		t.Fatal("no comments")
+	}
+}
 
 func TestCleanComment(t *testing.T) {
 	good := map[string]string{
