@@ -1,8 +1,8 @@
 import { api, ApiError } from '@/lib/api/client';
 
 /**
- * Follows (Phase 5, 05-FOLLOW-OVERRIDES section 6). Following is one way, like Instagram: a public
- * account is followed at once, a private one gets a request. People are found by exact username.
+ * Follows (Phase 5, 05-FOLLOW-OVERRIDES section 6). Following is one way, like Instagram, and every
+ * follow is a request the other person accepts (no public accounts since 2026-10-16). People are found by exact username.
  * Thin calls over the typed client; every field the app reads is read here, so a server that
  * sends `null` for an empty list (a nil slice in Go) or leaves a key out never breaks a screen.
  *
@@ -114,7 +114,7 @@ export async function lookupPerson(username: string): Promise<Lookup | null> {
   }
 }
 
-/** POST /follows {user_id}: `following` for a public account, `requested` for a private one. */
+/** POST /follows {user_id}: always `requested` now (every account acts as private, 2026-10-16). */
 export async function follow(userId: string): Promise<Relation> {
   const body = await api.post<{ relation?: unknown }>('/follows', { user_id: userId });
   return readRelation(body?.relation);

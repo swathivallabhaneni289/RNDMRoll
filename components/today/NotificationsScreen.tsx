@@ -9,7 +9,6 @@ import { UnreadDot } from '@/components/notifications/BellButton';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
-import { Chip } from '@/components/ui/Chip';
 import { ApiError } from '@/lib/api/client';
 import {
   getNotifications,
@@ -17,7 +16,7 @@ import {
   type NotificationItem,
   type NotificationSection,
 } from '@/lib/api/notifications';
-import { acceptRequest, declineRequest, firstName } from '@/lib/api/social';
+import { firstName } from '@/lib/api/social';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
@@ -109,7 +108,8 @@ function RowMark({ item }: { item: NotificationItem }) {
  * stack and on the Board's. The server builds the list, its sections and every time label; this
  * page prints it in three sections (Today, This week, Earlier) with a small dot on unread rows.
  * Opening it marks everything seen, so the bell's dot goes out; the dots it loaded with stay until
- * the person leaves. A follow request row has Accept and Decline. A tap opens your own entry page
+ * the person leaves. Follow requests are one row at the top ("Follow requests", the first name,
+ * the count) that opens their own page with Accept and Decline. A tap opens your own entry page
  * (a reaction or comment), People (a follow), or the Spin page (your spin is open, a bonus spin).
  * No bottom bar, so the page keeps all four safe-area edges.
  */
@@ -120,8 +120,6 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
   const [items, setItems] = useState<NotificationItem[] | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
-  const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
   const itemsRef = useRef<NotificationItem[] | null>(null);
 
   const load = useCallback(async () => {
@@ -174,24 +172,6 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
     router.push(place === 'board' ? '/(app)/board/people' : '/(app)/profile/people');
   }
 
-  async function answer(item: NotificationItem, accept: boolean) {
-    if (item.request_id === null || busy !== null) return;
-    setBusy(item.id);
-    setMessage('');
-    try {
-      if (accept) await acceptRequest(item.request_id);
-      else await declineRequest(item.request_id);
-      const next = (itemsRef.current ?? []).filter((shown) => shown.id !== item.id);
-      itemsRef.current = next;
-      setItems(next);
-    } catch (err) {
-      setMessage(err instanceof ApiError && err.code === 'network_unavailable' ? err.userMessage : 'Something went wrong. Please try again.');
-    } finally {
-      setBusy(null);
-      void load();
-    }
-  }
-
   function renderRow(item: NotificationItem) {
     const words = sentence(item);
     const spoken = `${words.spoken} ${item.at_label}${item.unread ? '. New' : ''}`;
@@ -223,32 +203,53 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
             {item.unread ? <UnreadDot /> : null}
           </View>
         </Pressable>
-        {item.kind === 'follow_request' && item.request_id !== null ? (
-          <View style={{ flexDirection: 'row', marginLeft: AVATAR + space.md, paddingBottom: space.md }}>
-            <Chip
-              label="Accept"
-              tone="strong"
-              onPress={busy === null ? () => void answer(item, true) : undefined}
-              accessibilityLabel={`Accept ${words.name}`}
-            />
-            <View style={{ marginLeft: space.sm }}>
-              <Chip
-                label="Decline"
-                tone="outline"
-                onPress={busy === null ? () => void answer(item, false) : undefined}
-                accessibilityLabel={`Decline ${words.name}`}
-              />
-            </View>
-          </View>
-        ) : null}
       </View>
     );
   }
 
+  // Requests are answered on their own page; the list shows one row for all of them at the top.
+  const requests = (items ?? []).filter((item) => item.kind === 'follow_request' && item.actor !== null);
   const sections = SECTIONS.map((section) => ({
     ...section,
-    rows: (items ?? []).filter((item) => item.section === section.key),
+    rows: (items ?? []).filter((item) => item.section === section.key && item.kind !== 'follow_request'),
   })).filter((section) => section.rows.length > 0);
+
+  function requestsRow() {
+    const first = requests[0].actor;
+    const others = requests.length - 1;
+    const who = first ? firstName(first) : '';
+    const line = others === 0 ? who : others === 1 ? `${who} and 1 other` : `${who} and ${others} others`;
+    return (
+      <Pressable
+        onPress={() => router.push(place === 'board' ? '/(app)/board/follow-requests' : '/(app)/today/follow-requests')}
+        accessibilityRole="button"
+        accessibilityLabel={`Follow requests, ${requests.length}. ${line}`}
+        accessibilityHint="Opens the page to accept or decline."
+        style={{
+          minHeight: ROW_MIN_HEIGHT,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: space.md,
+          borderBottomWidth: 1,
+          borderBottomColor: color.divider,
+        }}
+      >
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <SizedAvatar size={AVATAR} name={first ? first.name || first.username : ''} uri={first?.photo_url ?? null} placeholder="initials" />
+        </View>
+        <View style={{ flex: 1, marginLeft: space.md }}>
+          <AppText role="button">Follow requests</AppText>
+          <AppText role="label" tone="muted" numberOfLines={1}>
+            {line}
+          </AppText>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <AppText role="button">{String(requests.length)}</AppText>
+          <Ionicons name="chevron-forward" size={20} color={color.muted} style={{ marginLeft: space.xs }} />
+        </View>
+      </Pressable>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.dominant }}>
@@ -271,12 +272,6 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
           </AppText>
         </View>
 
-        {message !== '' ? (
-          <View style={{ marginTop: space.sm }} accessibilityLiveRegion="polite">
-            <AppText role="label">{message}</AppText>
-          </View>
-        ) : null}
-
         <View style={{ marginTop: space.lg }}>
           {status === 'loading' ? (
             <AppText role="label" tone="muted">
@@ -284,29 +279,32 @@ export function NotificationsScreen({ place = 'today' }: { place?: 'today' | 'bo
             </AppText>
           ) : status === 'offline' ? (
             <StatusMessage kind={failure} onRetry={() => void load()} />
-          ) : sections.length === 0 ? (
+          ) : sections.length === 0 && requests.length === 0 ? (
             <AppText role="label" tone="muted">
               Nothing new yet.
             </AppText>
           ) : (
-            sections.map((section, index) => (
-              <View key={section.key} style={{ marginTop: index === 0 ? 0 : space.xl }}>
-                <Text
-                  accessibilityRole="header"
-                  style={{
-                    fontFamily: type.label.fontFamily,
-                    fontSize: type.label.fontSize,
-                    lineHeight: type.label.lineHeight,
-                    letterSpacing: 1.5,
-                    textTransform: 'uppercase',
-                    color: color.muted,
-                  }}
-                >
-                  {section.title}
-                </Text>
-                <View style={{ marginTop: space.sm }}>{section.rows.map(renderRow)}</View>
-              </View>
-            ))
+            <>
+              {requests.length > 0 ? <View style={{ marginBottom: space.xl }}>{requestsRow()}</View> : null}
+              {sections.map((section, index) => (
+                <View key={section.key} style={{ marginTop: index === 0 ? 0 : space.xl }}>
+                  <Text
+                    accessibilityRole="header"
+                    style={{
+                      fontFamily: type.label.fontFamily,
+                      fontSize: type.label.fontSize,
+                      lineHeight: type.label.lineHeight,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: color.muted,
+                    }}
+                  >
+                    {section.title}
+                  </Text>
+                  <View style={{ marginTop: space.sm }}>{section.rows.map(renderRow)}</View>
+                </View>
+              ))}
+            </>
           )}
         </View>
       </ScrollView>

@@ -29,11 +29,11 @@ export const unstable_settings = {
 /** The bar is this tall above the bottom safe area. */
 const BAR_CONTENT_HEIGHT = 56;
 /** Today's pushed pages that show no bottom bar. */
-const BARLESS_TODAY_PAGES = ['notifications', 'entry', 'log', 'edit-entry'];
+const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'entry', 'log', 'edit-entry'];
 /** The Diary's and Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry'];
 /** The Board's pushed pages that show no bottom bar: a post, your entry page and Notifications. */
-const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry', 'notifications'];
+const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry', 'notifications', 'follow-requests'];
 
 /** True while the tab's own stack shows one of `pages`. */
 function showsPage(route: Parameters<typeof getFocusedRouteNameFromRoute>[0], pages: string[]): boolean {

@@ -17,6 +17,7 @@ export default function BoardLayout() {
       <Stack.Screen name="edit-entry" />
       <Stack.Screen name="people" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="follow-requests" />
     </Stack>
   );
 }

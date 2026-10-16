@@ -117,6 +117,22 @@ func (w *feedWorld) follow(p, target feedPerson) string {
 	return w.ok(p, http.MethodPost, "/v1/follows", map[string]any{"user_id": target.id})["relation"].(string)
 }
 
+// followAccepted sends p's follow request to target and target accepts it.
+func (w *feedWorld) followAccepted(p, target feedPerson) {
+	w.t.Helper()
+	if rel := w.follow(p, target); rel != "requested" {
+		w.t.Fatalf("every follow is a request: %s", rel)
+	}
+	for _, r := range w.lists(target)["incoming"].([]any) {
+		req := r.(map[string]any)
+		if dig(w.t, req, "person", "id") == p.id {
+			w.ok(target, http.MethodPost, "/v1/follows/requests/"+req["request_id"].(string)+"/accept", map[string]any{})
+			return
+		}
+	}
+	w.t.Fatalf("no request from %s", p.id)
+}
+
 func (w *feedWorld) setPrivate(p feedPerson, private bool) {
 	w.t.Helper()
 	v := "public"
@@ -194,21 +210,30 @@ func (w *feedWorld) followers(p feedPerson) float64 {
 	return w.ok(p, http.MethodGet, "/v1/me/summary", nil)["followers"].(float64)
 }
 
-func TestFollowIntegration_PublicAccountIsFollowedAtOnce(t *testing.T) {
+func TestFollowIntegration_EveryFollowIsARequest(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("fa_alice", "Alice Ames")
 	b := w.person("fa_bob", "Bob Brown")
 
+	// b's account is public in the database, and a follow is still a request.
+	w.setPrivate(b, false)
 	got := w.lookup(a, "@FA_Bob", http.StatusOK)
-	if got["relation"] != "none" || got["follows_you"] != false || got["private"] != false || dig(t, got, "person", "id") != b.id {
+	if got["relation"] != "none" || got["follows_you"] != false || got["private"] != true || dig(t, got, "person", "id") != b.id {
 		t.Fatalf("lookup before: %v", got)
 	}
-	if rel := w.follow(a, b); rel != "following" {
-		t.Fatalf("follow a public account: %s", rel)
+	if rel := w.follow(a, b); rel != "requested" {
+		t.Fatalf("follow: %s", rel)
 	}
-	if rel := w.follow(a, b); rel != "following" {
+	if rel := w.follow(a, b); rel != "requested" {
 		t.Fatalf("repeat follow: %s", rel)
 	}
+	if k := kinds(t, w.notes(b)); has(k, "follow") || !has(k, "follow_request") {
+		t.Fatalf("b gets a request, not a follow: %v", k)
+	}
+	if w.followers(b) != 0 {
+		t.Fatal("no follower before the accept")
+	}
+	w.followAccepted(a, b)
 	if got := w.lookup(a, "fa_bob", http.StatusOK); got["relation"] != "following" {
 		t.Fatalf("lookup after: %v", got)
 	}
@@ -221,13 +246,8 @@ func TestFollowIntegration_PublicAccountIsFollowedAtOnce(t *testing.T) {
 	if l := w.lists(a); strings.Join(usernames(t, l["following"]), ",") != "fa_bob" || len(l["followers"].([]any)) != 0 {
 		t.Fatalf("a's lists: %v", l)
 	}
-	n := w.notes(b)
-	item := itemOf(t, n, "follow")
-	if dig(t, item, "actor", "id") != a.id || item["unread"] != true || item["request_id"] != nil || n["unread"] != true {
-		t.Fatalf("follow item: %v", n)
-	}
-	if k := kinds(t, w.notes(a)); has(k, "follow") || has(k, "follow_accepted") {
-		t.Fatalf("the follower is told nothing: %v", k)
+	if k := kinds(t, w.notes(a)); !has(k, "follow_accepted") {
+		t.Fatalf("a is told of the accept: %v", k)
 	}
 	if w.followers(b) != 1 || w.followers(a) != 0 {
 		t.Fatalf("followers: b %v a %v", w.followers(b), w.followers(a))
@@ -346,7 +366,7 @@ func TestFollowIntegration_CancelUnfollowAndRemoveFollower(t *testing.T) {
 	}
 
 	// Unfollow.
-	w.follow(a, c)
+	w.followAccepted(a, c)
 	w.ok(a, http.MethodPost, "/v1/follows/"+c.id+"/unfollow", nil)
 	if got := w.lookup(a, "fc_cara", http.StatusOK); got["relation"] != "none" {
 		t.Fatalf("unfollow: %v", got)
@@ -360,7 +380,7 @@ func TestFollowIntegration_CancelUnfollowAndRemoveFollower(t *testing.T) {
 	w.ok(a, http.MethodPost, "/v1/follows/"+c.id+"/unfollow", map[string]any{})
 
 	// Remove a follower.
-	w.follow(d, a)
+	w.followAccepted(d, a)
 	if w.followers(a) != 1 {
 		t.Fatal("d follows a")
 	}
@@ -374,7 +394,7 @@ func TestFollowIntegration_CancelUnfollowAndRemoveFollower(t *testing.T) {
 	w.ok(a, http.MethodPost, "/v1/followers/"+d.id+"/remove", map[string]any{})
 }
 
-func TestFollowIntegration_SwitchToPublicAcceptsPendingSilently(t *testing.T) {
+func TestFollowIntegration_SwitchToPublicKeepsRequestsPending(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("fs_alice", "Alice Ames")
 	b := w.person("fs_bob", "Bob Brown")
@@ -382,25 +402,13 @@ func TestFollowIntegration_SwitchToPublicAcceptsPendingSilently(t *testing.T) {
 	w.follow(a, b)
 	w.clk.Advance(time.Minute)
 
-	// Switching to private again keeps it pending; public accepts it.
-	w.setPrivate(b, true)
+	// The old switch is not read: a request stays a request.
+	w.setPrivate(b, false)
 	if got := w.lookup(a, "fs_bob", http.StatusOK); got["relation"] != "requested" {
 		t.Fatalf("still pending: %v", got)
 	}
-	w.setPrivate(b, false)
-	if got := w.lookup(a, "fs_bob", http.StatusOK); got["relation"] != "following" {
-		t.Fatalf("after the switch: %v", got)
-	}
-	if k := kinds(t, w.notes(a)); has(k, "follow_accepted") {
-		t.Fatalf("no item for the requester: %v", k)
-	}
-	if k := kinds(t, w.notes(b)); has(k, "follow") || has(k, "follow_request") {
-		t.Fatalf("no item for the owner: %v", k)
-	}
-	// Switching back to private keeps the follower.
-	w.setPrivate(b, true)
-	if w.followers(b) != 1 {
-		t.Fatal("private keeps followers")
+	if w.followers(b) != 0 {
+		t.Fatal("nothing accepted")
 	}
 }
 
@@ -408,8 +416,8 @@ func TestBlockIntegration_RemovesFollowsBothWaysAndHidesLookup(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("fb_alice", "Alice Ames")
 	b := w.person("fb_bob", "Bob Brown")
-	w.follow(a, b)
-	w.follow(b, a)
+	w.followAccepted(a, b)
+	w.followAccepted(b, a)
 
 	w.ok(a, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": b.id})
 	w.ok(a, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": b.id})
@@ -485,8 +493,8 @@ func TestBoardIntegration_TheGate(t *testing.T) {
 	b := w.person("bg_bob", "Bob Brown")
 	c := w.person("bg_cara", "Cara Cole")
 	loner := w.person("bg_lone", "Lone Wolf")
-	w.follow(a, b)
-	w.follow(c, b)
+	w.followAccepted(a, b)
+	w.followAccepted(c, b)
 
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
@@ -616,8 +624,8 @@ func TestPostIntegration_ReactionsAndComments(t *testing.T) {
 	a := w.person("pr_alice", "Alice Ames")
 	b := w.person("pr_bob", "Bob Brown")
 	c := w.person("pr_cara", "Cara Cole")
-	w.follow(a, b)
-	w.follow(c, b)
+	w.followAccepted(a, b)
+	w.followAccepted(c, b)
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
 	w.post(a, day)
@@ -715,8 +723,10 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("nf_alice", "Alice Ames")
 	b := w.person("nf_bob", "Bob Brown")
+	c := w.person("nf_cara", "Cara Cole")
 	const day = "2026-10-08"
-	w.follow(a, b)
+	w.followAccepted(a, b)
+	w.follow(c, b)
 	bEntry := w.post(b, day)
 	w.post(a, day)
 	w.clk.Advance(time.Minute)
@@ -729,7 +739,7 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	}
 	list := w.notes(b)
 	k := kinds(t, list)
-	if !has(k, "reaction") || !has(k, "comment") || !has(k, "follow") || !has(k, "spin_open") || list["unread"] != true {
+	if !has(k, "reaction") || !has(k, "comment") || !has(k, "follow_request") || !has(k, "spin_open") || list["unread"] != true {
 		t.Fatalf("all on: %v", list)
 	}
 	if k[0] != "comment" || k[1] != "reaction" {
@@ -754,7 +764,7 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 		t.Fatalf("reactions off: %v", k)
 	}
 	w.ok(b, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"comments": false, "milestones": false})
-	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || has(k, "reaction") || !has(k, "follow") {
+	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || has(k, "reaction") || !has(k, "follow_request") {
 		t.Fatalf("all off, follow items stay: %v", k)
 	}
 	if got := w.ok(b, http.MethodGet, "/v1/me/notification-settings", nil); got["reactions"] != false || got["comments"] != false || got["milestones"] != false {

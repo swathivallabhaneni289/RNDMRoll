@@ -69,18 +69,18 @@ func (r *SocialRepo) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 
 // FindByUsername implements social.Repository.
 func (r *SocialRepo) FindByUsername(ctx context.Context, username string) (social.Person, bool, error) {
-	var visibility string
 	p, err := scanPerson(r.pool.QueryRow(ctx, `
-		select `+personColumns+`, u.account_visibility
+		select `+personColumns+`
 		from users u
-		where lower(u.username) = $1 and u.name is not null and u.name <> ''`, username), &visibility)
+		where lower(u.username) = $1 and u.name is not null and u.name <> ''`, username))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return social.Person{}, false, social.ErrNotFound
 	}
 	if err != nil {
 		return social.Person{}, false, err
 	}
-	return p, visibility == "private", nil
+	// Every account acts as private (2026-10-16): a follow is always a request.
+	return p, true, nil
 }
 
 // RelationOf implements social.Repository.
@@ -133,21 +133,20 @@ func (r *SocialRepo) HasBlock(ctx context.Context, a, b uuid.UUID) (bool, error)
 	return blocked, err
 }
 
-// Follow implements social.Repository. The followee's users row is read with
-// FOR SHARE, so a switch to public cannot commit between the read of the
-// account's visibility and the insert of a request: the switch waits, then
-// its accept-all sees the request.
+// Follow implements social.Repository. Every follow starts as a request; the
+// followee's users row is read with FOR SHARE so it cannot be deleted under
+// the insert.
 func (r *SocialRepo) Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (social.Relation, error) {
 	var rel social.Relation
 	err := r.inTx(ctx, func(tx pgx.Tx) error {
 		if err := pairLock(ctx, tx, follower, followee); err != nil {
 			return err
 		}
-		var visibility string
+		var exists int
 		err := tx.QueryRow(ctx, `
-			select account_visibility from users
+			select 1 from users
 			where id = $1 and name is not null and name <> '' and username is not null
-			for share`, followee).Scan(&visibility)
+			for share`, followee).Scan(&exists)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return social.ErrNotFound
 		}
@@ -173,17 +172,12 @@ func (r *SocialRepo) Follow(ctx context.Context, follower, followee uuid.UUID, a
 		case !errors.Is(err, pgx.ErrNoRows):
 			return err
 		}
-		if visibility == "private" {
-			_, err = tx.Exec(ctx, `
-				insert into follows (follower_id, followee_id, status, requested_at)
-				values ($1, $2, 'pending', $3)`, follower, followee, at)
-			rel = social.RelationRequested
-		} else {
-			_, err = tx.Exec(ctx, `
-				insert into follows (follower_id, followee_id, status, via, requested_at, accepted_at)
-				values ($1, $2, 'accepted', 'direct', $3, $3)`, follower, followee, at)
-			rel = social.RelationFollowing
-		}
+		// Every account acts as private (developer, 2026-10-16): a follow is
+		// always a request the other person accepts or declines.
+		_, err = tx.Exec(ctx, `
+			insert into follows (follower_id, followee_id, status, requested_at)
+			values ($1, $2, 'pending', $3)`, follower, followee, at)
+		rel = social.RelationRequested
 		return err
 	})
 	return rel, err

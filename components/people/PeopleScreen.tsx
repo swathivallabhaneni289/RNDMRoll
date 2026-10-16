@@ -63,7 +63,7 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 /** One person: the round photo or initial, the name and @username, and the actions at the right. */
-function PersonRow({
+export function PersonRow({
   person,
   onPress,
   pressHint,

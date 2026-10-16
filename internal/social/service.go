@@ -124,8 +124,8 @@ func (s *Service) People(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Pe
 	return s.repo.People(ctx, ids)
 }
 
-// Follow follows target: at once for a public account, as a request for a
-// private one. A repeat answers the same relation.
+// Follow sends target a follow request (every account acts as private). A
+// repeat answers the same relation.
 func (s *Service) Follow(ctx context.Context, viewer, target uuid.UUID) (Relation, error) {
 	if viewer == target {
 		return "", ErrNotFound

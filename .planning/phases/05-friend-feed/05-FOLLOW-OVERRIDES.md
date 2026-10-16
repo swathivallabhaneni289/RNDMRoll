@@ -1,5 +1,12 @@
 # Phase 5: Follow overrides (BINDING, 2026-10-16)
 
+> **CHANGE AFTER THE BUILD (developer, 2026-10-16):** there are no public accounts. Every follow is
+> a request the other person accepts or declines (still one-way). The server ignores
+> `account_visibility`, the lookup's `private` is always true, the "started following you" item is
+> never made, the Settings "Account privacy" page is gone, and requests are answered on their own
+> "Follow requests" page, opened from one row at the top of the bell list. Sections below that
+> talk about public accounts are history.
+
 This file WINS over `05-CONTEXT.md`, every `05-0*-PLAN.md`, `05-UI-SPEC.md` and `05-HAND-EDITS.md`
 wherever they disagree. Those papers were written for mutual friends; the developer decided on
 2026-10-13 that following works like Instagram (one-way). Read the papers for the design of the

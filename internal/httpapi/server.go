@@ -49,9 +49,8 @@ type Deps struct {
 
 	// Follow is the follows, blocks and notification settings routes; Board
 	// is the Board, posts, reactions and comments; Notifications is the
-	// bell. Each is registered only when not nil. When Follow is set, the
-	// profile route is given its BecamePublic, so a switch to public accepts
-	// every pending request.
+	// bell. Each is registered only when not nil. Every follow is a request
+	// (no public accounts since 2026-10-16), so nothing runs on a switch.
 	Follow        *FollowHandler
 	Board         *BoardHandler
 	Notifications *NotificationsHandler
@@ -120,9 +119,6 @@ func NewServer(deps Deps) *Server {
 
 	authed := v1.Group("")
 	authed.Use(middleware.RequireAuth(deps.JWTSecret), middleware.RequireUser(deps.Users))
-	if deps.Follow != nil {
-		deps.Profile.OnBecamePublic = deps.Follow.svc.BecamePublic
-	}
 	deps.Profile.Register(authed)
 	if deps.Account != nil {
 		deps.Account.Register(authed)
