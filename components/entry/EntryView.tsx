@@ -156,8 +156,8 @@ function Rise({ children }: { index: number; reduceMotion: boolean; children: Re
   return <View>{children}</View>;
 }
 
-/** The text and rating below the photo (UI spec 9, steps 3 to 7). */
-function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean }) {
+/** The text and rating below the photo (UI spec 9, steps 3 to 7). Also used by the Profile posts list. */
+export function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean }) {
   const reaction = entry.reaction === null ? null : (REACTIONS.find((item) => item.name === entry.reaction) ?? null);
   const category = entry.category.name;
   const date = dateLineLong(entry.local_date);

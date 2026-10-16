@@ -175,7 +175,8 @@ export function ProfileView({
  * figures and lists, and the 'Saved.' notice from the Edit page. A summary the server cannot give
  * yet (a 404, or no connection) shows zeros and empty lines, never an error screen.
  *
- * A picture opens the entry page inside the Profile stack (`/(app)/profile/entry` with
+ * A picture opens your posts as one list placed at it (`/(app)/profile/posts`), like Instagram;
+ * each post there has its menu, and 'View comments' opens the entry page inside the Profile stack (`/(app)/profile/entry` with
  * `from: 'profile'`), so Back reads 'Profile'. There is no tastes section: an average per
  * category was dropped.
  */
@@ -199,7 +200,7 @@ export function ProfileScreen() {
       saved={notice === SAVED_NOTICE}
       onEdit={() => router.push('/(app)/profile/edit')}
       posts={posts}
-      onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/entry', params: { id, from: 'profile' } })}
+      onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/posts', params: { start: id } })}
       onEndReached={diary.loadMore}
       onOpenPeople={() => router.push('/(app)/profile/people')}
     />

@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
 import type { Entry } from '@/lib/api/entries';
 import { color, space, type } from '@/lib/theme/tokens';
@@ -7,14 +8,17 @@ import { color, space, type } from '@/lib/theme/tokens';
 /** Three tiles a row, close together (developer, 2026-10-17: bigger pictures, the thin gap is fine). */
 const COLUMNS = 3;
 const GAP = 2;
-/** Tiles are a little taller than wide (4 to 5), so the pictures read larger. */
-const TILE_RATIO = 1.25;
+/** Tiles are 3 wide to 4 high, like Instagram's profile grid. */
+const TILE_RATIO = 4 / 3;
+/** The stacked-photos mark on a post with more than one picture. */
+const MULTI_ICON = 18;
+const MULTI_INSET = 6;
 
 /**
  * Every post the person has made, as a grid of cover photos, newest first (developer,
  * 2026-10-16: the Diary tab and "Recent activity" are gone; all the pictures show on Profile).
- * Skipped days are not shown. A tile opens the entry page, whose three dots keep Edit, Archive,
- * commenting and Delete. A post without a cover shows its title on a plain grey tile.
+ * Skipped days are not shown. A post with more than one picture carries a small stacked-photos
+ * mark at its top right. A tile opens the posts list at that post. A post without a cover shows its title on a plain grey tile.
  */
 export function PostGrid({
   posts,
@@ -68,6 +72,11 @@ export function PostGrid({
               </Text>
             </View>
           )}
+          {post.photos.length > 1 ? (
+            <View pointerEvents="none" style={{ position: 'absolute', top: MULTI_INSET, right: MULTI_INSET }}>
+              <Ionicons name="copy" size={MULTI_ICON} color={color.dominant} />
+            </View>
+          ) : null}
         </Pressable>
       ))}
     </View>

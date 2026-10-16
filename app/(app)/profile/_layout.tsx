@@ -24,6 +24,7 @@ export default function ProfileLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="edit" />
+      <Stack.Screen name="posts" />
       <Stack.Screen name="entry" />
       <Stack.Screen name="edit-entry" />
       <Stack.Screen name="settings" />
