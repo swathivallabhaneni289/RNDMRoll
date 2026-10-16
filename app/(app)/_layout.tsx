@@ -9,8 +9,8 @@ import { requestPendingSpin } from '@/lib/wheel/todayStore';
 import { color, type } from '@/lib/theme/tokens';
 
 /**
- * The signed-in app: a bottom bar of Diary, Spin, Board and Profile (developer, 2026-10-16: Home
- * was dropped because it repeated the Spin page). The `today` folder IS the Spin page and the
+ * The signed-in app: a bottom bar of Spin, Board and Profile (developer, 2026-10-16: Home
+ * was dropped because it repeated the Spin page, and Diary because Profile shows every post). The `today` folder IS the Spin page and the
  * landing, reached by the explicit child path `/(app)/today` (a bare `/(app)` shows Unmatched
  * Route here). Its bar slot is a plain tab like the others (developer, 2026-10-16: no raised
  * circle), with the wheel mark as its icon; a press also asks the page to spin once it has
@@ -19,9 +19,9 @@ import { color, type } from '@/lib/theme/tokens';
  *  - The bar is hidden on the one-time photo-and-bio page (the `profile` screen while
  *    `extrasPending` is true; the bar reads the focused route's options), on the pages pushed
  *    over the Spin page that have no bar, and on the entry page and edit entry wherever they are
- *    pushed (the Diary and Profile stacks mount them too).
+ *    pushed (the Profile stack mounts them too).
  *  - Every file left in this folder becomes a tab by itself, so the folder holds exactly
- *    `today`, `diary`, `board` and `profile`, each a folder with its own stack. The Board's stack
+ *    `today`, `board` and `profile`, each a folder with its own stack. The Board's stack
  *    (Phase 5) hides the bar on a post, your entry page and edit entry.
  */
 export const unstable_settings = {
@@ -32,7 +32,7 @@ export const unstable_settings = {
 const BAR_CONTENT_HEIGHT = 56;
 /** Today's pushed pages that show no bottom bar. */
 const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'entry', 'log', 'edit-entry'];
-/** The Diary's and Profile's pushed pages that show no bottom bar (the same entry pages). */
+/** Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry'];
 /** The Board's pushed pages that show no bottom bar: a post, your entry page and edit entry. */
 const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry'];
@@ -81,19 +81,6 @@ export default function AppLayout() {
         tabBarItemStyle: { paddingTop: 6 },
       }}
     >
-      <Tabs.Screen
-        name="diary"
-        options={({ route, navigation }) => {
-          const selected = isSelectedTab(navigation, route);
-          return {
-            title: 'Diary',
-            tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Diary'),
-            tabBarIcon: () => <TabIcon name="book-outline" focused={selected} />,
-            tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
-            tabBarStyle: showsPage(route, BARLESS_ENTRY_PAGES) ? hiddenBarStyle : barStyle,
-          };
-        }}
-      />
       <Tabs.Screen
         name="today"
         listeners={{

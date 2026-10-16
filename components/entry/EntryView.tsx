@@ -262,7 +262,7 @@ function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null
 /**
  * The entry page (03-UI-SPEC section 9, the developer's picture 06). A component with a thin route
  * (`app/(app)/today/entry.tsx`), mounted again by the Diary and Profile stacks with `from` =
- * 'diary' or 'profile' (Phase 4). `from` names the Back row and the gone-state button and keeps
+ * or 'profile' (Phase 4). `from` names the Back row and the gone-state button and keeps
  * Edit inside the same stack.
  *
  * Top to bottom: the Back row (the place the person came from), the photos edge to edge, the

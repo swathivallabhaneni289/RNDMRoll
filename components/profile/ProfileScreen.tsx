@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
-import { AccessibilityInfo, View } from 'react-native';
+import { AccessibilityInfo, ScrollView, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
 import { SettingsGear } from '@/components/settings/SettingsGear';
-import { RecentActivity } from '@/components/profile/RecentActivity';
+import { useDiary } from '@/components/diary/useDiary';
+import { PostGrid } from '@/components/profile/PostGrid';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatsRow } from '@/components/profile/StatsRow';
 import { useProfileSummary } from '@/components/profile/useProfileSummary';
+import type { Entry } from '@/lib/api/entries';
 import type { MeSummary } from '@/lib/api/summary';
 import { useSettingsNotice } from '@/lib/settings/notice';
 import { useSession } from '@/lib/session/store';
@@ -35,8 +37,12 @@ export type ProfileViewProps = {
   /** The Edit page has just saved. */
   saved: boolean;
   onEdit: () => void;
-  /** Opens a recent post on the entry page; without it the recent rows are plain. */
-  onOpenEntry?: (entryId: string) => void;
+  /** Every post, newest first, for the grid. */
+  posts: Entry[];
+  /** Opens a post on the entry page. */
+  onOpenEntry: (entryId: string) => void;
+  /** The end of the grid came into view: the next page of posts. */
+  onEndReached?: () => void;
   /** Opens People (Phase 5); without it the Followers figure is plain. */
   onOpenPeople?: () => void;
 };
@@ -48,7 +54,8 @@ export type ProfileViewProps = {
  * Top to bottom: a slim row with the Settings gear at the right (and 'Saved.' at the left for a few
  * seconds after the Edit page saves); the photo in a circle with the name beside it and the
  * @username under the name, and the outlined 'Edit' button at the right; the bio as plain text (it is edited on the Edit page);
- * a dark rule and the three figures; the recent activity.
+ * a dark rule and the three figures; then every post as a grid of pictures (developer, 2026-10-16:
+ * the Diary tab and 'Recent activity' were removed).
  *
  * Differences from the picture, on purpose: the gear and the bio (asked for in words, the picture
  * draws neither), 'Spins' for 'Rolls', and the section labels at the app's Label size.
@@ -62,10 +69,19 @@ export function ProfileView({
   summary,
   saved,
   onEdit,
+  posts,
   onOpenEntry,
+  onEndReached,
   onOpenPeople,
 }: ProfileViewProps) {
   const shown = summary ?? EMPTY_SUMMARY;
+  const { width } = useWindowDimensions();
+
+  // The next page is asked when the bottom of the grid is within one screen of view.
+  function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height * 2 >= contentSize.height) onEndReached?.();
+  }
 
   // iOS does not read a live region by itself: say 'Saved.' once, when it appears.
   useEffect(() => {
@@ -73,8 +89,8 @@ export function ProfileView({
   }, [saved]);
 
   return (
-    <Screen edges={['top', 'left', 'right']}>
-      <View style={{ paddingBottom: space.xl }}>
+    <Screen edges={['top', 'left', 'right']} scroll={false}>
+      <ScrollView onScroll={handleScroll} scrollEventThrottle={200} contentContainerStyle={{ paddingBottom: space.xl }}>
         {/* A slim row above the photo: 'Saved.' on the left for 3 seconds, the Settings gear on the right. */}
         <View
           style={{
@@ -139,11 +155,11 @@ export function ProfileView({
               />
             </View>
             <View style={{ marginTop: space.lg }}>
-              <RecentActivity recent={shown.recent} onOpenEntry={onOpenEntry} />
+              <PostGrid posts={posts} width={width - 2 * space.lg} onOpen={onOpenEntry} />
             </View>
           </>
         )}
-      </View>
+      </ScrollView>
     </Screen>
   );
 }
@@ -153,7 +169,7 @@ export function ProfileView({
  * figures and lists, and the 'Saved.' notice from the Edit page. A summary the server cannot give
  * yet (a 404, or no connection) shows zeros and empty lines, never an error screen.
  *
- * A recent row opens the entry page inside the Profile stack (`/(app)/profile/entry` with
+ * A picture opens the entry page inside the Profile stack (`/(app)/profile/entry` with
  * `from: 'profile'`), so Back reads 'Profile'. There is no tastes section: an average per
  * category was dropped.
  */
@@ -161,6 +177,9 @@ export function ProfileScreen() {
   const router = useRouter();
   const { user } = useSession();
   const { loading, summary } = useProfileSummary();
+  // The posts come from the diary list (skipped days left out), paged as the grid scrolls.
+  const diary = useDiary(null);
+  const posts = diary.rows.flatMap((row) => (row.kind === 'entry' ? [row.entry] : []));
   const notice = useSettingsNotice();
 
   return (
@@ -173,7 +192,9 @@ export function ProfileScreen() {
       summary={summary}
       saved={notice === SAVED_NOTICE}
       onEdit={() => router.push('/(app)/profile/edit')}
+      posts={posts}
       onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/entry', params: { id, from: 'profile' } })}
+      onEndReached={diary.loadMore}
       onOpenPeople={() => router.push('/(app)/profile/people')}
     />
   );
