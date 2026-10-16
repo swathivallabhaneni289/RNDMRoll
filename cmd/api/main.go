@@ -15,10 +15,13 @@ import (
 	"time"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/config"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
@@ -106,19 +109,30 @@ func main() {
 	// the spin handler the photo store's links.
 	entryHandler := httpapi.NewEntryHandler(spinService, entryPhotos)
 
+	// Follows, the Board and the bell run on the same clock as the spin
+	// service. Photo links on the Board are built only for visible posts.
+	socialService := social.NewService(postgres.NewSocialRepo(pool), spinClock)
+	boardService := board.NewService(postgres.NewBoardRepo(pool), socialService, spinService, spinClock, entryPhotos.PublicURL)
+	notificationsService := notifications.NewService(postgres.NewNotificationsRepo(pool), socialService, spinService)
+
 	// The diary and the Profile summary only read, through the pool, on the
-	// same clock as the spin service. Friends are 0 until Phase 5.
-	diaryService := diary.NewService(postgres.NewDiaryReader(pool), spinClock, diary.ZeroFriends{})
+	// same clock as the spin service. Followers are counted by follows.
+	diaryService := diary.NewService(postgres.NewDiaryReader(pool), spinClock, socialService)
 
 	deps := httpapi.Deps{
-		Auth:      authHandler,
-		Profile:   profileHandler,
-		Username:  usernameHandler,
-		Account:   accountHandler,
-		Spin:      httpapi.NewSpinHandler(spinService),
-		Wheel:     httpapi.NewWheelHandler(spinService),
-		Entry:     entryHandler,
-		Diary:     httpapi.NewDiaryHandler(diaryService, entryPhotos),
+		Auth:     authHandler,
+		Profile:  profileHandler,
+		Username: usernameHandler,
+		Account:  accountHandler,
+		Spin:     httpapi.NewSpinHandler(spinService),
+		Wheel:    httpapi.NewWheelHandler(spinService),
+		Entry:    entryHandler,
+		Diary:    httpapi.NewDiaryHandler(diaryService, entryPhotos),
+
+		Follow:        httpapi.NewFollowHandler(socialService),
+		Board:         httpapi.NewBoardHandler(boardService),
+		Notifications: httpapi.NewNotificationsHandler(notificationsService),
+
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,
 		Logger:    logger,

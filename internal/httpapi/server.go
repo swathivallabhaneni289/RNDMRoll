@@ -47,6 +47,15 @@ type Deps struct {
 	// Diary is GET /diary and GET /me/summary. Registered only when not nil.
 	Diary *DiaryHandler
 
+	// Follow is the follows, blocks and notification settings routes; Board
+	// is the Board, posts, reactions and comments; Notifications is the
+	// bell. Each is registered only when not nil. When Follow is set, the
+	// profile route is given its BecamePublic, so a switch to public accepts
+	// every pending request.
+	Follow        *FollowHandler
+	Board         *BoardHandler
+	Notifications *NotificationsHandler
+
 	Users     user.Repository
 	JWTSecret []byte
 	Logger    *slog.Logger
@@ -111,6 +120,9 @@ func NewServer(deps Deps) *Server {
 
 	authed := v1.Group("")
 	authed.Use(middleware.RequireAuth(deps.JWTSecret), middleware.RequireUser(deps.Users))
+	if deps.Follow != nil {
+		deps.Profile.OnBecamePublic = deps.Follow.svc.BecamePublic
+	}
 	deps.Profile.Register(authed)
 	if deps.Account != nil {
 		deps.Account.Register(authed)
@@ -129,6 +141,15 @@ func NewServer(deps Deps) *Server {
 	}
 	if deps.Diary != nil {
 		deps.Diary.Register(authed)
+	}
+	if deps.Follow != nil {
+		deps.Follow.Register(authed)
+	}
+	if deps.Board != nil {
+		deps.Board.Register(authed)
+	}
+	if deps.Notifications != nil {
+		deps.Notifications.Register(authed)
 	}
 	if deps.TestTools != nil {
 		deps.TestTools.Register(authed)

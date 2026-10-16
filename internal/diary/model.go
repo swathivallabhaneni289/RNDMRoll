@@ -57,7 +57,7 @@ type Taste struct {
 type Summary struct {
 	Spins      int
 	WeekStreak int
-	Friends    int
+	Followers  int
 	Tastes     []Taste
 	Recent     []spin.Entry
 }

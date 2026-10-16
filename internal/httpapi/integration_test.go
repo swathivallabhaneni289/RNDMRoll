@@ -30,8 +30,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -197,18 +200,25 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	// users is the Postgres repository, which is also the PasswordChanger.
 	accountHandler := NewAccountHandler(users, users, refreshSvc, integrationJWTSecret, 15*time.Minute)
 
+	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
+	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.PublicURL)
+	notificationsSvc := notifications.NewService(postgres.NewNotificationsRepo(pool), socialSvc, spinSvc)
+
 	deps := Deps{
-		Auth:      authHandler,
-		Profile:   profileHandler,
-		Username:  usernameHandler,
-		Account:   accountHandler,
-		Spin:      NewSpinHandler(spinSvc),
-		Wheel:     NewWheelHandler(spinSvc),
-		Entry:     NewEntryHandler(spinSvc, entryPhotos),
-		Diary:     NewDiaryHandler(diary.NewService(postgres.NewDiaryReader(pool), spinClock, diary.ZeroFriends{}), entryPhotos),
-		Users:     users,
-		JWTSecret: integrationJWTSecret,
-		Logger:    logger,
+		Auth:          authHandler,
+		Profile:       profileHandler,
+		Username:      usernameHandler,
+		Account:       accountHandler,
+		Spin:          NewSpinHandler(spinSvc),
+		Wheel:         NewWheelHandler(spinSvc),
+		Entry:         NewEntryHandler(spinSvc, entryPhotos),
+		Diary:         NewDiaryHandler(diary.NewService(postgres.NewDiaryReader(pool), spinClock, socialSvc), entryPhotos),
+		Follow:        NewFollowHandler(socialSvc),
+		Board:         NewBoardHandler(boardSvc),
+		Notifications: NewNotificationsHandler(notificationsSvc),
+		Users:         users,
+		JWTSecret:     integrationJWTSecret,
+		Logger:        logger,
 	}
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)

@@ -12,17 +12,17 @@ const maxStreakWeeks = 520
 
 // Service builds the diary page and the Profile summary from a Reader.
 type Service struct {
-	r       Reader
-	clk     clock.Clock
-	friends FriendCounter
+	r         Reader
+	clk       clock.Clock
+	followers FollowerCounter
 }
 
-// NewService builds a Service. A nil FriendCounter counts 0.
-func NewService(r Reader, clk clock.Clock, f FriendCounter) *Service {
+// NewService builds a Service. A nil FollowerCounter counts 0.
+func NewService(r Reader, clk clock.Clock, f FollowerCounter) *Service {
 	if f == nil {
-		f = ZeroFriends{}
+		f = ZeroFollowers{}
 	}
-	return &Service{r: r, clk: clk, friends: f}
+	return &Service{r: r, clk: clk, followers: f}
 }
 
 // PageParams are the already-validated query values of the diary.
@@ -77,7 +77,7 @@ func (s *Service) Summary(ctx context.Context, userID string) (Summary, error) {
 	if out.Recent, err = s.r.Recent(ctx, userID, RecentCount); err != nil {
 		return Summary{}, err
 	}
-	if out.Friends, err = s.friends.Count(ctx, userID); err != nil {
+	if out.Followers, err = s.followers.CountFollowers(ctx, userID); err != nil {
 		return Summary{}, err
 	}
 	zone, err := s.r.TimeZone(ctx, userID)

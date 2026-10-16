@@ -127,7 +127,7 @@ func (h *DiaryHandler) summary(c *gin.Context) {
 	Respond(c, http.StatusOK, gin.H{
 		"spins":       s.Spins,
 		"week_streak": s.WeekStreak,
-		"friends":     s.Friends,
+		"followers":   s.Followers,
 		"tastes":      tastes,
 		"recent":      recent,
 	})

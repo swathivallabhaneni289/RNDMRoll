@@ -7,8 +7,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
@@ -62,6 +65,12 @@ type ProfileHandler struct {
 	// exactly as the avatar store uses it to build a PublicURL. A saved
 	// avatar_url must start with <publicBaseURL>/avatars/<caller id>/.
 	publicBaseURL string
+
+	// OnBecamePublic, when set, runs after a saved PATCH /me that sets
+	// account_visibility to public: it accepts every pending follow request
+	// to the caller (no notification). NewServer sets it from the follow
+	// handler. Nil does nothing.
+	OnBecamePublic func(ctx context.Context, userID uuid.UUID) error
 }
 
 // NewProfileHandler constructs a ProfileHandler. publicBaseURL is the
@@ -257,6 +266,14 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 		}
 		RespondError(c, err)
 		return
+	}
+
+	if h.OnBecamePublic != nil && req.AccountVisibility != nil && *req.AccountVisibility == user.VisibilityPublic {
+		// The switch is saved; a failure here leaves the requests pending
+		// (the person can still accept them) and is only logged.
+		if err := h.OnBecamePublic(c.Request.Context(), updated.ID); err != nil {
+			log.Printf("httpapi: accept pending follow requests: %v", err)
+		}
 	}
 
 	Respond(c, http.StatusOK, profileBody(updated))

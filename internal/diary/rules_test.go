@@ -118,9 +118,9 @@ func (f *fakeReader) Recent(context.Context, string, int) ([]spin.Entry, error) 
 }
 func (f *fakeReader) TimeZone(context.Context, string) (string, error) { f.calls++; return f.zone, nil }
 
-type fiveFriends struct{}
+type fiveFollowers struct{}
 
-func (fiveFriends) Count(context.Context, string) (int, error) { return 5, nil }
+func (fiveFollowers) CountFollowers(context.Context, string) (int, error) { return 5, nil }
 
 func TestDiaryServicePaging(t *testing.T) {
 	f := &fakeReader{rows: []Row{{LocalDate: "2026-10-09"}, {LocalDate: "2026-10-08"}, {LocalDate: "2026-10-07"}}}
@@ -144,9 +144,9 @@ func TestDiaryServiceSummaryUsesLocalWeek(t *testing.T) {
 	// current week starts 2026-10-12, not 2026-10-05.
 	now := time.Date(2026, 10, 11, 20, 0, 0, 0, time.UTC)
 	f := &fakeReader{zone: "Pacific/Kiritimati", weeks: []string{"2026-10-12", "2026-10-05"}}
-	s := NewService(f, clock.NewFixed(now), fiveFriends{})
+	s := NewService(f, clock.NewFixed(now), fiveFollowers{})
 	sum, err := s.Summary(context.Background(), "u")
-	if err != nil || sum.WeekStreak != 2 || sum.Friends != 5 || sum.Spins != 7 {
+	if err != nil || sum.WeekStreak != 2 || sum.Followers != 5 || sum.Spins != 7 {
 		t.Fatalf("summary: %+v %v", sum, err)
 	}
 	if sum.Tastes[0].Tenths != 48 || sum.Tastes[0].Count != 2 {

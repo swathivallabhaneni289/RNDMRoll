@@ -27,13 +27,13 @@ type Reader interface {
 	TimeZone(ctx context.Context, userID string) (string, error)
 }
 
-// FriendCounter counts accepted friends. Phase 5 passes the real one.
-type FriendCounter interface {
-	Count(ctx context.Context, userID string) (int, error)
+// FollowerCounter counts accepted followers (social.Service).
+type FollowerCounter interface {
+	CountFollowers(ctx context.Context, userID string) (int, error)
 }
 
-// ZeroFriends is the Phase 4 counter: always 0.
-type ZeroFriends struct{}
+// ZeroFollowers always counts 0 (a server built without follows).
+type ZeroFollowers struct{}
 
-// Count implements FriendCounter.
-func (ZeroFriends) Count(context.Context, string) (int, error) { return 0, nil }
+// CountFollowers implements FollowerCounter.
+func (ZeroFollowers) CountFollowers(context.Context, string) (int, error) { return 0, nil }
