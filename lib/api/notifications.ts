@@ -1,0 +1,97 @@
+import { api } from '@/lib/api/client';
+import { readPerson, type Person } from '@/lib/api/social';
+import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
+
+/**
+ * The list behind the bell (Phase 5, 05-FOLLOW-OVERRIDES section 6). The server builds it, sorts
+ * it into sections, writes each time label and says what is unread; the phone prints it. The
+ * notification settings already filter it on the server. Every field the app reads is read here.
+ *
+ * The paths have no `/v1`: the client adds it.
+ */
+
+export type NotificationKind =
+  | 'reaction'
+  | 'comment'
+  | 'follow'
+  | 'follow_request'
+  | 'follow_accepted'
+  | 'spin_open'
+  | 'bonus_spin';
+
+export type NotificationSection = 'today' | 'week' | 'earlier';
+
+export type NotificationItem = {
+  id: string;
+  kind: NotificationKind;
+  at: string;
+  /** "9:18 PM", "Mon" or "Oct 3", written by the server in the viewer's zone. */
+  at_label: string;
+  section: NotificationSection;
+  unread: boolean;
+  actor: Person | null;
+  entry_id: string | null;
+  category_name: string | null;
+  reaction: ReactionName | null;
+  /** A comment's text, already cut by the server. */
+  text: string | null;
+  /** Set on `follow_request` items (they exist only while the request is pending). */
+  request_id: string | null;
+};
+
+const KINDS: readonly NotificationKind[] = [
+  'reaction',
+  'comment',
+  'follow',
+  'follow_request',
+  'follow_accepted',
+  'spin_open',
+  'bonus_spin',
+];
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+function readItem(raw: Record<string, unknown>): NotificationItem | null {
+  if (typeof raw.id !== 'string' || !KINDS.includes(raw.kind as NotificationKind)) return null;
+  const section = raw.section === 'today' || raw.section === 'week' ? raw.section : 'earlier';
+  return {
+    id: raw.id,
+    kind: raw.kind as NotificationKind,
+    at: typeof raw.at === 'string' ? raw.at : '',
+    at_label: typeof raw.at_label === 'string' ? raw.at_label : '',
+    section,
+    unread: raw.unread === true,
+    actor: readPerson(raw.actor),
+    entry_id: textOrNull(raw.entry_id),
+    category_name: textOrNull(raw.category_name),
+    reaction: isReactionName(raw.reaction) ? raw.reaction : null,
+    text: textOrNull(raw.text),
+    request_id: textOrNull(raw.request_id),
+  };
+}
+
+/** GET /notifications: `{unread, items}`, newest first. */
+export async function getNotifications(): Promise<{ unread: boolean; items: NotificationItem[] }> {
+  const body = await api.get<Record<string, unknown>>('/notifications');
+  const raw = Array.isArray(body?.items) ? (body.items as unknown[]) : [];
+  const items: NotificationItem[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') continue;
+    const read = readItem(item as Record<string, unknown>);
+    if (read !== null) items.push(read);
+  }
+  return { unread: body?.unread === true, items };
+}
+
+/** GET /notifications/summary: `{unread}`, for the dot on the bell. */
+export async function getNotificationSummary(): Promise<boolean> {
+  const body = await api.get<{ unread?: unknown }>('/notifications/summary');
+  return body?.unread === true;
+}
+
+/** POST /notifications/seen: everything up to now is read. */
+export async function markNotificationsSeen(): Promise<void> {
+  await api.post<unknown>('/notifications/seen', {});
+}

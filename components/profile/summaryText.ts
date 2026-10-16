@@ -67,9 +67,9 @@ export function streakSpoken(n: number): string {
   return `Week streak, ${n}`;
 }
 
-/** "1 friend", "5 friends". */
-export function friendsSpoken(n: number): string {
-  return n === 1 ? '1 friend' : `${n} friends`;
+/** "1 follower", "5 followers". */
+export function followersSpoken(n: number): string {
+  return n === 1 ? '1 follower' : `${n} followers`;
 }
 
 /** "Movie, average 4.6 out of 5, 9 posts." ("1 post"). */

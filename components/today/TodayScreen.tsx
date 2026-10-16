@@ -3,7 +3,6 @@ import { AccessibilityInfo, Pressable, Text, useWindowDimensions, View } from 'r
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { Screen } from '@/components/ui/Screen';
@@ -15,12 +14,14 @@ import { RESULT_WORD_TOP, ResultBlock } from '@/components/today/ResultBlock';
 import { SettledBlock } from '@/components/today/SettledBlock';
 import { StatusMessage, type StatusKind } from '@/components/today/StatusMessage';
 import { WeeklyCard } from '@/components/today/WeeklyCard';
+import { BellButton } from '@/components/notifications/BellButton';
 import type { Today, TodayState } from '@/lib/api/types';
 import { nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
 import { useToday } from '@/lib/wheel/useToday';
+import { useUnread } from '@/lib/notifications/unreadStore';
 
 /** The wheel is the smaller of this and the screen width minus the margins and 24dp (UI-SPEC 3). */
 const WHEEL_MAX = 232;
@@ -177,6 +178,8 @@ export function TodayScreen() {
   const { width } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
   const { userId, snapshot, spin, bonus, landed, tryAgain, refetch, instantReached } = useToday();
+  // The dot on the bell, asked again each time this page comes into focus (Phase 5).
+  const unread = useUnread();
   const { today, anchor, loadFailure, requesting, spinFailure, spinning, turn } = snapshot;
 
   const [phase, setPhase] = useState<Phase>('idle');
@@ -320,16 +323,7 @@ export function TodayScreen() {
       }}
     >
       <AppText role="heading">RNDMRoll</AppText>
-      <Pressable
-        onPress={() => router.push('/(app)/today/notifications')}
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        accessibilityHint="Opens your notifications."
-        hitSlop={4}
-        style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
-      >
-        <Ionicons name="notifications-outline" size={24} color={color.ink} />
-      </Pressable>
+      <BellButton unread={unread} onPress={() => router.push('/(app)/today/notifications')} />
     </View>
   );
 

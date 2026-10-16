@@ -43,8 +43,8 @@ export type MeSummary = {
   spins: number;
   /** Weeks in a row, ending with this week or last, in which the weekly goal was met. */
   week_streak: number;
-  /** Accepted friends: always 0 until Phase 5. */
-  friends: number;
+  /** Accepted followers (Phase 5: the field was `friends` before follows replaced friends). */
+  followers: number;
   /** One per category with at least one post, in wheel order, then removed ones. */
   tastes: Taste[];
   /** At most 3, newest first. */
@@ -65,7 +65,7 @@ export async function getSummary(): Promise<MeSummary> {
   return {
     spins: count(body.spins),
     week_streak: count(body.week_streak),
-    friends: count(body.friends),
+    followers: count(body.followers),
     tastes: list<Taste>(body.tastes),
     recent: list<RecentEntry>(body.recent),
   };

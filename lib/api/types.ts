@@ -99,7 +99,10 @@ export type ApiErrorCode =
   // Phase 3 (entries and skips; sent by the server, plan 03-01 Task 3a). `day_settled` is Phase 2's.
   | 'no_spin'
   | 'day_closed'
-  | 'spin_changed';
+  | 'spin_changed'
+  // Phase 5 (follows, the Board, reactions and comments; 05-FOLLOW-OVERRIDES section 6).
+  | 'own_post'
+  | 'comments_off';
 
 // ---------------------------------------------------------------------------
 // Phase 2: the daily spin and the wheel (plan 02-01 Task 3b and 3c, the exact wire shapes).

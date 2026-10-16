@@ -19,7 +19,8 @@ import { color, type } from '@/lib/theme/tokens';
  *    over the Spin page that have no bar, and on the entry page and edit entry wherever they are
  *    pushed (the Diary and Profile stacks mount them too).
  *  - Every file left in this folder becomes a tab by itself, so the folder holds exactly
- *    `today`, `diary`, `board` and `profile`. Diary is a folder with its own stack.
+ *    `today`, `diary`, `board` and `profile`, each a folder with its own stack. The Board's stack
+ *    (Phase 5) hides the bar on a post, your entry page, edit entry and Notifications.
  */
 export const unstable_settings = {
   initialRouteName: 'today',
@@ -31,6 +32,8 @@ const BAR_CONTENT_HEIGHT = 56;
 const BARLESS_TODAY_PAGES = ['notifications', 'entry', 'log', 'edit-entry'];
 /** The Diary's and Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry'];
+/** The Board's pushed pages that show no bottom bar: a post, your entry page and Notifications. */
+const BARLESS_BOARD_PAGES = ['post', 'entry', 'edit-entry', 'notifications'];
 
 /** True while the tab's own stack shows one of `pages`. */
 function showsPage(route: Parameters<typeof getFocusedRouteNameFromRoute>[0], pages: string[]): boolean {
@@ -109,6 +112,7 @@ export default function AppLayout() {
             tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Board'),
             tabBarIcon: () => <TabIcon name="people-outline" focused={selected} />,
             tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
+            tabBarStyle: showsPage(route, BARLESS_BOARD_PAGES) ? hiddenBarStyle : barStyle,
           };
         }}
       />

@@ -101,6 +101,14 @@ export async function getBlocks(): Promise<BlockedAccount[]> {
   return Array.isArray(body?.items) ? body.items : [];
 }
 
+/**
+ * POST /me/blocks {user_id}: 200 `{}`. The server removes the follows both ways and any request
+ * either way; the blocked person is never told.
+ */
+export async function blockUser(userId: string): Promise<void> {
+  await api.post<unknown>('/me/blocks', { user_id: userId });
+}
+
 /** DELETE /me/blocks/{user_id}: 204 with no body. */
 export async function unblock(userId: string): Promise<void> {
   await api.delete<void>(`/me/blocks/${encodeURIComponent(userId)}`);

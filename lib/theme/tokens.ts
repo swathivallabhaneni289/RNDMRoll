@@ -69,7 +69,9 @@ export const radius = {
    * `components/nav/SpinTabButton.tsx` and the two named exceptions of the entry
    * screen (the developer's picture 03): the six round reaction buttons in
    * `components/entry/ReactionPicker.tsx` and the Camera and Library buttons in
-   * `components/entry/PhotoField.tsx`.
+   * `components/entry/PhotoField.tsx`. Phase 5 adds two drawn shapes from the developer's
+   * pictures 09 and 10: the name chip over a Board photo (`components/board/PostCard.tsx`, a
+   * label, not a control) and the comment field (`components/board/Comments.tsx`).
    */
   full: 9999,
 } as const;

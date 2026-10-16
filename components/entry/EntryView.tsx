@@ -1,9 +1,11 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommentBar, CommentList, CommentsOffBar, CommentsRule, ReceivedReactions } from '@/components/board/Comments';
+import { usePost, type PostLoad } from '@/components/board/usePost';
 import { StarDisplay } from '@/components/entry/StarDisplay';
 import { editEntryPath, fromName, fromRoot, goToStart, type EntryFrom } from '@/components/entry/entryFrom';
 import { useEntry } from '@/components/entry/useEntry';
@@ -61,13 +63,23 @@ function PhotoFallback() {
 }
 
 /**
- * The photos: square, the full width of the screen, no margins and no radius, one page per photo
- * with the system's own paging. With more than one a plain counter sits at the bottom right and
- * the gallery is one adjustable element for VoiceOver. The first photo is revealed (450ms) unless
- * Reduce Motion is on.
+ * The photos: square (or `aspect` wide to 1 high), the full width of the screen, no margins and no
+ * radius, one page per photo with the system's own paging. With more than one a plain counter sits
+ * at the bottom right and the gallery is one adjustable element for VoiceOver. Nothing fades.
+ * Exported for the post page of someone else's post (Phase 5), which uses the same gallery.
  */
-function Gallery({ photos, title, reduceMotion }: { photos: EntryPhoto[]; title: string; reduceMotion: boolean }) {
+export function Gallery({
+  photos,
+  title,
+  aspect = 1,
+}: {
+  photos: EntryPhoto[];
+  title: string;
+  reduceMotion?: boolean;
+  aspect?: number;
+}) {
   const { width } = useWindowDimensions();
+  const height = Math.round(width / aspect);
   const scrollRef = useRef<ScrollView>(null);
   const [page, setPage] = useState(0);
   const [failed, setFailed] = useState<Record<string, boolean>>({});
@@ -91,7 +103,7 @@ function Gallery({ photos, title, reduceMotion }: { photos: EntryPhoto[]; title:
         if (event.nativeEvent.actionName === 'increment') goTo(current + 1);
         else if (event.nativeEvent.actionName === 'decrement') goTo(current - 1);
       }}
-      style={{ width, height: width, backgroundColor: color.secondary }}
+      style={{ width, height, backgroundColor: color.secondary }}
     >
       <ScrollView
         ref={scrollRef}
@@ -115,7 +127,7 @@ function Gallery({ photos, title, reduceMotion }: { photos: EntryPhoto[]; title:
             />
           );
           return (
-            <View key={photo.id} style={{ width, height: width, backgroundColor: color.secondary }}>
+            <View key={photo.id} style={{ width, height, backgroundColor: color.secondary }}>
               {image}
             </View>
           );
@@ -225,6 +237,29 @@ function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean 
 }
 
 /**
+ * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the details, who
+ * reacted (a name and the character, or 'No reactions yet.') and the comments, oldest first, each
+ * with 'Delete' (the owner may delete any). Read from GET /posts/{entry_id}; until that answers, or
+ * if it cannot, nothing is drawn here and the rest of the page is unchanged.
+ */
+function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null }) {
+  const post = social.post;
+  if (social.status !== 'ready' || post === null) return null;
+  const comments = post.comments ?? [];
+  return (
+    <View style={{ paddingHorizontal: space.lg, paddingBottom: space.xl }}>
+      <ReceivedReactions received={post.received ?? []} />
+      {comments.length > 0 ? (
+        <View style={{ marginTop: space.lg }}>
+          <CommentsRule count={post.card.comment_count ?? comments.length} />
+        </View>
+      ) : null}
+      <CommentList comments={comments} myId={myId} onDelete={social.remove} />
+    </View>
+  );
+}
+
+/**
  * The entry page (03-UI-SPEC section 9, the developer's picture 06). A component with a thin route
  * (`app/(app)/today/entry.tsx`), mounted again by the Diary and Profile stacks with `from` =
  * 'diary' or 'profile' (Phase 4). `from` names the Back row and the gone-state button and keeps
@@ -233,17 +268,21 @@ function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean 
  * Top to bottom: the Back row (the place the person came from), the photos edge to edge, the
  * category and long date, the title, the rating and reaction, the comment, and a pinned
  * three-dots menu in the Back row (Edit, Delete; the Tabs layout hides the bar for the
- * route name `entry`). The page reloads when it comes back into focus.
+ * route name `entry`). The page reloads when it comes back into focus. Phase 5 adds, under the
+ * details, the reactions it received and its comments, and the comment bar pinned at the bottom
+ * ('Commenting is off.' in its place when commenting is switched off), all from GET /posts/{id};
+ * the Board stack mounts it too (`from` = 'board').
  *
  * Delete asks with the phone's own alert (Cancel, and a red Delete). The delete is POST
  * /entries/{id}/delete; the answer's Today goes into the store; 'not found' counts as done.
  */
-export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
+export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom; backLabel?: string }) {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const { user } = useSession();
   const userId = user?.id ?? null;
   const load = useEntry(id);
+  const social = usePost(id);
 
   const [deleting, setDeleting] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
@@ -257,6 +296,8 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
   }, []);
 
   const backName = fromName(from);
+  /** The Back row may name the page it returns to (Notifications); the gone state keeps the stack's name. */
+  const backRowName = backLabel ?? backName;
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -324,7 +365,10 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
       applyToday(userId, answer.today, mark);
       void refetchToday(userId, 'manual');
       if (archive) goBack();
-      else load.reload();
+      else {
+        load.reload();
+        social.reload();
+      }
     } catch (err) {
       if (mountedRef.current) setDeleteMessage(entryErrorMessage(err).text);
     } finally {
@@ -342,6 +386,7 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
     try {
       await updateEntry(id, { comments_off: off });
       load.reload();
+      social.reload();
     } catch (err) {
       if (mountedRef.current) setDeleteMessage(entryErrorMessage(err).text);
     } finally {
@@ -372,13 +417,13 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
-          accessibilityLabel={`Back to ${backName}`}
+          accessibilityLabel={`Back to ${backRowName}`}
           hitSlop={{ right: 16 }}
           style={{ height: minTouchTarget, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
         >
           <Ionicons name="chevron-back" size={24} color={color.ink} />
           <View style={{ marginLeft: space.xs }}>
-            <AppText role="body">{backName}</AppText>
+            <AppText role="body">{backRowName}</AppText>
           </View>
         </Pressable>
         {ready ? (
@@ -403,10 +448,11 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
       </View>
 
       {ready ? (
-        <>
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Gallery photos={entry.photos} title={entry.title} reduceMotion={reduceMotion} />
             <Details entry={entry} reduceMotion={reduceMotion} />
+            <OwnPostExtras social={social} myId={userId} />
           </ScrollView>
 
           {deleteMessage !== null ? (
@@ -424,7 +470,14 @@ export function EntryView({ id, from }: { id: string; from: EntryFrom }) {
               </Text>
             </View>
           ) : null}
-        </>
+          {social.status === 'ready' && social.post !== null ? (
+            social.post.can_comment ? (
+              <CommentBar onSend={social.comment} />
+            ) : (
+              <CommentsOffBar />
+            )
+          ) : null}
+        </KeyboardAvoidingView>
       ) : (
         <View style={{ paddingHorizontal: space.lg, marginTop: space.xl }}>
           {load.status === 'loading' ? (

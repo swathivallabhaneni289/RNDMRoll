@@ -15,7 +15,7 @@ import { useSession } from '@/lib/session/store';
 import { minTouchTarget, space } from '@/lib/theme/tokens';
 
 /** Drawn for a person with no answer from the server (not live yet, offline, or nothing posted). */
-const EMPTY_SUMMARY: MeSummary = { spins: 0, week_streak: 0, friends: 0, tastes: [], recent: [] };
+const EMPTY_SUMMARY: MeSummary = { spins: 0, week_streak: 0, followers: 0, tastes: [], recent: [] };
 
 const AVATAR_SIZE = 72;
 
@@ -37,6 +37,8 @@ export type ProfileViewProps = {
   onEdit: () => void;
   /** Opens a recent post on the entry page; without it the recent rows are plain. */
   onOpenEntry?: (entryId: string) => void;
+  /** Opens People (Phase 5); without it the Followers figure is plain. */
+  onOpenPeople?: () => void;
 };
 
 /**
@@ -61,6 +63,7 @@ export function ProfileView({
   saved,
   onEdit,
   onOpenEntry,
+  onOpenPeople,
 }: ProfileViewProps) {
   const shown = summary ?? EMPTY_SUMMARY;
 
@@ -128,7 +131,12 @@ export function ProfileView({
         ) : (
           <>
             <View style={{ marginTop: space.lg }}>
-              <StatsRow spins={shown.spins} weekStreak={shown.week_streak} friends={shown.friends} />
+              <StatsRow
+                spins={shown.spins}
+                weekStreak={shown.week_streak}
+                followers={shown.followers}
+                onOpenFollowers={onOpenPeople}
+              />
             </View>
             <View style={{ marginTop: space.lg }}>
               <RecentActivity recent={shown.recent} onOpenEntry={onOpenEntry} />
@@ -166,6 +174,7 @@ export function ProfileScreen() {
       saved={notice === SAVED_NOTICE}
       onEdit={() => router.push('/(app)/profile/edit')}
       onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/entry', params: { id, from: 'profile' } })}
+      onOpenPeople={() => router.push('/(app)/profile/people')}
     />
   );
 }
