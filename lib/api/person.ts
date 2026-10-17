@@ -23,6 +23,8 @@ export type PersonPage = {
   relation: Relation;
   /** They follow the caller (the button then reads "Follow back"). */
   follows_you: boolean;
+  /** The caller muted them: their posts are off the caller's Board. They are never told. */
+  muted: boolean;
   stats: { spins: number; week_streak: number; followers: number; following: number };
   /** Null when the caller does not follow them (accepted): the page shows the header only. */
   posts: PersonPost[] | null;
@@ -73,6 +75,7 @@ export async function getPerson(userId: string, cursor?: string): Promise<Person
       person,
       relation: relation(body.relation),
       follows_you: body.follows_you === true,
+      muted: body.muted === true,
       stats: {
         spins: num(stats.spins),
         week_streak: num(stats.week_streak),
@@ -86,4 +89,32 @@ export async function getPerson(userId: string, cursor?: string): Promise<Person
     if (err instanceof ApiError && err.code === 'not_found') return null;
     throw err;
   }
+}
+
+/** POST /people/{user_id}/mute: their posts leave your Board. Silent. */
+export async function mutePerson(userId: string): Promise<void> {
+  await api.post<unknown>(`/people/${encodeURIComponent(userId)}/mute`, {});
+}
+
+/** POST /people/{user_id}/unmute: their posts come back to your Board. */
+export async function unmutePerson(userId: string): Promise<void> {
+  await api.post<unknown>(`/people/${encodeURIComponent(userId)}/unmute`, {});
+}
+
+/** The reasons a person can be reported for, as the server names them, with the words shown. */
+export const REPORT_REASONS = [
+  { reason: 'spam', label: 'Spam' },
+  { reason: 'nudity', label: 'Nudity or sexual content' },
+  { reason: 'harassment', label: 'Bullying or harassment' },
+  { reason: 'hate', label: 'Hate speech' },
+  { reason: 'violence', label: 'Violence or threats' },
+  { reason: 'impersonation', label: 'Pretending to be someone else' },
+  { reason: 'other', label: 'Something else' },
+] as const;
+
+export type ReportReason = (typeof REPORT_REASONS)[number]['reason'];
+
+/** POST /people/{user_id}/report {reason}. The person is never told. */
+export async function reportPerson(userId: string, reason: ReportReason): Promise<void> {
+  await api.post<unknown>(`/people/${encodeURIComponent(userId)}/report`, { reason });
 }

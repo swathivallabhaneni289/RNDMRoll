@@ -20,7 +20,14 @@ import { Chip } from '@/components/ui/Chip';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { blockUser } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
-import { getPerson, type PersonPage } from '@/lib/api/person';
+import {
+  getPerson,
+  mutePerson,
+  REPORT_REASONS,
+  reportPerson,
+  unmutePerson,
+  type PersonPage,
+} from '@/lib/api/person';
 import { firstName, follow, removeFollower, unfollow } from '@/lib/api/social';
 import { postPathIn } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
@@ -33,7 +40,8 @@ const GENERIC = 'Something went wrong. Please try again.';
  * it opens their profile). It looks like your own Profile seen by a visitor: their photo, name,
  * @username and the four figures, with one button where your Edit is: Follow, Follow back,
  * Requested (a tap cancels) or Following (a tap offers Unfollow). The three dots at the top right
- * hold Remove follower (when they follow you) and Block. Every follow is a request, so until they accept, the page ends with "This
+ * hold Remove follower (when they follow you), Mute or Unmute (their posts leave your Board), Report
+ * (a list of reasons) and Block. None of them is ever told. Every follow is a request, so until they accept, the page ends with "This
  * account is private."; an accepted follower sees their grid, only the days they posted too (the
  * Board rule). A tile opens the post page in the same stack. Someone who is gone, or a block
  * either way, shows one plain line.
@@ -46,7 +54,7 @@ export function PersonScreen({ id }: { id: string }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'gone' | 'offline'>('loading');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
   const [message, setMessage] = useState('');
-  const [menu, setMenu] = useState<'more' | 'following' | null>(null);
+  const [menu, setMenu] = useState<'more' | 'following' | 'report' | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const loadedRef = useRef(false);
@@ -104,7 +112,7 @@ export function PersonScreen({ id }: { id: string }) {
   }
 
   /** Runs one action at a time, then reads the page again; a failure shows one plain line. */
-  async function act(work: () => Promise<void>) {
+  async function act(work: () => Promise<void>, done = '') {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -112,6 +120,7 @@ export function PersonScreen({ id }: { id: string }) {
     try {
       await work();
       await load();
+      setMessage(done);
     } catch (err) {
       setMessage(err instanceof ApiError && err.code === 'network_unavailable' ? err.userMessage : GENERIC);
     } finally {
@@ -159,8 +168,25 @@ export function PersonScreen({ id }: { id: string }) {
           ...(page?.follows_you
             ? [{ label: 'Remove follower', onPress: afterClose(() => void act(() => removeFollower(id))) }]
             : []),
+          page?.muted
+            ? { label: 'Unmute', onPress: afterClose(() => void act(() => unmutePerson(id), 'Unmuted.')) }
+            : {
+                label: 'Mute',
+                onPress: afterClose(
+                  () => void act(() => mutePerson(id), "Muted. Their posts won't show on your Board. They won't be told."),
+                ),
+              },
+          // Report opens the list of reasons in the same sheet.
+          { label: 'Report', onPress: () => setMenu('report') },
           { label: 'Block', onPress: afterClose(() => askBlock(name)) },
         ]
+      : menu === 'report'
+        ? REPORT_REASONS.map((item) => ({
+            label: item.label,
+            onPress: afterClose(
+              () => void act(() => reportPerson(id, item.reason), "Thanks for letting us know. They won't be told."),
+            ),
+          }))
       : menu === 'following'
         ? [{ label: 'Unfollow', onPress: afterClose(() => void act(async () => void (await unfollow(id)))) }]
         : [];
