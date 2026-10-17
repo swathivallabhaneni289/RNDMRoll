@@ -10,17 +10,20 @@ import (
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 )
 
 // NotificationsHandler serves GET /notifications, GET /notifications/summary
 // and POST /notifications/seen.
 type NotificationsHandler struct {
-	svc *notifications.Service
+	svc    *notifications.Service
+	photos storage.EntryPhotoStore
 }
 
-// NewNotificationsHandler builds a NotificationsHandler.
-func NewNotificationsHandler(svc *notifications.Service) *NotificationsHandler {
-	return &NotificationsHandler{svc: svc}
+// NewNotificationsHandler builds a NotificationsHandler. photos builds the
+// links of the small post pictures.
+func NewNotificationsHandler(svc *notifications.Service, photos storage.EntryPhotoStore) *NotificationsHandler {
+	return &NotificationsHandler{svc: svc, photos: photos}
 }
 
 // Register mounts the routes on rg. Limits are per person, a minute.
@@ -43,9 +46,11 @@ type itemView struct {
 	Reaction     *string      `json:"reaction"`
 	Text         *string      `json:"text"`
 	RequestID    *string      `json:"request_id"`
+	// PhotoURL is the post's first photo, "" when the item has none.
+	PhotoURL string `json:"photo_url"`
 }
 
-func newItemView(it notifications.Item) itemView {
+func newItemView(it notifications.Item, photoURL func(string) string) itemView {
 	v := itemView{
 		ID: it.ID, Kind: it.Kind, At: spin.Instant(it.At), AtLabel: it.AtLabel, Section: it.Section,
 		Unread: it.Unread, CategoryName: it.CategoryName, Reaction: it.Reaction, Text: it.Text,
@@ -62,6 +67,9 @@ func newItemView(it notifications.Item) itemView {
 		s := it.RequestID.String()
 		v.RequestID = &s
 	}
+	if it.PhotoKey != nil && *it.PhotoKey != "" {
+		v.PhotoURL = photoURL(*it.PhotoKey)
+	}
 	return v
 }
 
@@ -77,7 +85,7 @@ func (h *NotificationsHandler) list(c *gin.Context) {
 	}
 	items := make([]itemView, 0, len(l.Items))
 	for _, it := range l.Items {
-		items = append(items, newItemView(it))
+		items = append(items, newItemView(it, h.photos.PublicURL))
 	}
 	Respond(c, http.StatusOK, gin.H{"unread": l.Unread, "items": items})
 }

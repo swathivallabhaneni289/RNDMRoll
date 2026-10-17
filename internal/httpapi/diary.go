@@ -128,6 +128,7 @@ func (h *DiaryHandler) summary(c *gin.Context) {
 		"spins":       s.Spins,
 		"week_streak": s.WeekStreak,
 		"followers":   s.Followers,
+		"following":   s.Following,
 		"tastes":      tastes,
 		"recent":      recent,
 	})

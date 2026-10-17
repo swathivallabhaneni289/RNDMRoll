@@ -315,7 +315,8 @@ func TestFollowIntegration_PrivateAccountRequestAcceptAndDecline(t *testing.T) {
 	if got := w.lookup(a, "fp_bob", http.StatusOK); got["relation"] != "following" {
 		t.Fatalf("after accept: %v", got)
 	}
-	if k := kinds(t, w.notes(b)); has(k, "follow_request") || has(k, "follow") {
+	// The request row becomes "started following you" (like Instagram).
+	if k := kinds(t, w.notes(b)); has(k, "follow_request") || !has(k, "follow") {
 		t.Fatalf("b after accept: %v", k)
 	}
 	acc := itemOf(t, w.notes(a), "follow_accepted")

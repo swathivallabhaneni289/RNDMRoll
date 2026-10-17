@@ -27,7 +27,8 @@ var _ notifications.Repository = (*NotificationsRepo)(nil)
 // Reactions implements notifications.Repository.
 func (r *NotificationsRepo) Reactions(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	rows, err := r.pool.Query(ctx, `
-		select pr.entry_id, pr.user_id, pr.reaction, pr.updated_at, s.category_name
+		select pr.entry_id, pr.user_id, pr.reaction, pr.updated_at, s.category_name,
+		  (select ep.storage_key from entry_photos ep where ep.entry_id = e.id order by ep.position limit 1)
 		from entries e
 		join post_reactions pr on pr.entry_id = e.id
 		join spins s on s.id = e.spin_id
@@ -43,13 +44,15 @@ func (r *NotificationsRepo) Reactions(ctx context.Context, owner uuid.UUID, sinc
 	for rows.Next() {
 		var entryID, actor uuid.UUID
 		var reaction, category string
+		var photoKey *string
 		var at time.Time
-		if err := rows.Scan(&entryID, &actor, &reaction, &at, &category); err != nil {
+		if err := rows.Scan(&entryID, &actor, &reaction, &at, &category, &photoKey); err != nil {
 			return nil, err
 		}
 		out = append(out, notifications.Raw{
 			Kind: notifications.KindReaction, ID: "reaction:" + entryID.String() + ":" + actor.String(),
 			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Reaction: &reaction,
+			PhotoKey: photoKey,
 		})
 	}
 	return out, rows.Err()
@@ -61,7 +64,8 @@ func (r *NotificationsRepo) Reactions(ctx context.Context, owner uuid.UUID, sinc
 // top-level comment: the owner then gets the reply item only.
 func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.commentRows(ctx, notifications.KindComment, `
-		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name
+		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name,
+		  (select ep.storage_key from entry_photos ep where ep.entry_id = e.id order by ep.position limit 1)
 		from entries e
 		join post_comments c on c.entry_id = e.id
 		left join post_comments p on p.id = c.parent_id
@@ -80,7 +84,8 @@ func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since
 // archived, on a day the viewer posted).
 func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.commentRows(ctx, notifications.KindReply, `
-		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name
+		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name,
+		  (select ep.storage_key from entry_photos ep where ep.entry_id = e.id order by ep.position limit 1)
 		from post_comments p
 		join post_comments c on c.parent_id = p.id
 		join entries e on e.id = c.entry_id
@@ -96,8 +101,8 @@ func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since
 		limit $3`, viewer, since, limit)
 }
 
-// commentRows reads (comment id, entry, writer, body, instant, category)
-// rows into items of kind with the id kind:<comment id> and the text cut.
+// commentRows reads (comment id, entry, writer, body, instant, category,
+// cover photo key or null) rows into items of kind with the id kind:<comment id> and the text cut.
 func (r *NotificationsRepo) commentRows(ctx context.Context, kind string, q string, args ...any) ([]notifications.Raw, error) {
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -108,14 +113,16 @@ func (r *NotificationsRepo) commentRows(ctx context.Context, kind string, q stri
 	for rows.Next() {
 		var id, entryID, actor uuid.UUID
 		var body, category string
+		var photoKey *string
 		var at time.Time
-		if err := rows.Scan(&id, &entryID, &actor, &body, &at, &category); err != nil {
+		if err := rows.Scan(&id, &entryID, &actor, &body, &at, &category, &photoKey); err != nil {
 			return nil, err
 		}
 		text := notifications.CutText(body, notifications.TextRunes)
 		out = append(out, notifications.Raw{
 			Kind: kind, ID: kind + ":" + id.String(),
 			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Text: &text,
+			PhotoKey: photoKey,
 		})
 	}
 	return out, rows.Err()
@@ -148,13 +155,21 @@ func (r *NotificationsRepo) followRows(ctx context.Context, kind string, withReq
 	return out, rows.Err()
 }
 
-// Follows implements notifications.Repository.
+// Follows implements notifications.Repository: a follow made at once, and a
+// request the owner accepted (developer, 2026-10-17, like Instagram: the
+// request row becomes "started following you"). An accepted request keeps
+// the time it was asked, so the owner's own Accept never lights the dot.
 func (r *NotificationsRepo) Follows(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.followRows(ctx, notifications.KindFollow, false, `
-		select f.id, f.follower_id, f.accepted_at from follows f
-		where f.followee_id = $1 and f.status = 'accepted' and f.via = 'direct' and f.accepted_at > $2
-		  and not `+blockedEither("$1::uuid", "f.follower_id")+`
-		order by f.accepted_at desc, f.id desc
+		select id, follower_id, at from (
+		  select f.id, f.follower_id,
+		    case when f.via = 'request' then f.requested_at else f.accepted_at end as at
+		  from follows f
+		  where f.followee_id = $1 and f.status = 'accepted' and f.via in ('direct', 'request')
+		    and not `+blockedEither("$1::uuid", "f.follower_id")+`
+		) x
+		where at > $2
+		order by at desc, id desc
 		limit $3`, owner, since, limit)
 }
 

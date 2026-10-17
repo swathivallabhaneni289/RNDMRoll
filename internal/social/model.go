@@ -54,6 +54,28 @@ type LookupResult struct {
 	Private    bool
 }
 
+// SearchHit is one person a search found, with the caller's relation.
+type SearchHit struct {
+	Person     Person
+	Relation   Relation
+	FollowsYou bool
+}
+
+// MaxSearchResults is the most people one search answers with.
+const MaxSearchResults = 20
+
+// CleanSearch reads a search value: trimmed, one leading @ removed, lower
+// cased, at most 30 characters. "" means there is nothing to search for.
+func CleanSearch(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "@")
+	s = strings.ToLower(s)
+	if r := []rune(s); len(r) > 30 {
+		s = string(r[:30])
+	}
+	return s
+}
+
 // Request is a pending follow request: its id, the other person and when it
 // was made.
 type Request struct {

@@ -80,6 +80,9 @@ func (s *Service) Summary(ctx context.Context, userID string) (Summary, error) {
 	if out.Followers, err = s.followers.CountFollowers(ctx, userID); err != nil {
 		return Summary{}, err
 	}
+	if out.Following, err = s.followers.CountFollowing(ctx, userID); err != nil {
+		return Summary{}, err
+	}
 	zone, err := s.r.TimeZone(ctx, userID)
 	if err != nil {
 		return Summary{}, err

@@ -39,7 +39,7 @@ func TestDiaryIntegration_HistoryOverPostgres(t *testing.T) {
 	// Brand new account: zeros and empty lists.
 	do(me.AccessToken, http.MethodPost, "/v1/time-zone", map[string]any{"time_zone": "America/New_York"}, http.StatusOK)
 	_, raw := do(me.AccessToken, http.MethodGet, "/v1/me/summary", nil, http.StatusOK)
-	if raw != `{"followers":0,"recent":[],"spins":0,"tastes":[],"week_streak":0}` {
+	if raw != `{"followers":0,"following":0,"recent":[],"spins":0,"tastes":[],"week_streak":0}` {
 		t.Fatalf("empty summary: %s", raw)
 	}
 	_, raw = do(me.AccessToken, http.MethodGet, "/v1/diary", nil, http.StatusOK)

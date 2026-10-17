@@ -215,7 +215,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Diary:         NewDiaryHandler(diary.NewService(postgres.NewDiaryReader(pool), spinClock, socialSvc), entryPhotos),
 		Follow:        NewFollowHandler(socialSvc),
 		Board:         NewBoardHandler(boardSvc),
-		Notifications: NewNotificationsHandler(notificationsSvc),
+		Notifications: NewNotificationsHandler(notificationsSvc, entryPhotos),
 		Users:         users,
 		JWTSecret:     integrationJWTSecret,
 		Logger:        logger,

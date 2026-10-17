@@ -122,6 +122,8 @@ type fiveFollowers struct{}
 
 func (fiveFollowers) CountFollowers(context.Context, string) (int, error) { return 5, nil }
 
+func (fiveFollowers) CountFollowing(context.Context, string) (int, error) { return 0, nil }
+
 func TestDiaryServicePaging(t *testing.T) {
 	f := &fakeReader{rows: []Row{{LocalDate: "2026-10-09"}, {LocalDate: "2026-10-08"}, {LocalDate: "2026-10-07"}}}
 	s := NewService(f, clock.NewFixed(time.Now()), nil)

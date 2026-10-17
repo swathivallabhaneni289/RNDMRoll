@@ -131,7 +131,7 @@ func main() {
 
 		Follow:        httpapi.NewFollowHandler(socialService),
 		Board:         httpapi.NewBoardHandler(boardService),
-		Notifications: httpapi.NewNotificationsHandler(notificationsService),
+		Notifications: httpapi.NewNotificationsHandler(notificationsService, entryPhotos),
 
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,

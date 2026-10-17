@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,6 +82,58 @@ func (r *SocialRepo) FindByUsername(ctx context.Context, username string) (socia
 	}
 	// Every account acts as private (2026-10-16): a follow is always a request.
 	return p, true, nil
+}
+
+// Search implements social.Repository. A username that starts with the value
+// comes first (an exact one before the rest), then a name or a word of a name
+// that starts with it; ties by username.
+func (r *SocialRepo) Search(ctx context.Context, viewer uuid.UUID, prefix string, limit int) ([]social.SearchHit, error) {
+	like := escapeLike(prefix) + "%"
+	rows, err := r.pool.Query(ctx, `
+		select `+personColumns+`,
+			(select status from follows where follower_id = $1 and followee_id = u.id),
+			exists (select 1 from follows where follower_id = u.id and followee_id = $1 and status = 'accepted')
+		from users u
+		where u.id <> $1
+			and u.name is not null and u.name <> ''
+			and u.username is not null
+			and (lower(u.username) like $2 escape '\'
+				or lower(u.name) like $2 escape '\'
+				or lower(u.name) like '% ' || $2 escape '\')
+			and not `+blockedEither("$1", "u.id")+`
+		order by
+			case when lower(u.username) = $3 then 0
+				when lower(u.username) like $2 escape '\' then 1
+				else 2 end,
+			lower(u.username)
+		limit $4`, viewer, like, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []social.SearchHit{}
+	for rows.Next() {
+		var mine *string
+		var followsYou bool
+		p, err := scanPerson(rows, &mine, &followsYou)
+		if err != nil {
+			return nil, err
+		}
+		rel := social.RelationNone
+		if mine != nil {
+			rel = social.RelationRequested
+			if *mine == social.StatusAccepted {
+				rel = social.RelationFollowing
+			}
+		}
+		out = append(out, social.SearchHit{Person: p, Relation: rel, FollowsYou: followsYou})
+	}
+	return out, rows.Err()
+}
+
+// escapeLike makes a value safe inside a LIKE pattern (escape character \).
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
 // RelationOf implements social.Repository.

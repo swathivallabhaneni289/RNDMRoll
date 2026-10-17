@@ -27,9 +27,11 @@ type Reader interface {
 	TimeZone(ctx context.Context, userID string) (string, error)
 }
 
-// FollowerCounter counts accepted followers (social.Service).
+// FollowerCounter counts accepted followers and accepted follows the person
+// has (social.Service).
 type FollowerCounter interface {
 	CountFollowers(ctx context.Context, userID string) (int, error)
+	CountFollowing(ctx context.Context, userID string) (int, error)
 }
 
 // ZeroFollowers always counts 0 (a server built without follows).
@@ -37,3 +39,6 @@ type ZeroFollowers struct{}
 
 // CountFollowers implements FollowerCounter.
 func (ZeroFollowers) CountFollowers(context.Context, string) (int, error) { return 0, nil }
+
+// CountFollowing implements FollowerCounter.
+func (ZeroFollowers) CountFollowing(context.Context, string) (int, error) { return 0, nil }

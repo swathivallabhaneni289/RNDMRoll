@@ -56,6 +56,8 @@ type Raw struct {
 	Reaction     *string
 	Text         *string
 	RequestID    *uuid.UUID
+	// PhotoKey is the post's first photo, for the small picture at the right.
+	PhotoKey *string
 }
 
 // Bonus is a week whose goal paid a bonus spin.
@@ -79,6 +81,7 @@ type Item struct {
 	Reaction     *string
 	Text         *string
 	RequestID    *uuid.UUID
+	PhotoKey     *string
 }
 
 // List is the list and its unread flag.
@@ -97,7 +100,8 @@ type Repository interface {
 	Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Replies to the viewer's comments on posts the viewer can still see.
 	Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
-	// Follows: people who followed the viewer at once (a public account).
+	// Follows: people who follow the viewer, made at once or by a request
+	// the viewer accepted (dated by the request).
 	Follows(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Requests: pending requests to the viewer, whatever their age.
 	Requests(ctx context.Context, owner uuid.UUID, limit int) ([]Raw, error)
@@ -210,6 +214,7 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		items = append(items, Item{
 			ID: r.ID, Kind: r.Kind, At: r.At, Actor: &actor, EntryID: r.EntryID,
 			CategoryName: r.CategoryName, Reaction: r.Reaction, Text: r.Text, RequestID: r.RequestID,
+			PhotoKey: r.PhotoKey,
 		})
 	}
 

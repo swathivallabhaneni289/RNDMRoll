@@ -16,6 +16,10 @@ type Repository interface {
 	// FindByUsername finds a finished account by exact username (already
 	// cleaned, lower case). ErrNotFound for a miss.
 	FindByUsername(ctx context.Context, username string) (Person, bool, error)
+	// Search finds finished accounts whose username or name starts with
+	// prefix (already cleaned, lower case), the viewer and blocks either way
+	// left out, at most limit, the closest first.
+	Search(ctx context.Context, viewer uuid.UUID, prefix string, limit int) ([]SearchHit, error)
 	// RelationOf is viewer toward other, and whether other follows viewer
 	// (accepted).
 	RelationOf(ctx context.Context, viewer, other uuid.UUID) (Relation, bool, error)
@@ -106,6 +110,15 @@ func (s *Service) Lookup(ctx context.Context, viewer uuid.UUID, username string)
 	return LookupResult{Person: p, Relation: rel, FollowsYou: followsYou, Private: private}, nil
 }
 
+// Search finds people by the start of their username or name. An empty
+// value answers no one.
+func (s *Service) Search(ctx context.Context, viewer uuid.UUID, prefix string) ([]SearchHit, error) {
+	if prefix == "" {
+		return []SearchHit{}, nil
+	}
+	return s.repo.Search(ctx, viewer, prefix, MaxSearchResults)
+}
+
 // Person reads one person. ErrNotFound when missing.
 func (s *Service) Person(ctx context.Context, id uuid.UUID) (Person, error) {
 	m, err := s.repo.People(ctx, []uuid.UUID{id})
@@ -171,6 +184,16 @@ func (s *Service) CountFollowers(ctx context.Context, userID string) (int, error
 		return 0, err
 	}
 	return s.repo.FollowerCount(ctx, id)
+}
+
+// CountFollowing counts accepted follows the person has (the Profile's
+// Following number).
+func (s *Service) CountFollowing(ctx context.Context, userID string) (int, error) {
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return 0, err
+	}
+	return s.repo.FollowingCount(ctx, id)
 }
 
 // FollowsAnyone reports whether the viewer follows at least one person.

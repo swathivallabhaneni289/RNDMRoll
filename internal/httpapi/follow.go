@@ -29,6 +29,7 @@ func NewFollowHandler(svc *social.Service) *FollowHandler {
 // Limits are per person, a minute.
 func (h *FollowHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/people/lookup", perSubject(30), h.lookup)
+	rg.GET("/people/search", perSubject(120), h.search)
 	rg.GET("/follows", perSubject(60), h.lists)
 	rg.POST("/follows", perSubject(20), h.follow)
 	rg.POST("/follows/:user_id/unfollow", perSubject(20), h.unfollow)
@@ -124,6 +125,29 @@ func (h *FollowHandler) lookup(c *gin.Context) {
 		"follows_you": res.FollowsYou,
 		"private":     res.Private,
 	})
+}
+
+// search answers GET /people/search?q= with the people whose username or
+// name starts with q: {"people":[{"person","relation","follows_you"}]}.
+func (h *FollowHandler) search(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	hits, err := h.svc.Search(c.Request.Context(), u.ID, social.CleanSearch(c.Query("q")))
+	if err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	people := make([]gin.H, 0, len(hits))
+	for _, hit := range hits {
+		people = append(people, gin.H{
+			"person":      newPersonView(hit.Person),
+			"relation":    string(hit.Relation),
+			"follows_you": hit.FollowsYou,
+		})
+	}
+	Respond(c, http.StatusOK, gin.H{"people": people})
 }
 
 func (h *FollowHandler) lists(c *gin.Context) {
