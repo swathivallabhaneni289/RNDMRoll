@@ -25,6 +25,10 @@ type Repository interface {
 	PostedDates(ctx context.Context, viewer uuid.UUID, upTo string, before *string, limit int) ([]string, error)
 	// Cards are the visible entries on those dates, newest first.
 	Cards(ctx context.Context, viewer uuid.UUID, dates []string) ([]EntryRow, error)
+	// PersonEntries are owner's entries the viewer may see (the same rule,
+	// on the viewer's posted days), newest first, after the entry `after`
+	// when set, at most limit.
+	PersonEntries(ctx context.Context, viewer, owner uuid.UUID, after *uuid.UUID, limit int) ([]EntryRow, error)
 	// CommentCounts and MyReactions are the viewer's view of entryIDs.
 	// Comments by someone with a block with the viewer are not counted.
 	CommentCounts(ctx context.Context, viewer uuid.UUID, entryIDs []uuid.UUID) (map[uuid.UUID]int, error)

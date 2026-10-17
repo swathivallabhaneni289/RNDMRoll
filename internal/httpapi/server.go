@@ -144,6 +144,11 @@ func NewServer(deps Deps) *Server {
 	if deps.Board != nil {
 		deps.Board.Register(authed)
 	}
+	// The person page reads follows, the Board rule and the Profile numbers,
+	// so it is mounted when all three are.
+	if deps.Follow != nil && deps.Board != nil && deps.Diary != nil {
+		NewPersonHandler(deps.Follow.svc, deps.Board.svc, deps.Diary.svc).Register(authed)
+	}
 	if deps.Notifications != nil {
 		deps.Notifications.Register(authed)
 	}
