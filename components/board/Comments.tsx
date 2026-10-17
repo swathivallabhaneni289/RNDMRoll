@@ -10,6 +10,7 @@ import { commentCount } from '@/lib/board/text';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
+import { useOpenPerson } from '@/lib/people/openPerson';
 
 const AVATAR = 28;
 /** A reply's round initial is smaller, and the reply sits one step in under its comment. */
@@ -74,6 +75,7 @@ export function CommentList({
   onDelete: (id: string) => Promise<string | null>;
   onReply?: (comment: Comment) => void;
 }) {
+  const openPerson = useOpenPerson();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
@@ -119,14 +121,20 @@ export function CommentList({
               borderTopColor: color.divider,
             }}
           >
-            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Pressable
+              onPress={() => openPerson(comment.author.id)}
+              accessibilityRole="button"
+              accessibilityLabel={mine ? 'Your profile' : `${name}'s profile`}
+              hitSlop={6}
+              style={{ alignSelf: 'flex-start' }}
+            >
               <SizedAvatar
                 size={isReply ? REPLY_AVATAR : AVATAR}
                 name={comment.author.name || comment.author.username}
                 uri={comment.author.photo_url}
                 placeholder="initials"
               />
-            </View>
+            </Pressable>
             <View style={{ flex: 1, marginLeft: space.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View
@@ -134,9 +142,11 @@ export function CommentList({
                   accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${comment.at_label}: ${comment.text}`}
                   style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline' }}
                 >
-                  <AppText role="button" numberOfLines={1}>
-                    {name}
-                  </AppText>
+                  <Pressable onPress={() => openPerson(comment.author.id)} hitSlop={6} style={{ flexShrink: 1 }}>
+                    <AppText role="button" numberOfLines={1}>
+                      {name}
+                    </AppText>
+                  </Pressable>
                   <View style={{ marginLeft: space.sm }}>
                     <AppText role="label" tone="muted">
                       {comment.at_label}

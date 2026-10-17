@@ -18,6 +18,7 @@ import type { Comment, Post } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { starsSpoken } from '@/lib/entry/stars';
+import { useOpenPerson } from '@/lib/people/openPerson';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
@@ -42,6 +43,7 @@ function Details({
   onReply: (comment: Comment) => void;
 }) {
   const card = post.card;
+  const openPerson = useOpenPerson();
   const own = REACTIONS.find((item) => item.name === card.reaction) ?? null;
   const name = card.mine ? 'You' : firstName(card.author);
   const meta = [card.category.name, card.posted_local_time, card.late ? 'Late' : ''].filter((part) => part !== '').join(' · ');
@@ -50,10 +52,12 @@ function Details({
 
   return (
     <View>
-      {/* The author row: the round initial, the first name, and the category with the time. */}
-      <View
-        accessible
+      {/* The author row: the round initial, the first name, and the category with the time. A tap opens their profile. */}
+      <Pressable
+        onPress={() => openPerson(card.author.id)}
+        accessibilityRole="button"
         accessibilityLabel={`${name}. ${meta.replace(/ · /g, '. ')}.`}
+        accessibilityHint={card.mine ? 'Opens your profile.' : 'Opens their profile.'}
         style={{ paddingHorizontal: space.lg, paddingVertical: space.sm, flexDirection: 'row', alignItems: 'center' }}
       >
         <SizedAvatar size={AUTHOR_AVATAR} name={card.author.name || card.author.username} uri={card.author.photo_url} placeholder="initials" />
@@ -67,7 +71,7 @@ function Details({
             {meta}
           </Text>
         </View>
-      </View>
+      </Pressable>
 
       <Gallery photos={post.photos} title={card.title} aspect={PHOTO_ASPECT} />
 

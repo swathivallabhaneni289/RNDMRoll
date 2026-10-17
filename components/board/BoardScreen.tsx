@@ -11,6 +11,7 @@ import type { BoardDay, Card } from '@/lib/api/board';
 import { overline } from '@/lib/board/text';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 import { dateLine } from '@/lib/wheel/format';
+import { useOpenPerson } from '@/lib/people/openPerson';
 
 type Row =
   | { kind: 'heading'; key: string; text: string }
@@ -64,6 +65,7 @@ export type BoardScreenProps = {
  * The list pages as the end comes into view, pulls to refresh and reloads on every focus.
  */
 export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardScreenProps) {
+  const openPerson = useOpenPerson();
   const { width } = useWindowDimensions();
   const load = useBoard();
   const board = load.board;
@@ -106,8 +108,8 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
     const [a, b] = item.cards;
     return (
       <View style={{ paddingHorizontal: space.lg, marginBottom: space.lg, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <PostCard card={a} width={columnWidth} onPress={() => onOpenCard(a)} />
-        {b ? <PostCard card={b} width={columnWidth} onPress={() => onOpenCard(b)} /> : <View style={{ width: columnWidth }} />}
+        <PostCard card={a} width={columnWidth} onPress={() => onOpenCard(a)} onOpenPerson={openPerson} />
+        {b ? <PostCard card={b} width={columnWidth} onPress={() => onOpenCard(b)} onOpenPerson={openPerson} /> : <View style={{ width: columnWidth }} />}
       </View>
     );
   }

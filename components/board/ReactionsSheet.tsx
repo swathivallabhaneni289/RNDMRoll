@@ -9,6 +9,7 @@ import type { Received } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
+import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, elevation, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 /** At most this many different characters in the summary line, the most used first. */
@@ -49,7 +50,17 @@ function summaryText(rows: Row[]): string {
 }
 
 /** Everyone who reacted, one row each with their character at the right, in a sheet from the bottom. */
-function ReactionsSheet({ visible, rows, onClose }: { visible: boolean; rows: Row[]; onClose: () => void }) {
+function ReactionsSheet({
+  visible,
+  rows,
+  onClose,
+  onOpenPerson,
+}: {
+  visible: boolean;
+  rows: Row[];
+  onClose: () => void;
+  onOpenPerson: (userId: string) => void;
+}) {
   const reduceMotion = useReduceMotion();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -116,7 +127,12 @@ function ReactionsSheet({ visible, rows, onClose }: { visible: boolean; rows: Ro
             keyExtractor={(row) => row.key}
             contentContainerStyle={{ paddingHorizontal: space.lg }}
             renderItem={({ item: row, index }) => (
-              <PersonRow person={row.item.person} first={index === 0}>
+              <PersonRow
+                person={row.item.person}
+                first={index === 0}
+                onPress={() => onOpenPerson(row.item.person.id)}
+                pressHint="Opens their profile."
+              >
                 <Text
                   allowFontScaling={false}
                   accessibilityLabel={row.label}
@@ -140,6 +156,7 @@ function ReactionsSheet({ visible, rows, onClose }: { visible: boolean; rows: Ro
  */
 export function ReceivedReactions({ received }: { received: Received[] }) {
   const [open, setOpen] = useState(false);
+  const openPerson = useOpenPerson();
   const rows = rowsOf(received);
 
   if (rows.length === 0) {
@@ -170,7 +187,16 @@ export function ReceivedReactions({ received }: { received: Received[] }) {
         </View>
         <Ionicons name="chevron-forward" size={18} color={color.muted} />
       </Pressable>
-      <ReactionsSheet visible={open} rows={rows} onClose={() => setOpen(false)} />
+      <ReactionsSheet
+        visible={open}
+        rows={rows}
+        onClose={() => setOpen(false)}
+        onOpenPerson={(userId) => {
+          // Close the sheet first, so the page never opens under its dim cover.
+          setOpen(false);
+          setTimeout(() => openPerson(userId), 0);
+        }}
+      />
     </>
   );
 }

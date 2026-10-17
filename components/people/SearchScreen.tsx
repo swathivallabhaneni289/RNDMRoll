@@ -10,6 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { blockUser } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import { firstName, follow, searchPeople, unfollow, type Person, type SearchHit } from '@/lib/api/social';
+import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 /** The search waits this long after the last key, so a fast typist sends one request, not ten. */
@@ -30,6 +31,7 @@ function messageFor(err: unknown): string {
  */
 export function SearchScreen() {
   const router = useRouter();
+  const openPerson = useOpenPerson();
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -224,7 +226,13 @@ export function SearchScreen() {
             </AppText>
           ) : (
             hits.map((hit, index) => (
-              <PersonRow key={hit.person.id} person={hit.person} first={index === 0}>
+              <PersonRow
+                key={hit.person.id}
+                person={hit.person}
+                first={index === 0}
+                onPress={() => openPerson(hit.person.id)}
+                pressHint="Opens their profile."
+              >
                 {button(hit)}
               </PersonRow>
             ))

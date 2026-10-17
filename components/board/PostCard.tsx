@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StarDisplay } from '@/components/entry/StarDisplay';
@@ -66,7 +66,18 @@ export function NameChip({ person, label }: { person: Person | null; label: stri
  * at its top left and the category at its bottom left, then the title and the stars with the figure.
  * The whole card is one button. Plain and light: no blur, no fade.
  */
-export function PostCard({ card, width, onPress }: { card: Card; width: number; onPress: () => void }) {
+export function PostCard({
+  card,
+  width,
+  onPress,
+  onOpenPerson,
+}: {
+  card: Card;
+  width: number;
+  onPress: () => void;
+  /** A tap on the name chip opens the author's profile. */
+  onOpenPerson?: (userId: string) => void;
+}) {
   const [failed, setFailed] = useState(false);
   const name = card.mine ? 'You' : firstName(card.author);
   const height = Math.round(width / PHOTO_ASPECT);
@@ -100,7 +111,19 @@ export function PostCard({ card, width, onPress }: { card: Card; width: number; 
           </View>
         )}
         <View style={{ position: 'absolute', top: space.sm, left: space.sm, right: space.sm }}>
-          <NameChip person={card.author} label={name} />
+          {onOpenPerson ? (
+            <Pressable
+              onPress={() => onOpenPerson(card.author.id)}
+              accessibilityRole="button"
+              accessibilityLabel={card.mine ? 'Your profile' : `${name}'s profile`}
+              hitSlop={6}
+              style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+            >
+              <NameChip person={card.author} label={name} />
+            </Pressable>
+          ) : (
+            <NameChip person={card.author} label={name} />
+          )}
         </View>
         {card.category.name !== '' ? (
           <View

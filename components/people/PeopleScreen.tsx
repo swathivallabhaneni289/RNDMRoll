@@ -21,6 +21,7 @@ import {
   type Follows,
   type Person,
 } from '@/lib/api/social';
+import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
 const AVATAR = 40;
@@ -184,6 +185,7 @@ function MoreButton({ name, onPress }: { name: string; onPress: () => void }) {
  */
 export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?: PeopleList }) {
   const router = useRouter();
+  const openPerson = useOpenPerson();
   const [tab, setTab] = useState<PeopleList>(show);
   const [follows, setFollows] = useState<Follows | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
@@ -373,7 +375,13 @@ export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?:
                     const name = firstName(request.person);
                     const working = busy !== null;
                     return (
-                      <PersonRow key={request.request_id} person={request.person} first={index === 0}>
+                      <PersonRow
+                        key={request.request_id}
+                        person={request.person}
+                        first={index === 0}
+                        onPress={() => openPerson(request.person.id)}
+                        pressHint="Opens their profile."
+                      >
                         <Chip
                           label="Accept"
                           tone="strong"
@@ -409,8 +417,8 @@ export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?:
                         key={person.id}
                         person={person}
                         first={index === 0}
-                        onPress={() => setMenu({ person, kind: 'follower' })}
-                        pressHint="Opens Remove follower and Block."
+                        onPress={() => openPerson(person.id)}
+                        pressHint="Opens their profile."
                       >
                         {followerButton(person)}
                         <MoreButton name={firstName(person)} onPress={() => setMenu({ person, kind: 'follower' })} />
@@ -432,14 +440,20 @@ export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?:
                         key={person.id}
                         person={person}
                         first={index === 0}
-                        onPress={() => setMenu({ person, kind: 'following' })}
-                        pressHint="Opens Unfollow and Block."
+                        onPress={() => openPerson(person.id)}
+                        pressHint="Opens their profile."
                       >
                         <Chip label="Following" tone="outline" onPress={() => setMenu({ person, kind: 'following' })} />
                       </PersonRow>
                     ))}
                     {outgoing.map((request, index) => (
-                      <PersonRow key={request.request_id} person={request.person} first={follows.following.length === 0 && index === 0}>
+                      <PersonRow
+                        key={request.request_id}
+                        person={request.person}
+                        first={follows.following.length === 0 && index === 0}
+                        onPress={() => openPerson(request.person.id)}
+                        pressHint="Opens their profile."
+                      >
                         <Chip
                           label="Requested"
                           tone="outline"

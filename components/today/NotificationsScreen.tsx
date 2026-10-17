@@ -24,6 +24,7 @@ import { REACTIONS } from '@/lib/entry/reactions';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
+import { useOpenPerson } from '@/lib/people/openPerson';
 
 const AVATAR = 44;
 const THUMB = 44;
@@ -143,6 +144,7 @@ function Thumb({ uri }: { uri: string }) {
  */
 export function NotificationsScreen() {
   const router = useRouter();
+  const openPerson = useOpenPerson();
   const { user } = useSession();
   const userId = user?.id ?? null;
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -252,10 +254,8 @@ export function NotificationsScreen() {
       router.navigate('/(app)/today');
       return;
     }
-    router.push({
-      pathname: '/(app)/profile/people',
-      params: { show: item.kind === 'follow_accepted' ? 'following' : 'followers' },
-    });
+    // A follow, an accepted request: their profile, like Instagram.
+    if (item.actor) openPerson(item.actor.id);
   }
 
   /** Follow back from the row; every follow is a request, so it turns to Requested. */
@@ -309,9 +309,20 @@ export function NotificationsScreen() {
           accessibilityLabel={spoken}
           style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: AVATAR }}
         >
-          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <RowMark item={item} />
-          </View>
+          {item.actor ? (
+            <Pressable
+              onPress={() => item.actor && openPerson(item.actor.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${firstName(item.actor)}'s profile`}
+              hitSlop={6}
+            >
+              <RowMark item={item} />
+            </Pressable>
+          ) : (
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <RowMark item={item} />
+            </View>
+          )}
           <View style={{ flex: 1, marginLeft: GAP }}>
             <Text numberOfLines={3} maxFontSizeMultiplier={1.3} style={rowText}>
               {words.name !== '' ? <Text style={{ fontFamily: type.button.fontFamily }}>{words.name}</Text> : null}
