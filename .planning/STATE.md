@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 02
-current_phase_name: daily-roll
-status: planning
-stopped_at: context exhaustion at 75% (2026-10-13)
-last_updated: "2026-10-13T08:52:25.917Z"
-last_activity: 2026-10-09
-last_activity_desc: Apple and Google sign-in removed; Phase 3 planned on paper
+current_phase: 05
+current_phase_name: friend-feed
+status: building
+stopped_at: Phase 5 built, live on dev at version 9, walkthrough in progress (2026-10-17)
+last_updated: "2026-10-17T17:30:00.000Z"
+last_activity: 2026-10-17
+last_activity_desc: Phases 3 and 4 closed after the walkthrough; Phase 5 rewritten for one-way follows (05-FOLLOW-OVERRIDES.md) and building
 progress:
-  total_phases: 6
-  completed_phases: 2
-  total_plans: 38
-  completed_plans: 26
-  percent: 33
+  total_phases: 8
+  completed_phases: 6
+  total_plans: 42
+  completed_plans: 38
+  percent: 75
 ---
 
 # Project State
@@ -117,3 +117,4 @@ Resume file: .planning/phases/01-foundation-accounts/.continue-here.md
 - **Phase 3 server cutover DONE 2026-10-13 (evening):** dev database at version 6 (migration 0006). Backups in `~/.local/share/rndmroll-api`: `api.pre-phase3` (binary) and `dev-pre-0006.sql` (dump). Rehearsal on a throwaway copy went 5, 6, 5, 6 with the same 5 users. API rebuilt from HEAD and started with the test variables (`APP_ENV=test SPIN_TEST_TOOLS=1`, test users cutover-p2 and walkthrough-p2). Smoke test passed on a throwaway account (deleted, users back to 5, test clock reset): ticket and upload for 2 photos, post, Today shows posted, read, repeat is `already`, delete (day still posted), skip. The stronger password rule (capital, number, symbol) is live on the server. Next: plan 03-03 (entry page, edit, delete, skip, photos gallery).
 
 - **Phases 3 and 4 CLOSED 2026-10-16** (walked on the simulator with `walkthrough-p3@example.com`). Dev database at version 7 (migration 0007 entry_archive; backups `api.pre-0007` and `dev-pre-0007.sql` in `~/.local/share/rndmroll-api`; rehearsal 6, 7, 6, 7 on a throwaway copy). API on 8080 rebuilt from this tree with the test tools on (test users cutover-p2, walkthrough-p2, walkthrough-p3); the test clock for walkthrough-p3 is shifted. Live routes added: archive, unarchive, `GET /v1/me/archive`, `comments_off` in PATCH entries, `GET /v1/me/summary`, `GET /v1/diary`. Decisions: Home tab dropped (bar is Diary, Spin, Board, Profile; the Spin page is `app/(app)/today`); no music on posts; no tastes or category chips; no red except Log out. Leftover: a throwaway account `cutover-p2@example.com` (id a5280ce1-0f93-4e7d-85f2-d51e98ee20b1) from the 0007 smoke test still exists; deleting it was blocked by the safety check. Next free migration is 0008 (notification settings and blocks). Before real use: reset the clock and restart the API without the test variables.
+- **Phase 5 walkthrough IN PROGRESS 2026-10-17** (dev database at version 9: 0008 follow feed, 0009 comment replies). Walked and confirmed by the developer: search behind the Board's icon, every follow a request with Accept or Decline, Follow back after Accept, the Follow requests row as a dot only, Profile's four figures (Spins, Week streak, Followers, Following) opening People on that tab, the Notifications redesign (post thumbnails, Follow back on follow rows), Board spacing, reacting and commenting on a friend's post, replies, the quick emoji row. Built on request the same day: a reaction flies up the screen in a spray of copies when tapped (`ReactionBurst`), a short pop on the chosen button, Instagram's eight-emoji row above the comment box (`COMMENT_EMOJIS`), and on your own post one line ('Sam and 11 others reacted' with the top three characters) that opens a sheet of everyone who reacted (`ReactionsSheet`), in place of a list of every name. Return in the comment box stays a new line (developer, tried Return-to-send and took it back). Moved to Phase 6: photos in comments (`06-FOLLOW-OVERRIDES.md` section 10, migration 0010); GIFs wait on the developer's GIPHY key. The other session built the person page (tap a photo or name opens that profile) on top of this work. Still to walk: commenting off, block, the notification settings filter. Test clocks: walkthrough_p3 and cutover_p2 are shifted forward and keep running; an API restart wipes them (`p5clock.sh` in the session scratchpad sets them again).

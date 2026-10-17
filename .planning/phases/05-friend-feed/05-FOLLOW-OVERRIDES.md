@@ -141,3 +141,28 @@ existing `Chip` (strong for Follow, outline for Requested and Following). No red
 ONE migration `0008` holds follows (with status pending or accepted), blocks, notification
 settings, reactions, comments and the notification seen time. Only the server agent touches
 `internal/` and `migrations/`; only the app agent touches app files.
+
+## 9. Changes after the build (developer, 2026-10-16 and 2026-10-17)
+
+- Search: `GET /v1/people/search?q=` (start of a username, a name or a word of a name; self and
+  blocks left out; at most 20, closest first) answers `{people:[{person, relation, follows_you}]}`.
+  It lives behind the search icon on the Board; the People page no longer has a username box.
+- `/me/summary` also sends `following` (accepted follows the person has). Profile shows four
+  figures: Spins, Week streak, Followers, Following. Followers and Following open People on that
+  tab (`show=followers|following`); People has the two lists as tabs, with Requests on top of
+  Followers and "Follow back" on a follower you do not follow.
+- A `follow` notification ("started following you") is now also made when the owner accepts a
+  request. It keeps the request's time, so the owner's own Accept lights no dot. Its row has
+  Follow back, Requested or Following at the right.
+- Notification items send `photo_url` (the post's first photo, "" when none) for reactions,
+  comments and replies; the row shows it small at the right, like Instagram.
+- The Follow requests row shows only a dot when one waits: no name, no count, no photo.
+- Reacting on someone's post: the chosen button pops, and eight copies of the character fly up
+  the screen and fade (about 1.5 s, none under Reduce Motion, none when clearing). No line of
+  text under the row.
+- The comment box has Instagram's quick row of eight emojis above it; a tap adds one at the end.
+  Return still makes a new line (Return-to-send was tried and taken back).
+- Your own post shows who reacted as one line, the three most used characters and "Sam and 11
+  others reacted", which opens a sheet listing everyone with their character. The server's
+  `received` list is unchanged.
+- Photos in comments and GIFs are not Phase 5: see `06-FOLLOW-OVERRIDES.md` section 10.

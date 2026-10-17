@@ -124,3 +124,27 @@ Four tabs (Diary, Spin, Board, Profile); no fades, no red text except Log out, n
 Phase 6 is built only after Phase 5 is built and closed (the other session is building it now).
 Re-check every Phase 5 name used here against the built code and `05-0*-SUMMARY.md` first; the
 built code wins.
+
+## 10. Photos in comments (developer, 2026-10-17)
+
+Asked during the Phase 5 walkthrough and put here by the developer: "the photos and comments,
+setting up in the phase 6". Choices made here (listed in the UI spec's choices list when it is
+revised):
+- One photo per comment or reply, from Camera or Library, with the same size rule as a post's
+  photos. The text may be empty when a photo is there, like Instagram.
+- A photo button sits at the left of the comment field; the chosen photo shows as a small
+  rounded preview above the field with a close mark until it is posted.
+- In the list the photo sits under the comment's text as a rounded picture about half the column
+  wide; a tap opens it full screen.
+- Server: a nullable photo key on `post_comments` in the Phase 6 migration. Migration `0009` is
+  now comment replies (Phase 5), so Phase 6 takes `0010` (section 6 is out of date on the number;
+  check `ls migrations` first). Uploads go the same way as entry photos; deleting a comment
+  deletes its photo.
+- Notifications: a comment that is only a photo reads "sent a photo."
+- Report (section 5) covers a comment's photo too.
+
+Already in Phase 5: emojis from the keyboard, and Instagram's quick row of eight emojis above the
+comment box (`COMMENT_EMOJIS` in `lib/entry/reactions.ts`).
+
+GIFs are NOT in Phase 6 until the developer has a GIPHY key (an outside account, like S3 and
+Resend); they then go on the same row as the photo button.
