@@ -113,8 +113,8 @@ function RowMark({ item }: { item: NotificationItem }) {
  * stack only (the Board's bell was removed 2026-10-16). The server builds the list, its sections and every time label; this
  * page prints it in three sections (Today, This week, Earlier) with a small dot on unread rows.
  * Opening it marks everything seen, so the bell's dot goes out; the dots it loaded with stay until
- * the person leaves. Follow requests are one row at the top ("Follow requests", the first name,
- * the count) that opens their own page with Accept and Decline. A tap opens your own entry page
+ * the person leaves. Follow requests are one row at the top, always shown ("Follow requests", the first name,
+ * the count, or "No requests right now.") that opens their own page with Accept and Decline. A tap opens your own entry page
  * (a reaction or comment), the post a reply is on (your entry page when it is yours), People (a
  * follow), or the Spin page (your spin is open, a bonus spin).
  * No bottom bar, so the page keeps all four safe-area edges.
@@ -260,10 +260,17 @@ export function NotificationsScreen() {
   })).filter((section) => section.rows.length > 0);
 
   function requestsRow() {
-    const first = requests[0].actor;
+    const first = requests.length > 0 ? requests[0].actor : null;
     const others = requests.length - 1;
     const who = first ? firstName(first) : '';
-    const line = others === 0 ? who : others === 1 ? `${who} and 1 other` : `${who} and ${others} others`;
+    const line =
+      requests.length === 0
+        ? 'No requests right now.'
+        : others === 0
+          ? who
+          : others === 1
+            ? `${who} and 1 other`
+            : `${who} and ${others} others`;
     return (
       <Pressable
         onPress={() => router.push('/(app)/today/follow-requests')}
@@ -280,7 +287,23 @@ export function NotificationsScreen() {
         }}
       >
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <SizedAvatar size={AVATAR} name={first ? first.name || first.username : ''} uri={first?.photo_url ?? null} placeholder="initials" />
+          {first ? (
+            <SizedAvatar size={AVATAR} name={first.name || first.username} uri={first.photo_url ?? null} placeholder="initials" />
+          ) : (
+            <View
+              style={{
+                width: AVATAR,
+                height: AVATAR,
+                borderRadius: AVATAR / 2,
+                borderWidth: 1,
+                borderColor: color.divider,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="person-add-outline" size={AVATAR / 2} color={color.ink} />
+            </View>
+          )}
         </View>
         <View style={{ flex: 1, marginLeft: space.md }}>
           <AppText role="button">Follow requests</AppText>
@@ -289,7 +312,7 @@ export function NotificationsScreen() {
           </AppText>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <AppText role="button">{String(requests.length)}</AppText>
+          {requests.length > 0 ? <AppText role="button">{String(requests.length)}</AppText> : null}
           <Ionicons name="chevron-forward" size={20} color={color.muted} style={{ marginLeft: space.xs }} />
         </View>
       </Pressable>
@@ -324,13 +347,14 @@ export function NotificationsScreen() {
             </AppText>
           ) : status === 'offline' ? (
             <StatusMessage kind={failure} onRetry={() => void load()} />
-          ) : sections.length === 0 && requests.length === 0 ? (
-            <AppText role="label" tone="muted">
-              Nothing new yet.
-            </AppText>
           ) : (
             <>
-              {requests.length > 0 ? <View style={{ marginBottom: space.xl }}>{requestsRow()}</View> : null}
+              <View style={{ marginBottom: space.xl }}>{requestsRow()}</View>
+              {sections.length === 0 ? (
+                <AppText role="label" tone="muted">
+                  Nothing new yet.
+                </AppText>
+              ) : null}
               {sections.map((section, index) => (
                 <View key={section.key} style={{ marginTop: index === 0 ? 0 : space.xl }}>
                   <Text
