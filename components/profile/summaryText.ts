@@ -72,6 +72,11 @@ export function followersSpoken(n: number): string {
   return n === 1 ? '1 follower' : `${n} followers`;
 }
 
+/** "Following 3 people" ("1 person"). */
+export function followingSpoken(n: number): string {
+  return n === 1 ? 'Following 1 person' : `Following ${n} people`;
+}
+
 /** "Movie, average 4.6 out of 5, 9 posts." ("1 post"). */
 export function tasteSpoken(name: string, average: number, count: number): string {
   const posts = count === 1 ? '1 post' : `${count} posts`;

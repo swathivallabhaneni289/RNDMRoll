@@ -1,15 +1,16 @@
 import { Fragment, ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
-import { followersSpoken, spinsSpoken, streakSpoken } from '@/components/profile/summaryText';
+import { followersSpoken, followingSpoken, spinsSpoken, streakSpoken } from '@/components/profile/summaryText';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
 /**
- * The three figures of the Profile page (04-UI-SPEC 4.2): Spins, Week streak, Followers. A dark
- * rule above, three equal columns with a faint vertical rule between them, a faint rule below.
- * Each figure is printed as the server sent it. One spoken element per column. Followers (Phase 5,
- * one-way follows) is a button to People when `onOpenFollowers` is given; it looks the same as
- * the other two (a figure is not styled as a link in the developer's picture).
+ * The four figures of the Profile page (04-UI-SPEC 4.2): Spins, Week streak, Followers and
+ * Following (developer, 2026-10-17, like Instagram). A dark rule above, four equal columns with a
+ * faint vertical rule between them, a faint rule below. Each figure is printed as the server sent
+ * it. One spoken element per column. Followers and Following are buttons to that list on People
+ * when their handler is given; they look the same as the others (a figure is not styled as a link
+ * in the developer's picture).
  *
  * The figure is the light serif (`note`, as the developer's picture draws it) and keeps its size
  * with the phone's text size, shrinking only to stay on one line.
@@ -18,17 +19,22 @@ export function StatsRow({
   spins,
   weekStreak,
   followers,
+  following,
   onOpenFollowers,
+  onOpenFollowing,
 }: {
   spins: number;
   weekStreak: number;
   followers: number;
+  following: number;
   onOpenFollowers?: () => void;
+  onOpenFollowing?: () => void;
 }) {
-  const items: { label: string; figure: number; spoken: string; onPress?: () => void }[] = [
+  const items: { label: string; figure: number; spoken: string; hint?: string; onPress?: () => void }[] = [
     { label: 'Spins', figure: spins, spoken: spinsSpoken(spins) },
     { label: 'Week streak', figure: weekStreak, spoken: streakSpoken(weekStreak) },
-    { label: 'Followers', figure: followers, spoken: followersSpoken(followers), onPress: onOpenFollowers },
+    { label: 'Followers', figure: followers, spoken: followersSpoken(followers), hint: 'Opens your followers.', onPress: onOpenFollowers },
+    { label: 'Following', figure: following, spoken: followingSpoken(following), hint: 'Opens the people you follow.', onPress: onOpenFollowing },
   ];
 
   function column(item: (typeof items)[number]): ReactNode {
@@ -39,6 +45,8 @@ export function StatsRow({
         </AppText>
         <Text
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           style={{
             fontFamily: type.label.fontFamily,
             fontSize: type.label.fontSize,
@@ -57,7 +65,7 @@ export function StatsRow({
           onPress={item.onPress}
           accessibilityRole="button"
           accessibilityLabel={item.spoken}
-          accessibilityHint="Opens People."
+          accessibilityHint={item.hint}
           style={{ flex: 1, alignItems: 'center', minHeight: minTouchTarget, justifyContent: 'center' }}
         >
           {content}

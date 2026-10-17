@@ -57,8 +57,8 @@ export type BoardScreenProps = {
 
 /**
  * The Board tab (05-UI-SPEC section 3 with the follow wording of 05-FOLLOW-OVERRIDES, the
- * developer's pictures 08 and 09). A fixed header (the overline, 'Board' and a person-add button to
- * People; the bell lives on the Spin page only, 2026-10-16), then what the server says: no follows (a prompt and 'Find people'), locked
+ * developer's pictures 08 and 09). A fixed header (the overline, 'Board' and a search icon that opens
+ * Search; the bell lives on the Spin page only, 2026-10-16), then what the server says: no follows (a prompt and 'Find people'), locked
  * (the locked card over grey tiles), skipped, or unlocked (the two-column grid). Under a lock or a
  * skip the earlier days the person posted still follow. Plain light cards, nothing blurs or fades.
  * The list pages as the end comes into view, pulls to refresh and reloads on every focus.
@@ -70,7 +70,7 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
   const columnWidth = Math.floor((width - 2 * space.lg - space.md) / 2);
 
   const header = (
-    <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg, flexDirection: 'row', alignItems: 'flex-end' }}>
+    <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, flexDirection: 'row', alignItems: 'flex-end' }}>
       <View style={{ flex: 1 }} accessible accessibilityRole="header" accessibilityLabel={board ? `${overline(board.day_label)}, Board` : 'Board'}>
         <Text style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight }}>
           {board ? overline(board.day_label) : ''}
@@ -83,11 +83,11 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
         <Pressable
           onPress={onFindPeople}
           accessibilityRole="button"
-          accessibilityLabel="Find people"
+          accessibilityLabel="Search people"
           hitSlop={4}
-          style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
         >
-          <Ionicons name="person-add-outline" size={22} color={color.ink} />
+          <Ionicons name="search-outline" size={22} color={color.ink} />
         </Pressable>
       </View>
     </View>
@@ -96,7 +96,7 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
   function renderRow({ item }: { item: Row }) {
     if (item.kind === 'heading') {
       return (
-        <View style={{ paddingHorizontal: space.lg, marginTop: space.lg, marginBottom: space.md }}>
+        <View style={{ paddingHorizontal: space.lg, marginTop: space.sm, marginBottom: space.sm + space.xs }}>
           <Text accessibilityRole="header" style={{ ...capsText, color: color.muted }}>
             {item.text}
           </Text>
@@ -178,7 +178,7 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
         onEndReached={load.loadMore}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl refreshing={load.refreshing} onRefresh={load.refresh} tintColor={color.muted} />}
-        contentContainerStyle={{ paddingTop: space.lg, paddingBottom: space.xl }}
+        contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.xl }}
       />
     );
   }

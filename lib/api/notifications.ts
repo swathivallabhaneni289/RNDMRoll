@@ -41,6 +41,8 @@ export type NotificationItem = {
   text: string | null;
   /** Set on `follow_request` items (they exist only while the request is pending). */
   request_id: string | null;
+  /** The post's first photo for a reaction, comment or reply; '' when there is none. */
+  photo_url: string;
 };
 
 const KINDS: readonly NotificationKind[] = [
@@ -74,6 +76,7 @@ function readItem(raw: Record<string, unknown>): NotificationItem | null {
     reaction: isReactionName(raw.reaction) ? raw.reaction : null,
     text: textOrNull(raw.text),
     request_id: textOrNull(raw.request_id),
+    photo_url: typeof raw.photo_url === 'string' ? raw.photo_url : '',
   };
 }
 

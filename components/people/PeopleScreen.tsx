@@ -7,9 +7,7 @@ import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
-import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
-import { TextField } from '@/components/ui/TextField';
 import { blockUser } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import {
@@ -18,25 +16,23 @@ import {
   firstName,
   follow,
   getFollows,
-  lookupPerson,
   removeFollower,
   unfollow,
   type Follows,
-  type Lookup,
   type Person,
 } from '@/lib/api/social';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
 const AVATAR = 40;
 const ROW_MIN_HEIGHT = 56;
-const USERNAME_MAX = 30;
 const GENERIC = 'Something went wrong. Please try again.';
 
 type Place = 'profile' | 'board';
 const PLACE_NAME: Record<Place, string> = { profile: 'Profile', board: 'Board' };
 const PLACE_ROOT: Record<Place, '/(app)/profile' | '/(app)/board'> = { profile: '/(app)/profile', board: '/(app)/board' };
 
-type Found = { kind: 'idle' } | { kind: 'miss' } | { kind: 'hit'; lookup: Lookup };
+/** The two lists, each a tab. */
+export type PeopleList = 'followers' | 'following';
 
 /** What a row's sheet offers. */
 type Menu = { person: Person; kind: 'following' | 'follower' | 'other' };
@@ -126,6 +122,42 @@ export function PersonRow({
   );
 }
 
+/** The two lists as tabs, like Instagram's: the open one in ink with a dark line under it. */
+function ListTabs({ value, onChange }: { value: PeopleList; onChange: (next: PeopleList) => void }) {
+  const tabs: { key: PeopleList; label: string }[] = [
+    { key: 'followers', label: 'Followers' },
+    { key: 'following', label: 'Following' },
+  ];
+  return (
+    <View accessibilityRole="tablist" style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: color.divider }}>
+      {tabs.map((tab) => {
+        const on = tab.key === value;
+        return (
+          <Pressable
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            style={{
+              flex: 1,
+              minHeight: minTouchTarget,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderBottomWidth: 2,
+              borderBottomColor: on ? color.ink : 'transparent',
+              marginBottom: -1,
+            }}
+          >
+            <AppText role="button" tone={on ? undefined : 'muted'}>
+              {tab.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function MoreButton({ name, onPress }: { name: string; onPress: () => void }) {
   return (
     <Pressable
@@ -142,20 +174,20 @@ function MoreButton({ name, onPress }: { name: string; onPress: () => void }) {
 
 /**
  * People (05-FOLLOW-OVERRIDES section 7, the paper's Friends screen made one way). Opened from the
- * Followers figure on Profile, from the Board's 'Find people' and from a follow notification, with
- * a thin route in each stack. Top to bottom: the username box and 'Find'; the person found with one
- * button ('Follow', 'Follow back', 'Requested' (tap cancels) or 'Following' (tap opens Unfollow and
- * Block)); Requests (Accept, Decline); Followers (a row opens Remove follower and Block); Following
- * (a row opens Unfollow and Block). Nothing here is red; a failure is one quiet line in ink.
+ * Followers and Following figures on Profile and from a follow notification, with a thin route in
+ * each stack. Finding someone new lives in Search, behind the search icon on the Board (developer,
+ * 2026-10-16), so this page only lists, under two tabs like Instagram's (developer, 2026-10-17):
+ * Followers (any Requests on top with Accept and Decline; 'Follow back' on a follower you do not
+ * follow, 'Requested' once asked; a row opens Remove follower and Block) and Following (a row
+ * opens Unfollow and Block). `show` is the tab it opens on. Nothing here is red; a failure is one
+ * quiet line in ink.
  */
-export function PeopleScreen({ from }: { from: Place }) {
+export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?: PeopleList }) {
   const router = useRouter();
+  const [tab, setTab] = useState<PeopleList>(show);
   const [follows, setFollows] = useState<Follows | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
-  const [query, setQuery] = useState('');
-  const [found, setFound] = useState<Found>({ kind: 'idle' });
-  const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -203,47 +235,21 @@ export function PeopleScreen({ from }: { from: Place }) {
     }
   }
 
-  /** Keeps the person found in step with what was just done to them. */
-  function patchFound(personId: string, patch: Partial<Lookup>) {
-    setFound((now) =>
-      now.kind === 'hit' && now.lookup.person.id === personId ? { kind: 'hit', lookup: { ...now.lookup, ...patch } } : now
-    );
-  }
-
-  async function find() {
-    const username = query.trim().replace(/^@/, '');
-    if (username === '' || finding) return;
-    setFinding(true);
-    setMessage('');
-    try {
-      const lookup = await lookupPerson(username);
-      setFound(lookup === null ? { kind: 'miss' } : { kind: 'hit', lookup });
-    } catch (err) {
-      setFound({ kind: 'idle' });
-      setMessage(messageFor(err));
-    } finally {
-      setFinding(false);
-    }
-  }
-
-  function doFollow(person: Person) {
+  function doFollowBack(person: Person) {
     void act(`follow-${person.id}`, async () => {
-      const relation = await follow(person.id);
-      patchFound(person.id, { relation });
+      await follow(person.id);
     });
   }
 
   function doUnfollow(person: Person) {
     void act(`unfollow-${person.id}`, async () => {
       await unfollow(person.id);
-      patchFound(person.id, { relation: 'none' });
     });
   }
 
   function doRemove(person: Person) {
     void act(`remove-${person.id}`, async () => {
       await removeFollower(person.id);
-      patchFound(person.id, { follows_you: false });
     });
   }
 
@@ -256,7 +262,6 @@ export function PeopleScreen({ from }: { from: Place }) {
         onPress: () =>
           void act(`block-${person.id}`, async () => {
             await blockUser(person.id);
-            setFound((now) => (now.kind === 'hit' && now.lookup.person.id === person.id ? { kind: 'idle' } : now));
           }),
       },
     ]);
@@ -285,42 +290,34 @@ export function PeopleScreen({ from }: { from: Place }) {
             { label: `Block ${firstName(menu.person)}`, onPress: fromMenu(() => askBlock(menu.person)) },
           ];
 
-  /** The one button of the person found. */
-  function resultButton(lookup: Lookup): ReactNode {
-    const { person, relation } = lookup;
+  const followingIds = new Set((follows?.following ?? []).map((person) => person.id));
+  const outgoing = (follows?.outgoing ?? []).filter((request) => !followingIds.has(request.person.id));
+  const requestedIds = new Set(outgoing.map((request) => request.person.id));
+  const requests = tab === 'followers' ? (follows?.incoming ?? []) : [];
+
+  /** A follower you do not follow gets 'Follow back'; one you have asked shows 'Requested'. */
+  function followerButton(person: Person) {
     const name = firstName(person);
-    if (relation === 'following') {
-      return (
-        <Chip
-          label="Following"
-          tone="outline"
-          onPress={() => setMenu({ person, kind: 'following' })}
-          accessibilityHint="Opens Unfollow and Block."
-        />
-      );
-    }
-    if (relation === 'requested') {
+    if (followingIds.has(person.id)) return null;
+    if (requestedIds.has(person.id)) {
       return (
         <Chip
           label="Requested"
           tone="outline"
-          onPress={() => doUnfollow(person)}
+          onPress={busy !== null ? undefined : () => doUnfollow(person)}
           accessibilityLabel={`Requested. Cancel the request to ${name}`}
         />
       );
     }
     return (
       <Chip
-        label={lookup.follows_you ? 'Follow back' : 'Follow'}
+        label="Follow back"
         tone="strong"
-        onPress={() => doFollow(person)}
-        accessibilityLabel={`${lookup.follows_you ? 'Follow back' : 'Follow'} ${name}`}
+        onPress={busy !== null ? undefined : () => doFollowBack(person)}
+        accessibilityLabel={`Follow back ${name}`}
       />
     );
   }
-
-  const followingIds = new Set((follows?.following ?? []).map((person) => person.id));
-  const outgoing = (follows?.outgoing ?? []).filter((request) => !followingIds.has(request.person.id));
 
   return (
     <Screen edges={['top', 'left', 'right']}>
@@ -346,76 +343,33 @@ export function PeopleScreen({ from }: { from: Place }) {
           </AppText>
         </View>
 
-        {/* Find: an exact username, never an email. */}
         <View style={{ marginTop: space.lg }}>
-          <TextField
-            label="Find by username"
-            variant="soft"
-            prefix="@"
-            value={query}
-            onChangeText={(next) => {
-              setQuery(next);
-              if (found.kind === 'miss') setFound({ kind: 'idle' });
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            maxLength={USERNAME_MAX}
-            returnKeyType="search"
-            onSubmitEditing={() => void find()}
-          />
+          <ListTabs value={tab} onChange={setTab} />
         </View>
-        <View style={{ marginTop: space.md }}>
-          <PrimaryButton label="Find" onPress={() => void find()} disabled={query.trim().replace(/^@/, '') === ''} loading={finding} />
-        </View>
+
         {message !== '' ? (
           <View style={{ marginTop: space.sm }} accessibilityLiveRegion="polite">
             <AppText role="label">{message}</AppText>
           </View>
         ) : null}
-        <View accessibilityLiveRegion="polite" style={{ marginTop: found.kind === 'idle' ? 0 : space.md }}>
-          {found.kind === 'miss' ? (
-            <AppText role="label" tone="muted">
-              No one has that username.
-            </AppText>
-          ) : found.kind === 'hit' ? (
-            <PersonRow
-              first
-              person={found.lookup.person}
-              onPress={
-                found.lookup.relation === 'following'
-                  ? () => setMenu({ person: found.lookup.person, kind: 'following' })
-                  : undefined
-              }
-            >
-              {resultButton(found.lookup)}
-              {found.lookup.relation !== 'following' ? (
-                <MoreButton
-                  name={firstName(found.lookup.person)}
-                  onPress={() => setMenu({ person: found.lookup.person, kind: 'other' })}
-                />
-              ) : null}
-            </PersonRow>
-          ) : null}
-        </View>
 
         {status === 'loading' ? (
-          <View style={{ marginTop: space.xl }}>
+          <View style={{ marginTop: space.lg }}>
             <AppText role="label" tone="muted">
               Loading people.
             </AppText>
           </View>
         ) : status === 'offline' ? (
-          <View style={{ marginTop: space.xl }}>
+          <View style={{ marginTop: space.lg }}>
             <StatusMessage kind={failure} onRetry={() => void load()} />
           </View>
         ) : follows !== null ? (
           <>
-            {follows.incoming.length > 0 ? (
-              <View style={{ marginTop: space.xl }}>
+            {requests.length > 0 ? (
+              <View style={{ marginTop: space.lg }}>
                 <SectionLabel>Requests</SectionLabel>
                 <View style={{ marginTop: space.sm }}>
-                  {follows.incoming.map((request, index) => {
+                  {requests.map((request, index) => {
                     const name = firstName(request.person);
                     const working = busy !== null;
                     return (
@@ -441,32 +395,32 @@ export function PeopleScreen({ from }: { from: Place }) {
               </View>
             ) : null}
 
-            <View style={{ marginTop: space.xl }}>
-              <SectionLabel>Followers</SectionLabel>
-              <View style={{ marginTop: space.sm }}>
-                {follows.followers.length === 0 ? (
-                  <AppText role="label" tone="muted">
-                    No followers yet.
-                  </AppText>
-                ) : (
-                  follows.followers.map((person, index) => (
-                    <PersonRow
-                      key={person.id}
-                      person={person}
-                      first={index === 0}
-                      onPress={() => setMenu({ person, kind: 'follower' })}
-                      pressHint="Opens Remove follower and Block."
-                    >
-                      <MoreButton name={firstName(person)} onPress={() => setMenu({ person, kind: 'follower' })} />
-                    </PersonRow>
-                  ))
-                )}
+            {tab === 'followers' ? (
+              <View style={{ marginTop: requests.length > 0 ? space.xl : space.md }}>
+                {requests.length > 0 ? <SectionLabel>Followers</SectionLabel> : null}
+                <View style={{ marginTop: requests.length > 0 ? space.sm : 0 }}>
+                  {follows.followers.length === 0 ? (
+                    <AppText role="label" tone="muted">
+                      No followers yet.
+                    </AppText>
+                  ) : (
+                    follows.followers.map((person, index) => (
+                      <PersonRow
+                        key={person.id}
+                        person={person}
+                        first={index === 0}
+                        onPress={() => setMenu({ person, kind: 'follower' })}
+                        pressHint="Opens Remove follower and Block."
+                      >
+                        {followerButton(person)}
+                        <MoreButton name={firstName(person)} onPress={() => setMenu({ person, kind: 'follower' })} />
+                      </PersonRow>
+                    ))
+                  )}
+                </View>
               </View>
-            </View>
-
-            <View style={{ marginTop: space.xl }}>
-              <SectionLabel>Following</SectionLabel>
-              <View style={{ marginTop: space.sm }}>
+            ) : (
+              <View style={{ marginTop: space.md }}>
                 {follows.following.length === 0 && outgoing.length === 0 ? (
                   <AppText role="label" tone="muted">
                     You don't follow anyone yet.
@@ -497,7 +451,7 @@ export function PeopleScreen({ from }: { from: Place }) {
                   </>
                 )}
               </View>
-            </View>
+            )}
           </>
         ) : null}
       </View>

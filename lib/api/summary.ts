@@ -45,6 +45,8 @@ export type MeSummary = {
   week_streak: number;
   /** Accepted followers (Phase 5: the field was `friends` before follows replaced friends). */
   followers: number;
+  /** Accepted follows the person has (the Following figure). */
+  following: number;
   /** One per category with at least one post, in wheel order, then removed ones. */
   tastes: Taste[];
   /** At most 3, newest first. */
@@ -66,6 +68,7 @@ export async function getSummary(): Promise<MeSummary> {
     spins: count(body.spins),
     week_streak: count(body.week_streak),
     followers: count(body.followers),
+    following: count(body.following),
     tastes: list<Taste>(body.tastes),
     recent: list<RecentEntry>(body.recent),
   };

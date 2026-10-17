@@ -114,6 +114,32 @@ export async function lookupPerson(username: string): Promise<Lookup | null> {
   }
 }
 
+/** One person a search found, with the caller's relation toward them. */
+export type SearchHit = {
+  person: Person;
+  relation: Relation;
+  /** They follow the caller (the button then reads "Follow back"). */
+  follows_you: boolean;
+};
+
+/**
+ * GET /people/search?q= : the people whose username, name or a word of the name starts with the
+ * text (case-insensitive, a leading @ is fine), at most 20, the closest first. An empty text is
+ * answered here with no one, without asking the server.
+ */
+export async function searchPeople(q: string): Promise<SearchHit[]> {
+  const value = q.trim();
+  if (value === '' || value === '@') return [];
+  const body = await api.get<Record<string, unknown>>(`/people/search?q=${encodeURIComponent(value)}`);
+  const out: SearchHit[] = [];
+  for (const item of list<Record<string, unknown>>(body?.people)) {
+    const person = readPerson(item?.person);
+    if (person === null) continue;
+    out.push({ person, relation: readRelation(item.relation), follows_you: item.follows_you === true });
+  }
+  return out;
+}
+
 /** POST /follows {user_id}: always `requested` now (every account acts as private, 2026-10-16). */
 export async function follow(userId: string): Promise<Relation> {
   const body = await api.post<{ relation?: unknown }>('/follows', { user_id: userId });

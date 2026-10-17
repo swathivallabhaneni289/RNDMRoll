@@ -17,7 +17,7 @@ import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 /** Drawn for a person with no answer from the server (not live yet, offline, or nothing posted). */
-const EMPTY_SUMMARY: MeSummary = { spins: 0, week_streak: 0, followers: 0, tastes: [], recent: [] };
+const EMPTY_SUMMARY: MeSummary = { spins: 0, week_streak: 0, followers: 0, following: 0, tastes: [], recent: [] };
 
 const AVATAR_SIZE = 72;
 
@@ -43,8 +43,8 @@ export type ProfileViewProps = {
   onOpenEntry: (entryId: string) => void;
   /** The end of the grid came into view: the next page of posts. */
   onEndReached?: () => void;
-  /** Opens People (Phase 5); without it the Followers figure is plain. */
-  onOpenPeople?: () => void;
+  /** Opens People on one list (Phase 5); without it the Followers and Following figures are plain. */
+  onOpenPeople?: (show: 'followers' | 'following') => void;
 };
 
 /**
@@ -54,7 +54,7 @@ export type ProfileViewProps = {
  * Top to bottom: a slim row with the Settings gear at the right (and 'Saved.' at the left for a few
  * seconds after the Edit page saves); the photo in a circle with the name beside it and the
  * @username under the name, and the outlined 'Edit' button at the right; the bio as plain text (it is edited on the Edit page);
- * a dark rule and the three figures; then every post as a grid of pictures (developer, 2026-10-16:
+ * a dark rule and the four figures; then every post as a grid of pictures (developer, 2026-10-16:
  * the Diary tab and 'Recent activity' were removed).
  *
  * Differences from the picture, on purpose: the gear and the bio (asked for in words, the picture
@@ -154,7 +154,9 @@ export function ProfileView({
                   spins={shown.spins}
                   weekStreak={shown.week_streak}
                   followers={shown.followers}
-                  onOpenFollowers={onOpenPeople}
+                  following={shown.following}
+                  onOpenFollowers={onOpenPeople ? () => onOpenPeople('followers') : undefined}
+                  onOpenFollowing={onOpenPeople ? () => onOpenPeople('following') : undefined}
                 />
               </View>
             </>
@@ -202,7 +204,7 @@ export function ProfileScreen() {
       posts={posts}
       onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/posts', params: { start: id } })}
       onEndReached={diary.loadMore}
-      onOpenPeople={() => router.push('/(app)/profile/people')}
+      onOpenPeople={(show) => router.push({ pathname: '/(app)/profile/people', params: { show } })}
     />
   );
 }

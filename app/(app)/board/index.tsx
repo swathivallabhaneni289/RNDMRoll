@@ -25,7 +25,7 @@ export default function BoardRoute() {
 
   return (
     <BoardScreen
-      onFindPeople={() => router.push('/(app)/board/people')}
+      onFindPeople={() => router.push('/(app)/board/search')}
       onOpenCard={(card) =>
         card.mine
           ? router.push({ pathname: '/(app)/board/entry', params: { id: card.entry_id } })
