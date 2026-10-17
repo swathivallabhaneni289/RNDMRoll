@@ -21,7 +21,7 @@ import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { blockUser } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import { getPerson, type PersonPage } from '@/lib/api/person';
-import { firstName, follow, unfollow } from '@/lib/api/social';
+import { firstName, follow, removeFollower, unfollow } from '@/lib/api/social';
 import { postPathIn } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
@@ -32,8 +32,8 @@ const GENERIC = 'Something went wrong. Please try again.';
  * Another person's page, like Instagram's (developer, 2026-10-17: tap anyone's photo or name and
  * it opens their profile). It looks like your own Profile seen by a visitor: their photo, name,
  * @username and the four figures, with one button where your Edit is: Follow, Follow back,
- * Requested (a tap cancels) or Following (a tap offers Unfollow). Block sits in the three dots at
- * the top right. Every follow is a request, so until they accept, the page ends with "This
+ * Requested (a tap cancels) or Following (a tap offers Unfollow). The three dots at the top right
+ * hold Remove follower (when they follow you) and Block. Every follow is a request, so until they accept, the page ends with "This
  * account is private."; an accepted follower sees their grid, only the days they posted too (the
  * Board rule). A tile opens the post page in the same stack. Someone who is gone, or a block
  * either way, shows one plain line.
@@ -154,7 +154,13 @@ export function PersonScreen({ id }: { id: string }) {
   const name = page ? firstName(page.person) : '';
   const menuItems: MenuItem[] =
     menu === 'more'
-      ? [{ label: `Block ${name}`, onPress: afterClose(() => askBlock(name)) }]
+      ? [
+          // Remove follower only when they follow you (accepted).
+          ...(page?.follows_you
+            ? [{ label: 'Remove follower', onPress: afterClose(() => void act(() => removeFollower(id))) }]
+            : []),
+          { label: 'Block', onPress: afterClose(() => askBlock(name)) },
+        ]
       : menu === 'following'
         ? [{ label: 'Unfollow', onPress: afterClose(() => void act(async () => void (await unfollow(id)))) }]
         : [];

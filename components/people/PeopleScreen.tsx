@@ -281,15 +281,15 @@ export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?:
     menu === null
       ? []
       : menu.kind === 'other'
-        ? [{ label: `Block ${firstName(menu.person)}`, onPress: fromMenu(() => askBlock(menu.person)) }]
+        ? [{ label: 'Block', onPress: fromMenu(() => askBlock(menu.person)) }]
         : menu.kind === 'following'
         ? [
             { label: 'Unfollow', onPress: fromMenu(() => doUnfollow(menu.person)) },
-            { label: `Block ${firstName(menu.person)}`, onPress: fromMenu(() => askBlock(menu.person)) },
+            { label: 'Block', onPress: fromMenu(() => askBlock(menu.person)) },
           ]
         : [
             { label: 'Remove follower', onPress: fromMenu(() => doRemove(menu.person)) },
-            { label: `Block ${firstName(menu.person)}`, onPress: fromMenu(() => askBlock(menu.person)) },
+            { label: 'Block', onPress: fromMenu(() => askBlock(menu.person)) },
           ];
 
   const followingIds = new Set((follows?.following ?? []).map((person) => person.id));

@@ -128,7 +128,7 @@ export function SearchScreen() {
       ? []
       : [
           { label: 'Unfollow', onPress: fromMenu(() => doUnfollow(menu)) },
-          { label: `Block ${firstName(menu)}`, onPress: fromMenu(() => askBlock(menu)) },
+          { label: 'Block', onPress: fromMenu(() => askBlock(menu)) },
         ];
 
   function button(hit: SearchHit) {
