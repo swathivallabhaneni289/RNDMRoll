@@ -68,6 +68,14 @@ type Repository interface {
 	// owner on localDate (YYYY-MM-DD). IsOwner and Archived are the
 	// caller's.
 	ViewFacts(ctx context.Context, viewer, owner uuid.UUID, localDate string) (Facts, error)
+	// Mute and Unmute hide or show muted's posts on muter's Board; both are
+	// silent and repeatable. IsMuted reads it.
+	Mute(ctx context.Context, muter, muted uuid.UUID, at time.Time) error
+	Unmute(ctx context.Context, muter, muted uuid.UUID) error
+	IsMuted(ctx context.Context, muter, muted uuid.UUID) (bool, error)
+	// Report keeps a report of reported by reporter (one per pair; a new
+	// one replaces the reason).
+	Report(ctx context.Context, reporter, reported uuid.UUID, reason string, at time.Time) error
 }
 
 // Service is the follows, blocks and settings use cases. Every write reads

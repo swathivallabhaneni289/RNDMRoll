@@ -116,6 +116,13 @@ func (r *BoardRepo) PostedDates(ctx context.Context, viewer uuid.UUID, upTo stri
 	return out, rows.Err()
 }
 
+// notMuted is the where fragment "the viewer $1 has not muted the person
+// whose id is col": a mute takes their posts off the Board (and its counts)
+// and nothing else.
+func notMuted(col string) string {
+	return `not exists (select 1 from mutes m where m.muter_id = $1 and m.muted_id = ` + col + `)`
+}
+
 // visibleOwner is the where fragment of the list rule for entry alias e and
 // viewer $1: the viewer's own, or a person the viewer follows (accepted)
 // with no block either way. Archived entries are never listed.
@@ -127,7 +134,7 @@ var visibleOwner = `e.archived_at is null and (e.user_id = $1 or (
 // dates, which is the rest of the rule.
 func (r *BoardRepo) Cards(ctx context.Context, viewer uuid.UUID, dates []string) ([]board.EntryRow, error) {
 	rows, err := r.pool.Query(ctx, boardEntrySelect+`
-		where e.local_date = any($2::date[]) and `+visibleOwner+`
+		where e.local_date = any($2::date[]) and `+visibleOwner+` and `+notMuted("e.user_id")+`
 		order by e.local_date desc, e.created_at desc, e.id desc`, viewer, dates)
 	if err != nil {
 		return nil, err
@@ -213,7 +220,7 @@ func (r *BoardRepo) PostedCount(ctx context.Context, viewer uuid.UUID, date stri
 	var n int
 	err := r.pool.QueryRow(ctx, `
 		select count(*) from posted_days p join users u on u.id = p.user_id
-		where p.local_date = $2::date and `+followedClause, viewer, date).Scan(&n)
+		where p.local_date = $2::date and `+followedClause+` and `+notMuted("u.id"), viewer, date).Scan(&n)
 	return n, err
 }
 
@@ -221,7 +228,7 @@ func (r *BoardRepo) PostedCount(ctx context.Context, viewer uuid.UUID, date stri
 func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date string, limit int) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `
 		select coalesce(u.name, '') from entries e join users u on u.id = e.user_id
-		where e.local_date = $2::date and e.archived_at is null and `+followedClause+`
+		where e.local_date = $2::date and e.archived_at is null and `+followedClause+` and `+notMuted("u.id")+`
 		order by e.created_at, e.id
 		limit $3`, viewer, date, limit)
 	if err != nil {

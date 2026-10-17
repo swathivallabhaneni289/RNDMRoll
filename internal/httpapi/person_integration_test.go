@@ -95,3 +95,57 @@ func TestPersonIntegration_HeadForAnyoneGridForAFollowerOnSharedDays(t *testing.
 	// The fixed routes beside it still answer.
 	w.ok(a, http.MethodGet, "/v1/people/search?q=pp", nil)
 }
+
+func TestPersonIntegration_MuteTakesPostsOffTheBoardOnly(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("pm_alice", "Alice Ames")
+	b := w.person("pm_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	const day = "2026-10-08"
+	bEntry := w.post(b, day)
+	w.post(a, day)
+
+	if ids := cardIDs(t, w.board(a, "")); !has(ids, bEntry) {
+		t.Fatalf("before mute: %v", ids)
+	}
+	if got := w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/mute", map[string]any{}); got["muted"] != true {
+		t.Fatalf("mute: %v", got)
+	}
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/mute", map[string]any{})
+	if ids := cardIDs(t, w.board(a, "")); has(ids, bEntry) {
+		t.Fatalf("muted still on the Board: %v", ids)
+	}
+	// The person page and the post itself still open; the page says muted.
+	page := w.ok(a, http.MethodGet, "/v1/people/"+b.id, nil)
+	if page["muted"] != true || len(gridIDs(t, page)) != 1 {
+		t.Fatalf("person page while muted: %v", page)
+	}
+	w.ok(a, http.MethodGet, "/v1/posts/"+bEntry, nil)
+	// B is never told: B's view of A says nothing.
+	if got := w.ok(b, http.MethodGet, "/v1/people/"+a.id, nil); got["muted"] != false {
+		t.Fatalf("b sees a mute: %v", got)
+	}
+
+	if got := w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/unmute", map[string]any{}); got["muted"] != false {
+		t.Fatalf("unmute: %v", got)
+	}
+	if ids := cardIDs(t, w.board(a, "")); !has(ids, bEntry) {
+		t.Fatalf("after unmute: %v", ids)
+	}
+	w.call(a, http.MethodPost, "/v1/people/"+a.id+"/mute", map[string]any{}, http.StatusNotFound)
+}
+
+func TestPersonIntegration_Report(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("pr_alice", "Alice Ames")
+	b := w.person("pr_bob", "Bob Brown")
+
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "spam"})
+	// A second report replaces the reason.
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "harassment"})
+	w.call(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "nope"}, http.StatusBadRequest)
+	w.call(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{}, http.StatusBadRequest)
+	w.call(a, http.MethodPost, "/v1/people/"+a.id+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
+	w.ok(b, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
+	w.call(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
+}

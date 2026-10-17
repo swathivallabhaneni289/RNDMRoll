@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -31,6 +32,14 @@ func NewPersonHandler(soc *social.Service, b *board.Service, d *diary.Service) *
 // Register mounts the route on rg (RequireAuth and RequireUser applied).
 func (h *PersonHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/people/:user_id", perSubject(120), h.person)
+	rg.POST("/people/:user_id/mute", perSubject(30), h.mute)
+	rg.POST("/people/:user_id/unmute", perSubject(30), h.unmute)
+	rg.POST("/people/:user_id/report", perSubject(10), h.report)
+}
+
+// ReportRequest is the POST /people/:user_id/report body.
+type ReportRequest struct {
+	Reason *string `json:"reason"`
 }
 
 type personStatsView struct {
@@ -53,6 +62,7 @@ type personPageView struct {
 	Person     personView        `json:"person"`
 	Relation   social.Relation   `json:"relation"`
 	FollowsYou bool              `json:"follows_you"`
+	Muted      bool              `json:"muted"`
 	Stats      personStatsView   `json:"stats"`
 	Posts      *[]personPostView `json:"posts"`
 	NextCursor *string           `json:"next_cursor"`
@@ -101,6 +111,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		Person:     newPersonView(p.Person),
 		Relation:   p.Relation,
 		FollowsYou: p.FollowsYou,
+		Muted:      p.Muted,
 		Stats: personStatsView{
 			Spins:      sum.Spins,
 			WeekStreak: sum.WeekStreak,
@@ -133,4 +144,68 @@ func (h *PersonHandler) person(c *gin.Context) {
 		}
 	}
 	Respond(c, http.StatusOK, out)
+}
+
+// mute answers 200 {"muted": true}. Silent: the person is never told.
+func (h *PersonHandler) mute(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "user_id")
+	if !ok {
+		return
+	}
+	if err := h.social.Mute(c.Request.Context(), u.ID, id); err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	Respond(c, http.StatusOK, gin.H{"muted": true})
+}
+
+// unmute answers 200 {"muted": false}.
+func (h *PersonHandler) unmute(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "user_id")
+	if !ok {
+		return
+	}
+	if err := h.social.Unmute(c.Request.Context(), u.ID, id); err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	Respond(c, http.StatusOK, gin.H{"muted": false})
+}
+
+// report answers 200 {}. A missing or unknown reason is 400 field reason.
+func (h *PersonHandler) report(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "user_id")
+	if !ok {
+		return
+	}
+	var req ReportRequest
+	if !bindEntryBody(c, &req) {
+		return
+	}
+	if req.Reason == nil {
+		RespondFieldError(c, "reason", reasonRequired)
+		return
+	}
+	err := h.social.Report(c.Request.Context(), u.ID, id, *req.Reason)
+	if errors.Is(err, social.ErrBadReason) {
+		RespondFieldError(c, "reason", reasonInvalid)
+		return
+	}
+	if err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	Respond(c, http.StatusOK, gin.H{})
 }
