@@ -21,6 +21,21 @@ export const REACTIONS: readonly { name: ReactionName; char: string; label: stri
   { name: 'sleepy', char: '😴', label: 'Sleepy' },
 ];
 
+/**
+ * The quick row above the comment box, as Instagram draws it (developer, 2026-10-17): one tap adds
+ * the character to the text. Kept here so this stays the one file that holds an emoji.
+ */
+export const COMMENT_EMOJIS: readonly { char: string; label: string }[] = [
+  { char: '❤️', label: 'Red heart' },
+  { char: '🙌', label: 'Raised hands' },
+  { char: '🔥', label: 'Fire' },
+  { char: '👏', label: 'Clapping' },
+  { char: '😢', label: 'Crying' },
+  { char: '😍', label: 'Heart eyes' },
+  { char: '😮', label: 'Wow' },
+  { char: '😂', label: 'Laughing' },
+];
+
 /** True for exactly the six names, spelled as the server spells them. */
 export function isReactionName(v: unknown): v is ReactionName {
   return typeof v === 'string' && REACTIONS.some((reaction) => reaction.name === v);

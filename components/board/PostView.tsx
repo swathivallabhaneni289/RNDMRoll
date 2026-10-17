@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommentBar, CommentList, CommentsOffBar, CommentsRule, QuietNote } from '@/components/board/Comments';
 import { capsText } from '@/components/board/PostCard';
+import { BURST_MS, ReactionBurst } from '@/components/board/ReactionBurst';
 import { usePost } from '@/components/board/usePost';
 import { Gallery } from '@/components/entry/EntryView';
 import { ReactionPicker } from '@/components/entry/ReactionPicker';
@@ -17,6 +18,7 @@ import type { Comment, Post } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { starsSpoken } from '@/lib/entry/stars';
+import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
@@ -118,7 +120,7 @@ function Details({
  * Someone else's post (05-UI-SPEC section 4, the developer's picture 10), pushed in the Board's
  * stack with no bottom bar: the Back row, the author row, the photos edge to edge (swipe for more),
  * the title with the stars and their reaction, their note, the row of six reactions (yours ringed;
- * tap to set, tap again to clear), the comments oldest first with their replies under each, and
+ * tap to set, tap again to clear; a set one flies up the screen), the comments oldest first with their replies under each, and
  * the comment bar at the bottom ('Reply' on a comment turns it into a reply). When the owner
  * switched commenting off the bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
  * The Spin stack mounts it too (`place` 'today', a reply notification on someone else's post).
@@ -128,6 +130,15 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   const { user } = useSession();
   const load = usePost(id);
   const [message, setMessage] = useState('');
+  const reduce = useReduceMotion();
+  // The reaction just tapped, flown up the screen once; a fresh key for every tap.
+  const [burst, setBurst] = useState<{ key: number; char: string } | null>(null);
+
+  useEffect(() => {
+    if (burst === null) return;
+    const timer = setTimeout(() => setBurst(null), BURST_MS);
+    return () => clearTimeout(timer);
+  }, [burst]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -136,8 +147,11 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
 
   async function onReact(next: Post['card']['my_reaction']) {
     setMessage('');
+    const picked = REACTIONS.find((item) => item.name === next) ?? null;
+    if (picked !== null && !reduce) setBurst({ key: Date.now(), char: picked.char });
     const failure = await load.react(next);
     if (failure !== null) setMessage(failure);
+    else AccessibilityInfo.announceForAccessibility(picked === null ? 'Reaction cleared.' : `You reacted ${picked.label}.`);
   }
 
   const post = load.post;
@@ -200,6 +214,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
           )}
         </View>
       )}
+      {burst !== null ? <ReactionBurst key={burst.key} char={burst.char} /> : null}
     </SafeAreaView>
   );
 }

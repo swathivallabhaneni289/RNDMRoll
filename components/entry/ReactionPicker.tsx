@@ -1,16 +1,39 @@
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { REACTIONS, type ReactionName } from '@/lib/entry/reactions';
-import { PressScale } from '@/lib/motion/primitives';
+import { EASE_OUT, PressScale } from '@/lib/motion/primitives';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, radius, type } from '@/lib/theme/tokens';
 
 const BUTTON = 47;
 
 /**
+ * A quick grow and settle when a button becomes the chosen one (developer, 2026-10-17: a tap
+ * should feel confirmed). Not on the first draw, so a reaction already saved stays still.
+ */
+function Pop({ selected, children }: { selected: boolean; children: ReactNode }) {
+  const scale = useSharedValue(1);
+  const was = useRef(selected);
+  useEffect(() => {
+    if (selected && !was.current) {
+      scale.value = withSequence(
+        withTiming(1.25, { duration: 120, easing: EASE_OUT }),
+        withSpring(1, { damping: 12, stiffness: 260 }),
+      );
+    }
+    was.current = selected;
+  }, [selected, scale]);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return <Animated.View style={animStyle}>{children}</Animated.View>;
+}
+
+/**
  * The six round reaction buttons (UI spec 6), spread over the full column. Unselected: no fill and
- * a 1dp `inkRest` outline. Selected: `secondary` fill and a 1.5dp `ink` ring. Tapping the selected
- * one clears it. The round shape is one of the two named exceptions to the no-pill rule (the other
- * is the Camera and Library pair in PhotoField). The characters come from `lib/entry/reactions.ts`.
+ * a 1dp `inkRest` outline. Selected: `secondary` fill and a 1.5dp `ink` ring, with a short pop as
+ * it is chosen (none under Reduce Motion). Tapping the selected one clears it. The round shape is
+ * one of the two named exceptions to the no-pill rule (the other is the Camera and Library pair in
+ * PhotoField). The characters come from `lib/entry/reactions.ts`.
  */
 export function ReactionPicker({
   value,
@@ -63,7 +86,7 @@ export function ReactionPicker({
           </Pressable>
         ) : (
           <PressScale key={reaction.name} {...shared}>
-            {face}
+            <Pop selected={selected}>{face}</Pop>
           </PressScale>
         );
       })}

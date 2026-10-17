@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { AppText } from '@/components/ui/AppText';
-import type { Comment, Received } from '@/lib/api/board';
+import type { Comment } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
 import { commentCount } from '@/lib/board/text';
-import { REACTIONS } from '@/lib/entry/reactions';
+import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
@@ -18,7 +18,8 @@ const REPLY_INSET = space.xl;
 /** The close mark on the 'Replying to' line. */
 const REPLY_CLOSE = 18;
 const FIELD_HEIGHT = 44;
-const REACTION_SIZE = 22;
+/** The characters on the quick row above the comment box. */
+const QUICK_EMOJI = 24;
 
 const labelText = {
   fontFamily: type.label.fontFamily,
@@ -219,6 +220,12 @@ export function CommentBar({
     inputRef.current?.focus();
   }, [replyTo]);
 
+  // A tap on the quick row adds the character at the end, never past the limit.
+  function addEmoji(char: string) {
+    setText((before) => (before.length + char.length > COMMENT_MAX ? before : before + char));
+    inputRef.current?.focus();
+  }
+
   function cancelReply() {
     if (mention !== '' && text.trim() === mention) setText('');
     onCancelReply?.();
@@ -272,6 +279,21 @@ export function CommentBar({
           </Pressable>
         </View>
       ) : null}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.sm }}>
+        {COMMENT_EMOJIS.map((emoji) => (
+          <Pressable
+            key={emoji.char}
+            onPress={() => addEmoji(emoji.char)}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${emoji.label}`}
+            style={{ minHeight: minTouchTarget, minWidth: 36, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text allowFontScaling={false} style={{ fontSize: QUICK_EMOJI, lineHeight: QUICK_EMOJI * 1.25 }}>
+              {emoji.char}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TextInput
           ref={inputRef}
@@ -337,52 +359,6 @@ export function CommentsOffBar() {
       }}
     >
       <QuietNote text="Commenting is off." tone="muted" />
-    </View>
-  );
-}
-
-/** Who reacted to your own post: a name and the character, or 'No reactions yet.' (05-UI-SPEC 5). */
-export function ReceivedReactions({ received }: { received: Received[] }) {
-  const items = received
-    .map((item) => {
-      const reaction = REACTIONS.find((r) => r.name === item.reaction);
-      return reaction ? { key: item.person.id, name: firstName(item.person), char: reaction.char, label: reaction.label } : null;
-    })
-    .filter((item): item is { key: string; name: string; char: string; label: string } => item !== null);
-
-  return (
-    <View>
-      <Text
-        accessibilityRole="header"
-        style={{ ...labelText, letterSpacing: 1.5, textTransform: 'uppercase', color: color.muted }}
-      >
-        Reactions
-      </Text>
-      <View style={{ marginTop: space.sm }}>
-        {items.length === 0 ? (
-          <AppText role="label" tone="muted">
-            No reactions yet.
-          </AppText>
-        ) : (
-          <View
-            accessible
-            accessibilityLabel={`Reactions: ${items.map((item) => `${item.name}, ${item.label}`).join('. ')}.`}
-            style={{ flexDirection: 'row', flexWrap: 'wrap' }}
-          >
-            {items.map((item) => (
-              <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', marginRight: space.md }}>
-                <AppText role="body">{item.name}</AppText>
-                <Text
-                  allowFontScaling={false}
-                  style={{ marginLeft: space.xs, fontSize: REACTION_SIZE, lineHeight: type.heading.lineHeight }}
-                >
-                  {item.char}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
     </View>
   );
 }

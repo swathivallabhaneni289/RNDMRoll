@@ -4,7 +4,8 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CommentBar, CommentList, CommentsOffBar, CommentsRule, ReceivedReactions } from '@/components/board/Comments';
+import { CommentBar, CommentList, CommentsOffBar, CommentsRule } from '@/components/board/Comments';
+import { ReceivedReactions } from '@/components/board/ReactionsSheet';
 import { usePost, type PostLoad } from '@/components/board/usePost';
 import { StarDisplay } from '@/components/entry/StarDisplay';
 import { editEntryPath, fromName, fromRoot, goToStart, type EntryFrom } from '@/components/entry/entryFrom';
@@ -238,7 +239,7 @@ export function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: b
 
 /**
  * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the details, who
- * reacted (a name and the character, or 'No reactions yet.') and the comments, oldest first, each
+ * reacted (one summary line that opens the full list, or 'No reactions yet.') and the comments, oldest first, each
  * with 'Delete' (the owner may delete any), its replies under it, and 'Reply' while commenting is
  * on (the bar at the bottom then sends a reply). Read from GET /posts/{entry_id}; until that answers, or
  * if it cannot, nothing is drawn here and the rest of the page is unchanged.
