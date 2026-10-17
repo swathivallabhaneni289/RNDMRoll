@@ -14,6 +14,12 @@ const TILE_RATIO = 4 / 3;
 const MULTI_ICON = 18;
 const MULTI_INSET = 6;
 
+/** What a tile reads: your own entries, and the tiles of another person's page, both fit. */
+export type GridPost = Pick<Entry, 'id' | 'photo_url' | 'title'> & {
+  category: { name: string };
+  photos: { length: number };
+};
+
 /**
  * Every post the person has made, as a grid of cover photos, newest first (developer,
  * 2026-10-16: the Diary tab and "Recent activity" are gone; all the pictures show on Profile).
@@ -24,17 +30,20 @@ export function PostGrid({
   posts,
   width,
   onOpen,
+  emptyText = 'Your posts will show here.',
 }: {
-  posts: Entry[];
+  posts: GridPost[];
   /** The width the grid fills (the full page width: it runs edge to edge). */
   width: number;
   onOpen: (id: string) => void;
+  /** The line shown when there is nothing to show. */
+  emptyText?: string;
 }) {
   if (posts.length === 0) {
     return (
       <View style={{ paddingHorizontal: space.lg }}>
         <AppText role="label" tone="muted">
-          Your posts will show here.
+          {emptyText}
         </AppText>
       </View>
     );

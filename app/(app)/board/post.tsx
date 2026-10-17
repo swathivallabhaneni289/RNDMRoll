@@ -6,8 +6,10 @@ import { PostView } from '@/components/board/PostView';
  * Notifications (a reply to your comment; Back reads 'Notifications'). No bottom bar.
  */
 export default function BoardPostRoute() {
-  const params = useLocalSearchParams<{ id?: string | string[]; via?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; via?: string | string[]; back?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const via = Array.isArray(params.via) ? params.via[0] : params.via;
-  return <PostView id={id ?? ''} backName={via === 'notifications' ? 'Notifications' : 'Board'} />;
+  // From someone's profile page, Back reads their username.
+  const back = Array.isArray(params.back) ? params.back[0] : params.back;
+  return <PostView id={id ?? ''} backName={back || (via === 'notifications' ? 'Notifications' : 'Board')} />;
 }

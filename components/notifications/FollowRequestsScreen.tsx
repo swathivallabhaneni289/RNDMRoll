@@ -18,6 +18,7 @@ import {
   type Person,
   type Relation,
 } from '@/lib/api/social';
+import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 const GENERIC = 'Something went wrong. Please try again.';
@@ -34,6 +35,7 @@ type Accepted = { person: Person; relation: Relation };
  */
 export function FollowRequestsScreen() {
   const router = useRouter();
+  const openPerson = useOpenPerson();
   const [requests, setRequests] = useState<FollowRequest[] | null>(null);
   const [accepted, setAccepted] = useState<Record<string, Accepted>>({});
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
@@ -172,7 +174,13 @@ export function FollowRequestsScreen() {
               {pending.map((request, index) => {
                 const name = firstName(request.person);
                 return (
-                  <PersonRow key={request.request_id} person={request.person} first={index === 0}>
+                  <PersonRow
+                    key={request.request_id}
+                    person={request.person}
+                    first={index === 0}
+                    onPress={() => openPerson(request.person.id)}
+                    pressHint="Opens their profile."
+                  >
                     <Chip
                       label="Accept"
                       tone="strong"
@@ -193,7 +201,13 @@ export function FollowRequestsScreen() {
               {acceptedRows.map(([requestId, row], index) => {
                 const name = firstName(row.person);
                 return (
-                  <PersonRow key={requestId} person={row.person} first={pending.length === 0 && index === 0}>
+                  <PersonRow
+                    key={requestId}
+                    person={row.person}
+                    first={pending.length === 0 && index === 0}
+                    onPress={() => openPerson(row.person.id)}
+                    pressHint="Opens their profile."
+                  >
                     {row.relation === 'none' ? (
                       <Chip
                         label="Follow back"

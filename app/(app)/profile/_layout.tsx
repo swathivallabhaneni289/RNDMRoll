@@ -33,6 +33,8 @@ export default function ProfileLayout() {
       <Stack.Screen name="password" />
       <Stack.Screen name="archive" />
       <Stack.Screen name="people" />
+      <Stack.Screen name="person" />
+      <Stack.Screen name="post" />
     </Stack>
   );
 }
