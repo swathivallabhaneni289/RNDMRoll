@@ -157,12 +157,41 @@ settings, reactions, comments and the notification seen time. Only the server ag
 - Notification items send `photo_url` (the post's first photo, "" when none) for reactions,
   comments and replies; the row shows it small at the right, like Instagram.
 - The Follow requests row shows only a dot when one waits: no name, no count, no photo.
-- Reacting on someone's post: the chosen button pops, and eight copies of the character fly up
-  the screen and fade (about 1.5 s, none under Reduce Motion, none when clearing). No line of
-  text under the row.
+- **Reactions on posts are REMOVED** (developer, 2026-10-18: "we're gonna have that in the
+  comments anyway, so I feel like it's a redundancy. Let's not keep it anywhere"). No reaction row
+  on someone's post, no who-reacted line or sheet on your own post, no reaction items in the
+  bell (the server stops making them), and no "Reactions and likes" switch in Settings >
+  Notifications (its stored value is kept and no longer changes anything). Left in place on the
+  server and unused: `POST /v1/posts/{id}/reaction`, the `post_reactions` table, and `received`,
+  `can_react` and `my_reaction` on the wire; dropping them needs a migration and is a later
+  clean-up. The author's own emoji on an entry (picked when posting, shown next to the stars)
+  is a different thing and stays.
 - The comment box has Instagram's quick row of eight emojis above it; a tap adds one at the end.
   Return still makes a new line (Return-to-send was tried and taken back).
-- Your own post shows who reacted as one line, the three most used characters and "Sam and 11
-  others reacted", which opens a sheet listing everyone with their character. The server's
-  `received` list is unchanged.
+- `GET /v1/diary` sends `social` on every entry row: `{comment_count, latest_comments: [{author:
+  {id, name, username, photo_url}, text}]}`, the newest comment only, counted as the post page
+  shows the owner (no blocks either way). The Profile posts list follows the rhythm of
+  Instagram's list of a profile's posts with this app's own parts (developer, 2026-10-18): under
+  the photo an action row (a comment mark at the left that opens the post, your stars and own
+  emoji at the right; no likes, saves or shares, none exist here), then the category in bold and
+  the day ("Song · Sunday, October 18") one step smaller, the title in bold over the full width,
+  your note; then, close under it, "View all comments" (no number: it can grow large) when there is more than one, the newest comment on one
+  line (the writer's small photo, the first name in bold, the words, cut with dots), and "Add a
+  comment" with your own photo. One font, all ink, groups set apart by space, not rules. Every
+  comment line opens the entry page. The list makes no read per post.
+- Under each comment, "Reply" and "Hide" (or "Unhide", someone's comment on your own post) sit
+  side by side in ink at the label size in the button weight, never underlined (developer,
+  2026-10-18: "I don't want anything to be just plain text with things underlined ever"). Delete
+  moved off the row to a long press on the comment, asked first with the phone's alert; a
+  screen reader gets it as the comment's "Delete" action. Hide itself is the other session's
+  (0011, `can_hide` and `hidden` on comments); a hidden comment is also left out of the posts
+  list's count and preview. Less space between the post's details and its comments.
+- Your entry page matches the posts list (developer, 2026-10-18): the photos 4 wide to 5 high,
+  then the same ActionRow and CaptionText (`components/entry/PostCaption.tsx`, shared by both;
+  the comment mark here puts the cursor in the comment box), then a hairline and the comments.
+  The "2 comments" count line above them is gone from this page (the number can grow large).
+  Someone else's post page reads the same way: the author's photo and first name on top, the
+  photos 4 wide to 5 high, the same ActionRow (their stars and emoji) and CaptionText (with the
+  posted time, "Song · Sunday, October 18 · 8:45 PM"), a hairline and the comments, no count line.
+  `CommentsRule` is removed.
 - Photos in comments and GIFs are not Phase 5: see `06-FOLLOW-OVERRIDES.md` section 10.
