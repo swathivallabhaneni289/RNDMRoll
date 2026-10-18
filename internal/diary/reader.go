@@ -25,6 +25,10 @@ type Reader interface {
 	Recent(ctx context.Context, userID string, n int) ([]spin.Entry, error)
 	// TimeZone is the stored zone name, or "" when none.
 	TimeZone(ctx context.Context, userID string) (string, error)
+	// Social returns, for each of the person's own entries in entryIDs that
+	// has comments, the count and the newest few (LatestCount, oldest first),
+	// keyed by entry id. An entry with none is absent.
+	Social(ctx context.Context, userID string, entryIDs []string) (map[string]PostSocial, error)
 }
 
 // FollowerCounter counts accepted followers and accepted follows the person

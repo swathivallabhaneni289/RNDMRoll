@@ -294,3 +294,81 @@ func (r *DiaryReader) TimeZone(ctx context.Context, userID string) (string, erro
 	}
 	return name, err
 }
+
+// Social implements diary.Reader with the comments the post page shows the
+// owner: comments and replies, leaving out anyone with a block either way and
+// a reply whose top-level comment's writer has one (board.Thread). A comment
+// the owner hid is left out too, so it never shows under a post in the list.
+// Only the person's own entries are read.
+func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []string) (map[string]diary.PostSocial, error) {
+	uid, err := diaryUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(entryIDs))
+	for _, s := range entryIDs {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("diary: entry id is not a uuid: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	out := map[string]diary.PostSocial{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	shown := `
+		from post_comments c
+		join entries e on e.id = c.entry_id
+		join users u on u.id = c.user_id
+		left join post_comments p on p.id = c.parent_id
+		where c.entry_id = any($2::uuid[]) and e.user_id = $1 and c.hidden_at is null
+		  and not ` + blockedEither("$1::uuid", "c.user_id") + `
+		  and (c.parent_id is null or not ` + blockedEither("$1::uuid", "p.user_id") + `)`
+	rows, err := r.pool.Query(ctx, `select c.entry_id, count(*) `+shown+` group by c.entry_id`, uid, ids)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		s := out[id.String()]
+		s.Comments = n
+		out[id.String()] = s
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	rows, err = r.pool.Query(ctx, `
+		select entry_id, author_id, name, username, avatar_url, body from (
+		  select c.entry_id, u.id as author_id, coalesce(u.name, '') as name, coalesce(u.username, '') as username,
+		    u.avatar_url, c.body, c.created_at, c.id,
+		    row_number() over (partition by c.entry_id order by c.created_at desc, c.id desc) as n
+		  `+shown+`
+		) x
+		where n <= $3
+		order by entry_id, created_at, id`, uid, ids, diary.LatestCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, author uuid.UUID
+		var latest diary.LatestComment
+		if err := rows.Scan(&id, &author, &latest.Name, &latest.Username, &latest.PhotoURL, &latest.Text); err != nil {
+			return nil, err
+		}
+		latest.AuthorID = author.String()
+		s := out[id.String()]
+		s.Latest = append(s.Latest, latest)
+		out[id.String()] = s
+	}
+	return out, rows.Err()
+}

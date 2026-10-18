@@ -43,7 +43,6 @@ type itemView struct {
 	Actor        *personView  `json:"actor"`
 	EntryID      *string      `json:"entry_id"`
 	CategoryName *string      `json:"category_name"`
-	Reaction     *string      `json:"reaction"`
 	Text         *string      `json:"text"`
 	RequestID    *string      `json:"request_id"`
 	// PhotoURL is the post's first photo, "" when the item has none.
@@ -53,7 +52,7 @@ type itemView struct {
 func newItemView(it notifications.Item, photoURL func(string) string) itemView {
 	v := itemView{
 		ID: it.ID, Kind: it.Kind, At: spin.Instant(it.At), AtLabel: it.AtLabel, Section: it.Section,
-		Unread: it.Unread, CategoryName: it.CategoryName, Reaction: it.Reaction, Text: it.Text,
+		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text,
 	}
 	if it.Actor != nil {
 		p := newPersonView(*it.Actor)

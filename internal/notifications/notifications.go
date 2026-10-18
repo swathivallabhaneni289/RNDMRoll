@@ -1,8 +1,10 @@
 // Package notifications builds the bell's list from data that already exists
-// (reactions, comments, replies, follows, requests, the spin window, goal
-// weeks). No
+// (comments, replies, follows, requests, the spin window, goal weeks). No
 // notification is stored and no job runs; the only state is one seen time
 // per person. The notification settings filter the list and the unread flag.
+// Reactions on posts make no items (developer, 2026-10-18: reactions were
+// removed from the app; the stored "reactions" switch no longer changes the
+// list).
 package notifications
 
 import (
@@ -21,7 +23,6 @@ import (
 
 // Kinds.
 const (
-	KindReaction       = "reaction"
 	KindComment        = "comment"
 	KindReply          = "reply"
 	KindFollow         = "follow"
@@ -53,7 +54,6 @@ type Raw struct {
 	ActorID      uuid.UUID
 	EntryID      *uuid.UUID
 	CategoryName *string
-	Reaction     *string
 	Text         *string
 	RequestID    *uuid.UUID
 	// PhotoKey is the post's first photo, for the small picture at the right.
@@ -78,7 +78,6 @@ type Item struct {
 	Actor        *social.Person
 	EntryID      *uuid.UUID
 	CategoryName *string
-	Reaction     *string
 	Text         *string
 	RequestID    *uuid.UUID
 	PhotoKey     *string
@@ -94,7 +93,6 @@ type List struct {
 // out the viewer's own actions and anyone with a block either way, and
 // returns at most limit rows newest first.
 type Repository interface {
-	Reactions(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Comments on the viewer's entries, replies included, except a reply to
 	// the viewer's own comment (that one is a Replies item only).
 	Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
@@ -172,11 +170,6 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		raws = append(raws, list...)
 		return err
 	}
-	if settings.Reactions {
-		if err := add(s.repo.Reactions(ctx, viewer, since, MaxItems)); err != nil {
-			return List{}, err
-		}
-	}
 	if settings.Comments {
 		if err := add(s.repo.Comments(ctx, viewer, since, MaxItems)); err != nil {
 			return List{}, err
@@ -213,7 +206,7 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		actor := p
 		items = append(items, Item{
 			ID: r.ID, Kind: r.Kind, At: r.At, Actor: &actor, EntryID: r.EntryID,
-			CategoryName: r.CategoryName, Reaction: r.Reaction, Text: r.Text, RequestID: r.RequestID,
+			CategoryName: r.CategoryName, Text: r.Text, RequestID: r.RequestID,
 			PhotoKey: r.PhotoKey,
 		})
 	}

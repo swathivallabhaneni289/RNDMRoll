@@ -51,6 +51,26 @@ func (s *Service) Page(ctx context.Context, userID string, p PageParams) (Page, 
 		rows = rows[:limit]
 		out.NextCursor = EncodeCursor(rows[limit-1].LocalDate)
 	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.Kind == KindEntry && row.Entry != nil {
+			ids = append(ids, row.Entry.ID)
+		}
+	}
+	if len(ids) > 0 {
+		social, err := s.r.Social(ctx, userID, ids)
+		if err != nil {
+			return Page{}, err
+		}
+		for i := range rows {
+			if rows[i].Kind != KindEntry || rows[i].Entry == nil {
+				continue
+			}
+			if v, ok := social[rows[i].Entry.ID]; ok {
+				rows[i].Social = &v
+			}
+		}
+	}
 	out.Rows = rows
 	if out.Chips, err = s.r.Chips(ctx, userID); err != nil {
 		return Page{}, err

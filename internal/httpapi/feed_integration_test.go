@@ -740,17 +740,15 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	}
 	list := w.notes(b)
 	k := kinds(t, list)
-	if !has(k, "reaction") || !has(k, "comment") || !has(k, "follow_request") || !has(k, "spin_open") || list["unread"] != true {
+	// A reaction on a post makes no item (reactions were removed, 2026-10-18).
+	if has(k, "reaction") || !has(k, "comment") || !has(k, "follow_request") || !has(k, "spin_open") || list["unread"] != true {
 		t.Fatalf("all on: %v", list)
 	}
-	if k[0] != "comment" || k[1] != "reaction" {
+	if k[0] != "comment" {
 		t.Fatalf("newest first: %v", k)
 	}
-	r := itemOf(t, list, "reaction")
-	if r["reaction"] != "fire" || r["entry_id"] != bEntry || r["category_name"] == nil || r["section"] != "today" || r["at_label"] != "8:31 PM" {
-		t.Fatalf("reaction item: %v", r)
-	}
-	if cm := itemOf(t, list, "comment"); cm["text"] != "Great pick" || dig(t, cm, "actor", "username") != "nf_alice" {
+	if cm := itemOf(t, list, "comment"); cm["text"] != "Great pick" || dig(t, cm, "actor", "username") != "nf_alice" ||
+		cm["entry_id"] != bEntry || cm["category_name"] == nil || cm["section"] != "today" || cm["at_label"] != "8:32 PM" {
 		t.Fatalf("comment item: %v", cm)
 	}
 	if so := itemOf(t, list, "spin_open"); so["actor"] != nil || so["at_label"] != "8:00 PM" {
@@ -761,6 +759,7 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	if got["reactions"] != false || got["comments"] != true || got["milestones"] != true {
 		t.Fatalf("patch: %v", got)
 	}
+	// The stored switch stays and no longer changes the list.
 	if k := kinds(t, w.notes(b)); has(k, "reaction") || !has(k, "comment") {
 		t.Fatalf("reactions off: %v", k)
 	}
@@ -797,5 +796,75 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	items := w.notes(b)["items"].([]any)
 	if dig(t, items[0], "text") != "Again" || dig(t, items[0], "unread") != true || dig(t, items[1], "unread") != false {
 		t.Fatalf("unread only after seen: %v", items)
+	}
+}
+
+// Your posts list carries each post's comment count and newest comment, so the
+// list needs no read per post (developer, 2026-10-17).
+func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("ds_alice", "Alice Ames")
+	b := w.person("ds_bob", "Bob Brown")
+	c := w.person("ds_cara", "Cara Cole")
+	w.followAccepted(a, b)
+	w.followAccepted(c, b)
+	const day = "2026-10-08"
+	bEntry := w.post(b, day)
+	w.post(a, day)
+	w.post(c, day)
+	path := "/v1/posts/" + bEntry
+
+	social := func() map[string]any {
+		t.Helper()
+		items := w.ok(b, http.MethodGet, "/v1/diary", nil)["items"].([]any)
+		row := items[0].(map[string]any)
+		if dig(t, row, "entry", "id") != bEntry {
+			t.Fatalf("first row: %v", row)
+		}
+		return row["social"].(map[string]any)
+	}
+
+	texts := func(s map[string]any) []string {
+		t.Helper()
+		out := []string{}
+		for _, c := range s["latest_comments"].([]any) {
+			out = append(out, c.(map[string]any)["text"].(string))
+		}
+		return out
+	}
+
+	if s := social(); s["comment_count"] != float64(0) || len(texts(s)) != 0 || len(s) != 2 {
+		t.Fatalf("nothing yet: %v", s)
+	}
+
+	w.call(c, http.MethodPost, path+"/comments", map[string]any{"text": "First"}, http.StatusCreated)
+	w.clk.Advance(time.Minute)
+	w.call(a, http.MethodPost, path+"/comments", map[string]any{"text": "Second"}, http.StatusCreated)
+	w.clk.Advance(time.Minute)
+	w.call(a, http.MethodPost, path+"/comments", map[string]any{"text": "Newest"}, http.StatusCreated)
+
+	// The newest only, with the count of all three.
+	s := social()
+	if got := texts(s); s["comment_count"] != float64(3) || strings.Join(got, ",") != "Newest" {
+		t.Fatalf("counts: %v", s)
+	}
+	last := s["latest_comments"].([]any)[0]
+	if dig(t, last, "author", "id") != a.id || dig(t, last, "author", "username") != "ds_alice" || dig(t, last, "author", "name") != "Alice Ames" {
+		t.Fatalf("author: %v", last)
+	}
+
+	// A comment the owner hid leaves the count and the preview.
+	newest := w.ok(b, http.MethodGet, path, nil)["comments"].([]any)
+	newestID := newest[len(newest)-1].(map[string]any)["id"].(string)
+	w.ok(b, http.MethodPost, "/v1/comments/"+newestID+"/hide", map[string]any{})
+	if s := social(); s["comment_count"] != float64(2) || strings.Join(texts(s), ",") != "Second" {
+		t.Fatalf("after a hide: %v", s)
+	}
+	w.ok(b, http.MethodPost, "/v1/comments/"+newestID+"/unhide", map[string]any{})
+
+	// A block leaves that person out of the count and the comments.
+	w.ok(b, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
+	if s := social(); s["comment_count"] != float64(1) || strings.Join(texts(s), ",") != "First" {
+		t.Fatalf("after a block: %v", s)
 	}
 }

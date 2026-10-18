@@ -37,8 +37,44 @@ func (h *DiaryHandler) Register(rg *gin.RouterGroup) {
 type diaryRowView struct {
 	Kind      string            `json:"kind"`
 	Entry     *entryView        `json:"entry,omitempty"`
+	Social    *postSocialView   `json:"social,omitempty"`
 	LocalDate string            `json:"local_date,omitempty"`
 	Category  *spin.CategoryRef `json:"category,omitempty"`
+}
+
+// postSocialView is the comments on an entry row's post, sent on every entry
+// row (0 and an empty list when none): the comment count and the newest
+// (diary.LatestCount).
+type postSocialView struct {
+	CommentCount   int                 `json:"comment_count"`
+	LatestComments []latestCommentView `json:"latest_comments"`
+}
+
+type latestCommentView struct {
+	Author latestAuthorView `json:"author"`
+	Text   string           `json:"text"`
+}
+
+type latestAuthorView struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Username string  `json:"username"`
+	PhotoURL *string `json:"photo_url"`
+}
+
+func newPostSocialView(s *diary.PostSocial) *postSocialView {
+	v := &postSocialView{LatestComments: []latestCommentView{}}
+	if s == nil {
+		return v
+	}
+	v.CommentCount = s.Comments
+	for _, c := range s.Latest {
+		v.LatestComments = append(v.LatestComments, latestCommentView{
+			Author: latestAuthorView{ID: c.AuthorID, Name: c.Name, Username: c.Username, PhotoURL: c.PhotoURL},
+			Text:   c.Text,
+		})
+	}
+	return v
 }
 
 type tasteView struct {
@@ -89,7 +125,7 @@ func (h *DiaryHandler) page(c *gin.Context) {
 		switch r.Kind {
 		case diary.KindEntry:
 			v := newEntryView(*r.Entry, h.photos.PublicURL)
-			items = append(items, diaryRowView{Kind: "entry", Entry: &v})
+			items = append(items, diaryRowView{Kind: "entry", Entry: &v, Social: newPostSocialView(r.Social)})
 		default:
 			cat := r.Category
 			items = append(items, diaryRowView{Kind: "skipped", LocalDate: r.LocalDate, Category: &cat})

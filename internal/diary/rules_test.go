@@ -117,6 +117,28 @@ func (f *fakeReader) Recent(context.Context, string, int) ([]spin.Entry, error) 
 	return nil, nil
 }
 func (f *fakeReader) TimeZone(context.Context, string) (string, error) { f.calls++; return f.zone, nil }
+func (f *fakeReader) Social(_ context.Context, _ string, ids []string) (map[string]PostSocial, error) {
+	f.calls++
+	out := map[string]PostSocial{}
+	for _, id := range ids {
+		if id == "liked" {
+			out[id] = PostSocial{Comments: 2}
+		}
+	}
+	return out, nil
+}
+
+func TestDiaryServicePageAddsSocialToEntries(t *testing.T) {
+	f := &fakeReader{rows: []Row{
+		{Kind: KindEntry, Entry: &spin.Entry{ID: "liked"}, LocalDate: "2026-10-09"},
+		{Kind: KindEntry, Entry: &spin.Entry{ID: "quiet"}, LocalDate: "2026-10-08"},
+		{Kind: KindSkipped, LocalDate: "2026-10-07"},
+	}}
+	p, err := NewService(f, clock.NewFixed(time.Now()), nil).Page(context.Background(), "u", PageParams{Limit: 5})
+	if err != nil || p.Rows[0].Social == nil || p.Rows[0].Social.Comments != 2 || p.Rows[1].Social != nil || p.Rows[2].Social != nil {
+		t.Fatalf("social: %+v %v", p.Rows, err)
+	}
+}
 
 type fiveFollowers struct{}
 

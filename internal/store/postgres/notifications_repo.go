@@ -24,40 +24,6 @@ func NewNotificationsRepo(pool *pgxpool.Pool) *NotificationsRepo {
 
 var _ notifications.Repository = (*NotificationsRepo)(nil)
 
-// Reactions implements notifications.Repository.
-func (r *NotificationsRepo) Reactions(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
-	rows, err := r.pool.Query(ctx, `
-		select pr.entry_id, pr.user_id, pr.reaction, pr.updated_at, s.category_name,
-		  (select ep.storage_key from entry_photos ep where ep.entry_id = e.id order by ep.position limit 1)
-		from entries e
-		join post_reactions pr on pr.entry_id = e.id
-		join spins s on s.id = e.spin_id
-		where e.user_id = $1 and pr.user_id <> $1 and pr.updated_at > $2
-		  and not `+blockedEither("$1::uuid", "pr.user_id")+`
-		order by pr.updated_at desc, pr.entry_id desc, pr.user_id desc
-		limit $3`, owner, since, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []notifications.Raw{}
-	for rows.Next() {
-		var entryID, actor uuid.UUID
-		var reaction, category string
-		var photoKey *string
-		var at time.Time
-		if err := rows.Scan(&entryID, &actor, &reaction, &at, &category, &photoKey); err != nil {
-			return nil, err
-		}
-		out = append(out, notifications.Raw{
-			Kind: notifications.KindReaction, ID: "reaction:" + entryID.String() + ":" + actor.String(),
-			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Reaction: &reaction,
-			PhotoKey: photoKey,
-		})
-	}
-	return out, rows.Err()
-}
-
 // Comments implements notifications.Repository. A reply counts as a comment
 // for the post's owner while its top-level comment is shown to the owner
 // (no block with its writer), and not at all when the owner wrote that
