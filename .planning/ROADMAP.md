@@ -19,8 +19,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2.2: Navigation motion (INSERTED)** - Moving between tabs and pages feels smooth and consistent (completed 2026-10-13; tabs swap at once, the bar's colours glide, pushed pages keep the iOS slide; the cross-fade was tried and dropped)
 - [x] **Phase 3: Daily Entry** - Users log a structured daily entry against their rolled category (completed 2026-10-16; walked on the simulator: post with 3 full-size photos, View entry, edit, delete, skip, archive and restore. Added by the developer: a three-dots slide-up menu (Edit, Archive, commenting, Delete), Settings > Archive with a restore arrow, no red text except Log out, 'Skip it' as an outlined button. The commenting switch is saved but checked only once comments exist)
 - [x] **Phase 4: Personal Diary** - Users browse a chronological, filterable log of everything they've rated (completed 2026-10-16; walked: Diary list with three dots per post, open, edit, Profile recent rows. By decision the category chips, the tastes with averages and 'See diary' were removed; the server still filters by category. Home was dropped: the bar is Diary, Spin, Board, Profile and the Spin page holds all of today)
-- [ ] **Phase 5: Friend Feed** - Users build a friend circle and see a reciprocity-gated daily feed of what friends rolled and rated (rewritten 2026-10-16 for one-way follows like Instagram: `05-FOLLOW-OVERRIDES.md`; building)
-- [ ] **Phase 6: Public and Global** - Public accounts, the Global view, the person page, report, and the 8 PM reminder (paper in `.planning/phases/06-public-global/`, to be rewritten for follows)
+- [x] **Phase 5: Friend Feed** - Users build a friend circle and see a reciprocity-gated daily feed of what friends rolled and rated (completed 2026-10-18; rewritten 2026-10-16 for one-way follows like Instagram: `05-FOLLOW-OVERRIDES.md`. Walked on the simulator: every follow a request, Follow back, search, Board, comments and replies, the quick emoji row, Hide and Delete, commenting off, block with the blocked page and Unblock, the notification switches. Reactions on posts were built and then removed by decision)
+- [ ] **Phase 6: Public and Global** - Public accounts, the Global view, the person page, report, and the 8 PM reminder (paper in `.planning/phases/06-public-global/`. Pulled forward and built by the other session on 2026-10-17 and 18: the person page with Posts, lists and bio, mute, report a person, a post or a comment, hide a comment, and an admin page to review reports and disable accounts (migrations 0010 to 0012). Still open: comment photos (0013), GIFs (needs a GIPHY key), the 8 PM reminder (needs a rebuild); Global and the public switch are deferred)
 
 ## Phase Details
 
@@ -205,5 +205,5 @@ Phases execute in numeric order: 1 → 2 → 2.1 → 2.2 → 3 → 4 → 5 → 6
 | 2.2. Navigation motion | 1/1 | Complete | 2026-10-13 |
 | 3. Daily Entry | 4/4 | Complete (commenting checked with Phase 5) | 2026-10-16 |
 | 4. Personal Diary | 2/2 | Complete | 2026-10-16 |
-| 5. Friend Feed (one-way follows) | 6/6 | Built and live on dev (migration 0008); walkthrough in progress | - |
-| 6. Public and Global | 0/3 | Paper to rewrite for follows | - |
+| 5. Friend Feed (one-way follows) | 6/6 | Complete (walked on the simulator) | 2026-10-18 |
+| 6. Public and Global | partly built | Person page, mute, report, hide, admin built early (0010 to 0012); comment photos, GIFs, reminder open | - |

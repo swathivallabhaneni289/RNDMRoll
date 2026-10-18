@@ -137,8 +137,9 @@ revised):
 - In the list the photo sits under the comment's text as a rounded picture about half the column
   wide; a tap opens it full screen.
 - Server: a nullable photo key on `post_comments` in its own migration. `0009` is comment
-  replies (Phase 5) and `0010` is mutes and user reports and `0011` is hidden comments (the
-  other session, 2026-10-17 and 2026-10-18), so comment photos take `0012` (section 6 is out of date on the number; check `ls migrations`
+  replies (Phase 5) and `0010` is mutes and user reports and `0011` is hidden comments and `0012`
+  is post and comment reports with disabled accounts (the other session, 2026-10-17 and
+  2026-10-18), so comment photos take `0013` (section 6 is out of date on the number; check `ls migrations`
   first). Uploads go the same way as entry photos; deleting a comment
   deletes its photo.
 - Notifications: a comment that is only a photo reads "sent a photo."
