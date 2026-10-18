@@ -33,6 +33,9 @@ const (
 	CodeServerError        ErrorCode = "server_error"
 	CodeUnderMinimumAge    ErrorCode = "under_minimum_age"
 	CodePayloadTooLarge    ErrorCode = "payload_too_large"
+	// CodeAccountDisabled: an admin disabled the account. 403 on login and
+	// refresh, 401 on any signed-in request; the app signs out and says so.
+	CodeAccountDisabled ErrorCode = "account_disabled"
 )
 
 // Fixed reasons RespondFieldError understands. Each maps to fixed text, so

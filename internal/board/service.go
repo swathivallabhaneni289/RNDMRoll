@@ -60,6 +60,10 @@ type Repository interface {
 	// SetCommentHidden hides (at set) or shows (at nil) a comment.
 	// ErrNotFound when it went away.
 	SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error
+	// ReportPost and ReportComment keep a report (one per reporter and post
+	// or comment; a new one replaces the reason and opens it again).
+	ReportPost(ctx context.Context, reporter, entryID, owner uuid.UUID, title, reason string, at time.Time) error
+	ReportComment(ctx context.Context, reporter, commentID, author uuid.UUID, body, reason string, at time.Time) error
 }
 
 // Facts is the spin slice's view of the viewer (spin.Service).

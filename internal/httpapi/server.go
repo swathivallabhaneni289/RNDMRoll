@@ -54,6 +54,9 @@ type Deps struct {
 	Follow        *FollowHandler
 	Board         *BoardHandler
 	Notifications *NotificationsHandler
+	// Admin is the admin web page at /admin; nil (no ADMIN_EMAILS) mounts
+	// nothing.
+	Admin *AdminHandler
 
 	Users     user.Repository
 	JWTSecret []byte
@@ -109,6 +112,10 @@ func NewServer(deps Deps) *Server {
 	engine.GET("/healthz", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
+
+	if deps.Admin != nil {
+		deps.Admin.Register(engine)
+	}
 
 	v1 := engine.Group("/v1")
 	v1.Use(middleware.BodyLimit(middleware.MaxBodyBytes))

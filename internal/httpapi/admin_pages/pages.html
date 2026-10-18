@@ -1,0 +1,59 @@
+{{define "head"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · RNDMRoll admin</title><link rel="stylesheet" href="/admin/style.css"></head>
+<body><main>{{end}}
+
+{{define "top"}}<header><h1><a href="/admin" style="text-decoration:none">RNDMRoll admin</a></h1>
+<form class="inline" method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Log out</button></form></header>
+{{if .Notice}}<div class="note">{{.Notice}}</div>{{end}}{{end}}
+
+{{define "foot"}}</main></body></html>{{end}}
+
+{{define "login"}}{{template "head" .}}
+<div class="login"><h1>RNDMRoll admin</h1>
+{{if .Notice}}<div class="note" style="margin-top:16px">{{.Notice}}</div>{{end}}
+<form method="post" action="/admin/login">
+<label for="email">Email</label><input id="email" type="email" name="email" autocomplete="username" required>
+<label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" required>
+<div class="actions" style="margin-top:16px"><button class="strong">Log in</button></div>
+</form></div>
+{{template "foot" .}}{{end}}
+
+{{define "list"}}{{template "head" .}}{{template "top" .}}
+<h2>Open reports</h2>
+{{if .Summaries}}<table><tr><th>Person</th><th>Open</th><th>Reasons</th><th>Newest</th></tr>
+{{range .Summaries}}<tr><td><a href="/admin/people/{{.PersonID}}">@{{.Username}}</a><br><span class="muted">{{.Name}}{{if .Disabled}} · disabled{{end}}</span></td>
+<td>{{.Open}}</td><td>{{range $i, $r := .Reasons}}{{if $i}}, {{end}}{{reason $r}}{{end}}</td><td>{{when .LatestAt}}</td></tr>{{end}}
+</table>{{else}}<p class="muted">No open reports.</p>{{end}}
+<h2>Disabled accounts</h2>
+{{if .Disabled}}<table><tr><th>Person</th><th>Disabled</th></tr>
+{{range .Disabled}}<tr><td><a href="/admin/people/{{.PersonID}}">@{{.Username}}</a><br><span class="muted">{{.Name}}</span></td><td>{{when .LatestAt}}</td></tr>{{end}}
+</table>{{else}}<p class="muted">None.</p>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "person"}}{{template "head" .}}{{template "top" .}}
+{{with .Person}}<h2>@{{.Username}}</h2>
+<p>{{.Name}}<br><span class="muted">{{.Email}} · joined {{when .CreatedAt}}</span></p>
+{{if .Bio}}<div class="quote">{{.Bio}}</div>{{end}}
+{{if .DisabledAt}}<p><strong>Disabled</strong> <span class="muted">{{when .DisabledAt}}</span></p>{{end}}{{end}}
+<div class="actions">{{if .Person.DisabledAt}}
+<form class="inline" method="post" action="/admin/people/{{.Person.ID}}/enable"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Enable account</button></form>
+{{else if not .Self}}
+<form class="inline" method="post" action="/admin/people/{{.Person.ID}}/disable"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="strong">Disable account</button></form>
+{{end}}</div>
+<p class="muted">Disabling logs them out everywhere and hides their profile, posts and comments from everyone. Enabling brings it all back.</p>
+<h2>Reports</h2>
+{{$csrf := .CSRF}}{{$person := .Person.ID}}
+{{range .Reports}}<div class="report{{if .ResolvedAt}} closed{{end}}">
+<strong>{{kind .Kind}}</strong> · {{reason .Reason}} · by @{{.Reporter}} · <span class="muted">{{when .CreatedAt}}</span>
+{{if .ResolvedAt}}<br><span class="muted">Closed: {{.Resolution}} {{when .ResolvedAt}}</span>{{end}}
+{{if eq .Kind "post"}}<div class="quote">{{if .Title}}{{.Title}}{{else}}(no title){{end}}{{if not .EntryID}} · <span class="muted">post is gone</span>{{end}}</div>{{if .PhotoKey}}<img class="thumb" src="{{photo .PhotoKey}}" alt="">{{end}}{{end}}
+{{if eq .Kind "comment"}}<div class="quote">{{.Body}}</div>{{if not .CommentID}}<span class="muted">comment is gone</span>{{end}}{{end}}
+{{if not .ResolvedAt}}<div class="actions">
+<form class="inline" method="post" action="/admin/reports/dismiss"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{$person}}"><button>Dismiss</button></form>
+{{if and (eq .Kind "post") .EntryID}}<form class="inline" method="post" action="/admin/reports/remove"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="kind" value="post"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{$person}}"><button class="strong">Remove post</button></form>{{end}}
+{{if and (eq .Kind "comment") .CommentID}}<form class="inline" method="post" action="/admin/reports/remove"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="kind" value="comment"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{$person}}"><button class="strong">Remove comment</button></form>{{end}}
+</div>{{end}}
+</div>{{else}}<p class="muted">No reports.</p>{{end}}
+<p><a href="/admin">Back to all reports</a></p>
+{{template "foot" .}}{{end}}

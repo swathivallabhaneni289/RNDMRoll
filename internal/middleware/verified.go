@@ -56,6 +56,13 @@ func RequireUser(repo user.Repository) gin.HandlerFunc {
 			return
 		}
 
+		// An admin disabled the account: every request with an old token
+		// is refused at once (the access token may still be unexpired).
+		if u.Disabled {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "account_disabled"})
+			return
+		}
+
 		ctx := context.WithValue(c.Request.Context(), loadedUserKey, u)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

@@ -394,6 +394,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		RespondError(c, user.ErrInvalidCredentials)
 		return
 	}
+	// Said only after the right password, so it never tells a stranger
+	// that an account exists.
+	if u.Disabled {
+		Respond(c, http.StatusForbidden, gin.H{"error": string(CodeAccountDisabled)})
+		return
+	}
 
 	// No verified check: sign-up sends no email, so an unverified account
 	// logs in like any other.
@@ -471,6 +477,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	userID, newRefreshToken, err := h.refresh.Redeem(ctx, req.RefreshToken, &userAgent)
 	if err != nil {
 		RespondError(c, err)
+		return
+	}
+	if u, err := h.users.GetByID(ctx, userID); err == nil && u.Disabled {
+		Respond(c, http.StatusForbidden, gin.H{"error": string(CodeAccountDisabled)})
 		return
 	}
 

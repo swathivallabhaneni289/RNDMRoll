@@ -157,6 +157,9 @@ type integrationOptions struct {
 	// toolEmails, when not empty, registers the test-only routes for these
 	// accounts.
 	toolEmails []string
+	// adminEmails, when not empty, mounts the admin web page for these
+	// accounts.
+	adminEmails []string
 	// rand lets a test choose winners; nil means the system source.
 	rand spin.Rand
 	// entryPhotos is the fake photo store behind the entry routes. A test that
@@ -219,6 +222,10 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Users:         users,
 		JWTSecret:     integrationJWTSecret,
 		Logger:        logger,
+	}
+	if len(opts.adminEmails) > 0 {
+		deps.Admin = NewAdminHandler(postgres.NewAdminRepo(pool), users, deps.Entry, refreshSvc,
+			integrationJWTSecret, opts.adminEmails, false)
 	}
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)

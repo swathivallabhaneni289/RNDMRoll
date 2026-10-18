@@ -33,7 +33,7 @@ var (
 // userColumns is the one column list every query selects or returns, in the
 // order scanUser reads it. It selects whether a birthday is on file, never
 // the date itself, so no code path can return or log a birthday.
-const userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility`
+const userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility, (disabled_at is not null) as disabled`
 
 // scanUser scans a single row shaped like userColumns. The caller decides how to
 // interpret a returned error (pgx.ErrNoRows means different things to
@@ -44,7 +44,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 	var via *string
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Username, &u.Bio, &u.AvatarURL,
-		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt, &u.AccountVisibility,
+		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt, &u.AccountVisibility, &u.Disabled,
 	)
 	if err != nil {
 		return nil, err

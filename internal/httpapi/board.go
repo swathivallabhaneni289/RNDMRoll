@@ -34,6 +34,8 @@ func (h *BoardHandler) Register(rg *gin.RouterGroup) {
 	rg.POST("/posts/:id/reaction", perSubject(60), h.reaction)
 	rg.POST("/posts/:id/comments", perSubject(20), h.comment)
 	rg.POST("/comments/:id/delete", perSubject(20), h.deleteComment)
+	rg.POST("/posts/:id/report", perSubject(10), h.reportPost)
+	rg.POST("/comments/:id/report", perSubject(10), h.reportComment)
 	rg.POST("/comments/:id/hide", perSubject(30), h.hideComment)
 	rg.POST("/comments/:id/unhide", perSubject(30), h.unhideComment)
 }

@@ -32,10 +32,13 @@ var _ social.Repository = (*SocialRepo)(nil)
 const personColumns = `u.id, coalesce(u.name, ''), coalesce(u.username, ''), u.avatar_url`
 
 // blockedEither is a where fragment true when $a and $b have a block either
-// way. It is built with the two placeholders.
+// way, or either of them is disabled by an admin (migration 0012): a disabled
+// account is gone for everyone, exactly like a block, everywhere this rule is
+// read. It is built with the two placeholders.
 func blockedEither(a, b string) string {
-	return `exists (select 1 from blocks bk where (bk.blocker_id = ` + a + ` and bk.blocked_id = ` + b +
-		`) or (bk.blocker_id = ` + b + ` and bk.blocked_id = ` + a + `))`
+	return `(exists (select 1 from blocks bk where (bk.blocker_id = ` + a + ` and bk.blocked_id = ` + b +
+		`) or (bk.blocker_id = ` + b + ` and bk.blocked_id = ` + a + `))` +
+		` or exists (select 1 from users dz where dz.id in (` + a + `, ` + b + `) and dz.disabled_at is not null))`
 }
 
 func scanPerson(row interface{ Scan(...any) error }, extra ...any) (social.Person, error) {
@@ -73,7 +76,7 @@ func (r *SocialRepo) FindByUsername(ctx context.Context, username string) (socia
 	p, err := scanPerson(r.pool.QueryRow(ctx, `
 		select `+personColumns+`
 		from users u
-		where lower(u.username) = $1 and u.name is not null and u.name <> ''`, username))
+		where lower(u.username) = $1 and u.name is not null and u.name <> '' and u.disabled_at is null`, username))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return social.Person{}, false, social.ErrNotFound
 	}
@@ -164,7 +167,7 @@ func (r *SocialRepo) People(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := r.pool.Query(ctx, `select `+personColumns+` from users u where u.id = any($1::uuid[])`, ids)
+	rows, err := r.pool.Query(ctx, `select `+personColumns+` from users u where u.id = any($1::uuid[]) and u.disabled_at is null`, ids)
 	if err != nil {
 		return nil, err
 	}

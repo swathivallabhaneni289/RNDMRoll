@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"strings"
 	"testing"
 
@@ -130,13 +131,18 @@ func TestMigrations_0008IsReversible(t *testing.T) {
 			}
 		}
 		// Deleting an account removes its rows (cascade).
-		repo := postgres.NewUserRepo(pool)
-		c := mustCreateUser(t, repo, "feed-migration-c@example.com")
-		d := mustCreateUser(t, repo, "feed-migration-d@example.com")
-		if _, err := pool.Exec(ctx, `insert into follows (follower_id, followee_id, status, requested_at) values ($1, $2, 'pending', now())`, c.ID, d.ID); err != nil {
+		// Plain inserts: the user repository reads columns of later
+		// migrations (0012's disabled_at) that version 8 does not have.
+		var cID, dID uuid.UUID
+		for email, id := range map[string]*uuid.UUID{"feed-migration-c@example.com": &cID, "feed-migration-d@example.com": &dID} {
+			if err := pool.QueryRow(ctx, `insert into users (email) values ($1) returning id`, email).Scan(id); err != nil {
+				t.Fatalf("insert %s: %v", email, err)
+			}
+		}
+		if _, err := pool.Exec(ctx, `insert into follows (follower_id, followee_id, status, requested_at) values ($1, $2, 'pending', now())`, cID, dID); err != nil {
 			t.Fatalf("insert a request: %v", err)
 		}
-		if _, err := pool.Exec(ctx, `delete from users where id = $1`, d.ID); err != nil {
+		if _, err := pool.Exec(ctx, `delete from users where id = $1`, dID); err != nil {
 			t.Fatalf("delete an account: %v", err)
 		}
 		if n := count(pool, `select count(*) from follows`); n != 0 {

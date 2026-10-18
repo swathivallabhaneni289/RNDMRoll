@@ -137,6 +137,13 @@ func main() {
 		JWTSecret: cfg.JWTSecret,
 		Logger:    logger,
 	}
+	// The admin web page (/admin) is mounted only when ADMIN_EMAILS names
+	// at least one account. The cookie is Secure everywhere but test mode,
+	// which runs over plain http on localhost.
+	if len(cfg.AdminEmails) > 0 {
+		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler, refreshSvc,
+			cfg.JWTSecret, cfg.AdminEmails, cfg.AppEnv != "test")
+	}
 	if cfg.SpinTestTools {
 		deps.TestTools = httpapi.NewSpinTestTools(true, spinService, testClock, cfg.SpinTestUserEmails)
 		logger.Warn("spin test tools are ON: the test clock and pretend-day routes answer for the listed accounts only",

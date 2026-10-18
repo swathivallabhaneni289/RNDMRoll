@@ -50,6 +50,10 @@ type Config struct {
 	// SpinTestUserEmails lists the throwaway accounts the test routes answer
 	// to, lower-cased. A real account never goes here.
 	SpinTestUserEmails []string
+	// AdminEmails lists the accounts that may sign in to the admin web page
+	// (/admin: reports, removing posts and comments, disabling accounts).
+	// Empty means the admin page is not mounted at all.
+	AdminEmails []string
 }
 
 // Load reads configuration from the process environment. If any required
@@ -183,6 +187,7 @@ func Load() (*Config, error) {
 		AppEnv:             appEnv,
 		SpinTestTools:      spinTestTools,
 		SpinTestUserEmails: spinTestEmails,
+		AdminEmails:        parseEmailList(os.Getenv("ADMIN_EMAILS")),
 	}, nil
 }
 
