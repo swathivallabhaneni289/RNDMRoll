@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
+import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { getBlocks, unblock, type BlockedAccount } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import { GENERIC_MESSAGE } from '@/lib/settings/rules';
-import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
+import { color, space } from '@/lib/theme/tokens';
 
 const AVATAR = 44;
 
@@ -49,26 +50,14 @@ function Row({
             </AppText>
           ) : null}
         </View>
-        <Pressable
-          onPress={onUnblock}
-          disabled={busy}
-          accessibilityRole="button"
+        {/* An outlined button like the person page's, never underlined text (developer, 2026-10-18). */}
+        <Chip
+          label="Unblock"
+          tone="outline"
+          onPress={busy ? undefined : onUnblock}
           accessibilityLabel={`Unblock ${spokenName}`}
           accessibilityState={{ disabled: busy }}
-          hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-        >
-          <Text
-            style={{
-              fontFamily: type.label.fontFamily,
-              fontSize: type.label.fontSize,
-              lineHeight: type.label.lineHeight,
-              color: busy ? color.muted : color.ink,
-              textDecorationLine: 'underline',
-            }}
-          >
-            Unblock
-          </Text>
-        </Pressable>
+        />
       </View>
       {error !== '' ? (
         <View accessibilityLiveRegion="polite" style={{ paddingBottom: space.sm }}>

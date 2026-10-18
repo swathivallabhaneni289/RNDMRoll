@@ -22,7 +22,11 @@ export type PersonPage = {
   person: Person;
   /** Their bio, '' when none. Shown to anyone who can open the page. */
   bio: string;
-  relation: Relation;
+  /**
+   * 'blocked': you blocked them. The page then has only who they are, zero figures and no posts,
+   * like Instagram's (developer, 2026-10-18).
+   */
+  relation: Relation | 'blocked';
   /** They follow the caller (the button then reads "Follow back"). */
   follows_you: boolean;
   /** The caller muted them: their posts are off the caller's Board. They are never told. */
@@ -41,8 +45,8 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function relation(value: unknown): Relation {
-  return value === 'requested' || value === 'following' ? value : 'none';
+function relation(value: unknown): Relation | 'blocked' {
+  return value === 'requested' || value === 'following' || value === 'blocked' ? value : 'none';
 }
 
 function readPost(value: unknown): PersonPost | null {
@@ -61,7 +65,8 @@ function readPost(value: unknown): PersonPost | null {
 
 /**
  * GET /people/{user_id}, a page of the grid after `cursor` when given. Null for a miss, for
- * yourself and for anyone a block stands between (the server answers 404 for all of them alike).
+ * yourself and for someone who blocked you (the server answers 404 for all of them alike); someone
+ * you blocked comes back with relation 'blocked'.
  */
 export async function getPerson(userId: string, cursor?: string): Promise<PersonPage | null> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';

@@ -7,12 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
 import { usePost, type PostLoad } from '@/components/board/usePost';
 import { ActionRow, CaptionText, POST_PHOTO_ASPECT } from '@/components/entry/PostCaption';
-import { editEntryPath, fromName, fromRoot, goToStart, type EntryFrom } from '@/components/entry/entryFrom';
+import { editEntryPath, fromName, fromRoot, type EntryFrom } from '@/components/entry/entryFrom';
 import { useEntry } from '@/components/entry/useEntry';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { AppText } from '@/components/ui/AppText';
-import { TextButton } from '@/components/ui/TextButton';
 import { ApiError } from '@/lib/api/client';
 import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
@@ -395,12 +394,8 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
           ) : load.status === 'offline' ? (
             <StatusMessage kind={load.failure} onRetry={load.reload} />
           ) : (
-            <View style={{ alignItems: 'flex-start' }}>
-              <AppText role="body">This entry isn't here any more.</AppText>
-              <View style={{ marginTop: space.lg }}>
-                <TextButton label={`Back to ${backName}`} onPress={() => goToStart(router, from)} />
-              </View>
-            </View>
+            // One plain line; the Back row above is the only way back (no second, underlined button).
+            <AppText role="body">This entry isn't here any more.</AppText>
           )}
         </View>
       )}

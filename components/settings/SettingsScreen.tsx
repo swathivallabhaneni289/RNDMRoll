@@ -38,18 +38,20 @@ export function SettingsScreen() {
           </AppText>
         </View>
 
-        {/* The notice line keeps its 20dp whether or not there is a notice, so nothing jumps. */}
-        <View accessibilityLiveRegion="polite" style={{ marginTop: space.sm, minHeight: 20 }}>
+        {/* The notice line takes room only while there is a notice (developer, 2026-10-18: no empty gap under the title). */}
+        <View accessibilityLiveRegion="polite">
           {notice !== '' ? (
-            <AppText role="label" tone="muted">
-              {notice}
-            </AppText>
+            <View style={{ marginTop: space.sm }}>
+              <AppText role="label" tone="muted">
+                {notice}
+              </AppText>
+            </View>
           ) : null}
         </View>
 
         <View
           style={{
-            marginTop: space.lg,
+            marginTop: space.md,
             borderTopWidth: 1,
             borderTopColor: color.divider,
           }}

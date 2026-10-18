@@ -28,12 +28,15 @@ function Details({
   onDelete,
   onReply,
   onComment,
+  onMore,
 }: {
   post: Post;
   myId: string | null;
   onDelete: (id: string) => Promise<string | null>;
   onReply: (comment: Comment) => void;
   onComment?: () => void;
+  /** Opens the three dots' menu (Report); none on your own post. */
+  onMore?: () => void;
 }) {
   const card = post.card;
   const openPerson = useOpenPerson();
@@ -51,21 +54,36 @@ function Details({
 
   return (
     <View>
-      {/* The author row, like the top of a post in the Profile list: the round photo and the first name. A tap opens their profile. */}
-      <Pressable
-        onPress={() => openPerson(card.author.id)}
-        accessibilityRole="button"
-        accessibilityLabel={name}
-        accessibilityHint={card.mine ? 'Opens your profile.' : 'Opens their profile.'}
-        style={{ height: minTouchTarget, paddingHorizontal: space.lg, flexDirection: 'row', alignItems: 'center' }}
-      >
-        <SizedAvatar size={AUTHOR_AVATAR} name={card.author.name || card.author.username} uri={card.author.photo_url} placeholder="initials" />
-        <View style={{ marginLeft: space.sm, flexShrink: 1 }}>
-          <AppText role="button" numberOfLines={1}>
-            {name}
-          </AppText>
-        </View>
-      </Pressable>
+      {/* The author row, like the top of a post in the Profile list: the round photo and the first name
+          (a tap opens their profile), and the post's three dots at the right, beside them (developer,
+          2026-10-18: the dots belong to the post, not to the Back row). */}
+      <View style={{ height: minTouchTarget, paddingHorizontal: space.lg, flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable
+          onPress={() => openPerson(card.author.id)}
+          accessibilityRole="button"
+          accessibilityLabel={name}
+          accessibilityHint={card.mine ? 'Opens your profile.' : 'Opens their profile.'}
+          style={{ flex: 1, height: minTouchTarget, flexDirection: 'row', alignItems: 'center' }}
+        >
+          <SizedAvatar size={AUTHOR_AVATAR} name={card.author.name || card.author.username} uri={card.author.photo_url} placeholder="initials" />
+          <View style={{ marginLeft: space.sm, flexShrink: 1 }}>
+            <AppText role="button" numberOfLines={1}>
+              {name}
+            </AppText>
+          </View>
+        </Pressable>
+        {onMore ? (
+          <Pressable
+            onPress={onMore}
+            accessibilityRole="button"
+            accessibilityLabel="More for this post"
+            hitSlop={8}
+            style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={color.ink} />
+          </Pressable>
+        ) : null}
+      </View>
 
       <Gallery photos={post.photos} title={card.title} aspect={POST_PHOTO_ASPECT} />
       <ActionRow entry={caption} onComment={onComment} whose={card.mine ? 'your' : 'their'} />
@@ -130,15 +148,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.dominant }}>
-      <View
-        style={{
-          height: minTouchTarget,
-          paddingHorizontal: space.lg,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
+      <View style={{ height: minTouchTarget, paddingHorizontal: space.lg, justifyContent: 'center' }}>
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
@@ -151,17 +161,6 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
             <AppText role="body">{backName}</AppText>
           </View>
         </Pressable>
-        {ready && !post.card.mine ? (
-          <Pressable
-            onPress={() => setMenu('more')}
-            accessibilityRole="button"
-            accessibilityLabel="More for this post"
-            hitSlop={8}
-            style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={24} color={color.ink} />
-          </Pressable>
-        ) : null}
       </View>
       {notice !== '' ? (
         <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }} accessibilityLiveRegion="polite">
@@ -178,6 +177,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
               onDelete={load.remove}
               onReply={load.startReply}
               onComment={post.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
+              onMore={post.card.mine ? undefined : () => setMenu('more')}
             />
           </ScrollView>
           {post.can_comment ? (

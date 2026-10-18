@@ -18,7 +18,7 @@ import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
-import { blockUser } from '@/lib/api/account';
+import { blockUser, unblock } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import {
   getPerson,
@@ -44,8 +44,9 @@ const GENERIC = 'Something went wrong. Please try again.';
  * hold Remove follower (when they follow you), Mute or Unmute (their posts leave your Board), Report
  * (a list of reasons) and Block. None of them is ever told. Every follow is a request, so until they accept, the page ends with "This
  * account is private."; an accepted follower sees their grid, only the days they posted too (the
- * Board rule). A tile opens the post page in the same stack. Someone who is gone, or a block
- * either way, shows one plain line.
+ * Board rule). A tile opens the post page in the same stack. After Block the page stays, like
+ * Instagram's (developer, 2026-10-18): who they are, zero figures, 'You blocked this account.' and
+ * Unblock where Follow was. Someone who is gone, or who blocked you, shows one plain line.
  */
 export function PersonScreen({ id }: { id: string }) {
   const router = useRouter();
@@ -149,8 +150,8 @@ export function PersonScreen({ id }: { id: string }) {
           onPress: () =>
             void (async () => {
               try {
-                await blockUser(id);
-                goBack();
+                // Stay on the page: it reads again as the blocked page, with Unblock.
+                await act(() => blockUser(id));
               } catch (err) {
                 setMessage(err instanceof ApiError && err.code === 'network_unavailable' ? err.userMessage : GENERIC);
               }
@@ -193,6 +194,16 @@ export function PersonScreen({ id }: { id: string }) {
         : [];
 
   function relationButton(p: PersonPage) {
+    if (p.relation === 'blocked') {
+      return (
+        <Chip
+          label="Unblock"
+          tone="strong"
+          onPress={busy ? undefined : () => void act(() => unblock(id))}
+          accessibilityLabel={`Unblock ${name}`}
+        />
+      );
+    }
     if (p.relation === 'following') {
       return (
         <Chip
@@ -262,7 +273,7 @@ export function PersonScreen({ id }: { id: string }) {
             </AppText>
           </View>
         </Pressable>
-        {page !== null ? (
+        {page !== null && page.relation !== 'blocked' ? (
           <Pressable
             onPress={() => setMenu('more')}
             accessibilityRole="button"
@@ -342,7 +353,17 @@ export function PersonScreen({ id }: { id: string }) {
             </View>
           </View>
 
-          {page.posts === null ? (
+          {page.relation === 'blocked' ? (
+            <View style={{ paddingHorizontal: space.lg, marginTop: space.xl, alignItems: 'center' }} accessibilityLiveRegion="polite">
+              <Ionicons name="ban-outline" size={28} color={color.ink} />
+              <View style={{ marginTop: space.sm }}>
+                <AppText role="button">You blocked this account.</AppText>
+              </View>
+              <View style={{ marginTop: space.xs }}>
+                <AppText role="label">They can't find you or see your posts, and they won't be notified.</AppText>
+              </View>
+            </View>
+          ) : page.posts === null ? (
             <View style={{ paddingHorizontal: space.lg, marginTop: space.xl, alignItems: 'center' }}>
               <Ionicons name="lock-closed-outline" size={28} color={color.ink} />
               <View style={{ marginTop: space.sm }}>
