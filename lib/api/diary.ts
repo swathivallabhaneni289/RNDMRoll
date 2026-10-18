@@ -11,8 +11,18 @@ import type { Entry } from '@/lib/api/entries';
 /** A chip: a category with at least one visible entry, wheel order, then removed ones. */
 export type DiaryCategory = { id: string; name: string; removed: boolean };
 
+export type LatestComment = { author: { id: string; name: string; username: string; photo_url: string | null }; text: string };
+
+/** The comments on one of your posts, sent on every entry row (2026-10-17): the count and the newest. */
+export type PostSocial = {
+  comment_count: number;
+  latest_comments: LatestComment[];
+};
+
+export const NO_SOCIAL: PostSocial = { comment_count: 0, latest_comments: [] };
+
 export type DiaryItem =
-  | { kind: 'entry'; entry: Entry }
+  | { kind: 'entry'; entry: Entry; social: PostSocial }
   | { kind: 'skipped'; local_date: string; category: { id: string; name: string } };
 
 export type DiaryPage = {
@@ -33,6 +43,38 @@ function knownRow(item: DiaryItem): boolean {
   if (item.kind === 'entry') return typeof item.entry?.id === 'string';
   if (item.kind === 'skipped') return typeof item.local_date === 'string';
   return false;
+}
+
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function readLatest(raw: unknown): LatestComment | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const c = raw as Record<string, unknown>;
+  const author = typeof c.author === 'object' && c.author !== null ? (c.author as Record<string, unknown>) : null;
+  if (typeof c.text !== 'string' || author === null || typeof author.id !== 'string') return null;
+  return {
+    author: {
+      id: author.id,
+      name: typeof author.name === 'string' ? author.name : '',
+      username: typeof author.username === 'string' ? author.username : '',
+      photo_url: typeof author.photo_url === 'string' && author.photo_url !== '' ? author.photo_url : null,
+    },
+    text: c.text,
+  };
+}
+
+/** The row's `social` as sent, or none from an older server. */
+function readSocial(raw: unknown): PostSocial {
+  if (raw === null || typeof raw !== 'object') return NO_SOCIAL;
+  const s = raw as Record<string, unknown>;
+  return {
+    comment_count: count(s.comment_count),
+    latest_comments: list<unknown>(s.latest_comments)
+      .map(readLatest)
+      .filter((c): c is LatestComment => c !== null),
+  };
 }
 
 /**
@@ -57,7 +99,9 @@ export async function getDiary({
   const body = await api.get<Partial<DiaryPage>>(path);
   const next = body.next_cursor;
   return {
-    items: list<DiaryItem>(body.items).filter(knownRow),
+    items: list<DiaryItem>(body.items)
+      .filter(knownRow)
+      .map((item) => (item.kind === 'entry' ? { ...item, social: readSocial((item as { social?: unknown }).social) } : item)),
     next_cursor: typeof next === 'string' && next !== '' ? next : null,
     categories: list<DiaryCategory>(body.categories),
   };

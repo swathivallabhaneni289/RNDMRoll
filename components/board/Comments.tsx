@@ -8,7 +8,6 @@ import type { Comment } from '@/lib/api/board';
 import { ApiError } from '@/lib/api/client';
 import { canHide, hideComment, isHidden, unhideComment } from '@/lib/api/comments';
 import { firstName } from '@/lib/api/social';
-import { commentCount } from '@/lib/board/text';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -24,11 +23,8 @@ const FIELD_HEIGHT = 44;
 /** The characters on the quick row above the comment box. */
 const QUICK_EMOJI = 24;
 
-const labelText = {
-  fontFamily: type.label.fontFamily,
-  fontSize: type.label.fontSize,
-  lineHeight: type.label.lineHeight,
-} as const;
+/** 'Reply' and 'Hide' under a comment: the label size in ink, in the button weight, no underline. */
+const actionText = { fontFamily: type.button.fontFamily, fontSize: type.label.fontSize, lineHeight: type.label.lineHeight, color: color.ink } as const;
 
 /** One quiet line in ink (never red): a failed send or delete, or 'Commenting is off.'. */
 export function QuietNote({ text, tone = 'default' }: { text: string; tone?: 'default' | 'muted' }) {
@@ -41,32 +37,14 @@ export function QuietNote({ text, tone = 'default' }: { text: string; tone?: 'de
   );
 }
 
-/** The ink rule with '{n} comments' at its right (none at 0). */
-export function CommentsRule({ count }: { count: number | null }) {
-  const words = commentCount(count);
-  return (
-    <View>
-      {words !== '' ? (
-        <View style={{ alignItems: 'flex-end', marginBottom: space.xs }}>
-          <AppText role="label" tone="muted">
-            {words}
-          </AppText>
-        </View>
-      ) : null}
-      <View style={{ height: 1, backgroundColor: color.ink }} />
-    </View>
-  );
-}
-
 /**
  * The comments, oldest first (05-UI-SPEC 4.1): the round initial, the first name ('You' for your
- * own), the server's time label, 'Hide' or 'Unhide' on someone's comment on your own post (a hidden
- * one reads 'Hidden' after its time and its text is muted), 'Delete' where the server says the
- * caller may, and the text. Delete
- * asks first with the phone's own alert (no red button, no fade). Replies come in the server's
- * order, right after their comment, one step in with a smaller initial and no rule above them.
- * With `onReply` (commenting is on) every comment and reply has a quiet 'Reply' under its text;
- * deleting a comment takes its replies with it.
+ * own), the server's time label and the text, then 'Reply' (while commenting is on) and 'Hide' or
+ * 'Unhide' (someone's comment on your own post; a hidden one reads 'Hidden' after its time and its
+ * text is muted) side by side under it. Delete, where the server says the caller may, is a long
+ * press on the comment (developer, 2026-10-18, like Instagram), asked first with the phone's own
+ * alert (no red button, no fade); deleting a comment takes its replies with it. Replies come in the
+ * server's order, right after their comment, one step in with a smaller initial and no rule above.
  */
 export function CommentList({
   comments,
@@ -159,13 +137,24 @@ export function CommentList({
                 placeholder="initials"
               />
             </Pressable>
-            <View style={{ flex: 1, marginLeft: space.sm }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View
-                  accessible
-                  accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${comment.at_label}: ${comment.text}`}
-                  style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline' }}
-                >
+            <Pressable
+              onLongPress={comment.can_delete ? () => askDelete(comment) : undefined}
+              delayLongPress={400}
+              disabled={busyId !== null}
+              accessible={false}
+              style={{ flex: 1, marginLeft: space.sm, opacity: busyId === comment.id ? 0.5 : 1 }}
+            >
+              {/* One element for a screen reader: who, when and the words, with Delete as an action. */}
+              <View
+                accessible
+                accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text}`}
+                accessibilityHint={comment.can_delete ? 'Press and hold to delete.' : undefined}
+                accessibilityActions={comment.can_delete ? [{ name: 'delete', label: 'Delete' }] : undefined}
+                onAccessibilityAction={(event) => {
+                  if (event.nativeEvent.actionName === 'delete') askDelete(comment);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                   <Pressable onPress={() => openPerson(comment.author.id)} hitSlop={6} style={{ flexShrink: 1 }}>
                     <AppText role="button" numberOfLines={1}>
                       {name}
@@ -177,52 +166,41 @@ export function CommentList({
                     </AppText>
                   </View>
                 </View>
-                {canHide(comment) ? (
-                  <Pressable
-                    onPress={() => toggleHidden(comment, !hidden)}
-                    disabled={busyId !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${hidden ? 'Unhide' : 'Hide'} ${kind} by ${name}`}
-                    accessibilityHint={hidden ? undefined : 'Only they and you will see it. They are not told.'}
-                    hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-                    style={{ marginRight: comment.can_delete ? space.md : 0 }}
-                  >
-                    <Text style={{ ...labelText, color: color.muted, textDecorationLine: 'underline' }}>
-                      {hidden ? 'Unhide' : 'Hide'}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {comment.can_delete ? (
-                  <Pressable
-                    onPress={() => askDelete(comment)}
-                    disabled={busyId !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${kind} by ${name}`}
-                    hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-                  >
-                    <Text style={{ ...labelText, color: color.muted, textDecorationLine: 'underline' }}>
-                      {busyId === comment.id ? 'Deleting' : 'Delete'}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+                  <AppText role="body" tone={hidden ? 'muted' : undefined}>
+                    {comment.text.replace(/\s*\n\s*/g, ' ')}
+                  </AppText>
+                </View>
               </View>
-              <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-                <AppText role="body" tone={hidden ? 'muted' : undefined}>
-                  {comment.text.replace(/\s*\n\s*/g, ' ')}
-                </AppText>
-              </View>
-              {onReply ? (
-                <Pressable
-                  onPress={() => onReply(comment)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Reply to ${mine ? 'your' : `${name}'s`} ${kind}`}
-                  hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-                  style={{ alignSelf: 'flex-start', marginTop: space.xs }}
-                >
-                  <Text style={{ ...labelText, color: color.muted }}>Reply</Text>
-                </Pressable>
+              {onReply || canHide(comment) ? (
+                // Reply and Hide side by side in one plain style, never underlined (developer,
+                // 2026-10-18); Delete is a long press on the comment, with the phone's alert first.
+                <View style={{ flexDirection: 'row', marginTop: space.xs, columnGap: space.lg }}>
+                  {onReply ? (
+                    <Pressable
+                      onPress={() => onReply(comment)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reply to ${mine ? 'your' : `${name}'s`} ${kind}`}
+                      hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
+                    >
+                      <Text style={actionText}>Reply</Text>
+                    </Pressable>
+                  ) : null}
+                  {canHide(comment) ? (
+                    <Pressable
+                      onPress={() => toggleHidden(comment, !hidden)}
+                      disabled={busyId !== null}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${hidden ? 'Unhide' : 'Hide'} ${kind} by ${name}`}
+                      accessibilityHint={hidden ? undefined : 'Only they and you will see it. They are not told.'}
+                      hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
+                    >
+                      <Text style={actionText}>{hidden ? 'Unhide' : 'Hide'}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
-            </View>
+            </Pressable>
           </View>
         );
       })}
@@ -249,10 +227,13 @@ export function CommentBar({
   onSend,
   replyTo = null,
   onCancelReply,
+  focusKey = 0,
 }: {
   onSend: (text: string) => Promise<string | null>;
   replyTo?: Comment | null;
   onCancelReply?: () => void;
+  /** A new number puts the cursor in the field (the comment mark under a post was tapped). */
+  focusKey?: number;
 }) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
@@ -264,6 +245,10 @@ export function CommentBar({
   const mention = replyTo !== null && replyTo.author.username !== '' ? `@${replyTo.author.username}` : '';
 
   // Each Reply tap is a new object, so tapping Reply again refills and focuses the field.
+  useEffect(() => {
+    if (focusKey > 0) inputRef.current?.focus();
+  }, [focusKey]);
+
   useEffect(() => {
     if (replyTo === null) return;
     const username = replyTo.author.username;

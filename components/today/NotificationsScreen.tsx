@@ -20,7 +20,6 @@ import {
   type NotificationSection,
 } from '@/lib/api/notifications';
 import { firstName, follow, getFollows, type Person, type Relation } from '@/lib/api/social';
-import { REACTIONS } from '@/lib/entry/reactions';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -50,14 +49,7 @@ const rowText = {
 function sentence(item: NotificationItem): { name: string; rest: string; spoken: string } {
   const name = item.actor ? firstName(item.actor) : '';
   const category = item.category_name ? item.category_name.toLowerCase() : 'post';
-  const reaction = REACTIONS.find((r) => r.name === item.reaction) ?? null;
   switch (item.kind) {
-    case 'reaction':
-      return {
-        name,
-        rest: reaction ? ` reacted ${reaction.char} to your ${category}.` : ` reacted to your ${category}.`,
-        spoken: reaction ? `${name} reacted ${reaction.label} to your ${category}.` : `${name} reacted to your ${category}.`,
-      };
     case 'comment': {
       const rest = item.text ? ` commented: "${item.text}"` : ` commented on your ${category}.`;
       return { name, rest, spoken: `${name}${rest}` };
@@ -114,7 +106,7 @@ function RowMark({ item }: { item: NotificationItem }) {
   );
 }
 
-/** The post's first photo, small and square, at the right of a reaction, comment or reply. */
+/** The post's first photo, small and square, at the right of a comment or reply. */
 function Thumb({ uri }: { uri: string }) {
   const [failed, setFailed] = useState(false);
   return (
@@ -131,13 +123,13 @@ function Thumb({ uri }: { uri: string }) {
  * was removed 2026-10-16), redrawn like Instagram's activity page (developer, 2026-10-17): a slim
  * header with Back and the name, the Follow requests row (a dot when one waits, no name or count),
  * then Today, This week and Earlier. Each row is the person's photo, one short sentence with the
- * time after it in grey, and at the right the post's picture (a reaction, comment or reply) or a
+ * time after it in grey, and at the right the post's picture (a comment or reply) or a
  * Follow back, Requested or Following button (a new follower). No lines between rows; an unread
  * row has a small dot in the left margin. The server builds the list, its sections and every time
  * label. Opening the page marks everything seen, so the bell's dot goes out; the dots it loaded
  * with stay until the person leaves.
  *
- * A tap opens your own entry page (a reaction or comment), the post a reply is on (your entry page
+ * A tap opens your own entry page (a comment), the post a reply is on (your entry page
  * when it is yours), People on Followers (a new follower) or Following (an accepted request), or
  * the Spin page (your spin is open, a bonus spin). No bottom bar, so the page keeps all four
  * safe-area edges.
@@ -240,7 +232,7 @@ export function NotificationsScreen() {
   }
 
   function open(item: NotificationItem) {
-    if (item.kind === 'reaction' || item.kind === 'comment') {
+    if (item.kind === 'comment') {
       if (item.entry_id === null) return;
       openEntry(item.entry_id);
       return;
@@ -274,7 +266,7 @@ export function NotificationsScreen() {
 
   /** What sits at the right of a row: the post's picture, a follow button, or nothing. */
   function rowEnd(item: NotificationItem) {
-    if ((item.kind === 'reaction' || item.kind === 'comment' || item.kind === 'reply') && item.photo_url !== '') {
+    if ((item.kind === 'comment' || item.kind === 'reply') && item.photo_url !== '') {
       return (
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Thumb uri={item.photo_url} />

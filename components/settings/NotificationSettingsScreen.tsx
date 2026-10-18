@@ -15,9 +15,11 @@ import { ApiError } from '@/lib/api/client';
 import { GENERIC_MESSAGE } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
 
-/** The three switches, in the order the developer gave them (decision D-16). */
+/**
+ * The switches, in the order the developer gave them (decision D-16). 'Reactions and likes' went
+ * with reactions on posts (developer, 2026-10-18); its saved value is kept and sent back as it was.
+ */
 const ROWS: { key: NotificationSettingKey; label: string }[] = [
-  { key: 'reactions', label: 'Reactions and likes' },
   { key: 'comments', label: 'Comments' },
   { key: 'milestones', label: 'Milestones and bonus spins' },
 ];

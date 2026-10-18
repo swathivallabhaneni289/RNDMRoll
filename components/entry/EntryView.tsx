@@ -1,13 +1,12 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CommentBar, CommentList, CommentsOffBar, CommentsRule } from '@/components/board/Comments';
-import { ReceivedReactions } from '@/components/board/ReactionsSheet';
+import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
 import { usePost, type PostLoad } from '@/components/board/usePost';
-import { StarDisplay } from '@/components/entry/StarDisplay';
+import { ActionRow, CaptionText, POST_PHOTO_ASPECT } from '@/components/entry/PostCaption';
 import { editEntryPath, fromName, fromRoot, goToStart, type EntryFrom } from '@/components/entry/entryFrom';
 import { useEntry } from '@/components/entry/useEntry';
 import { StatusMessage } from '@/components/today/StatusMessage';
@@ -16,31 +15,16 @@ import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import { ApiError } from '@/lib/api/client';
 import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
-import { REACTIONS } from '@/lib/entry/reactions';
-import { formatStars, starsSpoken } from '@/lib/entry/stars';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
-import { dateLineLong } from '@/lib/wheel/format';
 import { applyToday } from '@/lib/wheel/todayStore';
 import { refetchToday } from '@/lib/wheel/useToday';
 
 const COUNTER_INSET = 12;
 const COUNTER_PADDING = 6;
-const REACTION_SIZE = 24;
-const RULE_HEIGHT = 20;
 
 type EntryPhoto = Entry['photos'][number];
-
-/** One line of capitals as the Label role draws it (letter spacing 1.5, `muted`). */
-const capsStyle = {
-  fontFamily: type.label.fontFamily,
-  fontSize: type.label.fontSize,
-  lineHeight: type.label.lineHeight,
-  letterSpacing: 1.5,
-  textTransform: 'uppercase',
-  color: color.muted,
-} as const;
 
 /** The photo that could not load: a `secondary` panel of the same size, the glyph and a line. */
 function PhotoFallback() {
@@ -152,97 +136,12 @@ export function Gallery({
   );
 }
 
-/** One detail of the page. It appears at once: the developer does not want fades on the entry page. */
-function Rise({ children }: { index: number; reduceMotion: boolean; children: ReactNode }) {
-  return <View>{children}</View>;
-}
-
-/** The text and rating below the photo (UI spec 9, steps 3 to 7). Also used by the Profile posts list. */
-export function Details({ entry, reduceMotion }: { entry: Entry; reduceMotion: boolean }) {
-  const reaction = entry.reaction === null ? null : (REACTIONS.find((item) => item.name === entry.reaction) ?? null);
-  const category = entry.category.name;
-  const date = dateLineLong(entry.local_date);
-  const spokenRating = reaction
-    ? `${starsSpoken(entry.stars)}. Reaction: ${reaction.label}.`
-    : `${starsSpoken(entry.stars)}.`;
-  const comment = entry.comment !== null && entry.comment.trim() !== '' ? entry.comment : null;
-  let index = 0;
-
-  return (
-    <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl }}>
-      <Rise index={index++} reduceMotion={reduceMotion}>
-        <View accessible accessibilityLabel={`${category}. ${date}`} style={{ flexDirection: 'row' }}>
-          <Text numberOfLines={1} style={{ ...capsStyle, flexShrink: 1 }}>
-            {category}
-          </Text>
-          <Text style={capsStyle}>{` · ${date}`}</Text>
-        </View>
-      </Rise>
-
-      {entry.late ? (
-        <View style={{ marginTop: space.xs }}>
-          <Rise index={index++} reduceMotion={reduceMotion}>
-            <AppText role="label" tone="muted">
-              Posted late.
-            </AppText>
-          </Rise>
-        </View>
-      ) : null}
-
-      <View style={{ marginTop: space.sm }}>
-        <Rise index={index++} reduceMotion={reduceMotion}>
-          <AppText role="title" numberOfLines={3}>
-            {entry.title}
-          </AppText>
-        </Rise>
-      </View>
-
-      <View style={{ marginTop: space.md }}>
-        <Rise index={index++} reduceMotion={reduceMotion}>
-          <View accessible accessibilityLabel={spokenRating} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <StarDisplay value={entry.stars} size={20} decorative />
-            <View style={{ marginLeft: space.sm }}>
-              <AppText role="body">{formatStars(entry.stars)}</AppText>
-            </View>
-            {reaction ? (
-              <>
-                <View
-                  style={{
-                    marginHorizontal: space.md,
-                    width: 1,
-                    height: RULE_HEIGHT,
-                    backgroundColor: color.divider,
-                  }}
-                />
-                <Text
-                  allowFontScaling={false}
-                  style={{ fontSize: REACTION_SIZE, lineHeight: type.heading.lineHeight }}
-                >
-                  {reaction.char}
-                </Text>
-              </>
-            ) : null}
-          </View>
-        </Rise>
-      </View>
-
-      {comment !== null ? (
-        <View style={{ marginTop: space.md }}>
-          <Rise index={index++} reduceMotion={reduceMotion}>
-            <AppText role="note">{comment}</AppText>
-          </Rise>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 /**
- * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the details, who
- * reacted (one summary line that opens the full list, or 'No reactions yet.') and the comments, oldest first, each
- * with 'Delete' (the owner may delete any), its replies under it, and 'Reply' while commenting is
- * on (the bar at the bottom then sends a reply). Read from GET /posts/{entry_id}; until that answers, or
- * if it cannot, nothing is drawn here and the rest of the page is unchanged.
+ * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the caption, a
+ * hairline and the comments (no count line: the number can grow large, developer, 2026-10-18; no
+ * reactions on posts), oldest first, each with its replies under it, 'Reply' and 'Hide' under the
+ * words and Delete on a long press. Read from GET /posts/{entry_id}; until that answers, or if it
+ * cannot, nothing is drawn here and the rest of the page is unchanged.
  */
 function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null }) {
   const post = social.post;
@@ -250,12 +149,7 @@ function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null
   const comments = post.comments ?? [];
   return (
     <View style={{ paddingHorizontal: space.lg, paddingBottom: space.xl }}>
-      <ReceivedReactions received={post.received ?? []} />
-      {comments.length > 0 ? (
-        <View style={{ marginTop: space.lg }}>
-          <CommentsRule count={post.card.comment_count ?? comments.length} />
-        </View>
-      ) : null}
+      {comments.length > 0 ? <View style={{ marginTop: space.md, height: 1, backgroundColor: color.divider }} /> : null}
       <CommentList
         comments={comments}
         myId={myId}
@@ -272,13 +166,14 @@ function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null
  * or 'profile' (Phase 4). `from` names the Back row and the gone-state button and keeps
  * Edit inside the same stack.
  *
- * Top to bottom: the Back row (the place the person came from), the photos edge to edge, the
- * category and long date, the title, the rating and reaction, the comment, and a pinned
- * three-dots menu in the Back row (Edit, Delete; the Tabs layout hides the bar for the
- * route name `entry`). The page reloads when it comes back into focus. Phase 5 adds, under the
- * details, the reactions it received and its comments, and the comment bar pinned at the bottom
- * ('Commenting is off.' in its place when commenting is switched off), all from GET /posts/{id};
- * the Board stack mounts it too (`from` = 'board').
+ * Top to bottom: the Back row (the place the person came from) with a three-dots menu (Edit,
+ * Archive, commenting, Delete; the Tabs layout hides the bar for the route name `entry`), the
+ * photos edge to edge (4 wide to 5 high), then the same parts as the Profile posts list
+ * (developer, 2026-10-18: "make this page match"): the ActionRow (your stars and emoji, and the
+ * comment mark, which puts the cursor in the comment box) and the CaptionText. Then the comments
+ * and the comment bar pinned at the bottom ('Commenting is off.' in its place when commenting is
+ * switched off), all from GET /posts/{id}. The page reloads when it comes back into focus; the
+ * Board stack mounts it too (`from` = 'board').
  *
  * Delete asks with the phone's own alert (Cancel, and a red Delete). The delete is POST
  * /entries/{id}/delete; the answer's Today goes into the store; 'not found' counts as done.
@@ -291,6 +186,8 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
   const load = useEntry(id);
   const social = usePost(id);
 
+  // A new number puts the cursor in the comment box (the comment mark under the photo).
+  const [focusKey, setFocusKey] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const deletingRef = useRef(false);
@@ -457,8 +354,12 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
       {ready ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Gallery photos={entry.photos} title={entry.title} reduceMotion={reduceMotion} />
-            <Details entry={entry} reduceMotion={reduceMotion} />
+            <Gallery photos={entry.photos} title={entry.title} reduceMotion={reduceMotion} aspect={POST_PHOTO_ASPECT} />
+            <ActionRow
+              entry={entry}
+              onComment={social.status === 'ready' && social.post?.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
+            />
+            <CaptionText entry={entry} />
             <OwnPostExtras social={social} myId={userId} />
           </ScrollView>
 
@@ -479,7 +380,7 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
           ) : null}
           {social.status === 'ready' && social.post !== null ? (
             social.post.can_comment ? (
-              <CommentBar onSend={social.comment} replyTo={social.replyTo} onCancelReply={social.cancelReply} />
+              <CommentBar onSend={social.comment} replyTo={social.replyTo} onCancelReply={social.cancelReply} focusKey={focusKey} />
             ) : (
               <CommentsOffBar />
             )

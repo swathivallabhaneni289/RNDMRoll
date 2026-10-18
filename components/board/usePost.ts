@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
-import { addComment, deleteComment, getPost, setReaction, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
-import type { ReactionName } from '@/lib/entry/reactions';
+import { addComment, deleteComment, getPost, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import { isEntryId } from '@/lib/entry/rules';
 
 export type PostLoad = {
@@ -10,8 +9,6 @@ export type PostLoad = {
   failure: 'network' | 'generic';
   post: Post | null;
   reload: () => void;
-  /** Sets your reaction at once and sends it; on a failure it goes back and the line is returned. */
-  react: (next: ReactionName | null) => Promise<string | null>;
   /**
    * Sends a comment once, or a reply to `replyTo` while one is chosen; on success a comment is
    * added at the end and a reply after the last reply of its top-level comment, and reply mode
@@ -55,7 +52,6 @@ export function usePost(id: string): PostLoad {
   const postRef = useRef<Post | null>(null);
   const seqRef = useRef(0);
   const mountedRef = useRef(true);
-  const reactingRef = useRef(false);
   const commentingRef = useRef(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const replyToRef = useRef<Comment | null>(null);
@@ -102,29 +98,6 @@ export function usePost(id: string): PostLoad {
     useCallback(() => {
       void load();
     }, [load])
-  );
-
-  const react = useCallback(
-    async (next: ReactionName | null): Promise<string | null> => {
-      const before = postRef.current;
-      if (before === null || reactingRef.current || before.card.mine || !before.can_react) return null;
-      reactingRef.current = true;
-      const was = before.card.my_reaction;
-      put({ ...before, card: { ...before.card, my_reaction: next } });
-      try {
-        const saved = await setReaction(id, next);
-        const now = postRef.current;
-        if (mountedRef.current && now !== null) put({ ...now, card: { ...now.card, my_reaction: saved } });
-        return null;
-      } catch (err) {
-        const now = postRef.current;
-        if (mountedRef.current && now !== null) put({ ...now, card: { ...now.card, my_reaction: was } });
-        return socialErrorMessage(err, 'reaction');
-      } finally {
-        reactingRef.current = false;
-      }
-    },
-    [id, put]
   );
 
   const chooseReply = useCallback((next: Comment | null) => {
@@ -194,5 +167,5 @@ export function usePost(id: string): PostLoad {
     [put, chooseReply]
   );
 
-  return { status, failure, post, reload: () => void load(), react, comment, remove, replyTo, startReply, cancelReply };
+  return { status, failure, post, reload: () => void load(), comment, remove, replyTo, startReply, cancelReply };
 }

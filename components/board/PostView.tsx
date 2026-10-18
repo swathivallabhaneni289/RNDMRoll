@@ -1,64 +1,60 @@
-import { useEffect, useState } from 'react';
-import { AccessibilityInfo, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CommentBar, CommentList, CommentsOffBar, CommentsRule, QuietNote } from '@/components/board/Comments';
-import { capsText } from '@/components/board/PostCard';
-import { BURST_MS, ReactionBurst } from '@/components/board/ReactionBurst';
+import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
 import { usePost } from '@/components/board/usePost';
 import { Gallery } from '@/components/entry/EntryView';
-import { ReactionPicker } from '@/components/entry/ReactionPicker';
-import { StarDisplay } from '@/components/entry/StarDisplay';
+import { ActionRow, CaptionText, POST_PHOTO_ASPECT, type CaptionPost } from '@/components/entry/PostCaption';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import type { Comment, Post } from '@/lib/api/board';
 import { firstName } from '@/lib/api/social';
-import { REACTIONS } from '@/lib/entry/reactions';
-import { starsSpoken } from '@/lib/entry/stars';
 import { useOpenPerson } from '@/lib/people/openPerson';
-import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
-import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
+import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
-/** The photos of someone else's post are wider than high, as the developer's picture 10 draws them. */
-const PHOTO_ASPECT = 3 / 2;
-const AUTHOR_AVATAR = 28;
-const STAR_SIZE = 18;
-const REACTION_SIZE = 22;
+const AUTHOR_AVATAR = 32;
 
 function Details({
   post,
   myId,
-  onReact,
   onDelete,
   onReply,
+  onComment,
 }: {
   post: Post;
   myId: string | null;
-  onReact: (next: Post['card']['my_reaction']) => void;
   onDelete: (id: string) => Promise<string | null>;
   onReply: (comment: Comment) => void;
+  onComment?: () => void;
 }) {
   const card = post.card;
   const openPerson = useOpenPerson();
-  const own = REACTIONS.find((item) => item.name === card.reaction) ?? null;
   const name = card.mine ? 'You' : firstName(card.author);
-  const meta = [card.category.name, card.posted_local_time, card.late ? 'Late' : ''].filter((part) => part !== '').join(' · ');
-  const spokenTitle = own ? `${card.title}. ${starsSpoken(card.stars)}. Their reaction: ${own.label}.` : `${card.title}. ${starsSpoken(card.stars)}.`;
   const comments = post.comments ?? [];
+  const caption: CaptionPost = {
+    title: card.title,
+    stars: card.stars,
+    reaction: card.reaction,
+    comment: post.note,
+    local_date: card.local_date,
+    late: card.late,
+    category: card.category,
+  };
 
   return (
     <View>
-      {/* The author row: the round initial, the first name, and the category with the time. A tap opens their profile. */}
+      {/* The author row, like the top of a post in the Profile list: the round photo and the first name. A tap opens their profile. */}
       <Pressable
         onPress={() => openPerson(card.author.id)}
         accessibilityRole="button"
-        accessibilityLabel={`${name}. ${meta.replace(/ · /g, '. ')}.`}
+        accessibilityLabel={name}
         accessibilityHint={card.mine ? 'Opens your profile.' : 'Opens their profile.'}
-        style={{ paddingHorizontal: space.lg, paddingVertical: space.sm, flexDirection: 'row', alignItems: 'center' }}
+        style={{ height: minTouchTarget, paddingHorizontal: space.lg, flexDirection: 'row', alignItems: 'center' }}
       >
         <SizedAvatar size={AUTHOR_AVATAR} name={card.author.name || card.author.username} uri={card.author.photo_url} placeholder="initials" />
         <View style={{ marginLeft: space.sm, flexShrink: 1 }}>
@@ -66,54 +62,14 @@ function Details({
             {name}
           </AppText>
         </View>
-        <View style={{ flex: 1, marginLeft: space.md, alignItems: 'flex-end' }}>
-          <Text numberOfLines={1} style={{ ...capsText, color: color.muted }}>
-            {meta}
-          </Text>
-        </View>
       </Pressable>
 
-      <Gallery photos={post.photos} title={card.title} aspect={PHOTO_ASPECT} />
+      <Gallery photos={post.photos} title={card.title} aspect={POST_PHOTO_ASPECT} />
+      <ActionRow entry={caption} onComment={onComment} whose={card.mine ? 'your' : 'their'} />
+      <CaptionText entry={caption} time={card.posted_local_time} />
 
-      <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xl }}>
-        <View accessible accessibilityLabel={spokenTitle} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          <View style={{ flex: 1 }}>
-            <AppText role="heading" numberOfLines={2}>
-              {card.title}
-            </AppText>
-          </View>
-          <View style={{ marginLeft: space.md, flexDirection: 'row', alignItems: 'center', minHeight: type.heading.lineHeight }}>
-            <StarDisplay value={card.stars} size={STAR_SIZE} decorative />
-            {own ? (
-              <Text allowFontScaling={false} style={{ marginLeft: space.sm, fontSize: REACTION_SIZE, lineHeight: type.heading.lineHeight }}>
-                {own.char}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        {post.note !== null ? (
-          <View style={{ marginTop: space.xs }}>
-            <Text
-              maxFontSizeMultiplier={1.3}
-              style={{ fontFamily: type.note.fontFamily, fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, color: color.ink }}
-            >
-              {post.note}
-            </Text>
-          </View>
-        ) : null}
-
-        {post.can_react && !card.mine ? (
-          <View style={{ marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: color.divider }}>
-            <View accessibilityLabel="Your reaction">
-              <ReactionPicker value={card.my_reaction} onChange={onReact} />
-            </View>
-          </View>
-        ) : null}
-
-        <View style={{ marginTop: space.md }}>
-          <CommentsRule count={card.comment_count ?? comments.length} />
-        </View>
+      <View style={{ paddingHorizontal: space.lg, paddingBottom: space.xl }}>
+        {comments.length > 0 ? <View style={{ marginTop: space.md, height: 1, backgroundColor: color.divider }} /> : null}
         <CommentList comments={comments} myId={myId} onDelete={onDelete} onReply={post.can_comment ? onReply : undefined} />
       </View>
     </View>
@@ -123,8 +79,10 @@ function Details({
 /**
  * Someone else's post (05-UI-SPEC section 4, the developer's picture 10), pushed in the Board's
  * stack with no bottom bar: the Back row, the author row, the photos edge to edge (swipe for more),
- * the title with the stars and their reaction, their note, the row of six reactions (yours ringed;
- * tap to set, tap again to clear; a set one flies up the screen), the comments oldest first with their replies under each, and
+ * then the same parts as your own posts (developer, 2026-10-18: every post reads the same): the
+ * ActionRow (their stars and emoji, and the comment mark, which puts the cursor in the comment
+ * box) and the CaptionText with the posted time, then a hairline and the comments oldest first
+ * with their replies under each (no count line; no reactions on posts), and
  * the comment bar at the bottom ('Reply' on a comment turns it into a reply). When the owner
  * switched commenting off the bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
  * The Spin stack mounts it too (`place` 'today', a reply notification on someone else's post).
@@ -133,29 +91,11 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   const router = useRouter();
   const { user } = useSession();
   const load = usePost(id);
-  const [message, setMessage] = useState('');
-  const reduce = useReduceMotion();
-  // The reaction just tapped, flown up the screen once; a fresh key for every tap.
-  const [burst, setBurst] = useState<{ key: number; char: string } | null>(null);
-
-  useEffect(() => {
-    if (burst === null) return;
-    const timer = setTimeout(() => setBurst(null), BURST_MS);
-    return () => clearTimeout(timer);
-  }, [burst]);
-
+  // A new number puts the cursor in the comment box (the comment mark under the photo).
+  const [focusKey, setFocusKey] = useState(0);
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace(place === 'today' ? '/(app)/today' : '/(app)/board');
-  }
-
-  async function onReact(next: Post['card']['my_reaction']) {
-    setMessage('');
-    const picked = REACTIONS.find((item) => item.name === next) ?? null;
-    if (picked !== null && !reduce) setBurst({ key: Date.now(), char: picked.char });
-    const failure = await load.react(next);
-    if (failure !== null) setMessage(failure);
-    else AccessibilityInfo.announceForAccessibility(picked === null ? 'Reaction cleared.' : `You reacted ${picked.label}.`);
   }
 
   const post = load.post;
@@ -184,18 +124,13 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
             <Details
               post={post}
               myId={user?.id ?? null}
-              onReact={(next) => void onReact(next)}
               onDelete={load.remove}
               onReply={load.startReply}
+              onComment={post.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
             />
           </ScrollView>
-          {message !== '' ? (
-            <View style={{ paddingHorizontal: space.lg, paddingVertical: space.sm }}>
-              <QuietNote text={message} />
-            </View>
-          ) : null}
           {post.can_comment ? (
-            <CommentBar onSend={load.comment} replyTo={load.replyTo} onCancelReply={load.cancelReply} />
+            <CommentBar onSend={load.comment} replyTo={load.replyTo} onCancelReply={load.cancelReply} focusKey={focusKey} />
           ) : (
             <CommentsOffBar />
           )}
@@ -218,7 +153,6 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
           )}
         </View>
       )}
-      {burst !== null ? <ReactionBurst key={burst.key} char={burst.char} /> : null}
     </SafeAreaView>
   );
 }

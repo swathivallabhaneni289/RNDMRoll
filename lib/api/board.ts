@@ -4,7 +4,7 @@ import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
 import { isEntryId } from '@/lib/entry/rules';
 
 /**
- * The Board, a post, reactions and comments (Phase 5, 05-CONTEXT `api_contract` with the
+ * The Board, a post and its comments (Phase 5, 05-CONTEXT `api_contract` with the
  * follow changes of 05-FOLLOW-OVERRIDES section 6). Every field the app reads is read here, once,
  * so a `null` list or a missing key from the server never reaches a screen. The phone prints the
  * server's strings as sent (`posted_local_time`, `at_label`) and works out no date or time.
@@ -36,8 +36,6 @@ export type Card = {
   posted_local_time: string;
   /** Null when the caller may not see comments (Phase 6). */
   comment_count: number | null;
-  /** The caller's reaction. */
-  my_reaction: ReactionName | null;
 };
 
 export type Comment = {
@@ -53,9 +51,11 @@ export type Comment = {
    * reply under that top-level comment). Null for a top-level comment.
    */
   parent_id: string | null;
+  /** You own the post and did not write this comment, so you may hide it (lib/api/comments.ts). */
+  can_hide: boolean;
+  /** You hid it: only its writer and you still see it. */
+  hidden: boolean;
 };
-
-export type Received = { person: Person; reaction: ReactionName; at: string };
 
 export type Post = {
   card: Card;
@@ -66,12 +66,9 @@ export type Post = {
    * oldest first, each followed directly by its replies oldest first.
    */
   comments: Comment[] | null;
-  can_react: boolean;
   /** False when the owner switched commenting off (or the caller may not comment). */
   can_comment: boolean;
   comments_off: boolean;
-  /** Who reacted, only on the caller's own post. */
-  received: Received[] | null;
   /**
    * The post's photos in order. Not in the written contract: read when the server sends it,
    * otherwise the one cover photo of the card stands in.
@@ -147,7 +144,6 @@ function readCard(raw: Raw): Card | null {
     posted_at: text(raw.posted_at),
     posted_local_time: text(raw.posted_local_time),
     comment_count: typeof raw.comment_count === 'number' ? raw.comment_count : null,
-    my_reaction: reaction(raw.my_reaction),
   };
 }
 
@@ -161,6 +157,8 @@ function readComment(raw: Raw): Comment | null {
     at_label: text(raw.at_label),
     can_delete: raw.can_delete === true,
     parent_id: textOrNull(raw.parent_id),
+    can_hide: raw.can_hide === true,
+    hidden: raw.hidden === true,
   };
 }
 
@@ -173,12 +171,6 @@ function readComments(value: unknown): Comment[] {
 function readPost(raw: Raw): Post {
   const card = readCard((raw.card ?? {}) as Raw);
   if (card === null) throw new ApiError(0, 'server_error');
-  const received: Received[] = [];
-  for (const item of list(raw.received)) {
-    const person = readPerson(item.person);
-    const name = reaction(item.reaction);
-    if (person !== null && name !== null) received.push({ person, reaction: name, at: text(item.at) });
-  }
   const photos: PostPhoto[] = list(raw.photos)
     .filter((photo) => typeof photo.url === 'string' && photo.url !== '')
     .map((photo, index) => ({
@@ -190,10 +182,8 @@ function readPost(raw: Raw): Post {
     card,
     note: textOrNull(raw.note),
     comments: Array.isArray(raw.comments) ? readComments(raw.comments) : raw.comments === null ? null : [],
-    can_react: raw.can_react === true,
     can_comment: raw.can_comment === true,
     comments_off: raw.comments_off === true,
-    received: Array.isArray(raw.received) ? received : null,
     photos: photos.length > 0 ? photos : card.photo_url !== '' ? [{ id: card.entry_id, url: card.photo_url, position: 0 }] : [],
   };
 }
@@ -256,13 +246,6 @@ export async function getPost(entryId: string): Promise<Post> {
   return readPost(raw ?? {});
 }
 
-/** POST /posts/{entry_id}/reaction {reaction}: null clears. 409 `own_post` on your own post. */
-export async function setReaction(entryId: string, next: ReactionName | null): Promise<ReactionName | null> {
-  checkId(entryId);
-  const raw = await api.post<Raw>(`/posts/${entryId}/reaction`, { reaction: next });
-  return reaction(raw?.my_reaction);
-}
-
 /**
  * POST /posts/{entry_id}/comments {text, parent_id?}: 201 with the stored comment; 409
  * `comments_off`. With `parentId` it is a reply to that comment (404 when that comment is gone).
@@ -288,15 +271,14 @@ export async function deleteComment(commentId: string): Promise<void> {
   }
 }
 
-/** The line for a failed reaction or comment. No red: the screens print it in ink. */
-export function socialErrorMessage(err: unknown, what: 'reaction' | 'comment' | 'reply' | 'other'): string {
+/** The line for a failed comment or reply. No red: the screens print it in ink. */
+export function socialErrorMessage(err: unknown, what: 'comment' | 'reply' | 'other'): string {
   if (err instanceof ApiError) {
     if (err.code === 'network_unavailable') return err.userMessage;
     if (err.code === 'comments_off') return 'Commenting is off.';
     if (what === 'reply' && err.code === 'not_found') return "That comment isn't here any more.";
     if (err.code === 'rate_limited') return err.userMessage;
   }
-  if (what === 'reaction') return "Couldn't save that. Please try again.";
   if (what === 'comment') return "Couldn't post your comment. Please try again.";
   if (what === 'reply') return "Couldn't post your reply. Please try again.";
   return 'Something went wrong. Please try again.';

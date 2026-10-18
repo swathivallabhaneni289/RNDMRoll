@@ -1,17 +1,17 @@
 import { api } from '@/lib/api/client';
 import { readPerson, type Person } from '@/lib/api/social';
-import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
 
 /**
  * The list behind the bell (Phase 5, 05-FOLLOW-OVERRIDES section 6). The server builds it, sorts
  * it into sections, writes each time label and says what is unread; the phone prints it. The
  * notification settings already filter it on the server. Every field the app reads is read here.
+ * There are no reaction items (reactions on posts were removed, developer, 2026-10-18); a stray one
+ * from an older server is dropped like any unknown kind.
  *
  * The paths have no `/v1`: the client adds it.
  */
 
 export type NotificationKind =
-  | 'reaction'
   | 'comment'
   | 'reply'
   | 'follow'
@@ -33,7 +33,6 @@ export type NotificationItem = {
   actor: Person | null;
   entry_id: string | null;
   category_name: string | null;
-  reaction: ReactionName | null;
   /**
    * A comment's or reply's text, already cut by the server. A `reply` item is a reply to your
    * comment, on your own entry or on someone else's post (`entry_id` is that post).
@@ -41,12 +40,11 @@ export type NotificationItem = {
   text: string | null;
   /** Set on `follow_request` items (they exist only while the request is pending). */
   request_id: string | null;
-  /** The post's first photo for a reaction, comment or reply; '' when there is none. */
+  /** The post's first photo for a comment or reply; '' when there is none. */
   photo_url: string;
 };
 
 const KINDS: readonly NotificationKind[] = [
-  'reaction',
   'comment',
   'reply',
   'follow',
@@ -73,7 +71,6 @@ function readItem(raw: Record<string, unknown>): NotificationItem | null {
     actor: readPerson(raw.actor),
     entry_id: textOrNull(raw.entry_id),
     category_name: textOrNull(raw.category_name),
-    reaction: isReactionName(raw.reaction) ? raw.reaction : null,
     text: textOrNull(raw.text),
     request_id: textOrNull(raw.request_id),
     photo_url: typeof raw.photo_url === 'string' ? raw.photo_url : '',
