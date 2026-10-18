@@ -10,8 +10,11 @@ import { ActionRow, CaptionText, POST_PHOTO_ASPECT, type CaptionPost } from '@/c
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
-import { TextButton } from '@/components/ui/TextButton';
+import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import type { Comment, Post } from '@/lib/api/board';
+import { ApiError } from '@/lib/api/client';
+import { REPORT_REASONS } from '@/lib/api/person';
+import { REPORT_THANKS, reportPost } from '@/lib/api/reports';
 import { firstName } from '@/lib/api/social';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
@@ -93,6 +96,9 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   const load = usePost(id);
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);
+  // The three dots on someone else's post: Report, then the reasons.
+  const [menu, setMenu] = useState<'more' | 'reasons' | null>(null);
+  const [notice, setNotice] = useState('');
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace(place === 'today' ? '/(app)/today' : '/(app)/board');
@@ -101,9 +107,38 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   const post = load.post;
   const ready = load.status === 'ready' && post !== null;
 
+  function sendReport(reason: (typeof REPORT_REASONS)[number]['reason']) {
+    setMenu(null);
+    setNotice('');
+    void reportPost(id, reason)
+      .then(() => setNotice(REPORT_THANKS))
+      .catch((err: unknown) =>
+        setNotice(
+          err instanceof ApiError && err.code === 'network_unavailable'
+            ? err.userMessage
+            : 'Something went wrong. Please try again.',
+        ),
+      );
+  }
+
+  const menuItems: MenuItem[] =
+    menu === 'more'
+      ? [{ label: 'Report', onPress: () => setMenu('reasons') }]
+      : menu === 'reasons'
+        ? REPORT_REASONS.map((item) => ({ label: item.label, onPress: () => sendReport(item.reason) }))
+        : [];
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.dominant }}>
-      <View style={{ height: minTouchTarget, paddingHorizontal: space.lg, justifyContent: 'center' }}>
+      <View
+        style={{
+          height: minTouchTarget,
+          paddingHorizontal: space.lg,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
@@ -116,7 +151,23 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
             <AppText role="body">{backName}</AppText>
           </View>
         </Pressable>
+        {ready && !post.card.mine ? (
+          <Pressable
+            onPress={() => setMenu('more')}
+            accessibilityRole="button"
+            accessibilityLabel="More for this post"
+            hitSlop={8}
+            style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={color.ink} />
+          </Pressable>
+        ) : null}
       </View>
+      {notice !== '' ? (
+        <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }} accessibilityLiveRegion="polite">
+          <AppText role="label">{notice}</AppText>
+        </View>
+      ) : null}
 
       {ready ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -144,15 +195,13 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
           ) : load.status === 'offline' ? (
             <StatusMessage kind={load.failure} onRetry={load.reload} />
           ) : (
-            <View style={{ alignItems: 'flex-start' }}>
-              <AppText role="body">This post isn't here any more.</AppText>
-              <View style={{ marginTop: space.lg }}>
-                <TextButton label={`Back to ${backName}`} onPress={goBack} />
-              </View>
-            </View>
+            // One plain line; the Back row above is the only way back (developer, 2026-10-18: no second,
+            // underlined 'Back to' button).
+            <AppText role="body">This post isn't here any more.</AppText>
           )}
         </View>
       )}
+      <MenuSheet visible={menu !== null} items={menuItems} onClose={() => setMenu(null)} />
     </SafeAreaView>
   );
 }
