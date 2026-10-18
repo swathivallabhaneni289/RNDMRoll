@@ -34,6 +34,8 @@ func (h *BoardHandler) Register(rg *gin.RouterGroup) {
 	rg.POST("/posts/:id/reaction", perSubject(60), h.reaction)
 	rg.POST("/posts/:id/comments", perSubject(20), h.comment)
 	rg.POST("/comments/:id/delete", perSubject(20), h.deleteComment)
+	rg.POST("/comments/:id/hide", perSubject(30), h.hideComment)
+	rg.POST("/comments/:id/unhide", perSubject(30), h.unhideComment)
 }
 
 // ReactionRequest is the POST /posts/:id/reaction body. The key must be
@@ -93,6 +95,10 @@ type commentView struct {
 	At        spin.Instant `json:"at"`
 	AtLabel   string       `json:"at_label"`
 	CanDelete bool         `json:"can_delete"`
+	// CanHide: the viewer owns the post and did not write the comment.
+	CanHide bool `json:"can_hide"`
+	// Hidden: the viewer (the post's owner) hid it. Never true for its writer.
+	Hidden bool `json:"hidden"`
 	// ParentID is the top-level comment of a reply, null for a top-level
 	// comment.
 	ParentID *string `json:"parent_id"`
@@ -102,6 +108,7 @@ func newCommentView(c board.Comment) commentView {
 	v := commentView{
 		ID: c.ID.String(), Author: newPersonView(c.Author), Text: c.Text,
 		At: spin.Instant(c.At), AtLabel: c.AtLabel, CanDelete: c.CanDelete,
+		CanHide: c.CanHide, Hidden: c.Hidden,
 	}
 	if c.ParentID != nil {
 		parent := c.ParentID.String()
@@ -308,4 +315,27 @@ func (h *BoardHandler) deleteComment(c *gin.Context) {
 		return
 	}
 	Respond(c, http.StatusOK, gin.H{})
+}
+
+// hideComment answers 200 {"hidden": true}: the post's owner hides a comment
+// on their post. Anyone else, and the owner's own comment, is 404.
+func (h *BoardHandler) hideComment(c *gin.Context) { h.setHidden(c, true) }
+
+// unhideComment answers 200 {"hidden": false}.
+func (h *BoardHandler) unhideComment(c *gin.Context) { h.setHidden(c, false) }
+
+func (h *BoardHandler) setHidden(c *gin.Context, hidden bool) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "id")
+	if !ok || !emptyBody(c) {
+		return
+	}
+	if err := h.svc.SetCommentHidden(c.Request.Context(), u.ID, id, hidden); err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	Respond(c, http.StatusOK, gin.H{"hidden": hidden})
 }
