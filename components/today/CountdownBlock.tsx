@@ -15,7 +15,11 @@ const COLON_WIDTH = 12;
 /** Printed while there is no anchor (on foreground, until a fresh answer arrives). */
 const PLACEHOLDER = '--';
 
-function Cell({ text }: { text: string }) {
+/**
+ * One pair of digits with its unit under it ("hours", "min", "sec"), so the count reads as time
+ * left and never as a time of day (developer, 2026-10-18: "21:53:12" looked like a 24-hour clock).
+ */
+function Cell({ text, unit }: { text: string; unit: string }) {
   return (
     <View style={{ width: CELL_WIDTH, alignItems: 'center' }}>
       <Text
@@ -29,6 +33,18 @@ function Cell({ text }: { text: string }) {
         }}
       >
         {text}
+      </Text>
+      <Text
+        allowFontScaling={false}
+        numberOfLines={1}
+        style={{
+          fontFamily: type.label.fontFamily,
+          fontSize: type.label.fontSize,
+          lineHeight: type.label.lineHeight,
+          color: color.muted,
+        }}
+      >
+        {unit}
       </Text>
     </View>
   );
@@ -54,7 +70,8 @@ function Colon() {
 }
 
 /**
- * The countdown to the next spin: the label "Next spin in" over the digits "05:04:01", and the
+ * The countdown to the next spin: the label "Next spin in" over the digits "05:04:01" (hours,
+ * min and sec under them), and the
  * line "Opens at 8:00 PM." under them (developer, 2026-10-16: say plainly what the timer is). The time left is counted from the server's `now` with a monotonic clock
  * (the anchor), never the phone's clock, so a wrong phone clock changes nothing. The tick lives
  * in this component and re-renders nothing else; the spoken line changes once a minute.
@@ -99,12 +116,12 @@ export function CountdownBlock({
   return (
     <View accessible accessibilityLabel={spoken} style={{ alignItems: 'center' }}>
       <CapsLabel align="center">Next spin in</CapsLabel>
-      <View style={{ marginTop: space.xs, flexDirection: 'row', alignItems: 'center' }}>
-        <Cell text={parts ? parts.hours : PLACEHOLDER} />
+      <View style={{ marginTop: space.xs, flexDirection: 'row', alignItems: 'flex-start' }}>
+        <Cell text={parts ? parts.hours : PLACEHOLDER} unit="hours" />
         <Colon />
-        <Cell text={parts ? parts.minutes : PLACEHOLDER} />
+        <Cell text={parts ? parts.minutes : PLACEHOLDER} unit="min" />
         <Colon />
-        <Cell text={parts ? parts.seconds : PLACEHOLDER} />
+        <Cell text={parts ? parts.seconds : PLACEHOLDER} unit="sec" />
       </View>
       <View style={{ marginTop: space.xs }}>
         <Text
