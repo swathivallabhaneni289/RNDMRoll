@@ -55,6 +55,8 @@ export type Comment = {
   can_hide: boolean;
   /** You hid it: only its writer and you still see it. */
   hidden: boolean;
+  /** The comment's one photo (06-FOLLOW-OVERRIDES section 10), '' for none. The text may be '' then. */
+  photo_url: string;
 };
 
 export type Post = {
@@ -159,6 +161,7 @@ function readComment(raw: Raw): Comment | null {
     parent_id: textOrNull(raw.parent_id),
     can_hide: raw.can_hide === true,
     hidden: raw.hidden === true,
+    photo_url: text(raw.photo_url),
   };
 }
 
@@ -247,15 +250,21 @@ export async function getPost(entryId: string): Promise<Post> {
 }
 
 /**
- * POST /posts/{entry_id}/comments {text, parent_id?}: 201 with the stored comment; 409
+ * POST /posts/{entry_id}/comments {text, parent_id?, photo_key?}: 201 with the stored comment; 409
  * `comments_off`. With `parentId` it is a reply to that comment (404 when that comment is gone).
+ * With `photoKey` (a photo uploaded with uploadEntryPhoto) the text may be empty.
  */
-export async function addComment(entryId: string, body: string, parentId: string | null = null): Promise<Comment> {
+export async function addComment(
+  entryId: string,
+  body: string,
+  parentId: string | null = null,
+  photoKey: string | null = null
+): Promise<Comment> {
   checkId(entryId);
-  const raw = await api.post<Raw>(
-    `/posts/${entryId}/comments`,
-    parentId !== null ? { text: body, parent_id: parentId } : { text: body }
-  );
+  const payload: Record<string, string> = { text: body };
+  if (parentId !== null) payload.parent_id = parentId;
+  if (photoKey !== null) payload.photo_key = photoKey;
+  const raw = await api.post<Raw>(`/posts/${entryId}/comments`, payload);
   const comment = readComment((raw?.comment ?? {}) as Raw);
   if (comment === null) throw new ApiError(0, 'server_error');
   return comment;

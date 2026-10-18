@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
@@ -13,6 +15,8 @@ import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { firstName } from '@/lib/api/social';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
+import { createUploadMemory, photoMessage, photoProblem } from '@/lib/entry/photo';
+import { uploadEntryPhoto } from '@/lib/api/entries';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 import { useOpenPerson } from '@/lib/people/openPerson';
 
@@ -25,6 +29,44 @@ const REPLY_CLOSE = 18;
 const FIELD_HEIGHT = 44;
 /** The characters on the quick row above the comment box. */
 const QUICK_EMOJI = 24;
+/** The chosen photo's preview above the comment field. */
+const PREVIEW = 64;
+/** A comment's photo is about half the column wide, 3 wide to 4 high. */
+const COMMENT_PHOTO_RATIO = 4 / 3;
+
+/**
+ * A comment's photo full screen on black, closed by the mark at the top or the system back
+ * gesture. No fade: it appears at once.
+ */
+function PhotoViewer({ uri, onClose }: { uri: string | null; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={uri !== null} animationType="none" onRequestClose={onClose} supportedOrientations={['portrait']}>
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        {uri !== null ? (
+          <Image source={{ uri }} style={{ flex: 1 }} contentFit="contain" accessibilityLabel="Photo" />
+        ) : null}
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close photo"
+          hitSlop={8}
+          style={{
+            position: 'absolute',
+            top: insets.top + space.sm,
+            right: space.lg,
+            width: minTouchTarget,
+            height: minTouchTarget,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="close" size={28} color="#fff" />
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
 
 /** 'Reply' and 'Hide' under a comment: the label size in ink, in the button weight, no underline. */
 const actionText = { fontFamily: type.button.fontFamily, fontSize: type.label.fontSize, lineHeight: type.label.lineHeight, color: color.ink } as const;
@@ -69,6 +111,8 @@ export function CommentList({
   // the reasons for a report.
   const [menuFor, setMenuFor] = useState<Comment | null>(null);
   const [menuStep, setMenuStep] = useState<'actions' | 'reasons'>('actions');
+  // A comment's photo open full screen.
+  const [viewing, setViewing] = useState<string | null>(null);
 
   function openMenu(comment: Comment) {
     setMenuStep('actions');
@@ -195,7 +239,7 @@ export function CommentList({
               {/* One element for a screen reader: who, when and the words, with Delete as an action. */}
               <View
                 accessible
-                accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text}`}
+                accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text !== '' ? comment.text : 'a photo'}`}
                 accessibilityHint={hasMenu ? 'Press and hold for more.' : undefined}
                 accessibilityActions={[
                   ...(comment.can_delete ? [{ name: 'delete', label: 'Delete' }] : []),
@@ -221,12 +265,30 @@ export function CommentList({
                     </AppText>
                   </View>
                 </View>
-                <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-                  <AppText role="body" tone={hidden ? 'muted' : undefined}>
-                    {comment.text.replace(/\s*\n\s*/g, ' ')}
-                  </AppText>
-                </View>
+                {comment.text !== '' ? (
+                  <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+                    <AppText role="body" tone={hidden ? 'muted' : undefined}>
+                      {comment.text.replace(/\s*\n\s*/g, ' ')}
+                    </AppText>
+                  </View>
+                ) : null}
               </View>
+              {comment.photo_url !== '' ? (
+                // The photo under the text, about half the column wide; a tap opens it full screen.
+                <Pressable
+                  onPress={() => setViewing(comment.photo_url)}
+                  accessibilityRole="imagebutton"
+                  accessibilityLabel={`Photo from ${name}. Opens it full screen.`}
+                  style={{ width: '50%', aspectRatio: 1 / COMMENT_PHOTO_RATIO, marginTop: space.xs }}
+                >
+                  <Image
+                    source={{ uri: comment.photo_url }}
+                    style={{ width: '100%', height: '100%', borderRadius: radius.md, backgroundColor: color.secondary }}
+                    contentFit="cover"
+                    transition={0}
+                  />
+                </Pressable>
+              ) : null}
               {onReply || canHide(comment) ? (
                 // Reply and Hide side by side in one plain style, never underlined (developer,
                 // 2026-10-18); Delete is a long press on the comment, with the phone's alert first.
@@ -265,6 +327,7 @@ export function CommentList({
         </View>
       ) : null}
       <MenuSheet visible={menuFor !== null} items={menuItems} onClose={() => setMenuFor(null)} />
+      <PhotoViewer uri={viewing} onClose={() => setViewing(null)} />
     </View>
   );
 }
@@ -285,7 +348,8 @@ export function CommentBar({
   onCancelReply,
   focusKey = 0,
 }: {
-  onSend: (text: string) => Promise<string | null>;
+  /** Sends the text and, when a photo was chosen, its uploaded key; a failure comes back as one line. */
+  onSend: (text: string, photoKey: string | null) => Promise<string | null>;
   replyTo?: Comment | null;
   onCancelReply?: () => void;
   /** A new number puts the cursor in the field (the comment mark under a post was tapped). */
@@ -297,7 +361,11 @@ export function CommentBar({
   const [message, setMessage] = useState('');
   const sendingRef = useRef(false);
   const inputRef = useRef<TextInput>(null);
-  const canSend = text.trim().length > 0 && text.trim().length <= COMMENT_MAX && !sending;
+  // One photo per comment (06-FOLLOW-OVERRIDES section 10), uploaded once when Post is tapped and
+  // remembered, so a failed send never uploads the same file twice.
+  const [photo, setPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
+  const uploads = useRef(createUploadMemory()).current;
+  const canSend = (text.trim().length > 0 || photo !== null) && text.trim().length <= COMMENT_MAX && !sending;
   const mention = replyTo !== null && replyTo.author.username !== '' ? `@${replyTo.author.username}` : '';
 
   // Each Reply tap is a new object, so tapping Reply again refills and focuses the field.
@@ -323,16 +391,81 @@ export function CommentBar({
     onCancelReply?.();
   }
 
+  /** A picked file is checked (type and size, as for a post's photos) before it is kept. */
+  async function take(result: ImagePicker.ImagePickerResult) {
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+    const problem = photoProblem(asset.mimeType, asset.fileSize ?? 0);
+    if (problem !== null) {
+      setMessage(photoMessage(problem));
+      return;
+    }
+    setMessage('');
+    setPhoto({ uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg' });
+  }
+
+  async function pick(source: 'camera' | 'library') {
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setMessage(source === 'camera' ? 'Camera access is needed to take a photo.' : 'Photo access is needed to choose a photo.');
+        return;
+      }
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        // A standard JPEG even for a HEIC photo, so any picture works everywhere.
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+      };
+      result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+    } catch {
+      setMessage(source === 'camera' ? "Camera isn't available on this device." : "Photos aren't available right now.");
+      return;
+    }
+    await take(result);
+  }
+
+  function choosePhoto() {
+    Alert.alert('Add a photo', undefined, [
+      { text: 'Camera', onPress: () => void pick('camera') },
+      { text: 'Library', onPress: () => void pick('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  function dropPhoto() {
+    if (photo !== null) uploads.forget(photo.uri);
+    setPhoto(null);
+  }
+
   async function send() {
     if (!canSend || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setMessage('');
-    const failure = await onSend(text);
+    let key: string | null = null;
+    if (photo !== null) {
+      try {
+        key = await uploads.ensure(photo.uri, () => uploadEntryPhoto(photo.uri, photo.mimeType));
+      } catch (err) {
+        sendingRef.current = false;
+        setSending(false);
+        setMessage(err instanceof ApiError ? err.userMessage : 'Photo upload failed. Please try again.');
+        return;
+      }
+    }
+    const failure = await onSend(text, key);
     sendingRef.current = false;
     setSending(false);
-    if (failure === null) setText('');
-    else setMessage(failure);
+    if (failure === null) {
+      setText('');
+      if (photo !== null) uploads.forget(photo.uri);
+      setPhoto(null);
+    } else setMessage(failure);
   }
 
   const replyName = replyTo !== null ? firstName(replyTo.author) || replyTo.author.username : '';
@@ -386,7 +519,48 @@ export function CommentBar({
           </Pressable>
         ))}
       </View>
+      {photo !== null ? (
+        // The chosen photo, small and rounded, with a close mark, until it is posted.
+        <View style={{ width: PREVIEW, height: PREVIEW, marginBottom: space.sm }}>
+          <Image
+            source={{ uri: photo.uri }}
+            style={{ width: PREVIEW, height: PREVIEW, borderRadius: radius.md }}
+            contentFit="cover"
+            transition={0}
+            accessibilityLabel="The photo you chose"
+          />
+          <Pressable
+            onPress={dropPhoto}
+            accessibilityRole="button"
+            accessibilityLabel="Remove the photo"
+            hitSlop={12}
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: color.ink,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="close" size={16} color={color.dominant} />
+          </Pressable>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable
+          onPress={choosePhoto}
+          disabled={sending}
+          accessibilityRole="button"
+          accessibilityLabel={photo !== null ? 'Change the photo' : 'Add a photo'}
+          hitSlop={4}
+          style={{ marginRight: space.sm, minHeight: minTouchTarget, minWidth: 36, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Ionicons name="image-outline" size={26} color={color.ink} />
+        </Pressable>
         <TextInput
           ref={inputRef}
           value={text}

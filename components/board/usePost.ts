@@ -14,7 +14,8 @@ export type PostLoad = {
    * added at the end and a reply after the last reply of its top-level comment, and reply mode
    * ends. Returns the failure line or null.
    */
-  comment: (text: string) => Promise<string | null>;
+  /** Sends a comment (a reply in reply mode); `photoKey` is an uploaded photo, and with it the text may be empty. */
+  comment: (text: string, photoKey?: string | null) => Promise<string | null>;
   /** Deletes a comment (and, for a top-level one, its replies); 'not found' counts as done. */
   remove: (commentId: string) => Promise<string | null>;
   /** The comment the bar is replying to, or null for a plain comment. */
@@ -109,13 +110,13 @@ export function usePost(id: string): PostLoad {
   const cancelReply = useCallback(() => chooseReply(null), [chooseReply]);
 
   const comment = useCallback(
-    async (text: string): Promise<string | null> => {
+    async (text: string, photoKey: string | null = null): Promise<string | null> => {
       const body = text.trim();
-      if (body === '' || commentingRef.current || postRef.current === null) return null;
+      if ((body === '' && photoKey === null) || commentingRef.current || postRef.current === null) return null;
       commentingRef.current = true;
       const parent = replyToRef.current;
       try {
-        const saved = await addComment(id, body, parent?.id ?? null);
+        const saved = await addComment(id, body, parent?.id ?? null, photoKey);
         const now = postRef.current;
         if (mountedRef.current && now !== null) {
           const list = now.comments ?? [];
