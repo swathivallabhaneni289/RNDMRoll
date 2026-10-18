@@ -98,6 +98,8 @@ type CommentRow struct {
 	ParentID *uuid.UUID
 	// Hidden: the post's owner hid it (only its writer and the owner read it).
 	Hidden bool
+	// PhotoKey is the comment's one photo (migration 0013), nil for none.
+	PhotoKey *string
 }
 
 // Card is one post on the Board.
@@ -139,6 +141,8 @@ type Comment struct {
 	// Hidden: the post's owner hid it. Only its writer and the owner get it,
 	// and the writer is never told (Hidden is false for them).
 	Hidden bool
+	// PhotoURL is the link of the comment's photo, "" for none.
+	PhotoURL string
 	// ParentID is set on a reply: the top-level comment it sits under.
 	ParentID *uuid.UUID
 }

@@ -426,7 +426,10 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		return
 	}
 	if kind == admin.KindComment {
-		err = h.repo.DeleteComment(ctx, *target)
+		var keys []string
+		if keys, err = h.repo.DeleteComment(ctx, *target); err == nil {
+			h.entries.removeFiles(ctx, keys)
+		}
 	} else {
 		err = h.removePost(ctx, owner, *target)
 	}

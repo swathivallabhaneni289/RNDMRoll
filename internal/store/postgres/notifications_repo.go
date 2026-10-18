@@ -84,10 +84,15 @@ func (r *NotificationsRepo) commentRows(ctx context.Context, kind string, q stri
 		if err := rows.Scan(&id, &entryID, &actor, &body, &at, &category, &photoKey); err != nil {
 			return nil, err
 		}
-		text := notifications.CutText(body, notifications.TextRunes)
+		// A comment that is only a photo has no text: the app then says
+		// "sent a photo." (migration 0013).
+		var textp *string
+		if text := notifications.CutText(body, notifications.TextRunes); text != "" {
+			textp = &text
+		}
 		out = append(out, notifications.Raw{
 			Kind: kind, ID: kind + ":" + id.String(),
-			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Text: &text,
+			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, Text: textp,
 			PhotoKey: photoKey,
 		})
 	}

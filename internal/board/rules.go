@@ -14,8 +14,21 @@ import (
 // characters with no control character except a line break. Reasons on
 // field text: required, too_long, invalid.
 func CleanComment(s string) (string, *FieldProblem) {
+	return cleanComment(s, false)
+}
+
+// CleanCommentWithPhoto is CleanComment for a comment that carries a photo:
+// the text may then be empty (like Instagram), never longer than 140.
+func CleanCommentWithPhoto(s string) (string, *FieldProblem) {
+	return cleanComment(s, true)
+}
+
+func cleanComment(s string, photo bool) (string, *FieldProblem) {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.TrimSpace(s)
+	if s == "" && photo {
+		return "", nil
+	}
 	if s == "" {
 		return "", &FieldProblem{Field: "text", Reason: "required"}
 	}

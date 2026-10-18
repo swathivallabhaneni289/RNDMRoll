@@ -149,6 +149,9 @@ func NewServer(deps Deps) *Server {
 		deps.Follow.Register(authed)
 	}
 	if deps.Board != nil {
+		if deps.Entry != nil {
+			deps.Board.removeFiles = deps.Entry.removeFiles
+		}
 		deps.Board.Register(authed)
 	}
 	// The person page reads follows, the Board rule and the Profile numbers,

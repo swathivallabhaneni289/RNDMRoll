@@ -88,5 +88,7 @@ type Repository interface {
 	// at and whose it is; nil target when it is gone.
 	ReportTarget(ctx context.Context, kind string, id uuid.UUID) (target *uuid.UUID, owner uuid.UUID, err error)
 	SetDisabled(ctx context.Context, person uuid.UUID, at *time.Time) error
-	DeleteComment(ctx context.Context, id uuid.UUID) error
+	// DeleteComment deletes a comment and its replies and returns their
+	// photo keys.
+	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
 }

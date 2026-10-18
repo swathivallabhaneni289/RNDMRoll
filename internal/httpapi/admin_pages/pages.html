@@ -48,7 +48,7 @@
 <strong>{{kind .Kind}}</strong> · {{reason .Reason}} · by @{{.Reporter}} · <span class="muted">{{when .CreatedAt}}</span>
 {{if .ResolvedAt}}<br><span class="muted">Closed: {{.Resolution}} {{when .ResolvedAt}}</span>{{end}}
 {{if eq .Kind "post"}}<div class="quote">{{if .Title}}{{.Title}}{{else}}(no title){{end}}{{if not .EntryID}} · <span class="muted">post is gone</span>{{end}}</div>{{if .PhotoKey}}<img class="thumb" src="{{photo .PhotoKey}}" alt="">{{end}}{{end}}
-{{if eq .Kind "comment"}}<div class="quote">{{.Body}}</div>{{if not .CommentID}}<span class="muted">comment is gone</span>{{end}}{{end}}
+{{if eq .Kind "comment"}}<div class="quote">{{if .Body}}{{.Body}}{{else}}(photo only){{end}}</div>{{if .PhotoKey}}<img class="thumb" src="{{photo .PhotoKey}}" alt="">{{end}}{{if not .CommentID}}<span class="muted">comment is gone</span>{{end}}{{end}}
 {{if not .ResolvedAt}}<div class="actions">
 <form class="inline" method="post" action="/admin/reports/dismiss"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{$person}}"><button>Dismiss</button></form>
 {{if and (eq .Kind "post") .EntryID}}<form class="inline" method="post" action="/admin/reports/remove"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="kind" value="post"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{$person}}"><button class="strong">Remove post</button></form>{{end}}

@@ -48,14 +48,14 @@ const rowText = {
 /** The sentence of a row, split so the person's first name can be drawn in the button weight. */
 function sentence(item: NotificationItem): { name: string; rest: string; spoken: string } {
   const name = item.actor ? firstName(item.actor) : '';
-  const category = item.category_name ? item.category_name.toLowerCase() : 'post';
   switch (item.kind) {
     case 'comment': {
-      const rest = item.text ? ` commented: "${item.text}"` : ` commented on your ${category}.`;
+      // A comment that is only a photo has no text (06-FOLLOW-OVERRIDES section 10).
+      const rest = item.text ? ` commented: "${item.text}"` : ' sent a photo.';
       return { name, rest, spoken: `${name}${rest}` };
     }
     case 'reply': {
-      const rest = item.text ? ` replied to your comment: "${item.text}"` : ' replied to your comment.';
+      const rest = item.text ? ` replied to your comment: "${item.text}"` : ' sent a photo.';
       return { name, rest, spoken: `${name}${rest}` };
     }
     case 'follow':

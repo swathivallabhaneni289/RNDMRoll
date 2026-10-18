@@ -349,7 +349,10 @@ func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []stri
 	rows, err = r.pool.Query(ctx, `
 		select entry_id, author_id, name, username, avatar_url, body from (
 		  select c.entry_id, u.id as author_id, coalesce(u.name, '') as name, coalesce(u.username, '') as username,
-		    u.avatar_url, c.body, c.created_at, c.id,
+		    u.avatar_url,
+		    -- A comment that is only a photo reads "sent a photo" (migration 0013).
+		    case when btrim(c.body) = '' then 'sent a photo' else c.body end as body,
+		    c.created_at, c.id,
 		    row_number() over (partition by c.entry_id order by c.created_at desc, c.id desc) as n
 		  `+shown+`
 		) x

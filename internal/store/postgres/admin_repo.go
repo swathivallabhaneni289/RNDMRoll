@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 )
 
 // AdminRepo is admin.Repository over the pool. Unlike every other read, it
@@ -105,7 +106,9 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 			where pr.owner_id = $1
 			union all
 			select 'comment', cr.id, coalesce(rp.username, ''), cr.reason, cr.created_at, cr.resolved_at,
-			       coalesce(cr.resolution, ''), null::uuid, '', '', cr.comment_id, cr.body
+			       coalesce(cr.resolution, ''), null::uuid, '',
+			       coalesce((select pc.photo_key from post_comments pc where pc.id = cr.comment_id), ''),
+			       cr.comment_id, cr.body
 			from comment_reports cr join users rp on rp.id = cr.reporter_id
 			where cr.owner_id = $1
 		) all_reports
@@ -202,7 +205,10 @@ func (r *AdminRepo) SetDisabled(ctx context.Context, person uuid.UUID, at *time.
 }
 
 // DeleteComment implements admin.Repository (its replies go with it).
-func (r *AdminRepo) DeleteComment(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `delete from post_comments where id = $1`, id)
-	return err
+func (r *AdminRepo) DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error) {
+	keys, err := deleteCommentRows(ctx, r.pool, id)
+	if errors.Is(err, board.ErrNotFound) {
+		return nil, nil
+	}
+	return keys, err
 }

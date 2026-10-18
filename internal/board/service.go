@@ -52,11 +52,13 @@ type Repository interface {
 	// InsertComment writes a comment; parentID is the top-level comment of a
 	// reply, nil for a top-level comment. ErrNotFound when the entry or the
 	// parent went away.
-	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID) (uuid.UUID, error)
+	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, error)
 	// CommentByID reads a comment with its entry's owner. ErrNotFound when
 	// missing.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
-	DeleteComment(ctx context.Context, id uuid.UUID) error
+	// DeleteComment deletes a comment and its replies and returns the photo
+	// keys they carried, for the caller to remove the files.
+	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
 	// SetCommentHidden hides (at set) or shows (at nil) a comment.
 	// ErrNotFound when it went away.
 	SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error
@@ -303,7 +305,16 @@ func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time
 		// The writer of a hidden comment is never told it is hidden.
 		Hidden:   c.Hidden && owner == viewer,
 		ParentID: c.ParentID,
+		// Only comments the viewer may read reach here, so the link is fine.
+		PhotoURL: s.commentPhotoURL(c.PhotoKey),
 	}
+}
+
+func (s *Service) commentPhotoURL(key *string) string {
+	if key == nil || *key == "" || s.photoURL == nil {
+		return ""
+	}
+	return s.photoURL(*key)
 }
 
 // SetReaction sets (a name) or clears (nil) the viewer's reaction. Order:
@@ -333,7 +344,7 @@ func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, re
 // post must be visible, comments on, the parent (when set) a comment on this
 // post the viewer can see, then the text valid. A reply to a reply is stored
 // under that reply's top-level comment (one level).
-func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, text string, parentID *uuid.UUID) (Comment, error) {
+func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, text string, parentID *uuid.UUID, photoKey *string) (Comment, error) {
 	row, f, err := s.visible(ctx, viewer, entryID)
 	if err != nil {
 		return Comment{}, err
@@ -350,7 +361,11 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 			return Comment{}, err
 		}
 	}
-	body, problem := CleanComment(text)
+	clean := CleanComment
+	if photoKey != nil {
+		clean = CleanCommentWithPhoto
+	}
+	body, problem := clean(text)
 	if problem != nil {
 		return Comment{}, problem
 	}
@@ -362,7 +377,7 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 		return Comment{}, err
 	}
 	now = now.UTC()
-	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top)
+	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top, photoKey)
 	if err != nil {
 		return Comment{}, err
 	}
@@ -370,7 +385,7 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 	if err != nil {
 		return Comment{}, err
 	}
-	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: now, ParentID: top},
+	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: now, ParentID: top, PhotoKey: photoKey},
 		viewer, row.Owner.ID, now, zone), nil
 }
 
@@ -398,13 +413,13 @@ func (s *Service) replyParent(ctx context.Context, viewer, entryID, parentID uui
 
 // DeleteComment deletes a comment for its writer or the post's owner.
 // Deleting a top-level comment deletes its replies (the database cascades).
-func (s *Service) DeleteComment(ctx context.Context, viewer, commentID uuid.UUID) error {
+func (s *Service) DeleteComment(ctx context.Context, viewer, commentID uuid.UUID) ([]string, error) {
 	c, err := s.repo.CommentByID(ctx, commentID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !social.CanDeleteComment(c.Author.ID == viewer, c.EntryOwner == viewer) {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	return s.repo.DeleteComment(ctx, commentID)
 }

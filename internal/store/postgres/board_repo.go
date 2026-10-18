@@ -250,7 +250,7 @@ func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date strin
 // Comments implements board.Repository.
 func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]board.CommentRow, error) {
 	rows, err := r.pool.Query(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null, c.photo_key
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.entry_id = $2 and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
 		order by c.created_at, c.id`, viewer, entryID)
@@ -272,7 +272,7 @@ func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]
 func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) {
 	var c board.CommentRow
 	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoURL,
-		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden)
+		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden, &c.PhotoKey)
 	c.CreatedAt = c.CreatedAt.UTC()
 	return c, err
 }
@@ -318,13 +318,27 @@ func (r *BoardRepo) ClearReaction(ctx context.Context, entryID, userID uuid.UUID
 }
 
 // InsertComment implements board.Repository.
-func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID) (uuid.UUID, error) {
+func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, error) {
 	var id uuid.UUID
+	// A photo file already used by an entry is refused like a reused one.
+	if photoKey != nil {
+		var used bool
+		if err := r.pool.QueryRow(ctx, `select exists (select 1 from entry_photos where storage_key = $1)`, *photoKey).Scan(&used); err != nil {
+			return uuid.UUID{}, err
+		}
+		if used {
+			return uuid.UUID{}, &board.FieldProblem{Field: "photo", Reason: "invalid"}
+		}
+	}
 	err := r.pool.QueryRow(ctx, `
-		insert into post_comments (entry_id, user_id, body, created_at, parent_id) values ($1, $2, $3, $4, $5)
-		returning id`, entryID, userID, body, at, parentID).Scan(&id)
+		insert into post_comments (entry_id, user_id, body, created_at, parent_id, photo_key) values ($1, $2, $3, $4, $5, $6)
+		returning id`, entryID, userID, body, at, parentID, photoKey).Scan(&id)
 	if err != nil && isForeignKeyViolation(err) {
 		return uuid.UUID{}, board.ErrNotFound
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return uuid.UUID{}, &board.FieldProblem{Field: "photo", Reason: "invalid"}
 	}
 	return id, err
 }
@@ -345,7 +359,7 @@ func shownComment(c, e string) string {
 // CommentByID implements board.Repository.
 func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.CommentRow, error) {
 	c, err := scanComment(r.pool.QueryRow(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null, c.photo_key
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -355,15 +369,40 @@ func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.Commen
 }
 
 // DeleteComment implements board.Repository.
-func (r *BoardRepo) DeleteComment(ctx context.Context, id uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx, `delete from post_comments where id = $1`, id)
+func (r *BoardRepo) DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error) {
+	return deleteCommentRows(ctx, r.pool, id)
+}
+
+// deleteCommentRows deletes a comment and its replies and returns their
+// photo keys. ErrNotFound when the comment was not there.
+func deleteCommentRows(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) ([]string, error) {
+	rows, err := pool.Query(ctx, `
+		delete from post_comments where id = $1 or parent_id = $1
+		returning id = $1, coalesce(photo_key, '')`, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if tag.RowsAffected() == 0 {
-		return board.ErrNotFound
+	defer rows.Close()
+	found := false
+	keys := []string{}
+	for rows.Next() {
+		var self bool
+		var key string
+		if err := rows.Scan(&self, &key); err != nil {
+			return nil, err
+		}
+		found = found || self
+		if key != "" {
+			keys = append(keys, key)
+		}
 	}
-	return nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, board.ErrNotFound
+	}
+	return keys, nil
 }
 
 // SetCommentHidden implements board.Repository.

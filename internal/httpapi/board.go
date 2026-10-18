@@ -5,6 +5,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -14,12 +15,16 @@ import (
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 )
 
 // BoardHandler serves GET /board, GET /posts/:id, POST /posts/:id/reaction,
 // POST /posts/:id/comments and POST /comments/:id/delete.
 type BoardHandler struct {
 	svc *board.Service
+	// removeFiles deletes photo files once their rows are gone (a deleted
+	// comment's photo). NewServer sets it from the entry handler; nil skips.
+	removeFiles func(ctx context.Context, keys []string)
 }
 
 // NewBoardHandler builds a BoardHandler over the board service.
@@ -52,6 +57,9 @@ type ReactionRequest struct {
 type CommentRequest struct {
 	Text     *string `json:"text"`
 	ParentID *string `json:"parent_id"`
+	// PhotoKey is one photo uploaded with POST /entry-photos/upload-url
+	// (the caller's own key). With a photo the text may be empty.
+	PhotoKey *string `json:"photo_key"`
 }
 
 type cardView struct {
@@ -101,6 +109,8 @@ type commentView struct {
 	CanHide bool `json:"can_hide"`
 	// Hidden: the viewer (the post's owner) hid it. Never true for its writer.
 	Hidden bool `json:"hidden"`
+	// PhotoURL is the comment's photo, "" for none.
+	PhotoURL string `json:"photo_url"`
 	// ParentID is the top-level comment of a reply, null for a top-level
 	// comment.
 	ParentID *string `json:"parent_id"`
@@ -110,7 +120,7 @@ func newCommentView(c board.Comment) commentView {
 	v := commentView{
 		ID: c.ID.String(), Author: newPersonView(c.Author), Text: c.Text,
 		At: spin.Instant(c.At), AtLabel: c.AtLabel, CanDelete: c.CanDelete,
-		CanHide: c.CanHide, Hidden: c.Hidden,
+		CanHide: c.CanHide, Hidden: c.Hidden, PhotoURL: c.PhotoURL,
 	}
 	if c.ParentID != nil {
 		parent := c.ParentID.String()
@@ -295,7 +305,11 @@ func (h *BoardHandler) comment(c *gin.Context) {
 		p := uuid.MustParse(s)
 		parent = &p
 	}
-	cm, err := h.svc.AddComment(c.Request.Context(), u.ID, id, text, parent)
+	if req.PhotoKey != nil && !storage.EntryPhotoKeyOwnedBy(*req.PhotoKey, u.ID) {
+		RespondFieldError(c, "photo", reasonInvalid)
+		return
+	}
+	cm, err := h.svc.AddComment(c.Request.Context(), u.ID, id, text, parent, req.PhotoKey)
 	if err != nil {
 		respondFeedError(c, err)
 		return
@@ -312,9 +326,13 @@ func (h *BoardHandler) deleteComment(c *gin.Context) {
 	if !ok || !emptyBody(c) {
 		return
 	}
-	if err := h.svc.DeleteComment(c.Request.Context(), u.ID, id); err != nil {
+	keys, err := h.svc.DeleteComment(c.Request.Context(), u.ID, id)
+	if err != nil {
 		respondFeedError(c, err)
 		return
+	}
+	if h.removeFiles != nil {
+		h.removeFiles(c.Request.Context(), keys)
 	}
 	Respond(c, http.StatusOK, gin.H{})
 }
