@@ -96,8 +96,6 @@ type CommentRow struct {
 	// ParentID is the top-level comment a reply belongs to; nil for a
 	// top-level comment. Replies are one level: a parent is never a reply.
 	ParentID *uuid.UUID
-	// Hidden: the post's owner hid it (only its writer and the owner read it).
-	Hidden bool
 }
 
 // Card is one post on the Board.
@@ -134,11 +132,6 @@ type Comment struct {
 	At        time.Time
 	AtLabel   string
 	CanDelete bool
-	// CanHide: the viewer owns the post and did not write the comment.
-	CanHide bool
-	// Hidden: the post's owner hid it. Only its writer and the owner get it,
-	// and the writer is never told (Hidden is false for them).
-	Hidden bool
 	// ParentID is set on a reply: the top-level comment it sits under.
 	ParentID *uuid.UUID
 }

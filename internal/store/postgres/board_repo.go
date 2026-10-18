@@ -168,10 +168,9 @@ func (r *BoardRepo) CommentCounts(ctx context.Context, viewer uuid.UUID, entryID
 	// top-level comment is shown (board.Thread).
 	rows, err := r.pool.Query(ctx, `
 		select c.entry_id, count(*) from post_comments c
-		join entries e on e.id = c.entry_id
 		left join post_comments p on p.id = c.parent_id
-		where c.entry_id = any($2::uuid[]) and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
-		  and (c.parent_id is null or (not `+blockedEither("$1::uuid", "p.user_id")+` and `+shownComment("p", "e")+`))
+		where c.entry_id = any($2::uuid[]) and not `+blockedEither("$1::uuid", "c.user_id")+`
+		  and (c.parent_id is null or not `+blockedEither("$1::uuid", "p.user_id")+`)
 		group by c.entry_id`, viewer, entryIDs)
 	if err != nil {
 		return nil, err
@@ -250,9 +249,9 @@ func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date strin
 // Comments implements board.Repository.
 func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]board.CommentRow, error) {
 	rows, err := r.pool.Query(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
-		where c.entry_id = $2 and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
+		where c.entry_id = $2 and not `+blockedEither("$1::uuid", "c.user_id")+`
 		order by c.created_at, c.id`, viewer, entryID)
 	if err != nil {
 		return nil, err
@@ -272,7 +271,7 @@ func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]
 func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) {
 	var c board.CommentRow
 	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoURL,
-		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden)
+		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID)
 	c.CreatedAt = c.CreatedAt.UTC()
 	return c, err
 }
@@ -336,16 +335,10 @@ func isForeignKeyViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-// shownComment is the where fragment "viewer $1 may read comment alias c on
-// entry alias e": not hidden, or the viewer wrote it, or owns the post.
-func shownComment(c, e string) string {
-	return `(` + c + `.hidden_at is null or ` + c + `.user_id = $1 or ` + e + `.user_id = $1)`
-}
-
 // CommentByID implements board.Repository.
 func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.CommentRow, error) {
 	c, err := scanComment(r.pool.QueryRow(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null
+		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -357,18 +350,6 @@ func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.Commen
 // DeleteComment implements board.Repository.
 func (r *BoardRepo) DeleteComment(ctx context.Context, id uuid.UUID) error {
 	tag, err := r.pool.Exec(ctx, `delete from post_comments where id = $1`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return board.ErrNotFound
-	}
-	return nil
-}
-
-// SetCommentHidden implements board.Repository.
-func (r *BoardRepo) SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error {
-	tag, err := r.pool.Exec(ctx, `update post_comments set hidden_at = $2 where id = $1`, id, at)
 	if err != nil {
 		return err
 	}

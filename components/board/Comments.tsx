@@ -5,8 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { AppText } from '@/components/ui/AppText';
 import type { Comment } from '@/lib/api/board';
-import { ApiError } from '@/lib/api/client';
-import { canHide, hideComment, isHidden, unhideComment } from '@/lib/api/comments';
 import { firstName } from '@/lib/api/social';
 import { commentCount } from '@/lib/board/text';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
@@ -60,9 +58,7 @@ export function CommentsRule({ count }: { count: number | null }) {
 
 /**
  * The comments, oldest first (05-UI-SPEC 4.1): the round initial, the first name ('You' for your
- * own), the server's time label, 'Hide' or 'Unhide' on someone's comment on your own post (a hidden
- * one reads 'Hidden' after its time and its text is muted), 'Delete' where the server says the
- * caller may, and the text. Delete
+ * own), the server's time label, 'Delete' where the server says the caller may, and the text. Delete
  * asks first with the phone's own alert (no red button, no fade). Replies come in the server's
  * order, right after their comment, one step in with a smaller initial and no rule above them.
  * With `onReply` (commenting is on) every comment and reply has a quiet 'Reply' under its text;
@@ -82,25 +78,6 @@ export function CommentList({
   const openPerson = useOpenPerson();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  // Hide and Unhide answer at once on the row; the next read of the post agrees.
-  const [hiddenNow, setHiddenNow] = useState<Record<string, boolean>>({});
-
-  /** Hide or show someone's comment on your own post. No question first, like Instagram. */
-  function toggleHidden(comment: Comment, hide: boolean) {
-    if (busyId !== null) return;
-    setBusyId(comment.id);
-    setMessage('');
-    void (hide ? hideComment(comment.id) : unhideComment(comment.id))
-      .then(() => setHiddenNow((now) => ({ ...now, [comment.id]: hide })))
-      .catch((err: unknown) =>
-        setMessage(
-          err instanceof ApiError && err.code === 'network_unavailable'
-            ? err.userMessage
-            : 'Something went wrong. Please try again.',
-        ),
-      )
-      .finally(() => setBusyId(null));
-  }
 
   function askDelete(comment: Comment) {
     if (busyId !== null) return;
@@ -132,7 +109,6 @@ export function CommentList({
         const name = mine ? 'You' : firstName(comment.author);
         const isReply = comment.parent_id !== null;
         const kind = isReply ? 'reply' : 'comment';
-        const hidden = hiddenNow[comment.id] ?? isHidden(comment);
         return (
           <View
             key={comment.id}
@@ -173,25 +149,10 @@ export function CommentList({
                   </Pressable>
                   <View style={{ marginLeft: space.sm }}>
                     <AppText role="label" tone="muted">
-                      {hidden ? `${comment.at_label} · Hidden` : comment.at_label}
+                      {comment.at_label}
                     </AppText>
                   </View>
                 </View>
-                {canHide(comment) ? (
-                  <Pressable
-                    onPress={() => toggleHidden(comment, !hidden)}
-                    disabled={busyId !== null}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${hidden ? 'Unhide' : 'Hide'} ${kind} by ${name}`}
-                    accessibilityHint={hidden ? undefined : 'Only they and you will see it. They are not told.'}
-                    hitSlop={(minTouchTarget - type.label.lineHeight) / 2}
-                    style={{ marginRight: comment.can_delete ? space.md : 0 }}
-                  >
-                    <Text style={{ ...labelText, color: color.muted, textDecorationLine: 'underline' }}>
-                      {hidden ? 'Unhide' : 'Hide'}
-                    </Text>
-                  </Pressable>
-                ) : null}
                 {comment.can_delete ? (
                   <Pressable
                     onPress={() => askDelete(comment)}
@@ -207,9 +168,7 @@ export function CommentList({
                 ) : null}
               </View>
               <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-                <AppText role="body" tone={hidden ? 'muted' : undefined}>
-                  {comment.text.replace(/\s*\n\s*/g, ' ')}
-                </AppText>
+                <AppText role="body">{comment.text.replace(/\s*\n\s*/g, ' ')}</AppText>
               </View>
               {onReply ? (
                 <Pressable
