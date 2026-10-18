@@ -9,9 +9,12 @@ import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import type { BoardDay, Card } from '@/lib/api/board';
 import { overline } from '@/lib/board/text';
-import { color, minTouchTarget, space } from '@/lib/theme/tokens';
+import { color, radius, space } from '@/lib/theme/tokens';
 import { dateLine } from '@/lib/wheel/format';
 import { useOpenPerson } from '@/lib/people/openPerson';
+
+/** The search field under the title. */
+const SEARCH_HEIGHT = 40;
 
 type Row =
   | { kind: 'heading'; key: string; text: string }
@@ -58,8 +61,8 @@ export type BoardScreenProps = {
 
 /**
  * The Board tab (05-UI-SPEC section 3 with the follow wording of 05-FOLLOW-OVERRIDES, the
- * developer's pictures 08 and 09). A fixed header (the overline, 'Board' and a search icon that opens
- * Search; the bell lives on the Spin page only, 2026-10-16), then what the server says: no follows (a prompt and 'Find people'), locked
+ * developer's pictures 08 and 09). A fixed header ('Board', a search field that opens Search, and
+ * the day in play under them as the first day heading; the bell lives on the Spin page only, 2026-10-16), then what the server says: no follows (a prompt and 'Find people'), locked
  * (the locked card over grey tiles), skipped, or unlocked (the two-column grid). Under a lock or a
  * skip the earlier days the person posted still follow. Plain light cards, nothing blurs or fades.
  * The list pages as the end comes into view, pulls to refresh and reloads on every focus.
@@ -72,26 +75,37 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
   const columnWidth = Math.floor((width - 2 * space.lg - space.md) / 2);
 
   const header = (
-    <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, flexDirection: 'row', alignItems: 'flex-end' }}>
-      <View style={{ flex: 1 }} accessible accessibilityRole="header" accessibilityLabel={board ? `${overline(board.day_label)}, Board` : 'Board'}>
-        <Text style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight }}>
-          {board ? overline(board.day_label) : ''}
-        </Text>
-        <View style={{ marginTop: space.xs }}>
-          <AppText role="title">Board</AppText>
+    <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm }}>
+      <View accessible accessibilityRole="header" accessibilityLabel="Board">
+        <AppText role="title">Board</AppText>
+      </View>
+      {/* A search field to tap, like Instagram's, in place of the small icon (developer, 2026-10-18). */}
+      <Pressable
+        onPress={onFindPeople}
+        accessibilityRole="search"
+        accessibilityLabel="Search"
+        accessibilityHint="Opens search for people."
+        style={{
+          marginTop: space.sm,
+          height: SEARCH_HEIGHT,
+          borderRadius: radius.md,
+          backgroundColor: color.secondary,
+          paddingHorizontal: space.md,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}
+      >
+        <Ionicons name="search-outline" size={18} color={color.ink} />
+        <View style={{ marginLeft: space.sm }}>
+          <AppText role="body" tone="muted">
+            Search
+          </AppText>
         </View>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.xs }}>
-        <Pressable
-          onPress={onFindPeople}
-          accessibilityRole="button"
-          accessibilityLabel="Search people"
-          hitSlop={4}
-          style={{ width: minTouchTarget, height: minTouchTarget, alignItems: 'flex-end', justifyContent: 'center' }}
-        >
-          <Ionicons name="search-outline" size={22} color={color.ink} />
-        </Pressable>
-      </View>
+      </Pressable>
+      {/* The day in play, as the first of the day headings (developer, 2026-10-18: under the title). */}
+      <Text accessibilityRole="header" style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight, marginTop: space.md }}>
+        {board ? overline(board.day_label) : ''}
+      </Text>
     </View>
   );
 
