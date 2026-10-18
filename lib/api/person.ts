@@ -27,7 +27,7 @@ export type PersonPage = {
   follows_you: boolean;
   /** The caller muted them: their posts are off the caller's Board. They are never told. */
   muted: boolean;
-  stats: { spins: number; week_streak: number; followers: number; following: number };
+  stats: { posts: number; spins: number; week_streak: number; followers: number; following: number };
   /** Null when the caller does not follow them (accepted): the page shows the header only. */
   posts: PersonPost[] | null;
   next_cursor: string | null;
@@ -80,6 +80,7 @@ export async function getPerson(userId: string, cursor?: string): Promise<Person
       follows_you: body.follows_you === true,
       muted: body.muted === true,
       stats: {
+        posts: num(stats.posts),
         spins: num(stats.spins),
         week_streak: num(stats.week_streak),
         followers: num(stats.followers),
@@ -120,4 +121,19 @@ export type ReportReason = (typeof REPORT_REASONS)[number]['reason'];
 /** POST /people/{user_id}/report {reason}. The person is never told. */
 export async function reportPerson(userId: string, reason: ReportReason): Promise<void> {
   await api.post<unknown>(`/people/${encodeURIComponent(userId)}/report`, { reason });
+}
+
+/**
+ * GET /people/{user_id}/followers or /following: their list, for an accepted follower only. Null
+ * when the server answers 404 (not following them, a block, or gone).
+ */
+export async function getPeopleOf(userId: string, list: 'followers' | 'following'): Promise<Person[] | null> {
+  try {
+    const body = await api.get<Record<string, unknown>>(`/people/${encodeURIComponent(userId)}/${list}`);
+    const raw = Array.isArray(body?.people) ? body.people : [];
+    return raw.map(readPerson).filter((person): person is Person => person !== null);
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'not_found') return null;
+    throw err;
+  }
 }

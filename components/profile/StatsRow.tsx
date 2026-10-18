@@ -22,6 +22,8 @@ export function StatsRow({
   following,
   onOpenFollowers,
   onOpenFollowing,
+  posts,
+  theirs = false,
 }: {
   spins: number;
   weekStreak: number;
@@ -29,12 +31,20 @@ export function StatsRow({
   following: number;
   onOpenFollowers?: () => void;
   onOpenFollowing?: () => void;
+  /** Another person's page: the first figure is their Posts in place of Spins. */
+  posts?: number;
+  /** Another person's page: the hints say "their" in place of "your". */
+  theirs?: boolean;
 }) {
+  const first =
+    posts !== undefined
+      ? { label: 'Posts', figure: posts, spoken: posts === 1 ? '1 post' : `${posts} posts` }
+      : { label: 'Spins', figure: spins, spoken: spinsSpoken(spins) };
   const items: { label: string; figure: number; spoken: string; hint?: string; onPress?: () => void }[] = [
-    { label: 'Spins', figure: spins, spoken: spinsSpoken(spins) },
+    first,
     { label: 'Week streak', figure: weekStreak, spoken: streakSpoken(weekStreak) },
-    { label: 'Followers', figure: followers, spoken: followersSpoken(followers), hint: 'Opens your followers.', onPress: onOpenFollowers },
-    { label: 'Following', figure: following, spoken: followingSpoken(following), hint: 'Opens the people you follow.', onPress: onOpenFollowing },
+    { label: 'Followers', figure: followers, spoken: followersSpoken(followers), hint: theirs ? 'Opens their followers.' : 'Opens your followers.', onPress: onOpenFollowers },
+    { label: 'Following', figure: following, spoken: followingSpoken(following), hint: theirs ? 'Opens the people they follow.' : 'Opens the people you follow.', onPress: onOpenFollowing },
   ];
 
   function column(item: (typeof items)[number]): ReactNode {

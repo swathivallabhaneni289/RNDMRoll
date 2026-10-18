@@ -124,7 +124,7 @@ export function PersonRow({
 }
 
 /** The two lists as tabs, like Instagram's: the open one in ink with a dark line under it. */
-function ListTabs({ value, onChange }: { value: PeopleList; onChange: (next: PeopleList) => void }) {
+export function ListTabs({ value, onChange }: { value: PeopleList; onChange: (next: PeopleList) => void }) {
   const tabs: { key: PeopleList; label: string }[] = [
     { key: 'followers', label: 'Followers' },
     { key: 'following', label: 'Following' },

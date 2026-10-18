@@ -19,6 +19,7 @@ export default function BoardLayout() {
       <Stack.Screen name="people" />
       <Stack.Screen name="search" />
       <Stack.Screen name="person" />
+      <Stack.Screen name="person-people" />
     </Stack>
   );
 }

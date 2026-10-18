@@ -29,7 +29,7 @@ import {
   type PersonPage,
 } from '@/lib/api/person';
 import { firstName, follow, removeFollower, unfollow } from '@/lib/api/social';
-import { postPathIn } from '@/lib/people/openPerson';
+import { personPeoplePathIn, postPathIn } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 const AVATAR_SIZE = 72;
@@ -38,7 +38,8 @@ const GENERIC = 'Something went wrong. Please try again.';
 /**
  * Another person's page, like Instagram's (developer, 2026-10-17: tap anyone's photo or name and
  * it opens their profile). It looks like your own Profile seen by a visitor: their photo, name,
- * @username, bio and the four figures, with one button where your Edit is: Follow, Follow back,
+ * @username, bio and the four figures (Posts, Week streak, Followers, Following; the two lists open
+ * for an accepted follower), with one button where your Edit is: Follow, Follow back,
  * Requested (a tap cancels) or Following (a tap offers Unfollow). The three dots at the top right
  * hold Remove follower (when they follow you), Mute or Unmute (their posts leave your Board), Report
  * (a list of reasons) and Block. None of them is ever told. Every follow is a request, so until they accept, the page ends with "This
@@ -225,6 +226,13 @@ export function PersonScreen({ id }: { id: string }) {
     );
   }
 
+  function openList(show: 'followers' | 'following') {
+    router.push({
+      pathname: personPeoplePathIn(segments),
+      params: { id, username: page?.person.username ?? '', show },
+    });
+  }
+
   function openPost(entryId: string) {
     router.push({ pathname: postPathIn(segments), params: { id: entryId, back: page?.person.username ?? '' } });
   }
@@ -320,11 +328,16 @@ export function PersonScreen({ id }: { id: string }) {
             ) : null}
 
             <View style={{ marginTop: space.lg }}>
+              {/* Posts in place of Spins; the two lists open only for an accepted follower. */}
               <StatsRow
+                posts={page.stats.posts}
                 spins={page.stats.spins}
                 weekStreak={page.stats.week_streak}
                 followers={page.stats.followers}
                 following={page.stats.following}
+                theirs
+                onOpenFollowers={page.relation === 'following' ? () => openList('followers') : undefined}
+                onOpenFollowing={page.relation === 'following' ? () => openList('following') : undefined}
               />
             </View>
           </View>

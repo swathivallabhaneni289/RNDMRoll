@@ -32,3 +32,15 @@ export function postPathIn(segments: string[]): '/(app)/today/post' | '/(app)/bo
   const stack = stackOf(segments);
   return stack === 'today' ? '/(app)/today/post' : stack === 'board' ? '/(app)/board/post' : '/(app)/profile/post';
 }
+
+/** The Followers and Following page of a person, in the same stack as their profile page. */
+export function personPeoplePathIn(
+  segments: string[],
+): '/(app)/today/person-people' | '/(app)/board/person-people' | '/(app)/profile/person-people' {
+  const stack = stackOf(segments);
+  return stack === 'today'
+    ? '/(app)/today/person-people'
+    : stack === 'board'
+      ? '/(app)/board/person-people'
+      : '/(app)/profile/person-people';
+}

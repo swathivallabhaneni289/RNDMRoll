@@ -16,6 +16,7 @@ export default function TodayLayout() {
       <Stack.Screen name="follow-requests" />
       <Stack.Screen name="post" />
       <Stack.Screen name="person" />
+      <Stack.Screen name="person-people" />
       <Stack.Screen name="log" />
       <Stack.Screen name="entry" />
       <Stack.Screen name="edit-entry" />

@@ -34,6 +34,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="archive" />
       <Stack.Screen name="people" />
       <Stack.Screen name="person" />
+      <Stack.Screen name="person-people" />
       <Stack.Screen name="post" />
     </Stack>
   );
