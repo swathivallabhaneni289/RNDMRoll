@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Pressable, Switch, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
@@ -12,6 +13,14 @@ import {
   type NotificationSettings,
 } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
+import {
+  getReminderPermission,
+  permissionLine,
+  readReminderOn,
+  REMINDER_SWITCH_LABEL,
+  setReminderOn,
+  switchShowsOn,
+} from '@/lib/notifications/reminder';
 import { GENERIC_MESSAGE } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
 
@@ -85,8 +94,66 @@ function SwitchRow({
 }
 
 /**
- * Settings > Notifications (decision D-16): three switches, all ON until the person switches one
- * off. Each one saves on its own toggle (`PATCH /me/notification-settings`); the change shows at
+ * The 8 PM reminder's switch (Phase 6, 06-FOLLOW-OVERRIDES.md section 7), under the other
+ * switches and built the same way. Its value is kept on the phone, not on the server: it shows on
+ * only while it is on AND the phone allows notifications for RNDMRoll. While that permission is
+ * off the switch shows off with one line saying where to turn it on; nothing else. It is read again
+ * whenever the page comes into focus or the app comes back from the phone's Settings.
+ */
+function ReminderRow() {
+  const [on, setOn] = useState(false);
+  const [line, setLine] = useState('');
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+
+  const refresh = useCallback(async () => {
+    const [switchOn, permission] = await Promise.all([readReminderOn(), getReminderPermission()]);
+    // A toggle in flight decides what shows; this late read would undo it.
+    if (busy.current) return;
+    setOn(switchShowsOn(switchOn, permission));
+    setLine(permissionLine(permission));
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+      const subscription = AppState.addEventListener('change', (next) => {
+        if (next === 'active') void refresh();
+      });
+      return () => subscription.remove();
+    }, [refresh])
+  );
+
+  async function toggle() {
+    if (busy.current) return;
+    busy.current = true;
+    const next = !on;
+    setSaving(true);
+    setOn(next);
+    try {
+      const answer = await setReminderOn(next);
+      setOn(answer.on);
+      setLine(permissionLine(answer.permission));
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SwitchRow
+      label={REMINDER_SWITCH_LABEL}
+      checked={on}
+      saving={saving}
+      error={line}
+      onToggle={() => void toggle()}
+    />
+  );
+}
+
+/**
+ * Settings > Notifications (decision D-16): the switches, all ON until the person switches one
+ * off, and under them the 8 PM reminder's switch, which is kept on the phone (`ReminderRow`). Each one saves on its own toggle (`PATCH /me/notification-settings`); the change shows at
  * once, and on a failure the switch goes back and one red line says why.
  *
  * The server side is built after Phase 3's server, so `GET` may 404 for now. Then the switches
@@ -164,6 +231,7 @@ export function NotificationSettingsScreen() {
               onToggle={() => void toggle(row.key)}
             />
           ))}
+          <ReminderRow />
         </View>
       </View>
     </Screen>

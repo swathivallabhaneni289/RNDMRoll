@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SpinTabIcon } from '@/components/nav/SpinTabIcon';
 import { isSelectedTab, TabIcon } from '@/components/nav/TabIcon';
 import { spokenTabLabel, TabLabel } from '@/components/nav/TabLabel';
+import { useReminderSetup } from '@/lib/notifications/reminder';
 import { useSession } from '@/lib/session/store';
 import { requestPendingSpin } from '@/lib/wheel/todayStore';
 import { color, type } from '@/lib/theme/tokens';
@@ -47,6 +48,8 @@ export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const { extrasPending, user } = useSession();
   const userId = user?.id ?? null;
+  // Signed in: the 8 PM reminder's schedule is rebuilt and its tap opens the Spin tab (Phase 6).
+  useReminderSetup();
 
   // A numeric height replaces the bar's own safe-area arithmetic; the bar then pads its content
   // by the inset itself, so the height is the content plus the inset.
