@@ -25,9 +25,10 @@ type Profile struct {
 	Bio string
 }
 
-// Profile reads another person's page head. A miss, yourself and a block
-// either way are all ErrNotFound (the app opens your own Profile tab for
-// you).
+// Profile reads another person's page head. A miss, yourself and a block by
+// the other person are all ErrNotFound (the app opens your own Profile tab
+// for you). When the caller blocked them, the head comes back with
+// RelationBlocked and nothing else: no bio, no follow state.
 func (s *Service) Profile(ctx context.Context, viewer, id uuid.UUID) (Profile, error) {
 	if viewer == id {
 		return Profile{}, ErrNotFound
@@ -41,6 +42,18 @@ func (s *Service) Profile(ctx context.Context, viewer, id uuid.UUID) (Profile, e
 		return Profile{}, err
 	}
 	if blocked {
+		// Read the caller's own block list, not HasBlock again: HasBlock is
+		// also true for a block the other way (and a disabled account),
+		// which stays not found.
+		mine, err := s.repo.Blocks(ctx, viewer)
+		if err != nil {
+			return Profile{}, err
+		}
+		for _, b := range mine {
+			if b.Person.ID == id {
+				return Profile{Person: p, Relation: RelationBlocked}, nil
+			}
+		}
 		return Profile{}, ErrNotFound
 	}
 	rel, followsYou, err := s.repo.RelationOf(ctx, viewer, id)

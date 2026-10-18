@@ -85,13 +85,16 @@ func TestPersonIntegration_HeadForAnyoneGridForAFollowerOnSharedDays(t *testing.
 		t.Fatalf("archived: %v", ids)
 	}
 
-	// Yourself, an unknown id and a block either way are all 404.
+	// Yourself, an unknown id and a block by them are all 404; the one who
+	// blocked sees the empty blocked page (person_block_integration_test.go).
 	w.call(a, http.MethodGet, "/v1/people/"+a.id, nil, http.StatusNotFound)
 	w.call(a, http.MethodGet, "/v1/people/00000000-0000-0000-0000-000000000001", nil, http.StatusNotFound)
 	w.call(a, http.MethodGet, "/v1/people/not-an-id", nil, http.StatusNotFound)
 	w.ok(b, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
 	w.call(a, http.MethodGet, "/v1/people/"+b.id, nil, http.StatusNotFound)
-	w.call(b, http.MethodGet, "/v1/people/"+a.id, nil, http.StatusNotFound)
+	if got := w.ok(b, http.MethodGet, "/v1/people/"+a.id, nil); got["relation"] != "blocked" {
+		t.Fatalf("the blocker's view: %v", got)
+	}
 
 	// The fixed routes beside it still answer.
 	w.ok(a, http.MethodGet, "/v1/people/search?q=pp", nil)

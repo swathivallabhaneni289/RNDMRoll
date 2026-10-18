@@ -1,7 +1,9 @@
 // Package httpapi: person.go serves another person's page (GET
 // /people/:user_id): their name, photo and numbers, the caller's relation,
 // and, for an accepted follower only, the posts grid under the Board rule.
-// A block either way, an unknown id and yourself are all 404 not_found.
+// A block by them, an unknown id and yourself are all 404 not_found; when the
+// caller blocked them the head comes back with relation "blocked", zero
+// figures and no posts (like Instagram's page of someone you blocked).
 package httpapi
 
 import (
@@ -106,6 +108,10 @@ func (h *PersonHandler) person(c *gin.Context) {
 	p, err := h.social.Profile(ctx, u.ID, id)
 	if err != nil {
 		respondFeedError(c, err)
+		return
+	}
+	if p.Relation == social.RelationBlocked {
+		Respond(c, http.StatusOK, personPageView{Person: newPersonView(p.Person), Relation: p.Relation})
 		return
 	}
 	sum, err := h.diary.Summary(ctx, id.String())

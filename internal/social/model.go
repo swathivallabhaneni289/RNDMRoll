@@ -32,6 +32,10 @@ const (
 	RelationNone      Relation = "none"
 	RelationRequested Relation = "requested"
 	RelationFollowing Relation = "following"
+	// RelationBlocked is only on a person page: the caller blocked them
+	// (developer, 2026-10-18, like Instagram: the page stays, empty, with
+	// Unblock).
+	RelationBlocked Relation = "blocked"
 )
 
 // Follow statuses and how an accepted row became accepted (see migration
