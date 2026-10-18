@@ -7,6 +7,9 @@ import { AppText } from '@/components/ui/AppText';
 import type { Comment } from '@/lib/api/board';
 import { ApiError } from '@/lib/api/client';
 import { canHide, hideComment, isHidden, unhideComment } from '@/lib/api/comments';
+import { REPORT_REASONS } from '@/lib/api/person';
+import { REPORT_THANKS, reportComment } from '@/lib/api/reports';
+import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { firstName } from '@/lib/api/social';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
@@ -62,6 +65,49 @@ export function CommentList({
   const [message, setMessage] = useState('');
   // Hide and Unhide answer at once on the row; the next read of the post agrees.
   const [hiddenNow, setHiddenNow] = useState<Record<string, boolean>>({});
+  // The long-press menu: Delete (when the server allows it) and Report (not on your own), then
+  // the reasons for a report.
+  const [menuFor, setMenuFor] = useState<Comment | null>(null);
+  const [menuStep, setMenuStep] = useState<'actions' | 'reasons'>('actions');
+
+  function openMenu(comment: Comment) {
+    setMenuStep('actions');
+    setMenuFor(comment);
+  }
+
+  /** Runs after the menu has closed, so an alert never opens under its dim cover. */
+  function afterClose(action: () => void) {
+    return () => {
+      setMenuFor(null);
+      setTimeout(action, 0);
+    };
+  }
+
+  function sendReport(comment: Comment, reason: (typeof REPORT_REASONS)[number]['reason']) {
+    setMessage('');
+    void reportComment(comment.id, reason)
+      .then(() => setMessage(REPORT_THANKS))
+      .catch((err: unknown) =>
+        setMessage(
+          err instanceof ApiError && err.code === 'network_unavailable'
+            ? err.userMessage
+            : 'Something went wrong. Please try again.',
+        ),
+      );
+  }
+
+  const menuItems: MenuItem[] =
+    menuFor === null
+      ? []
+      : menuStep === 'reasons'
+        ? REPORT_REASONS.map((item) => ({
+            label: item.label,
+            onPress: afterClose(() => sendReport(menuFor, item.reason)),
+          }))
+        : [
+            ...(menuFor.can_delete ? [{ label: 'Delete', onPress: afterClose(() => askDelete(menuFor)) }] : []),
+            ...(menuFor.author.id !== myId ? [{ label: 'Report', onPress: () => setMenuStep('reasons') }] : []),
+          ];
 
   /** Hide or show someone's comment on your own post. No question first, like Instagram. */
   function toggleHidden(comment: Comment, hide: boolean) {
@@ -111,6 +157,8 @@ export function CommentList({
         const isReply = comment.parent_id !== null;
         const kind = isReply ? 'reply' : 'comment';
         const hidden = hiddenNow[comment.id] ?? isHidden(comment);
+        const canReport = comment.author.id !== myId;
+        const hasMenu = comment.can_delete || canReport;
         return (
           <View
             key={comment.id}
@@ -138,7 +186,7 @@ export function CommentList({
               />
             </Pressable>
             <Pressable
-              onLongPress={comment.can_delete ? () => askDelete(comment) : undefined}
+              onLongPress={hasMenu ? () => openMenu(comment) : undefined}
               delayLongPress={400}
               disabled={busyId !== null}
               accessible={false}
@@ -148,10 +196,17 @@ export function CommentList({
               <View
                 accessible
                 accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text}`}
-                accessibilityHint={comment.can_delete ? 'Press and hold to delete.' : undefined}
-                accessibilityActions={comment.can_delete ? [{ name: 'delete', label: 'Delete' }] : undefined}
+                accessibilityHint={hasMenu ? 'Press and hold for more.' : undefined}
+                accessibilityActions={[
+                  ...(comment.can_delete ? [{ name: 'delete', label: 'Delete' }] : []),
+                  ...(canReport ? [{ name: 'report', label: 'Report' }] : []),
+                ]}
                 onAccessibilityAction={(event) => {
                   if (event.nativeEvent.actionName === 'delete') askDelete(comment);
+                  if (event.nativeEvent.actionName === 'report') {
+                    setMenuStep('reasons');
+                    setMenuFor(comment);
+                  }
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
@@ -209,6 +264,7 @@ export function CommentList({
           <QuietNote text={message} />
         </View>
       ) : null}
+      <MenuSheet visible={menuFor !== null} items={menuItems} onClose={() => setMenuFor(null)} />
     </View>
   );
 }

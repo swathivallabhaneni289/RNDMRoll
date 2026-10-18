@@ -1,4 +1,4 @@
-import { getAccessToken, isDefinitiveAuthFailure, refreshSession } from '@/lib/session/store';
+import { getAccessToken, isDefinitiveAuthFailure, refreshSession, signOut } from '@/lib/session/store';
 import type { ApiErrorBody, ApiErrorCode } from '@/lib/api/types';
 
 /**
@@ -27,6 +27,8 @@ const USER_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   email_taken: 'That email is already in use.',
   rate_limited: 'Too many tries. Wait a minute and try again.',
   invalid_credentials: "That email, username or password isn't right.",
+  // An admin disabled the account (the admin page): said on the log-in screen.
+  account_disabled: 'This account has been disabled.',
   photo_rejected: "That file can't be used as a photo. Try another one.",
   photo_upload_failed: 'Photo upload failed. Please try again.',
   // Phase 2 (02-UI-SPEC 4.4). Every other new code uses the generic message below.
@@ -145,6 +147,12 @@ async function request<T>(
     errorBody.reason,
     errorBody.index
   );
+
+  // An admin disabled the account while it was signed in: sign out at once.
+  if (response.status === 401 && code === 'account_disabled' && opts.auth !== false) {
+    signOut().catch(() => undefined);
+    throw apiError;
+  }
 
   // /auth/refresh answers an expired REFRESH token with the same 401 token_expired. Taking
   // this branch for it (or for any unauthenticated call) would start a second refresh whose

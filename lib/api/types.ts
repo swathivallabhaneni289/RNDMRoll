@@ -74,6 +74,7 @@ export interface ApiErrorBody {
  */
 export type ApiErrorCode =
   | 'invalid_credentials'
+  | 'account_disabled'
   | 'email_taken'
   | 'username_taken'
   | 'under_minimum_age'
