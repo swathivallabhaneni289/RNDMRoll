@@ -57,6 +57,9 @@ type Repository interface {
 	// missing.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
 	DeleteComment(ctx context.Context, id uuid.UUID) error
+	// SetCommentHidden hides (at set) or shows (at nil) a comment.
+	// ErrNotFound when it went away.
+	SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error
 }
 
 // Facts is the spin slice's view of the viewer (spin.Service).
@@ -292,7 +295,10 @@ func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time
 		At:        c.CreatedAt,
 		AtLabel:   spin.ViewerLabel(c.CreatedAt, now, zone),
 		CanDelete: social.CanDeleteComment(c.Author.ID == viewer, owner == viewer),
-		ParentID:  c.ParentID,
+		CanHide:   owner == viewer && c.Author.ID != viewer,
+		// The writer of a hidden comment is never told it is hidden.
+		Hidden:   c.Hidden && owner == viewer,
+		ParentID: c.ParentID,
 	}
 }
 

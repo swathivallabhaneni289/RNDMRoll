@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -62,4 +63,23 @@ func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, afte
 // archived ones left out. Anyone who can open the page sees it.
 func (s *Service) PersonPostCount(ctx context.Context, owner uuid.UUID) (int, error) {
 	return s.repo.PostCount(ctx, owner)
+}
+
+// SetCommentHidden hides or shows a comment on the viewer's own post. Only
+// the post's owner may, and never on their own comment (they delete it
+// instead); anything else is ErrNotFound, the same as a missing comment.
+func (s *Service) SetCommentHidden(ctx context.Context, viewer, commentID uuid.UUID, hidden bool) error {
+	c, err := s.repo.CommentByID(ctx, commentID)
+	if err != nil {
+		return err
+	}
+	if c.EntryOwner != viewer || c.Author.ID == viewer {
+		return ErrNotFound
+	}
+	var at *time.Time
+	if hidden {
+		now := s.clk.NowFor(viewer.String()).UTC()
+		at = &now
+	}
+	return s.repo.SetCommentHidden(ctx, commentID, at)
 }
