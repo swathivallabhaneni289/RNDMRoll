@@ -57,3 +57,9 @@ func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, afte
 	}
 	return out, next, nil
 }
+
+// PersonPostCount is the Posts figure of a person's page: their posts,
+// archived ones left out. Anyone who can open the page sees it.
+func (s *Service) PersonPostCount(ctx context.Context, owner uuid.UUID) (int, error) {
+	return s.repo.PostCount(ctx, owner)
+}

@@ -109,3 +109,21 @@ func (s *Service) Report(ctx context.Context, viewer, id uuid.UUID, reason strin
 	}
 	return s.repo.Report(ctx, viewer, id, reason, s.now(viewer))
 }
+
+// PeopleOf is another person's Followers (followers true) or Following list.
+// Like a private Instagram account, only an accepted follower sees it; for
+// anyone else, and yourself (your own lists are GET /follows), it is
+// ErrNotFound.
+func (s *Service) PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followers bool) ([]Person, error) {
+	if err := s.reachable(ctx, viewer, owner); err != nil {
+		return nil, err
+	}
+	rel, _, err := s.repo.RelationOf(ctx, viewer, owner)
+	if err != nil {
+		return nil, err
+	}
+	if rel != RelationFollowing {
+		return nil, ErrNotFound
+	}
+	return s.repo.PeopleOf(ctx, viewer, owner, followers)
+}

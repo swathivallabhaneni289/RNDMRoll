@@ -73,6 +73,10 @@ type Repository interface {
 	Mute(ctx context.Context, muter, muted uuid.UUID, at time.Time) error
 	Unmute(ctx context.Context, muter, muted uuid.UUID) error
 	IsMuted(ctx context.Context, muter, muted uuid.UUID) (bool, error)
+	// PeopleOf lists owner's accepted followers (followers true) or the
+	// people owner follows (accepted), newest first, without anyone who has
+	// a block either way with viewer.
+	PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followers bool) ([]Person, error)
 	// Bio reads a person's bio ("" when none).
 	Bio(ctx context.Context, id uuid.UUID) (string, error)
 	// Report keeps a report of reported by reporter (one per pair; a new

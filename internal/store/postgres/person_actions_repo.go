@@ -50,3 +50,31 @@ func (r *SocialRepo) Bio(ctx context.Context, id uuid.UUID) (string, error) {
 	}
 	return bio, err
 }
+
+// PeopleOf implements social.Repository.
+func (r *SocialRepo) PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followers bool) ([]social.Person, error) {
+	// The other end of owner's accepted follows: who follows owner, or whom
+	// owner follows.
+	other, mine := "f.follower_id", "f.followee_id"
+	if !followers {
+		other, mine = "f.followee_id", "f.follower_id"
+	}
+	rows, err := r.pool.Query(ctx, `
+		select `+personColumns+` from follows f join users u on u.id = `+other+`
+		where `+mine+` = $2 and f.status = 'accepted'
+		  and not `+blockedEither("$1::uuid", "u.id")+`
+		order by f.accepted_at desc nulls last, u.id`, viewer, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []social.Person{}
+	for rows.Next() {
+		p, err := scanPerson(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

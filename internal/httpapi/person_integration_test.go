@@ -177,3 +177,41 @@ func TestPersonIntegration_BioForAnyoneWhoCanOpenThePage(t *testing.T) {
 		t.Fatalf("empty bio: %v", got)
 	}
 }
+
+func TestPersonIntegration_PostsFigureAndListsForAFollower(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("pl_alice", "Alice Ames")
+	b := w.person("pl_bob", "Bob Brown")
+	c := w.person("pl_cara", "Cara Cole")
+	d := w.person("pl_dan", "Dan Dorn")
+	w.post(b, "2026-10-07")
+	archived := w.post(b, "2026-10-08")
+	w.ok(b, http.MethodPost, "/v1/entries/"+archived+"/archive", map[string]any{})
+	w.followAccepted(c, b)
+	w.followAccepted(b, d)
+
+	// The Posts figure is there for a stranger too; archived posts are left out.
+	page := w.ok(a, http.MethodGet, "/v1/people/"+b.id, nil)
+	if dig(t, page, "stats", "posts") != float64(1) {
+		t.Fatalf("posts: %v", page)
+	}
+	// The lists are for an accepted follower only.
+	w.call(a, http.MethodGet, "/v1/people/"+b.id+"/followers", nil, http.StatusNotFound)
+	w.follow(a, b)
+	w.call(a, http.MethodGet, "/v1/people/"+b.id+"/following", nil, http.StatusNotFound)
+	w.ok(a, http.MethodPost, "/v1/follows/"+b.id+"/unfollow", map[string]any{})
+	w.followAccepted(a, b)
+
+	if got := usernames(t, w.ok(a, http.MethodGet, "/v1/people/"+b.id+"/followers", nil)["people"]); len(got) != 2 || !has(got, "pl_cara") || !has(got, "pl_alice") {
+		t.Fatalf("followers: %v", got)
+	}
+	if got := usernames(t, w.ok(a, http.MethodGet, "/v1/people/"+b.id+"/following", nil)["people"]); len(got) != 1 || got[0] != "pl_dan" {
+		t.Fatalf("following: %v", got)
+	}
+	// Someone with a block with the viewer is left out of the lists.
+	w.ok(d, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
+	if got := usernames(t, w.ok(a, http.MethodGet, "/v1/people/"+b.id+"/following", nil)["people"]); len(got) != 0 {
+		t.Fatalf("blocked left out: %v", got)
+	}
+	w.call(a, http.MethodGet, "/v1/people/"+a.id+"/followers", nil, http.StatusNotFound)
+}

@@ -32,6 +32,8 @@ func NewPersonHandler(soc *social.Service, b *board.Service, d *diary.Service) *
 // Register mounts the route on rg (RequireAuth and RequireUser applied).
 func (h *PersonHandler) Register(rg *gin.RouterGroup) {
 	rg.GET("/people/:user_id", perSubject(120), h.person)
+	rg.GET("/people/:user_id/followers", perSubject(60), h.followers)
+	rg.GET("/people/:user_id/following", perSubject(60), h.following)
 	rg.POST("/people/:user_id/mute", perSubject(30), h.mute)
 	rg.POST("/people/:user_id/unmute", perSubject(30), h.unmute)
 	rg.POST("/people/:user_id/report", perSubject(10), h.report)
@@ -43,6 +45,7 @@ type ReportRequest struct {
 }
 
 type personStatsView struct {
+	Posts      int `json:"posts"`
 	Spins      int `json:"spins"`
 	WeekStreak int `json:"week_streak"`
 	Followers  int `json:"followers"`
@@ -110,6 +113,11 @@ func (h *PersonHandler) person(c *gin.Context) {
 		respondFeedError(c, err)
 		return
 	}
+	posts, err := h.board.PersonPostCount(ctx, id)
+	if err != nil {
+		respondFeedError(c, err)
+		return
+	}
 	out := personPageView{
 		Person:     newPersonView(p.Person),
 		Bio:        p.Bio,
@@ -117,6 +125,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		FollowsYou: p.FollowsYou,
 		Muted:      p.Muted,
 		Stats: personStatsView{
+			Posts:      posts,
 			Spins:      sum.Spins,
 			WeekStreak: sum.WeekStreak,
 			Followers:  sum.Followers,
@@ -212,4 +221,29 @@ func (h *PersonHandler) report(c *gin.Context) {
 		return
 	}
 	Respond(c, http.StatusOK, gin.H{})
+}
+
+// followers answers {"people": [Person]}: their followers, for an accepted
+// follower only (404 not_found for anyone else).
+func (h *PersonHandler) followers(c *gin.Context) { h.peopleOf(c, true) }
+
+// following answers {"people": [Person]}: whom they follow, for an accepted
+// follower only.
+func (h *PersonHandler) following(c *gin.Context) { h.peopleOf(c, false) }
+
+func (h *PersonHandler) peopleOf(c *gin.Context, followers bool) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "user_id")
+	if !ok {
+		return
+	}
+	list, err := h.social.PeopleOf(c.Request.Context(), u.ID, id, followers)
+	if err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	Respond(c, http.StatusOK, gin.H{"people": personViews(list)})
 }

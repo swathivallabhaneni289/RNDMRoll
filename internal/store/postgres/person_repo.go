@@ -40,3 +40,10 @@ func (r *BoardRepo) PersonEntries(ctx context.Context, viewer, owner uuid.UUID, 
 	}
 	return out, nil
 }
+
+// PostCount implements board.Repository.
+func (r *BoardRepo) PostCount(ctx context.Context, owner uuid.UUID) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `select count(*) from entries where user_id = $1 and archived_at is null`, owner).Scan(&n)
+	return n, err
+}
