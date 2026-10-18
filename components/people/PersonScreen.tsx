@@ -38,7 +38,7 @@ const GENERIC = 'Something went wrong. Please try again.';
 /**
  * Another person's page, like Instagram's (developer, 2026-10-17: tap anyone's photo or name and
  * it opens their profile). It looks like your own Profile seen by a visitor: their photo, name,
- * @username and the four figures, with one button where your Edit is: Follow, Follow back,
+ * @username, bio and the four figures, with one button where your Edit is: Follow, Follow back,
  * Requested (a tap cancels) or Following (a tap offers Unfollow). The three dots at the top right
  * hold Remove follower (when they follow you), Mute or Unmute (their posts leave your Board), Report
  * (a list of reasons) and Block. None of them is ever told. Every follow is a request, so until they accept, the page ends with "This
@@ -305,6 +305,13 @@ export function PersonScreen({ id }: { id: string }) {
               </View>
               <View style={{ marginLeft: space.md }}>{relationButton(page)}</View>
             </View>
+
+            {/* The bio runs the full width under the photo row, as on your own Profile. */}
+            {page.bio !== '' ? (
+              <View style={{ marginTop: space.sm }}>
+                <AppText role="body">{page.bio}</AppText>
+              </View>
+            ) : null}
 
             {message !== '' ? (
               <View style={{ marginTop: space.sm }} accessibilityLiveRegion="polite">

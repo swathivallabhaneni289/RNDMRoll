@@ -2,9 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 )
 
 // Mute implements social.Repository.
@@ -35,4 +39,14 @@ func (r *SocialRepo) Report(ctx context.Context, reporter, reported uuid.UUID, r
 		on conflict (reporter_id, reported_id) do update set reason = excluded.reason, created_at = excluded.created_at`,
 		reporter, reported, reason, at)
 	return err
+}
+
+// Bio implements social.Repository.
+func (r *SocialRepo) Bio(ctx context.Context, id uuid.UUID) (string, error) {
+	var bio string
+	err := r.pool.QueryRow(ctx, `select coalesce(bio, '') from users where id = $1`, id).Scan(&bio)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", social.ErrNotFound
+	}
+	return bio, err
 }

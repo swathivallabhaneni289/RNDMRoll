@@ -59,7 +59,10 @@ type personPostView struct {
 }
 
 type personPageView struct {
-	Person     personView        `json:"person"`
+	Person personView `json:"person"`
+	// Bio is left out when empty. It is the one place another person's bio
+	// is sent (the person page, like Instagram's).
+	Bio        string            `json:"bio,omitempty"`
 	Relation   social.Relation   `json:"relation"`
 	FollowsYou bool              `json:"follows_you"`
 	Muted      bool              `json:"muted"`
@@ -109,6 +112,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 	}
 	out := personPageView{
 		Person:     newPersonView(p.Person),
+		Bio:        p.Bio,
 		Relation:   p.Relation,
 		FollowsYou: p.FollowsYou,
 		Muted:      p.Muted,

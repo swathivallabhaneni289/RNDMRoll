@@ -20,6 +20,8 @@ export type PersonPost = {
 
 export type PersonPage = {
   person: Person;
+  /** Their bio, '' when none. Shown to anyone who can open the page. */
+  bio: string;
   relation: Relation;
   /** They follow the caller (the button then reads "Follow back"). */
   follows_you: boolean;
@@ -73,6 +75,7 @@ export async function getPerson(userId: string, cursor?: string): Promise<Person
       : null;
     return {
       person,
+      bio: text(body.bio),
       relation: relation(body.relation),
       follows_you: body.follows_you === true,
       muted: body.muted === true,

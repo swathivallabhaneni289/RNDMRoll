@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -148,4 +149,31 @@ func TestPersonIntegration_Report(t *testing.T) {
 	w.call(a, http.MethodPost, "/v1/people/"+a.id+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
 	w.ok(b, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
 	w.call(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
+}
+
+func TestPersonIntegration_BioForAnyoneWhoCanOpenThePage(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("pb_alice", "Alice Ames")
+	b := w.person("pb_bob", "Bob Brown")
+	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"bio": "Spins on Sundays."})
+
+	// The page is read directly: the feed guard forbids "bio", and this is
+	// the one route that sends it, to a stranger too, like Instagram.
+	rec := integrationDo(t, w.engine, http.MethodGet, "/v1/people/"+b.id, a.token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page: %d %s", rec.Code, rec.Body.String())
+	}
+	page := decodeBody(t, rec)
+	if page["bio"] != "Spins on Sundays." || page["posts"] != nil {
+		t.Fatalf("stranger sees the bio and no grid: %v", page)
+	}
+	for _, bad := range []string{`"email"`, `"birthday"`, `"password_hash"`, `"avatar_url"`, `"storage_key"`} {
+		if strings.Contains(rec.Body.String(), bad) {
+			t.Fatalf("page carries %s: %s", bad, rec.Body.String())
+		}
+	}
+	// No bio: the key is left out.
+	if got := w.ok(b, http.MethodGet, "/v1/people/"+a.id, nil); got["bio"] != nil {
+		t.Fatalf("empty bio: %v", got)
+	}
 }

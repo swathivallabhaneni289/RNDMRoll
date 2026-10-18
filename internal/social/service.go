@@ -73,6 +73,8 @@ type Repository interface {
 	Mute(ctx context.Context, muter, muted uuid.UUID, at time.Time) error
 	Unmute(ctx context.Context, muter, muted uuid.UUID) error
 	IsMuted(ctx context.Context, muter, muted uuid.UUID) (bool, error)
+	// Bio reads a person's bio ("" when none).
+	Bio(ctx context.Context, id uuid.UUID) (string, error)
 	// Report keeps a report of reported by reporter (one per pair; a new
 	// one replaces the reason).
 	Report(ctx context.Context, reporter, reported uuid.UUID, reason string, at time.Time) error

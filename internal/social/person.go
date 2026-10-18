@@ -21,6 +21,8 @@ type Profile struct {
 	FollowsYou bool
 	// Muted: the caller muted them (their posts are off the caller's Board).
 	Muted bool
+	// Bio is shown to anyone who can open the page, like Instagram.
+	Bio string
 }
 
 // Profile reads another person's page head. A miss, yourself and a block
@@ -49,7 +51,11 @@ func (s *Service) Profile(ctx context.Context, viewer, id uuid.UUID) (Profile, e
 	if err != nil {
 		return Profile{}, err
 	}
-	return Profile{Person: p, Relation: rel, FollowsYou: followsYou, Muted: muted}, nil
+	bio, err := s.repo.Bio(ctx, id)
+	if err != nil {
+		return Profile{}, err
+	}
+	return Profile{Person: p, Relation: rel, FollowsYou: followsYou, Muted: muted, Bio: bio}, nil
 }
 
 // reachable is nil when viewer may act on id: someone else, who exists, with
