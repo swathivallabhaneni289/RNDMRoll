@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
+import { useSession } from '@/lib/session/store';
+import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 /**
  * The 8 PM reminder (Phase 6, 06-CONTEXT.md "Reminder" and 06-FOLLOW-OVERRIDES.md section 7): a
@@ -55,6 +57,45 @@ export function reminderContent(): NotificationsModule.NotificationContentInput 
 /** Every day at 20:00 local time. Pure; `daily` is the module's DAILY trigger type. */
 export function reminderTrigger(daily: NotificationsModule.SchedulableTriggerInputTypes.DAILY) {
   return { type: daily, hour: REMINDER_HOUR, minute: REMINDER_MINUTE };
+}
+
+/** How many evenings ahead the reminder is set one by one when the next opening is known. */
+export const REMINDER_DAYS_AHEAD = 30;
+
+/**
+ * The evenings the reminder fires on, at 8:00 PM phone time, when the next opening is known
+ * (Today's next_open_at): every 8:00 PM from today on that is still ahead and not before that
+ * opening. So a person who already made today's spin (a first spin in the morning, developer
+ * 2026-10-19) is not told "Your spin is open." that same evening. Pure.
+ */
+export function reminderDates(nowMs: number, nextOpenMs: number, days = REMINDER_DAYS_AHEAD): Date[] {
+  const out: Date[] = [];
+  const start = new Date(nowMs);
+  for (let i = 0; out.length < days && i < days + 2; i += 1) {
+    const at = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, REMINDER_HOUR, REMINDER_MINUTE, 0, 0);
+    // A minute of slack: the server's 8 PM and the phone's can differ by a little.
+    if (at.getTime() > nowMs && at.getTime() >= nextOpenMs - 60_000) out.push(at);
+  }
+  return out;
+}
+
+/** True for any of the reminder's own scheduled notifications. Pure. */
+export function isReminderId(id: string): boolean {
+  return id === REMINDER_ID || id.startsWith(`${REMINDER_ID}-`);
+}
+
+/** The next opening the server last gave (ms), or null before the first Today answer. */
+let nextOpenMs: number | null = null;
+
+/**
+ * Today's next opening, from every Today answer: the schedule is rebuilt when it moves, so the
+ * reminder skips an evening whose spin was already made.
+ */
+export function noteNextOpen(iso: string): void {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms) || ms === nextOpenMs) return;
+  nextOpenMs = ms;
+  void rebuildReminder();
 }
 
 /** True when a reminder should be scheduled. Pure. */
@@ -161,11 +202,24 @@ export function rebuildReminder(): Promise<void> {
       await api.cancelAllScheduledNotificationsAsync();
       const [switchOn, permission] = await Promise.all([readReminderOn(), getReminderPermission()]);
       if (!shouldSchedule(switchOn, permission)) return;
-      await api.scheduleNotificationAsync({
-        identifier: REMINDER_ID,
-        content: reminderContent(),
-        trigger: reminderTrigger(api.SchedulableTriggerInputTypes.DAILY),
-      });
+      if (nextOpenMs === null) {
+        // Not known yet: every evening, until the first Today answer narrows it.
+        await api.scheduleNotificationAsync({
+          identifier: REMINDER_ID,
+          content: reminderContent(),
+          trigger: reminderTrigger(api.SchedulableTriggerInputTypes.DAILY),
+        });
+        return;
+      }
+      // Known: each evening on its own, from the next opening on (rebuilt on every start).
+      const dates = reminderDates(Date.now(), nextOpenMs);
+      for (let i = 0; i < dates.length; i += 1) {
+        await api.scheduleNotificationAsync({
+          identifier: `${REMINDER_ID}-${i}`,
+          content: reminderContent(),
+          trigger: { type: api.SchedulableTriggerInputTypes.DATE, date: dates[i] },
+        });
+      }
     } catch {
       // Nothing scheduled this time; the next app start tries again.
     }
@@ -219,6 +273,15 @@ let handledResponseId: string | null = null;
  */
 export function useReminderSetup(): void {
   const router = useRouter();
+  const { user } = useSession();
+  const snapshot = useTodaySnapshot(user?.id ?? null);
+  const nextOpenAt = snapshot.today?.next_open_at ?? null;
+
+  // Every Today answer: the reminder starts from the next opening, so an evening whose spin was
+  // already made (a first spin in the morning) gets no reminder.
+  useEffect(() => {
+    if (nextOpenAt !== null) noteNextOpen(nextOpenAt);
+  }, [nextOpenAt]);
 
   useEffect(() => {
     const api = loadNotifications();
@@ -244,7 +307,7 @@ export function useReminderSetup(): void {
     function open(response: NotificationsModule.NotificationResponse | null) {
       if (response === null) return;
       const request = response.notification.request;
-      if (request.identifier !== REMINDER_ID) return;
+      if (!isReminderId(request.identifier)) return;
       const responseId = `${request.identifier}:${response.notification.date}`;
       if (handledResponseId === responseId) return;
       handledResponseId = responseId;
