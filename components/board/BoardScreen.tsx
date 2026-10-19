@@ -104,7 +104,8 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
       </Pressable>
       {/* The day in play, as the first of the day headings (developer, 2026-10-18: under the title). */}
       <Text accessibilityRole="header" style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight, marginTop: space.md }}>
-        {board ? overline(board.day_label) : ''}
+        {/* No day line before you follow anyone: there is no day to show yet. */}
+        {board && board.state !== 'no_follows' ? overline(board.day_label) : ''}
       </Text>
     </View>
   );

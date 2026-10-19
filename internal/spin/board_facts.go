@@ -62,13 +62,19 @@ func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, er
 		// A first spin (made before 8:00 PM, developer 2026-10-19) posts for
 		// today's own date: once that day is posted, the Board is already on
 		// today, so the new person sees their post and their friends' at once.
+		// A person who has never spun is on today as well: their first spin
+		// is for today's date, so the Board never says "last night" to them.
 		if late {
 			own := LocalDate(c.now, c.loc)
 			early, err := c.tx.PostedDay(own)
 			if err != nil {
 				return err
 			}
-			if early != nil {
+			anySpin, err := c.tx.HasAnySpin()
+			if err != nil {
+				return err
+			}
+			if early != nil || !anySpin {
 				day, late = own, false
 			}
 		}

@@ -27,9 +27,11 @@ func TestBoardIntegration_AFirstSpinPostedInTheMorningOpensTodaysBoard(t *testin
 	// B, also new, makes a first spin at 9 AM and posts it.
 	bEntry := w.postAt(b, day, 9, 0)
 
-	// A has not posted: before 8 PM the Board is on last night, locked.
+	// A has never spun: the Board is already on today (never "last night"
+	// for a new person), locked until A posts, offering the first spin.
 	w.at(day, 10, 0)
-	if got := w.board(a, ""); got["state"] != "locked" || got["day_label"] != "last_night" {
+	if got := w.board(a, ""); got["state"] != "locked" || got["day_label"] != "today" ||
+		dig(t, got, "locked", "action") != "spin" {
 		t.Fatalf("before A posts: %v", got)
 	}
 
@@ -44,4 +46,13 @@ func TestBoardIntegration_AFirstSpinPostedInTheMorningOpensTodaysBoard(t *testin
 		t.Fatalf("cards: %v", ids)
 	}
 	w.ok(a, http.MethodGet, "/v1/posts/"+bEntry, nil)
+
+	// Someone who has spun before is still on last night before 8 PM.
+	c := w.person("fb_cara", "Cara Cole")
+	w.followAccepted(c, b)
+	w.post(c, "2026-10-06")
+	w.at(day, 11, 0)
+	if got := w.board(c, ""); got["day_label"] != "last_night" {
+		t.Fatalf("a person with an earlier spin: %v", got)
+	}
 }
