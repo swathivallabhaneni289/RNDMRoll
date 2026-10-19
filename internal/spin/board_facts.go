@@ -46,8 +46,10 @@ type BoardFacts struct {
 	CategoryName *string
 }
 
-// BoardFacts reads the viewer's Board facts. A person with no readable
-// stored zone gets ErrZoneMissing. A first call makes the state row, as
+// BoardFacts reads the viewer's Board facts. Before 8:00 PM the Board's day
+// is the evening before, unless the viewer already posted for today's own
+// date (a first spin), then it is today. A person with no readable stored
+// zone gets ErrZoneMissing. A first call makes the state row, as
 // Today does.
 func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, error) {
 	var out BoardFacts
@@ -57,6 +59,19 @@ func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, er
 			return err
 		}
 		day, late := DayInPlay(c.now, c.loc)
+		// A first spin (made before 8:00 PM, developer 2026-10-19) posts for
+		// today's own date: once that day is posted, the Board is already on
+		// today, so the new person sees their post and their friends' at once.
+		if late {
+			own := LocalDate(c.now, c.loc)
+			early, err := c.tx.PostedDay(own)
+			if err != nil {
+				return err
+			}
+			if early != nil {
+				day, late = own, false
+			}
+		}
 		posted, err := c.tx.PostedDay(day)
 		if err != nil {
 			return err
