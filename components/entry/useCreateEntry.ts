@@ -4,7 +4,6 @@ import type { EntryDraft } from '@/components/entry/useEntryDraft';
 import { ApiError } from '@/lib/api/client';
 import { createEntry, entryErrorMessage, uploadEntryPhoto, type CreateEntryRequest } from '@/lib/api/entries';
 import { cleanTitle } from '@/lib/entry/rules';
-import { askForReminderOnce } from '@/lib/notifications/reminder';
 import { applyToday } from '@/lib/wheel/todayStore';
 import { refetchToday } from '@/lib/wheel/useToday';
 
@@ -132,8 +131,6 @@ export function useCreateEntry({
       // If the person already left (Cancel, then Leave, while this ran) the screen is gone:
       // going back again would close the wrong one.
       if (mountedRef.current && navigation.isFocused()) goBack();
-      // After the first posted day only: the one-time ask for the 8 PM reminder (Phase 6).
-      void askForReminderOnce();
     } catch (err) {
       const failure = entryErrorMessage(err);
       if (mountedRef.current) setMessage(failure.text);

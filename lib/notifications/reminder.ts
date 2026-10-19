@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Alert, AppState } from 'react-native';
+import { AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
@@ -40,12 +40,6 @@ export const REMINDER_SWITCH_LABEL = 'Remind me at 8:00 PM';
 
 /** The one line under the switch while the phone's own permission is off. */
 export const PERMISSION_OFF_MESSAGE = 'Turn on notifications for RNDMRoll in Settings.';
-
-/** The one-time ask after the first posted day. */
-export const ASK_TITLE = 'Get a reminder at 8:00 PM?';
-export const ASK_MESSAGE = "We'll tell you when your spin opens.";
-export const ASK_YES = 'Remind me';
-export const ASK_NO = 'Not now';
 
 const REMINDER_ON_KEY = 'rndmroll.reminder_on';
 const REMINDER_ASKED_KEY = 'rndmroll.reminder_asked';
@@ -199,20 +193,19 @@ export async function setReminderOn(on: boolean): Promise<{ on: boolean; permiss
 }
 
 /**
- * The one-time ask after the person's first posted day: the phone's own alert, "Remind me" or
- * "Not now". It is marked asked when it shows, so it never comes again whatever the answer; the
- * switch on Settings > Notifications is the way back. Skipped when the switch is already on or
- * this build has no notification module.
+ * The one-time ask at the beginning (developer, 2026-10-19: "can RNDMRoll send notifications" at
+ * the start, not after the first post): on the first signed-in start, the phone's own prompt to
+ * allow notifications. Allow turns the 8 PM reminder on; Don't Allow leaves it off. It is marked
+ * asked first, so it never comes again whatever the answer; the switch on Settings >
+ * Notifications is the way back. Skipped when this build has no notification module.
  */
-export async function askForReminderOnce(): Promise<void> {
+export async function askAtStartOnce(): Promise<void> {
   if (!reminderAvailable()) return;
   if (await readFlag(REMINDER_ASKED_KEY)) return;
   await writeFlag(REMINDER_ASKED_KEY, true);
-  if (await readReminderOn()) return;
-  Alert.alert(ASK_TITLE, ASK_MESSAGE, [
-    { text: ASK_NO, style: 'cancel' },
-    { text: ASK_YES, onPress: () => void setReminderOn(true) },
-  ]);
+  const permission = await askPermission();
+  if (permission === 'granted') await writeFlag(REMINDER_ON_KEY, true);
+  await rebuildReminder();
 }
 
 /** The id of the last tap already handled, so a remount never opens the Spin tab twice for it. */
@@ -231,7 +224,9 @@ export function useReminderSetup(): void {
     const api = loadNotifications();
     if (api === null) return;
 
-    void rebuildReminder();
+    // The first signed-in start asks to allow notifications (and then rebuilds); later starts
+    // only rebuild.
+    void askAtStartOnce().then(() => rebuildReminder());
 
     try {
       api.setNotificationHandler({
