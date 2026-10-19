@@ -78,3 +78,43 @@ func (r *SocialRepo) PeopleOf(ctx context.Context, viewer, owner uuid.UUID, foll
 	}
 	return out, rows.Err()
 }
+
+// Suggestions implements social.Repository. A person who follows the
+// viewer comes first, then the most people in common.
+func (r *SocialRepo) Suggestions(ctx context.Context, viewer uuid.UUID, limit int) ([]social.Suggestion, error) {
+	rows, err := r.pool.Query(ctx, `
+		with cand as (
+			select f2.followee_id as id, 1 as mutual, false as follows_you
+			from follows f1 join follows f2 on f2.follower_id = f1.followee_id and f2.status = 'accepted'
+			where f1.follower_id = $1 and f1.status = 'accepted'
+			union all
+			select f.follower_id, 0, true from follows f
+			where f.followee_id = $1 and f.status = 'accepted'
+		), scored as (
+			select id, sum(mutual)::int as mutual, bool_or(follows_you) as follows_you
+			from cand group by id
+		)
+		select `+personColumns+`, s.mutual, s.follows_you
+		from scored s join users u on u.id = s.id
+		where u.id <> $1
+		  and u.name is not null and u.name <> '' and u.username is not null
+		  and not exists (select 1 from follows mine where mine.follower_id = $1 and mine.followee_id = u.id)
+		  and not `+blockedEither("$1::uuid", "u.id")+`
+		order by s.follows_you desc, s.mutual desc, lower(u.username)
+		limit $2`, viewer, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []social.Suggestion{}
+	for rows.Next() {
+		var sg social.Suggestion
+		p, err := scanPerson(rows, &sg.Mutual, &sg.FollowsYou)
+		if err != nil {
+			return nil, err
+		}
+		sg.Person = p
+		out = append(out, sg)
+	}
+	return out, rows.Err()
+}

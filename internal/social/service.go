@@ -77,6 +77,11 @@ type Repository interface {
 	// people owner follows (accepted), newest first, without anyone who has
 	// a block either way with viewer.
 	PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followers bool) ([]Person, error)
+	// Suggestions are people the viewer may know (Find your friends): people
+	// that the people they follow follow, and people who follow them, minus
+	// anyone they follow or asked, themselves and any block either way;
+	// the most likely first, at most limit.
+	Suggestions(ctx context.Context, viewer uuid.UUID, limit int) ([]Suggestion, error)
 	// Bio reads a person's bio ("" when none).
 	Bio(ctx context.Context, id uuid.UUID) (string, error)
 	// Report keeps a report of reported by reporter (one per pair; a new

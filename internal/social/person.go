@@ -140,3 +140,19 @@ func (s *Service) PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followe
 	}
 	return s.repo.PeopleOf(ctx, viewer, owner, followers)
 }
+
+// Suggestion is one person the viewer may know: how many of the people the
+// viewer follows follow them, and whether they follow the viewer.
+type Suggestion struct {
+	Person     Person
+	Mutual     int
+	FollowsYou bool
+}
+
+// MaxSuggestions is the most people Find your friends suggests.
+const MaxSuggestions = 20
+
+// Suggestions are people the viewer may know (Find your friends).
+func (s *Service) Suggestions(ctx context.Context, viewer uuid.UUID) ([]Suggestion, error) {
+	return s.repo.Suggestions(ctx, viewer, MaxSuggestions)
+}

@@ -33,6 +33,7 @@ func NewPersonHandler(soc *social.Service, b *board.Service, d *diary.Service) *
 
 // Register mounts the route on rg (RequireAuth and RequireUser applied).
 func (h *PersonHandler) Register(rg *gin.RouterGroup) {
+	rg.GET("/people/suggestions", perSubject(60), h.suggestions)
 	rg.GET("/people/:user_id", perSubject(120), h.person)
 	rg.GET("/people/:user_id/followers", perSubject(60), h.followers)
 	rg.GET("/people/:user_id/following", perSubject(60), h.following)
@@ -252,4 +253,29 @@ func (h *PersonHandler) peopleOf(c *gin.Context, followers bool) {
 		return
 	}
 	Respond(c, http.StatusOK, gin.H{"people": personViews(list)})
+}
+
+type suggestionView struct {
+	Person     personView `json:"person"`
+	Mutual     int        `json:"mutual"`
+	FollowsYou bool       `json:"follows_you"`
+}
+
+// suggestions answers GET /people/suggestions with {"people": [...]}: people
+// the caller may know, for Find your friends.
+func (h *PersonHandler) suggestions(c *gin.Context) {
+	u, ok := finishedUser(c)
+	if !ok {
+		return
+	}
+	list, err := h.social.Suggestions(c.Request.Context(), u.ID)
+	if err != nil {
+		respondFeedError(c, err)
+		return
+	}
+	out := make([]suggestionView, 0, len(list))
+	for _, sg := range list {
+		out = append(out, suggestionView{Person: newPersonView(sg.Person), Mutual: sg.Mutual, FollowsYou: sg.FollowsYou})
+	}
+	Respond(c, http.StatusOK, gin.H{"people": out})
 }
