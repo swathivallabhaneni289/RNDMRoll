@@ -14,6 +14,7 @@ export default function TodayLayout() {
       <Stack.Screen name="edit-wheel" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="follow-requests" />
+      <Stack.Screen name="find-friends" />
       <Stack.Screen name="post" />
       <Stack.Screen name="person" />
       <Stack.Screen name="person-people" />

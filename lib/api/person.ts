@@ -1,5 +1,5 @@
 import { api, ApiError } from '@/lib/api/client';
-import { readPerson, type Person, type Relation } from '@/lib/api/social';
+import { readPerson, type Person, type Relation, type SearchHit } from '@/lib/api/social';
 
 /**
  * Another person's page (GET /people/{user_id}): who they are, their four figures, the caller's
@@ -141,4 +141,20 @@ export async function getPeopleOf(userId: string, list: 'followers' | 'following
     if (err instanceof ApiError && err.code === 'not_found') return null;
     throw err;
   }
+}
+
+/**
+ * GET /people/suggestions: people you may know for Find your friends (people who follow you first,
+ * then the people the people you follow follow). Each comes as a search hit with no relation yet,
+ * so the same Follow button works.
+ */
+export async function getSuggestions(): Promise<SearchHit[]> {
+  const body = await api.get<Record<string, unknown>>('/people/suggestions');
+  const raw = Array.isArray(body?.people) ? body.people : [];
+  const out: SearchHit[] = [];
+  for (const item of raw as Record<string, unknown>[]) {
+    const person = readPerson(item?.person);
+    if (person !== null) out.push({ person, relation: 'none', follows_you: item.follows_you === true });
+  }
+  return out;
 }

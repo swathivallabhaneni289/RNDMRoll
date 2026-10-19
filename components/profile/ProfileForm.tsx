@@ -563,7 +563,8 @@ export function ProfileForm({
     }
     // Today first, the flag second, in this order: clearing the flag first would remount this
     // form as the edit page for a frame before the tab switch (plan 02-02 decision 11).
-    router.navigate('/(app)/today');
+    // Then Find your friends, once (developer, 2026-10-19), and Done goes on to the Spin page.
+    router.navigate('/(app)/today/find-friends');
     finishExtras();
   }
 
@@ -622,7 +623,8 @@ export function ProfileForm({
   // Skip for now: leave the photo and bio for later and go to Today (then clear the flag, in
   // that order, so the edit page never flashes).
   function handleSkipExtras() {
-    router.navigate('/(app)/today');
+    // Then Find your friends, once (developer, 2026-10-19), and Done goes on to the Spin page.
+    router.navigate('/(app)/today/find-friends');
     finishExtras();
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { PersonRow } from '@/components/people/PeopleScreen';
@@ -8,9 +8,12 @@ import { Chip } from '@/components/ui/Chip';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { Screen } from '@/components/ui/Screen';
 import { blockUser } from '@/lib/api/account';
+import { getSuggestions } from '@/lib/api/person';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ApiError } from '@/lib/api/client';
 import { firstName, follow, searchPeople, unfollow, type Person, type SearchHit } from '@/lib/api/social';
 import { useOpenPerson } from '@/lib/people/openPerson';
+import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 /** The search waits this long after the last key, so a fast typist sends one request, not ten. */
@@ -24,14 +27,21 @@ function messageFor(err: unknown): string {
 }
 
 /**
- * Search (developer, 2026-10-16): opened from the search icon in the Board's header. One search box
- * and nothing else to press: results come as you type, by the start of a username, a name or a
- * word of a name. Each person has one button: 'Follow' or 'Follow back', 'Requested' (tap cancels)
- * or 'Following' (tap opens Unfollow and Block). Nothing here is red; a failure is one quiet line.
+ * Search (developer, 2026-10-16): opened from the search icon in the Board's header. One search box:
+ * results come as you type, by the start of a username, a name or a word of a name. Each person has
+ * one button: 'Follow' or 'Follow back', 'Requested' (tap cancels) or 'Following' (tap opens Unfollow
+ * and Block). Nothing here is red; a failure is one quiet line.
+ *
+ * Find your friends (developer, 2026-10-19): with the box empty the page shows 'Invite friends'
+ * (the phone's share sheet with your username) and 'Suggested for you' (people who follow you, then
+ * people the people you follow follow). `welcome` is the same page once after sign-up: a title
+ * 'Find your friends' in place of Back, no keyboard at first, and 'Done' to go on to the Spin page.
  */
-export function SearchScreen() {
+export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const router = useRouter();
   const openPerson = useOpenPerson();
+  const { user } = useSession();
+  const [suggestions, setSuggestions] = useState<SearchHit[] | null>(null);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -67,13 +77,40 @@ export function SearchScreen() {
     return () => clearTimeout(id);
   }, [query]);
 
+  // The suggestions, read once when the page opens; a failure leaves the list off.
+  useEffect(() => {
+    let alive = true;
+    getSuggestions()
+      .then((next) => {
+        if (alive) setSuggestions(next);
+      })
+      .catch(() => {
+        if (alive) setSuggestions([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace('/(app)/board');
   }
 
+  function done() {
+    router.replace('/(app)/today');
+  }
+
+  function invite() {
+    const handle = user?.username ? ` Find me as @${user.username}.` : '';
+    void Share.share({ message: `I'm on RNDMRoll, one spin a day.${handle}` }).catch(() => undefined);
+  }
+
   function patch(personId: string, next: Partial<SearchHit>) {
-    setHits((now) => (now === null ? now : now.map((hit) => (hit.person.id === personId ? { ...hit, ...next } : hit))));
+    const apply = (list: SearchHit[] | null) =>
+      list === null ? list : list.map((hit) => (hit.person.id === personId ? { ...hit, ...next } : hit));
+    setHits(apply);
+    setSuggestions(apply);
   }
 
   async function act(work: () => Promise<void>) {
@@ -156,17 +193,31 @@ export function SearchScreen() {
   return (
     <Screen edges={['top', 'left', 'right']} scroll={false}>
       <View style={{ flex: 1 }}>
+        {welcome ? (
+          <View style={{ marginTop: space.md, marginBottom: space.md }}>
+            <AppText role="title" accessibilityRole="header">
+              Find your friends
+            </AppText>
+            <View style={{ marginTop: space.xs }}>
+              <AppText role="body" tone="muted">
+                Follow people you know to see their spins on your Board.
+              </AppText>
+            </View>
+          </View>
+        ) : null}
         {/* Back, then the one search box. */}
         <View style={{ height: minTouchTarget, flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable
-            onPress={goBack}
-            accessibilityRole="button"
-            accessibilityLabel="Back to Board"
-            hitSlop={{ right: 8 }}
-            style={{ height: minTouchTarget, justifyContent: 'center', marginRight: space.sm }}
-          >
-            <Ionicons name="chevron-back" size={24} color={color.ink} />
-          </Pressable>
+          {welcome ? null : (
+            <Pressable
+              onPress={goBack}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Board"
+              hitSlop={{ right: 8 }}
+              style={{ height: minTouchTarget, justifyContent: 'center', marginRight: space.sm }}
+            >
+              <Ionicons name="chevron-back" size={24} color={color.ink} />
+            </Pressable>
+          )}
           <View
             style={{
               flex: 1,
@@ -184,7 +235,7 @@ export function SearchScreen() {
               onChangeText={setQuery}
               placeholder="Search"
               placeholderTextColor={color.muted}
-              autoFocus
+              autoFocus={!welcome}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="off"
@@ -216,7 +267,41 @@ export function SearchScreen() {
         ) : null}
 
         <ScrollView style={{ flex: 1, marginTop: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-          {trimmed === '' ? null : hits === null ? (
+          {trimmed === '' ? (
+            <View>
+              <Pressable
+                onPress={invite}
+                accessibilityRole="button"
+                accessibilityLabel="Invite friends"
+                accessibilityHint="Opens the share sheet with your username."
+                style={{ minHeight: minTouchTarget, flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}
+              >
+                <Ionicons name="paper-plane-outline" size={22} color={color.ink} />
+                <View style={{ marginLeft: space.md, flex: 1 }}>
+                  <AppText role="button">Invite friends</AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={color.muted} />
+              </Pressable>
+              {suggestions !== null && suggestions.length > 0 ? (
+                <View style={{ marginTop: space.lg }}>
+                  <AppText role="button">Suggested for you</AppText>
+                  <View style={{ marginTop: space.sm }}>
+                    {suggestions.map((hit, index) => (
+                      <PersonRow
+                        key={hit.person.id}
+                        person={hit.person}
+                        first={index === 0}
+                        onPress={() => openPerson(hit.person.id)}
+                        pressHint="Opens their profile."
+                      >
+                        {button(hit)}
+                      </PersonRow>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : hits === null ? (
             <AppText role="label" tone="muted">
               {searching ? 'Searching.' : ''}
             </AppText>
@@ -239,6 +324,11 @@ export function SearchScreen() {
           )}
           <View style={{ height: space.xl }} />
         </ScrollView>
+        {welcome ? (
+          <View style={{ paddingVertical: space.md }}>
+            <PrimaryButton label="Done" onPress={done} />
+          </View>
+        ) : null}
       </View>
       <MenuSheet visible={menu !== null} items={menuItems} onClose={() => setMenu(null)} />
     </Screen>
