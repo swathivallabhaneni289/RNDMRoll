@@ -42,7 +42,8 @@ const (
 	// StateWaiting: before 8:00 PM, or the day was missed, or a daily spin
 	// under 12 hours old keeps the wheel shut.
 	StateWaiting TodayState = "waiting"
-	// StateOpen: 8:00 PM or later, no spin yet today.
+	// StateOpen: 8:00 PM or later, no spin yet today; or, at any hour, the
+	// person has never spun (their first spin, see Today.FirstSpin).
 	StateOpen TodayState = "open"
 	// StateResult: a spin was made today.
 	StateResult TodayState = "result"
@@ -219,6 +220,10 @@ type BonusView struct {
 // the server in the person's current zone ("Friday"). Entry is the summary of
 // the entry of the shown spin's date, and null when there is none (including
 // after the entry was deleted) and in every state but posted and skipped.
+// FirstSpin is true only when the state is open because of the first spin
+// rule: the person has never spun and it is before 8:00 PM, so the phone can
+// say "Your first spin is ready." At 8:00 PM or later the normal rule opens
+// the wheel and FirstSpin is false.
 type Today struct {
 	Now             Instant      `json:"now"`
 	TimeZone        string       `json:"time_zone"`
@@ -232,6 +237,7 @@ type Today struct {
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
 	Bonus           BonusView    `json:"bonus"`
+	FirstSpin       bool         `json:"first_spin"`
 }
 
 // TodayInput is what BuildToday needs. The service reads all of it under the
@@ -263,6 +269,10 @@ type TodayInput struct {
 	// LastDailySpunAt is when the person's latest daily spin was made, in
 	// any zone, or nil.
 	LastDailySpunAt *time.Time
+
+	// NeverSpun is true when the person has no spin row at all (daily or
+	// bonus, any date). Such a person may spin at once, whatever the hour.
+	NeverSpun bool
 
 	// Wheel is the live wheel, shown when no spin is shown.
 	Wheel []WheelEntry
@@ -313,8 +323,8 @@ func settledAfterClose(s *Spin) bool {
 //
 //  1. a spin was made on the local date (its latest spin is shown): posted
 //     or skipped when that spin's result says so, else result;
-//  2. it is 8:00 PM or later and no daily spin was made in the last 12
-//     hours: open;
+//  2. it is 8:00 PM or later, or the person has never spun (the first
+//     spin rule), and no daily spin was made in the last 12 hours: open;
 //  3. yesterday's latest spin is open and the late window has not ended
 //     (whatever zone made it): late;
 //  4. yesterday's latest spin was posted or skipped at or after its window
@@ -327,7 +337,8 @@ func settledAfterClose(s *Spin) bool {
 // the shown spin's date.
 //
 // next_open_at is the first opening strictly after now and at or after the
-// last daily spin plus 12 hours.
+// last daily spin plus 12 hours. When the local date already has a spin (a
+// first spin made before 8:00 PM), that date's own opening is passed over.
 func BuildToday(in TodayInput) Today {
 	loc := in.Loc
 	today := LocalDate(in.Now, loc)
@@ -335,6 +346,7 @@ func BuildToday(in TodayInput) Today {
 	prev := PrevDate(today, loc)
 
 	state := StateWaiting
+	firstSpin := false
 	var shown *Spin
 	var entry *EntryRef
 	switch {
@@ -344,8 +356,9 @@ func BuildToday(in TodayInput) Today {
 		if state != StateResult {
 			entry = in.Entry
 		}
-	case !in.Now.Before(win.OpensAt) && gapAllowsSpin(in.Now, in.LastDailySpunAt):
+	case (in.NeverSpun || !in.Now.Before(win.OpensAt)) && gapAllowsSpin(in.Now, in.LastDailySpunAt):
 		state = StateOpen
+		firstSpin = in.NeverSpun && in.Now.Before(win.OpensAt)
 	case in.YesterdaySpin != nil && in.Now.Before(WindowFor(prev, loc).LateUntil):
 		y := in.YesterdaySpin
 		switch {
@@ -361,6 +374,11 @@ func BuildToday(in TodayInput) Today {
 		if earliest := in.LastDailySpunAt.Add(MinSpinGap); next.Before(earliest) {
 			next = NextOpen(earliest.Add(-time.Nanosecond), loc)
 		}
+	}
+	if in.Spin != nil && next.Before(win.ClosesAt) {
+		// Today was already spun (a first spin before 8:00 PM): the next
+		// opening is the one of the date that begins when today closes.
+		next = win.LateUntil
 	}
 
 	wheel := in.Wheel
@@ -424,6 +442,7 @@ func BuildToday(in TodayInput) Today {
 			// that already has its bonus offers no second.
 			CanUse: state == StateResult && !in.Settled && in.BonusHeld && shown != nil && shown.Kind == KindDaily,
 		},
+		FirstSpin: firstSpin,
 	}
 }
 

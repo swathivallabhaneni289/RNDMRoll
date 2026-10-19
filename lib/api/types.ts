@@ -214,6 +214,12 @@ export interface Today {
   wheel: WheelEntry[];
   week: Week;
   bonus: Bonus;
+  /**
+   * True only while the wheel is open because this is the person's first spin ever: they have never
+   * spun and it is before 8:00 PM, so the wheel opens at once and that spin counts as today's. An
+   * older server leaves the key out, so read it with `=== true`.
+   */
+  first_spin: boolean;
 }
 
 export interface SpinResponse {

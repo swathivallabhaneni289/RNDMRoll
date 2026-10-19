@@ -332,6 +332,10 @@ func (t *memTx) LastDailySpunAt() (*time.Time, error) {
 	return last, nil
 }
 
+func (t *memTx) HasAnySpin() (bool, error) {
+	return len(t.d.spins) > 0, nil
+}
+
 func (t *memTx) InsertSpin(s spin.Spin) (spin.Spin, bool, error) {
 	categoryExists := false
 	for _, c := range t.d.cats {

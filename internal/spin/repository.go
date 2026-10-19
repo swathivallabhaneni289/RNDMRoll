@@ -146,6 +146,10 @@ type Tx interface {
 	// LastDailySpunAt returns when the person's latest daily spin was made,
 	// on any date, or nil.
 	LastDailySpunAt() (*time.Time, error)
+	// HasAnySpin reports whether the person has any spin row at all, daily
+	// or bonus, on any date. A person with none may make a first spin at
+	// once (see firstSpinAllowed).
+	HasAnySpin() (bool, error)
 	// InsertSpin stores a spin, ignoring s.ID, s.Result, s.SettledAt and
 	// s.CreatedAt (a new spin is open and not settled).
 	InsertSpin(s Spin) (stored Spin, inserted bool, err error)

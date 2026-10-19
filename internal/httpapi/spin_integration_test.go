@@ -45,6 +45,11 @@ func TestSpinIntegration_FullDayOverPostgres(t *testing.T) {
 	do(http.MethodPost, "/v1/time-zone", session.AccessToken, map[string]any{"time_zone": ny})
 	do(http.MethodPost, "/v1/time-zone", other.AccessToken, map[string]any{"time_zone": ny})
 
+	// A spin on Wednesday evening, so the first spin rule (a person who has
+	// never spun may spin at once) does not open the wheel early on Friday.
+	at("2026-10-07", 20, 30, 0)
+	do(http.MethodPost, "/v1/spin", session.AccessToken, map[string]any{"for_date": "2026-10-07"})
+
 	// Four pretend days earn the bonus.
 	at("2026-10-08", 12, 0, 0)
 	posted := do(http.MethodPost, "/v1/test/posted-days", session.AccessToken, map[string]any{
@@ -83,8 +88,8 @@ func TestSpinIntegration_FullDayOverPostgres(t *testing.T) {
 		t.Fatalf("bonus retry: %v", retry)
 	}
 	var spinRows, held int
-	if err := pool.QueryRow(ctx, `select count(*) from spins`).Scan(&spinRows); err != nil || spinRows != 2 {
-		t.Fatalf("spin rows = %d (err %v), want 2", spinRows, err)
+	if err := pool.QueryRow(ctx, `select count(*) from spins`).Scan(&spinRows); err != nil || spinRows != 3 {
+		t.Fatalf("spin rows = %d (err %v), want 3", spinRows, err)
 	}
 	if err := pool.QueryRow(ctx, `select bonus_held from user_spin_state where user_id = (select id from users where email = $1)`, email).Scan(&held); err != nil || held != 0 {
 		t.Fatalf("bonus_held = %d (err %v), want 0", held, err)
@@ -130,7 +135,9 @@ func TestSpinIntegration_FullDayOverPostgres(t *testing.T) {
 		t.Fatalf("late: %v", late)
 	}
 	do(http.MethodPost, "/v1/test/reset", session.AccessToken, map[string]any{})
-	if got := do(http.MethodGet, "/v1/today", session.AccessToken, nil); got["state"] != "waiting" || got["spin"] != nil {
+	// The reset deletes every spin, so the person has never spun again and
+	// the first spin rule opens the wheel at once.
+	if got := do(http.MethodGet, "/v1/today", session.AccessToken, nil); got["state"] != "open" || got["first_spin"] != true || got["spin"] != nil {
 		t.Fatalf("after reset: %v", got)
 	}
 

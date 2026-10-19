@@ -174,6 +174,10 @@ func (s *Service) todayIn(c *call) (Today, error) {
 	if err != nil {
 		return Today{}, err
 	}
+	anySpin, err := tx.HasAnySpin()
+	if err != nil {
+		return Today{}, err
+	}
 	cats, err := tx.LiveCategories()
 	if err != nil {
 		return Today{}, err
@@ -207,6 +211,7 @@ func (s *Service) todayIn(c *call) (Today, error) {
 		YesterdayEntry:  yesterdayEntry,
 		Settled:         settled,
 		LastDailySpunAt: last,
+		NeverSpun:       !anySpin,
 		Wheel:           entriesOf(cats),
 		BonusHeld:       st.BonusHeld == 1,
 		Goal:            st.WeeklyGoal,
@@ -283,8 +288,9 @@ type SpinOutcome struct {
 // server's date). In order: a daily spin already on forDate is returned with
 // Already true, so an answer lost at 23:59:58 and retried at 00:00:01 still
 // gets its spin; forDate before the server date is ErrClosed and after it
-// ErrNotOpen; before 8:00 PM, or under 12 hours after the last daily spin,
-// is ErrNotOpen; otherwise the server picks by weight and stores the spin
+// ErrNotOpen; before 8:00 PM (unless the person has never spun: the first
+// spin rule), or under 12 hours after the last daily spin, is ErrNotOpen;
+// otherwise the server picks by weight and stores the spin
 // with a copy of the wheel it used.
 func (s *Service) Spin(ctx context.Context, userID string, forDate *Date) (SpinOutcome, error) {
 	var out SpinOutcome
@@ -327,7 +333,18 @@ func (s *Service) makeDailySpin(c *call, date Date) error {
 	}
 	window := WindowFor(c.today, c.loc)
 	if c.now.Before(window.OpensAt) {
-		return ErrNotOpen
+		// The first spin rule: a person who has never spun (no spin row at
+		// all, daily or bonus) may spin at once, whatever the hour. That
+		// spin is this local date's daily spin, so the date offers no
+		// second one at 8:00 PM. The stored window stays the date's real
+		// 8:00 PM to midnight window.
+		anySpin, err := c.tx.HasAnySpin()
+		if err != nil {
+			return err
+		}
+		if anySpin {
+			return ErrNotOpen
+		}
 	}
 	last, err := c.tx.LastDailySpunAt()
 	if err != nil {

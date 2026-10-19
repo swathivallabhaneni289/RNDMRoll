@@ -345,6 +345,12 @@ func (t *pgTx) LatestSpinOfDate(d spin.Date) (*spin.Spin, error) {
 	return t.spinQuery(`local_date = $2::date order by seq desc limit 1`, d.String())
 }
 
+func (t *pgTx) HasAnySpin() (bool, error) {
+	var found bool
+	err := t.tx.QueryRow(t.ctx, `select exists (select 1 from spins where user_id = $1)`, t.uid).Scan(&found)
+	return found, err
+}
+
 func (t *pgTx) LastDailySpunAt() (*time.Time, error) {
 	var at *time.Time
 	err := t.tx.QueryRow(t.ctx, `select max(spun_at) from spins where user_id = $1 and kind = 'daily'`, t.uid).Scan(&at)

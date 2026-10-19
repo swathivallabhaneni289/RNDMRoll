@@ -124,6 +124,15 @@ func (e *Env) ready(t *testing.T, zoneName string) string {
 	return u
 }
 
+// spunBefore makes a daily spin for u at 8:30 PM New York time on dateStr, so
+// the person is no longer a first spinner. Pick a date at least two days
+// before the test's own, so that spin leaves no late window behind.
+func (e *Env) spunBefore(t *testing.T, u, dateStr string) {
+	t.Helper()
+	e.setClock(t, ny, dateStr, 20, 30, 0)
+	e.spin(t, u)
+}
+
 func (e *Env) wheel(t *testing.T, u string) spin.WheelView {
 	t.Helper()
 	w, err := e.Service.Wheel(ctx, u)
@@ -298,6 +307,7 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 
 	run("a spin waits for 8 PM and a second one returns the first", func(t *testing.T, e *Env) {
 		u := e.ready(t, ny)
+		e.spunBefore(t, u, "2026-10-05")
 		e.setClock(t, ny, "2026-10-07", 19, 59, 59)
 		if _, err := e.Service.Spin(ctx, u, nil); !errors.Is(err, spin.ErrNotOpen) {
 			t.Fatalf("Spin at 19:59:59: %v, want ErrNotOpen", err)
@@ -305,7 +315,7 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		if got := e.today(t, u); got.State != spin.StateWaiting {
 			t.Fatalf("state = %s, want waiting", got.State)
 		}
-		wantSpinRows(t, e, u, 0)
+		wantSpinRows(t, e, u, 1)
 
 		e.setClock(t, ny, "2026-10-07", 20, 0, 0)
 		if got := e.today(t, u); got.State != spin.StateOpen {
@@ -333,6 +343,114 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		again := e.spin(t, u)
 		if !again.Already || again.Today.Spin.ID != s.ID {
 			t.Fatalf("second spin: already %v id %s, want already and %s", again.Already, again.Today.Spin.ID, s.ID)
+		}
+		wantSpinRows(t, e, u, 2)
+	})
+
+	run("a person who has never spun may spin at once, and it is that day's spin", func(t *testing.T, e *Env) {
+		u := e.ready(t, ny)
+		e.setClock(t, ny, "2026-10-07", 10, 0, 0)
+		before := e.today(t, u)
+		if before.State != spin.StateOpen || !before.FirstSpin || before.Spin != nil {
+			t.Fatalf("10 AM before any spin: state %s first_spin %v spin %v, want open, true, none", before.State, before.FirstSpin, before.Spin)
+		}
+		first := e.spin(t, u)
+		s := first.Today.Spin
+		if first.Already || first.Today.State != spin.StateResult || s == nil || s.Kind != spin.KindDaily || s.LocalDate != date(t, "2026-10-07") {
+			t.Fatalf("the first spin = %+v", first)
+		}
+		if first.Today.FirstSpin {
+			t.Error("first_spin is still true after the first spin")
+		}
+		if s.SpunLocalTime != "10:00 AM" {
+			t.Errorf("spun_local_time = %q, want 10:00 AM", s.SpunLocalTime)
+		}
+		// Today's opening is passed over: the next one is Thursday 8 PM.
+		if got, want := time.Time(first.Today.NextOpenAt), localAt(t, ny, "2026-10-08", 20, 0, 0); !got.Equal(want) {
+			t.Errorf("next_open_at = %v, want %v", got, want)
+		}
+
+		// 8 PM the same day: no second daily spin.
+		e.setClock(t, ny, "2026-10-07", 20, 0, 0)
+		evening := e.today(t, u)
+		if evening.State != spin.StateResult || evening.FirstSpin || evening.Spin == nil || evening.Spin.ID != s.ID {
+			t.Fatalf("8 PM after a first spin: %+v", evening)
+		}
+		again := e.spin(t, u)
+		if !again.Already || again.Today.Spin.ID != s.ID {
+			t.Fatalf("a spin at 8 PM: already %v, want the first spin back", again.Already)
+		}
+		wantSpinRows(t, e, u, 1)
+
+		// The next day is the usual rule: no spin before 8 PM (the unposted
+		// first spin is late until then), open at 8 PM.
+		e.setClock(t, ny, "2026-10-08", 10, 0, 0)
+		if got := e.today(t, u); got.State != spin.StateLate || got.FirstSpin || got.Spin == nil || got.Spin.ID != s.ID {
+			t.Fatalf("next day 10 AM: state %s first_spin %v, want late with the first spin, false", got.State, got.FirstSpin)
+		}
+		if _, err := e.Service.Spin(ctx, u, nil); !errors.Is(err, spin.ErrNotOpen) {
+			t.Fatalf("next day 10 AM spin: %v, want ErrNotOpen", err)
+		}
+		e.setClock(t, ny, "2026-10-08", 20, 0, 0)
+		if got := e.today(t, u); got.State != spin.StateOpen || got.FirstSpin {
+			t.Fatalf("next day 8 PM: state %s first_spin %v, want open, false", got.State, got.FirstSpin)
+		}
+		if next := e.spin(t, u); next.Already || next.Today.Spin.LocalDate != date(t, "2026-10-08") {
+			t.Fatalf("next day spin = %+v", next)
+		}
+		wantSpinRows(t, e, u, 2)
+	})
+
+	run("an early first spin passes over that evening's opening even when 12 hours have gone by", func(t *testing.T, e *Env) {
+		u := e.ready(t, ny)
+		e.setClock(t, ny, "2026-10-07", 7, 0, 0)
+		first := e.spin(t, u)
+		if got, want := time.Time(first.Today.NextOpenAt), localAt(t, ny, "2026-10-08", 20, 0, 0); !got.Equal(want) {
+			t.Errorf("next_open_at = %v, want %v", got, want)
+		}
+		e.setClock(t, ny, "2026-10-07", 20, 30, 0)
+		if got := e.today(t, u); got.State != spin.StateResult {
+			t.Fatalf("8:30 PM after a 7 AM first spin: %s, want result", got.State)
+		}
+		if again := e.spin(t, u); !again.Already {
+			t.Fatal("a second daily spin was made on the first spin's date")
+		}
+		wantSpinRows(t, e, u, 1)
+	})
+
+	run("a first spin on the night the clocks go back counts for that date", func(t *testing.T, e *Env) {
+		u := e.ready(t, ny)
+		// 1:30 AM happens twice on 2026-11-01 in New York; this is the first.
+		e.setClock(t, ny, "2026-11-01", 1, 30, 0)
+		if got := e.today(t, u); got.State != spin.StateOpen || !got.FirstSpin {
+			t.Fatalf("1:30 AM: state %s first_spin %v, want open, true", got.State, got.FirstSpin)
+		}
+		first := e.spin(t, u)
+		if first.Today.Spin.LocalDate != date(t, "2026-11-01") {
+			t.Fatalf("spin date = %s, want 2026-11-01", first.Today.Spin.LocalDate)
+		}
+		if got, want := time.Time(first.Today.NextOpenAt), localAt(t, ny, "2026-11-02", 20, 0, 0); !got.Equal(want) {
+			t.Errorf("next_open_at = %v, want %v", got, want)
+		}
+	})
+
+	run("after 8 PM a person who has never spun is open by the usual rule, not the first spin rule", func(t *testing.T, e *Env) {
+		u := e.ready(t, ny)
+		e.setClock(t, ny, "2026-10-07", 21, 0, 0)
+		if got := e.today(t, u); got.State != spin.StateOpen || got.FirstSpin {
+			t.Fatalf("9 PM: state %s first_spin %v, want open, false", got.State, got.FirstSpin)
+		}
+	})
+
+	run("a person who has any spin gets no early spin", func(t *testing.T, e *Env) {
+		u := e.ready(t, ny)
+		e.spunBefore(t, u, "2026-10-01")
+		e.setClock(t, ny, "2026-10-07", 10, 0, 0)
+		if got := e.today(t, u); got.State != spin.StateWaiting || got.FirstSpin {
+			t.Fatalf("10 AM: state %s first_spin %v, want waiting, false", got.State, got.FirstSpin)
+		}
+		if _, err := e.Service.Spin(ctx, u, nil); !errors.Is(err, spin.ErrNotOpen) {
+			t.Fatalf("10 AM spin: %v, want ErrNotOpen", err)
 		}
 		wantSpinRows(t, e, u, 1)
 	})

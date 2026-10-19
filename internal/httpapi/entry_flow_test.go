@@ -28,6 +28,9 @@ func TestEntryFullDayWithAFixedClock(t *testing.T) {
 	store := r.rig.entryPhotos
 	const ny, day = "America/New_York", "2026-10-07"
 	r.setZone(a, ny)
+	// A spin two evenings ago, so the first spin rule does not open the
+	// wheel at 4 PM.
+	r.spinEvening(a, "2026-10-05")
 
 	// 4 PM: waiting, and the entry member is there and null.
 	r.clockAt(ny, day, 16, 0, 0)

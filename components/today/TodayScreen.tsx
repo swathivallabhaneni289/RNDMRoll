@@ -55,14 +55,15 @@ function isResultState(state: TodayState | null): boolean {
 
 /**
  * The heading for a state (02-UI-SPEC 4.1 and 03-UI-SPEC 3.1). Nothing while loading or offline
- * with no data. One case for every state, so a new state cannot slip through unnamed.
+ * with no data. One case for every state, so a new state cannot slip through unnamed. A person's
+ * very first spin (the server's `first_spin`, before 8:00 PM) has its own open heading.
  */
-function headingFor(state: TodayState | null): string {
+function headingFor(state: TodayState | null, firstSpin: boolean): string {
   switch (state) {
     case 'waiting':
       return 'Your next spin is coming.';
     case 'open':
-      return 'Your spin is open.';
+      return firstSpin ? 'Your first spin is ready.' : 'Your spin is open.';
     case 'result':
       return "Today's spin.";
     case 'late':
@@ -555,7 +556,7 @@ export function TodayScreen() {
 
   // ---- the page ----------------------------------------------------------------------------
 
-  const headingText = offlineOnLoad ? '' : headingFor(viewState);
+  const headingText = offlineOnLoad ? '' : headingFor(viewState, view?.first_spin === true);
   const headingLines = comp === 'wheel' ? HEADING_LINES_RESERVED : 1;
 
   return (

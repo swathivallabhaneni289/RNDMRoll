@@ -494,7 +494,7 @@ func TestBuildToday_WireShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "wheel", "week", "bonus"} {
+	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "wheel", "week", "bonus", "first_spin"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q in %s", key, raw)
 		}
@@ -947,5 +947,47 @@ func TestBuildToday_WireShapeOfTheEntrySummaryAndTheSkippedFlag(t *testing.T) {
 		if !strings.Contains(string(raw), `"entry":null`) || !strings.Contains(string(raw), `"state":"`+c.want+`"`) {
 			t.Errorf("%s: body = %s", c.name, raw)
 		}
+	}
+}
+
+func TestBuildToday_FirstSpinOpensAtOnceForAPersonWhoHasNeverSpun(t *testing.T) {
+	loc := mustLoc(t, ny)
+	in := baseInput(t, ny, at(t, loc, "2026-10-07", 10, 0, 0))
+	in.NeverSpun = true
+	got := BuildToday(in)
+	if got.State != StateOpen || !got.FirstSpin {
+		t.Fatalf("10 AM, never spun: state %s first_spin %v, want open, true", got.State, got.FirstSpin)
+	}
+	// The window shown is still the date's own 8 PM window.
+	if !time.Time(got.Window.OpensAt).Equal(at(t, loc, "2026-10-07", 20, 0, 0)) {
+		t.Errorf("window opens_at = %v", time.Time(got.Window.OpensAt))
+	}
+
+	// Without the rule the same moment waits.
+	in.NeverSpun = false
+	if got := BuildToday(in); got.State != StateWaiting || got.FirstSpin {
+		t.Fatalf("10 AM, has spun: state %s first_spin %v, want waiting, false", got.State, got.FirstSpin)
+	}
+
+	// At 8 PM the usual rule opens the wheel, so first_spin is false.
+	in = baseInput(t, ny, at(t, loc, "2026-10-07", 20, 0, 0))
+	in.NeverSpun = true
+	if got := BuildToday(in); got.State != StateOpen || got.FirstSpin {
+		t.Fatalf("8 PM, never spun: state %s first_spin %v, want open, false", got.State, got.FirstSpin)
+	}
+}
+
+func TestBuildToday_AfterAnEarlyFirstSpinTheNextOpeningIsTomorrow(t *testing.T) {
+	loc := mustLoc(t, ny)
+	when := at(t, loc, "2026-10-07", 7, 0, 0)
+	in := baseInput(t, ny, at(t, loc, "2026-10-07", 19, 30, 0))
+	in.Spin = spinAt(t, ny, when, KindDaily, 0)
+	in.LastDailySpunAt = &when
+	got := BuildToday(in)
+	if got.State != StateResult || got.FirstSpin {
+		t.Fatalf("state %s first_spin %v, want result, false", got.State, got.FirstSpin)
+	}
+	if want := at(t, loc, "2026-10-08", 20, 0, 0); !time.Time(got.NextOpenAt).Equal(want) || got.NextOpenWeekday != "Thursday" {
+		t.Fatalf("next_open_at %v %s, want %v Thursday", time.Time(got.NextOpenAt), got.NextOpenWeekday, want)
 	}
 }

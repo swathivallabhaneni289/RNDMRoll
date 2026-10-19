@@ -253,6 +253,10 @@ func TestSpinFullDay(t *testing.T) {
 		t.Fatalf("time zone: %d %s", rec.Code, rec.Body.String())
 	}
 
+	// A spin two evenings ago, so the first spin rule (a person who has
+	// never spun may spin at once) does not open the wheel at 4 PM.
+	r.spinEvening(p, "2026-10-05")
+
 	// 4 PM: waiting. The server writes the open time and the weekday.
 	r.clockAt(ny, "2026-10-07", 16, 0, 0)
 	today := r.today(p)
@@ -920,6 +924,14 @@ func TestSpinTestTools_LocalTimesAndTheirRefusals(t *testing.T) {
 	assertFieldError(t, r.call(http.MethodPost, "/v1/test/clock", p.token, map[string]any{"local": "2026-10-07T19:59:30"}), "time_zone")
 
 	r.setZone(p, "America/New_York")
+	// A spin two evenings ago, so the first spin rule does not open the
+	// wheel before 8 PM.
+	if rec := r.call(http.MethodPost, "/v1/test/clock", p.token, map[string]any{"local": "2026-10-05T20:30:00"}); rec.Code != http.StatusOK {
+		t.Fatalf("local: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := r.call(http.MethodPost, "/v1/spin", p.token, nil); rec.Code != http.StatusCreated {
+		t.Fatalf("spin: %d %s", rec.Code, rec.Body.String())
+	}
 	rec := r.call(http.MethodPost, "/v1/test/clock", p.token, map[string]any{"local": "2026-10-07T19:59:30"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("local: %d %s", rec.Code, rec.Body.String())
