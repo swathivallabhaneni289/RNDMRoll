@@ -18,6 +18,14 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080'
 const API_PREFIX = '/v1';
 
 /**
+ * Your invite link (GET /i/{username} on the server, a small page that opens the app at you). It
+ * uses the API's own address until the real web address is set up (launch list).
+ */
+export function inviteLink(username: string): string {
+  return `${BASE_URL.replace(/\/+$/, '')}/i/${encodeURIComponent(username)}`;
+}
+
+/**
  * UI-SPEC's Copywriting Contract error strings, verbatim, for the codes it declares.
  * Any other code falls through to a generic message the calling screen is expected
  * to override with screen-specific copy.

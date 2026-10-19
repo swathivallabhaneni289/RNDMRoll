@@ -22,8 +22,10 @@ func TestPersonIntegration_FindYourFriendsSuggestions(t *testing.T) {
 	d := w.person("sg_dan", "Dan Dorn")
 	e := w.person("sg_eve", "Eve East")
 
-	// Nobody yet: nothing to suggest.
-	if got := suggested(t, w, a); len(got) != 0 {
+	// A new person who follows no one: the people who joined lately, newest
+	// first, never themselves.
+	if got := suggested(t, w, a); len(got) != 4 || dig(t, got[0], "person", "username") != "sg_eve" ||
+		dig(t, got[3], "person", "username") != "sg_bob" {
 		t.Fatalf("new person: %v", got)
 	}
 	// A follows B; B follows C and D; E follows A.

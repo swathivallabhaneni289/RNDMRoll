@@ -78,7 +78,8 @@ type Repository interface {
 	// a block either way with viewer.
 	PeopleOf(ctx context.Context, viewer, owner uuid.UUID, followers bool) ([]Person, error)
 	// Suggestions are people the viewer may know (Find your friends): people
-	// that the people they follow follow, and people who follow them, minus
+	// that the people they follow follow, people who follow them, then people
+	// who joined lately, minus
 	// anyone they follow or asked, themselves and any block either way;
 	// the most likely first, at most limit.
 	Suggestions(ctx context.Context, viewer uuid.UUID, limit int) ([]Suggestion, error)

@@ -57,6 +57,9 @@ type Deps struct {
 	// Admin is the admin web page at /admin; nil (no ADMIN_EMAILS) mounts
 	// nothing.
 	Admin *AdminHandler
+	// DeepLinkScheme is the app's link scheme for the invite page's button
+	// ("rndmroll" when empty).
+	DeepLinkScheme string
 
 	Users     user.Repository
 	JWTSecret []byte
@@ -116,6 +119,7 @@ func NewServer(deps Deps) *Server {
 	if deps.Admin != nil {
 		deps.Admin.Register(engine)
 	}
+	RegisterInvite(engine, deps.DeepLinkScheme)
 
 	v1 := engine.Group("/v1")
 	v1.Use(middleware.BodyLimit(middleware.MaxBodyBytes))

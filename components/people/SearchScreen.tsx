@@ -10,7 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { blockUser } from '@/lib/api/account';
 import { getSuggestions } from '@/lib/api/person';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, inviteLink } from '@/lib/api/client';
 import { firstName, follow, searchPeople, unfollow, type Person, type SearchHit } from '@/lib/api/social';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
@@ -101,9 +101,14 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
     router.replace('/(app)/today');
   }
 
+  /** The phone's share sheet with your invite link (it opens the app at your profile). */
   function invite() {
-    const handle = user?.username ? ` Find me as @${user.username}.` : '';
-    void Share.share({ message: `I'm on RNDMRoll, one spin a day.${handle}` }).catch(() => undefined);
+    const username = user?.username ?? '';
+    const message =
+      username !== ''
+        ? `Join me on RNDMRoll, one spin a day. Follow me here: ${inviteLink(username)}`
+        : 'Join me on RNDMRoll, one spin a day.';
+    void Share.share({ message }).catch(() => undefined);
   }
 
   function patch(personId: string, next: Partial<SearchHit>) {
@@ -235,7 +240,8 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
               onChangeText={setQuery}
               placeholder="Search"
               placeholderTextColor={color.muted}
-              autoFocus={!welcome}
+              // No keyboard at first, so Invite friends and the suggestions are in view.
+              autoFocus={false}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="off"
@@ -269,21 +275,20 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
         <ScrollView style={{ flex: 1, marginTop: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           {trimmed === '' ? (
             <View>
-              <Pressable
-                onPress={invite}
-                accessibilityRole="button"
-                accessibilityLabel="Invite friends"
-                accessibilityHint="Opens the share sheet with your username."
-                style={{ minHeight: minTouchTarget, flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}
-              >
-                <Ionicons name="paper-plane-outline" size={22} color={color.ink} />
-                <View style={{ marginLeft: space.md, flex: 1 }}>
-                  <AppText role="button">Invite friends</AppText>
+              {/* Invite friends: your link, sent with the phone's share sheet. */}
+              <View style={{ paddingVertical: space.sm }}>
+                <AppText role="button">Invite friends</AppText>
+                <View style={{ marginTop: space.xs }}>
+                  <AppText role="body" tone="muted">
+                    Send your link. It opens RNDMRoll at your profile so friends can follow you.
+                  </AppText>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={color.muted} />
-              </Pressable>
+                <View style={{ marginTop: space.md }}>
+                  <PrimaryButton label="Send invite link" onPress={invite} />
+                </View>
+              </View>
               {suggestions !== null && suggestions.length > 0 ? (
-                <View style={{ marginTop: space.lg }}>
+                <View style={{ marginTop: space.xl }}>
                   <AppText role="button">Suggested for you</AppText>
                   <View style={{ marginTop: space.sm }}>
                     {suggestions.map((hit, index) => (

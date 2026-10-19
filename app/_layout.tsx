@@ -51,6 +51,8 @@ function RootNavigator() {
       {/* Unconditional: see app/index.tsx for why this route needs to always
           resolve, independent of the Protected guards below. */}
       <Stack.Screen name="index" />
+      {/* An invite link (rndmroll://u/{username}); it decides where to go by itself. */}
+      <Stack.Screen name="u/[username]" />
       <Stack.Protected guard={gateSettled && status === 'authenticated' && user?.onboarding_complete === true}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>

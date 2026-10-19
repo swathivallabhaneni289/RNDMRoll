@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Username}}Join @{{.Username}} on RNDMRoll{{else}}RNDMRoll{{end}}</title>
+<style>
+  :root { --ink: #141414; --muted: #6b6b6b; --page: #f6f4f0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 17px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: 72px 16px 48px; }
+  h1 { font: 600 30px/1.2 Georgia, serif; margin: 0 0 12px; }
+  p { margin: 0 0 16px; }
+  .muted { color: var(--muted); }
+  a.button { display: block; text-align: center; background: var(--ink); color: var(--page); text-decoration: none; font-weight: 600; padding: 14px 16px; border-radius: 8px; margin: 28px 0 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{if .Username}}@{{.Username}} invited you to RNDMRoll{{else}}You're invited to RNDMRoll{{end}}</h1>
+  <p>One spin a day picks a movie, a meal, a song, a place or a book. Do it, post a photo, and see what your friends spun.</p>
+  {{if .Username}}<a class="button" href="{{.OpenURL}}">Open in RNDMRoll</a>{{end}}
+  <p class="muted">Don't have the app yet? RNDMRoll is coming to the App Store. Once you have it, open this link again{{if .Username}} and follow @{{.Username}}{{end}}.</p>
+</main>
+</body>
+</html>

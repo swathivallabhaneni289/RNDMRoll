@@ -80,7 +80,8 @@ func (r *SocialRepo) PeopleOf(ctx context.Context, viewer, owner uuid.UUID, foll
 }
 
 // Suggestions implements social.Repository. A person who follows the
-// viewer comes first, then the most people in common.
+// viewer comes first, then the most people in common, then people who
+// joined lately (newest first).
 func (r *SocialRepo) Suggestions(ctx context.Context, viewer uuid.UUID, limit int) ([]social.Suggestion, error) {
 	rows, err := r.pool.Query(ctx, `
 		with cand as (
@@ -90,6 +91,12 @@ func (r *SocialRepo) Suggestions(ctx context.Context, viewer uuid.UUID, limit in
 			union all
 			select f.follower_id, 0, true from follows f
 			where f.followee_id = $1 and f.status = 'accepted'
+			union all
+			-- People who joined lately fill the list, so a new person who
+			-- follows no one yet still has people to find.
+			select n.id, 0, false from (
+				select id from users where disabled_at is null order by created_at desc limit 60
+			) n
 		), scored as (
 			select id, sum(mutual)::int as mutual, bool_or(follows_you) as follows_you
 			from cand group by id
@@ -100,7 +107,7 @@ func (r *SocialRepo) Suggestions(ctx context.Context, viewer uuid.UUID, limit in
 		  and u.name is not null and u.name <> '' and u.username is not null
 		  and not exists (select 1 from follows mine where mine.follower_id = $1 and mine.followee_id = u.id)
 		  and not `+blockedEither("$1::uuid", "u.id")+`
-		order by s.follows_you desc, s.mutual desc, lower(u.username)
+		order by s.follows_you desc, s.mutual desc, u.created_at desc, lower(u.username)
 		limit $2`, viewer, limit)
 	if err != nil {
 		return nil, err

@@ -140,6 +140,7 @@ func main() {
 	// The admin web page (/admin) is mounted only when ADMIN_EMAILS names
 	// at least one account. The cookie is Secure everywhere but test mode,
 	// which runs over plain http on localhost.
+	deps.DeepLinkScheme = cfg.DeepLinkScheme
 	if len(cfg.AdminEmails) > 0 {
 		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler, refreshSvc,
 			cfg.JWTSecret, cfg.AdminEmails, cfg.AppEnv != "test")
