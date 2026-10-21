@@ -1,77 +1,138 @@
-# RNDMRoll — daily dice-roll taste log
+# RNDMRoll
 
-*(Name still TBD — "RNDMRoll" is the working title used for this repo.)*
+**A daily ritual for a small group of friends.** Once a day you spin a wheel. It lands on a category, like a meal, a movie or a book, and you post one real thing you had, watched or read for it. Your friends' posts open once you've posted yours.
 
-A daily habit-loop app: a spin of the wheel assigns you a category — movie, book, song, meal, place, whatever's stocked into the wheel — and you log one real entry for it: a photo, a title, a star rating, and an optional one-line reaction.
+I took this from an idea to a working iPhone app on my own: research, product decisions, specs, design, build and testing. The app is React Native with Expo, backed by a Go API and PostgreSQL.
 
-Combines three researched, real precedents rather than cloning any single one: **BeReal's** daily-ritual/prompt hook, **Letterboxd's** structured rating-and-log mechanic, and a **randomizer** for variety and replay.
+<!-- Screenshots and a short screen recording go here. -->
 
-> **Status:** concept + prior-art research phase. No code yet — see [Open questions](#open-questions-still-unresolved) before implementation starts.
+## The problem
 
-## What it is
+People enjoy keeping a record of their taste. Letterboxd does it for films and Beli for food. People also enjoy a small daily prompt they share with friends, which is what made BeReal work. But the two don't meet:
 
-Once a day (or, per the current decision below, strictly once a day), a spin of the wheel assigns you the day's category. You post one entry for it: a photo, a title, a star rating (1–5, half-star granularity), and an optional one-line reaction.
+- Logging apps wait for you to remember to log, so most logs go quiet after a few weeks.
+- Daily photo apps give you a reason to open them every day, but leave nothing lasting behind. Yesterday's photo is gone.
 
-## Core mechanics
+**The bet:** a random daily pick gives you a reason to show up, and a structured post (title, rating, photo) turns each day into a lasting record of what you like. Locking friends' posts until you've posted keeps everyone contributing instead of scrolling.
 
-- **Wheel spin** picks the day's category — a visual, segmented spin-wheel (not a dice roll — see [Decisions](#decisions-made-so-far)), landing with a deceleration animation.
-- **Entry = four fields, no matter what got rolled**: photo + title + rating + optional one-line note.
-- **Photo source:** camera roll / photo library is allowed, not camera-only. You can log something you experienced a day or two before the roll (read a book two nights ago, rolled "book" today) rather than being forced to stage a photo live in the moment. See [Decisions](#decisions-made-so-far) for the reasoning.
-- **Personal diary:** a running, chronological log of everything you've rated — your own visual taste history. A re-rolled category that repeats a title (e.g. a rewatch) creates a new dated entry rather than overwriting the old rating.
-- **Friend feed:** a shared board showing what everyone in your circle rolled and rated that day, with lightweight (one-tap/emoji, not photo-based) reactions.
+## Who it's for
 
-## Why this concept
+A small circle of friends who want a light daily habit and a shared record of what they're into. Version 1 is built for a friend group using it every day, not for growth. A habit that a handful of people keep is the thing to prove first.
 
-Grounded in research, not just a vibe: BeReal proved the daily-surprise-prompt mechanic drives return visits; Letterboxd proved people enjoy rating/logging as a habit; both single-mechanic apps that lasted (vs. died, like Poparazzi/Artifact) had either a durable habit loop or a monetization fit — daily prompt + personal log combines the habit loop from one with the content structure of the other.
+## Research
 
-## Decisions made so far
+Before building, I compared about a dozen apps: BeReal, Letterboxd, Beli, Daylio, PI.FYI, Rated, Memorizer, pov, The Dice Challenge and others. Every single piece of this idea already exists somewhere. Two gaps were open:
 
-| Decision | Choice | Why |
-|---|---|---|
-| Roll mechanic | **Spin wheel**, not a dice roll | A wheel visually shows every category as a wedge before landing, pairs naturally with a user-editable/reweightable category set (bigger wedge = more likely, no separate weighting UI needed), and the deceleration/anticipation moment is more satisfying and shareable than a flat dice number. A plain die also caps out awkwardly around 6 faces. Design care needed so it doesn't read as a spammy prize-wheel/gambling UI — lean flat/minimal, not carnival. |
-| Photo source | **Camera roll / library allowed**, not live-capture-only | Forcing live in-app camera capture (BeReal/Rawly-style) actively fights logging something consumed hours or days before the roll happened — exactly the "rolled 'book' today, finished the book two nights ago" case. Live-only would force users to fake it or skip. This does reopen part of the authenticity-enforcement question (see risks below) since there's no technical guarantee against posting stock/official art — that's an accepted tradeoff, not solved yet. Both an in-app camera capture option AND a photo-library upload option are offered in the UI — user's explicit choice each time. |
-| Backend language | **Go** | User's explicit choice — also a genuinely good technical fit: high-concurrency, media-heavy backend (simultaneous daily-roll photo uploads, feed reads, friend-graph queries), the same category of workload Go is used for at companies like Uber, Twitch, and Dropbox. |
-| Mobile client | **React Native, Expo managed workflow** (`expo-camera` + `expo-image-picker` for capture/upload, EAS Build/Update for releases) | Matches the single-shot camera-or-library spec without needing native-only capabilities (BeReal-style simultaneous dual-camera capture was the one place cross-platform is genuinely behind native, and this project doesn't need it). EAS Update ships JS-level bugfixes in hours with no App Store review — important because a broken build blocks every user's daily post and costs them a streak day. Largest hiring pool if the team ever needs to grow. Native (Swift+Kotlin) is the documented runner-up and the right move later if dual-camera/real-time camera ML gets added or the team grows enough to support two codebases. |
-| API layer | **REST/JSON** to start | Near-unanimous fit for a CRUD-shaped workload (daily roll fetch, photo+title+rating+reaction post, feed reads). Upgrade path if needed later: Connect (`connect-go`) rather than raw gRPC, since React Native can't originate true HTTP/2 gRPC without a proxy/bridge. |
-| Roll/unlock timing | **Fixed daily time, 8:00 PM**, not randomized | User's explicit choice — a scheduled daily sync rather than BeReal's randomized notification window. Trade-off to be aware of: BeReal's randomized timing is what creates its specific "caught off guard, prove it's real" urgency; a fixed time is more predictable/plannable for users (good for habit-forming) but leans a bit more toward "you knew this was coming" than BeReal's surprise framing. Worth revisiting if authenticity-proof (not just habit-forming) becomes a priority. |
-| Roll timezone | **Each user's own local 8:00 PM**, not one globally-synced moment | A small, possibly multi-timezone friend group shouldn't have someone spinning at 3 AM their time just to stay in sync with BeReal-style global simultaneity. Day boundaries and streaks follow each person's own local calendar day. Exact late-badge grace-period cutoff is a minor tuning detail for Phase 2 planning, not a blocker. |
-| Unsatisfiable-category resolution | **Streak freeze** — no entry required that day, streak is preserved (not a reroll, not a broken streak) | Chosen over "skip, streak breaks" (punishes bad luck) and coexists with the separate weekly reroll token (ROLL-02, which lets you swap to a different category and still post). Freeze is capped, not unlimited, to preserve the daily-scarcity differentiator — exact cap is a minor tuning detail for Phase 3 planning. Frozen days should read as visibly distinct in the diary (not a silent gap) so they don't look like a missed day. |
-| Theme system | **Dark-primary throughout** the app — superseded the earlier light-utility/dark-moment split | Initially thought dark should be reserved for "moment" screens (roll, reveal, camera) and light for "utility" ones (accounts, profile), matching the moodboard's own pattern. User pushed toward black across several rounds, then explicitly asked for Phase 1 (a utility screen) to go dark too — the real preference is dark everywhere, not a split by screen type. |
-| Typography | **Domine (serif headings) + Work Sans (body/UI)** | User shared a moodboard using Playfair Display + Inter, but asked for "a similar vibe, not the exact same thing... not too ai coded" — those two are among the most recognizable AI-generated-UI default fonts, so Domine + Work Sans deliver the same elegant-serif-plus-clean-sans mood without that specific tell. |
-| Phase 1 palette | **Strict grayscale, dark-primary** — near-black `#121212` background, near-white `#EDEDED` text/accent, dark-gray surfaces, with muted red/green kept only as small functional signals (errors, username-available) | User: "keep it all black and white... how Instagram does," then "black background and uses a white as a text instead." Matches the user's own moodboard color panel (black/white/gray) closely. UI-SPEC revision 7, checker-approved. Also added: a custom five-pip brand mark, a subtle background texture (one screen only), and bolder display type — added per "really plain... add some something," all built from the same grayscale tokens, no new colors. |
+1. A random pick that produces a **lasting, rated, photographed entry**. Existing randomizers pick something and forget it.
+2. A friend feed **locked until you post**, applied to a taste diary instead of a selfie.
 
-## Feature backlog
+The research also named the risks I designed around: a locked feed is empty without friends (cold start); a heavy post form fights the lock that rewards it; and a random category won't always fit your day. The full write-up is in [`RESEARCH.md`](./RESEARCH.md).
 
-### Changes to the original mechanics (from prior-art research)
+## Key decisions
 
-- **Once a day, not "on demand."** No unlimited manual re-roll — optionally earn a single extra reroll token per week via streak milestones. Wordle's creator deliberately capped it at one puzzle/day with no archive to preserve scarcity/non-addictiveness; the later paywalled archive was seen by fans as diluting that value.
-- **Reciprocity gate conditional on friend-circle size.** Don't show a locked/empty feed to users with no friends yet on the app — route them to their personal diary + insights until a real circle exists. (BeReal's own cold-start problem, solved partly by Friends-of-Friends.)
-- **If a gate is used, make it soft like BeReal's actual behavior**, not a hard block: posting late still unlocks the feed, just with a visible "late" badge.
-- **Small (6–8 category) base wheel, fully user-editable** — add/remove/reweight — rather than one fixed universal list. (Closest precedent: Daylio's user-customizable activity set.)
-- **Half-star granularity** (1–5 in 0.5 increments, Letterboxd-style), not integer stars and not Beli-style comparative ranking — ranking doesn't work across disparate categories (a movie can't be ranked against a sandwich).
-- **Reactions stay one-tap/emoji**, not photo-based (i.e. don't default to BeReal's RealMoji selfie-reaction pattern) — the core entry is already heavier than BeReal's single photo, don't stack more friction on top.
+| Decision | What I chose | Why | What it costs |
+|---|---|---|---|
+| How the category is picked | A spin wheel you can edit, not a dice roll | A wheel shows every option before it lands, and people can rename, add and resize slices. A die tops out around six faces. | A wheel can read like a prize wheel, so it's kept flat and black and white. |
+| How often | Once a day, from 8 PM in your own time zone | Scarcity keeps it a ritual (Wordle's one puzzle a day is the model). Your own time zone means nobody spins at 3 AM to keep up with friends abroad. | Less of BeReal's "everyone at once" surprise. |
+| When the category doesn't fit | A free skip, and a weekly goal of 4 posted days instead of a daily streak | "Book" on a day you read nothing shouldn't break a streak. Four days out of seven earns a bonus spin. | Weaker pressure than a strict daily streak. |
+| Photo source | Camera or photo library | You can log the book you finished two nights ago without staging a photo. | No guarantee the photo is your own. Accepted for now. |
+| Late posts | A post after midnight still counts until the next spin opens, marked late | Life happens. A late post still opens the Board. | The day boundary is softer. |
+| Who sees posts | Every account is private, and following is by request | Small trusted circles, safer for younger users (13 and over can join), and less to moderate. | Slower to find people. Find your friends, invite links and suggestions help. |
+| Signing in | Email and password, then log in with email or username | Enough for a friend group, and it dropped two native SDKs and their setup. | No one-tap sign-in. |
 
-### New features to consider
+## What I left out on purpose
 
-- **Your Year in Rolls** — free annual Wrapped-style recap (top categories, avg rating/category, longest streak, most-rated title), kept category-agnostic since there's no uniform metadata like genre/runtime across categories.
-- **Spoiler-free roll card** — a shareable result card (category icon + star pips, no photo/title) for posting outside the app, encoding your own pattern (streak, rating distribution) rather than a shared daily answer.
-- **Taste correlation insights** — "you rate meals higher on weekends," "movies avg 4.2 vs. books 3.1." The concrete payoff that makes solo/no-friends mode viable from day one.
-- **RollGroups** — invite-only sub-circles (a book club, a foodie group) running their own private wheel and trigger window.
-- **Behind-the-Scenes proof clip** — optional few-second clip before the still, viewable via long-press. A partial answer to "how do you stop someone photographing a poster/screen and calling it real," though note the current decision to allow camera-roll uploads at all already loosens this goal.
-- **Friends-of-Friends discovery** — opt-in, same-gate-applies expansion, for users who have real-life friends on the app they haven't found yet.
-- **Four Favorites pin** — four pinned all-time favorite rolls (any category) at the top of your profile, separate from the chronological diary.
-- **Streak restore** — limited, conditional recovery for a broken streak.
-- **Curated starter category packs** — one-tap "add all" theme bundles (e.g. "Nightlife," "Cozy Night In") inside the wheel editor, unlocked free via streak milestones rather than sold as IAP.
+- **Unlimited re-spins.** They would make the daily pick meaningless. The only extra spin is earned with the weekly goal.
+- **Live-camera-only posts.** These would force people to fake or skip anything that happened earlier in the day.
+- **Music attached to posts.** People post a screenshot of the song as a photo instead, which needs no music service.
+- **A wider backlog, kept for later.** A year-end recap, taste insights ("you rate meals higher on weekends"), a shareable result card and small groups with their own wheel. Version 1 stays on the core loop: spin, post, see friends.
 
-Full competitive research (prior-art verdict, closest matches, whitespace, and risks) is in [`RESEARCH.md`](./RESEARCH.md).
+## How I'd measure it
 
-## Open questions still unresolved
+The app isn't released, so there's no usage data yet. These are the numbers I'd watch with a first group:
 
-- Exact wheel size and default starter categories.
-- How weighting/reweighting works in the UI (drag to resize wedges? numeric sliders?).
-- Whether/how to signal "this photo is from camera roll, logged a day late" vs. same-day, now that library uploads are allowed.
-- Whether this needs a friend group to feel complete from day one, or ships solo-first with the insights feature as the retention hook.
+- **Spin to post:** of the people who spin, how many post that day. This is the core loop.
+- **Weekly goal:** the share of people who post on 4 or more days in a week.
+- **Retention:** who is still spinning in week 2 and week 4.
+- **Skips by category:** a category that gets skipped a lot is a bad fit for the starting wheel.
+- **Board pull:** how often someone opens the Board right after posting. This shows whether the lock is a reason to post or a wall.
+- **Follow requests:** how many get accepted, and how many people each person follows. This is the cold-start check.
 
----
+## What the app does
 
-Original raw concept notes (pre-research, pre-decisions) are preserved in [`docs/original-concept-notes.md`](./docs/original-concept-notes.md).
+- **Spin.** The wheel opens at 8 PM. A new person gets their first spin right away. The starting wheel is Meal, Movie, Song, Book, Place and Game, all with the same chance, and you can change it (2 to 12 categories).
+- **Post.** Title, a half-star rating from 0.5 to 5, photos, an optional one-tap reaction and a short line. Edit, delete or archive it later.
+- **Board.** Posts from the people you follow, locked until you've posted that day. Comments, replies and photos in comments.
+- **Profile.** Every post you've made, your spins, your week streak and your followers.
+- **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
+- **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page where an admin can remove content or disable an account.
+- **Notifications.** A list in the app, an 8 PM reminder on the phone, and phone notifications for comments, replies and follow requests.
+- **Accounts.** Two short sign-up pages, and Forgot password with a 6-digit emailed code.
+
+## How I built it
+
+I worked in phases. Each phase had a written scope, a screen-by-screen design spec, a build plan and a test checklist. Each one ended with a walkthrough of every screen in the iPhone simulator before it was closed. The plans and specs are in [`.planning/`](./.planning).
+
+1. Accounts and sign-up
+2. The daily spin, then Settings and smoother navigation
+3. The daily post
+4. Profile and the post history
+5. Following and the Board
+6. People pages, reporting and the admin page
+
+| Part | Tools |
+|---|---|
+| App | TypeScript, React Native 0.86, Expo 57, Expo Router, Reanimated |
+| Server | Go 1.26, Gin, PostgreSQL through pgx, 15 SQL migrations |
+| Photos | S3-compatible storage with presigned uploads (MinIO when running locally) |
+| Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
+| Email and push | Resend for email, the Expo push service for phone notifications |
+
+A few things that took real care:
+
+- **Time zones.** Every person's day, 8 PM opening and late window follow their own zone, including the days clocks jump for daylight saving (`internal/spin/window.go`).
+- **One source of time.** The server writes every time label ("8:41 PM", "Mon", "Oct 3") so the app never guesses.
+- **Tests.** About 450 Go test functions, most of them running against a real PostgreSQL database.
+
+<details>
+<summary><b>Run it locally</b></summary>
+
+You need macOS with Xcode and the iOS Simulator, Node, Go 1.26, PostgreSQL, [golang-migrate](https://github.com/golang-migrate/migrate) and [MinIO](https://min.io) for photos.
+
+1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as Forgot password codes) to the server log instead of sending them.
+2. **Photo storage.** Start MinIO, create a bucket with public read access, and point the `S3_*` lines in `.env` at it (for example `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_REGION=us-east-1`, `S3_PUBLIC_BASE_URL=http://127.0.0.1:9000/<bucket>`).
+3. **Database.**
+   ```sh
+   make db-create
+   export DATABASE_URL=postgres://localhost:5432/rndmroll_dev?sslmode=disable
+   make migrate-up
+   ```
+4. **Server.** `make dev` starts the API on port 8080.
+5. **App.** `npm install`, then `npx expo run:ios`. This builds the app into the simulator. It needs a native build, so Expo Go won't work. The app looks for the API at `http://localhost:8080`, or at `EXPO_PUBLIC_API_BASE_URL` if that is set.
+
+Optional:
+
+- **Admin page.** Set `ADMIN_EMAILS` to your account's email before starting the server, then open `http://localhost:8080/admin`.
+- **Phone notifications.** These are off until Apple and Expo credentials are added. The steps are in [`docs/PUSH-SETUP.md`](./docs/PUSH-SETUP.md).
+
+Tests:
+
+```sh
+make test                  # quick tests, no database needed
+make test-all-integration  # everything, against TEST_DATABASE_URL, one package at a time
+npm run typecheck          # the app's TypeScript check
+```
+
+Where things are:
+
+```
+app/          screens (Expo Router)
+components/   UI pieces used by the screens
+lib/          app logic: API client, session, theme, motion
+cmd/api/      the server's entry point
+internal/     server packages: spin, board, diary, social, auth, admin, push, storage
+migrations/   database migrations
+.planning/    the phase-by-phase scope, specs and plans
+```
+
+</details>
