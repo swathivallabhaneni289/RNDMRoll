@@ -157,12 +157,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const finishExtras = useCallback(() => setExtrasPending(false), []);
 
+  // One refresh at a time. The server rotates the refresh token on every call, so a second
+  // refresh with the same stored token is answered 401 and would be read as "signed out".
+  // The launch restore and the client's own 401 path can both ask at once: they share one call.
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+
   const doSignOut = useCallback(async () => {
     authBusyRef.current += 1;
     try {
       // This phone stops getting pushes for this account. Never throws; it comes first, while the
-      // access token still works.
-      await unregisterPushToken();
+      // access token still works. No refresh when a failed refresh is what signs out (it would
+      // wait on itself).
+      await unregisterPushToken(refreshInFlightRef.current === null);
       try {
         const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         if (storedRefreshToken) {
@@ -181,11 +187,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       authBusyRef.current -= 1;
     }
   }, []);
-
-  // One refresh at a time. The server rotates the refresh token on every call, so a second
-  // refresh with the same stored token is answered 401 and would be read as "signed out".
-  // The launch restore and the client's own 401 path can both ask at once: they share one call.
-  const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshOnce = useCallback(async () => {
     const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);

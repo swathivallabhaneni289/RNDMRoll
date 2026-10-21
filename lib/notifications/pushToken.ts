@@ -76,15 +76,17 @@ export function registerPushToken(userId: string): Promise<void> {
  * It is awaited to the end (each call is cut off by the client's own 10 second limit, and an
  * offline phone fails at once) rather than raced against a shorter timer: an expired access token
  * is refreshed on the way, and a refresh still running after log out cleared the keychain could
- * write the leaving account's tokens back.
+ * write the leaving account's tokens back. mayRefresh is false when a failed refresh is what
+ * signs out: that refresh is still pending, so the call must not wait on it.
  */
-export async function unregisterPushToken(): Promise<void> {
+export async function unregisterPushToken(mayRefresh: boolean): Promise<void> {
   const current = registered;
   // Cleared first: a sign-out that this call itself sets off can never send it twice.
   registered = null;
   if (current === null) return;
   try {
-    await api.delete('/me/push-tokens', {}, { token: current.token });
+    // retry: true (no refresh) while a refresh is the thing signing out: waiting on it would never end.
+    await api.delete('/me/push-tokens', mayRefresh ? {} : { retry: true }, { token: current.token });
   } catch {
     // Left on the server; it moves to the next account that signs in on this phone.
   }
