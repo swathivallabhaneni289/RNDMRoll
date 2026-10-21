@@ -1,10 +1,11 @@
 import { Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NameChip, capsText } from '@/components/board/PostCard';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextButton } from '@/components/ui/TextButton';
 import type { BoardLocked, DayLabel } from '@/lib/api/board';
-import { LOCKED_BODY, NO_FOLLOWS_LINE, lockedButton, lockedFootnote, postedLine, skippedLine } from '@/lib/board/text';
+import { LOCKED_BODY, NO_FOLLOWS_LINE, NO_FOLLOWS_TITLE, lockedButton, lockedFootnote, postedLine, skippedLine } from '@/lib/board/text';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 
 const TILE_ASPECT = 7 / 8;
@@ -147,12 +148,47 @@ export function SkippedBlock({ dayLabel, onGoToSpin }: { dayLabel: DayLabel; onG
   );
 }
 
-/** No follows yet: one plain prompt and 'Find people'. */
+/** The round mark above the empty Board's heading. */
+const EMPTY_MARK = 72;
+
+/**
+ * No follows yet (developer, 2026-10-19: the words looked placed at random): one centred block in
+ * the middle of the page: a round mark with the people icon, a short heading, one line saying how
+ * the Board works, and 'Find people'.
+ */
 export function NoFollowsBlock({ onFindPeople }: { onFindPeople: () => void }) {
   return (
-    <View style={{ paddingTop: space.lg }}>
-      <AppText role="body">{NO_FOLLOWS_LINE}</AppText>
-      <View style={{ marginTop: space.md }}>
+    <View style={{ alignItems: 'center', paddingHorizontal: space.md }}>
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{
+          width: EMPTY_MARK,
+          height: EMPTY_MARK,
+          borderRadius: EMPTY_MARK / 2,
+          borderWidth: 1,
+          borderColor: color.ink,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="people-outline" size={32} color={color.ink} />
+      </View>
+      <View style={{ marginTop: space.lg }}>
+        <Text
+          accessibilityRole="header"
+          maxFontSizeMultiplier={1.3}
+          style={{ ...type.heading, color: color.ink, textAlign: 'center' }}
+        >
+          {NO_FOLLOWS_TITLE}
+        </Text>
+      </View>
+      <View style={{ marginTop: space.sm }}>
+        <Text maxFontSizeMultiplier={1.3} style={{ ...type.body, color: color.muted, textAlign: 'center' }}>
+          {NO_FOLLOWS_LINE}
+        </Text>
+      </View>
+      <View style={{ marginTop: space.xl, alignSelf: 'stretch' }}>
         <PrimaryButton label="Find people" onPress={onFindPeople} />
       </View>
     </View>

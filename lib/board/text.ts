@@ -41,7 +41,9 @@ export function skippedLine(dayLabel: DayLabel): string {
   return `You skipped ${when}. Posts from people you follow open after your next post.`;
 }
 
-export const NO_FOLLOWS_LINE = 'Follow people to see their spins here.';
+/** The empty Board before following anyone: a heading and one line on how the Board works. */
+export const NO_FOLLOWS_TITLE = "See your friends' spins";
+export const NO_FOLLOWS_LINE = 'Follow people you know. Their posts show here on the days you post too.';
 
 /** The stars as a figure with one decimal: 7 gives "3.5", 10 gives "5.0". */
 export function starsFigure(stars: number): string {

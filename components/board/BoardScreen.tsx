@@ -102,11 +102,13 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
           </AppText>
         </View>
       </Pressable>
-      {/* The day in play, as the first of the day headings (developer, 2026-10-18: under the title). */}
-      <Text accessibilityRole="header" style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight, marginTop: space.md }}>
-        {/* No day line before you follow anyone: there is no day to show yet. */}
-        {board && board.state !== 'no_follows' ? overline(board.day_label) : ''}
-      </Text>
+      {/* The day in play, as the first of the day headings (developer, 2026-10-18: under the title).
+          None before you follow anyone: there is no day to show yet. */}
+      {board?.state === 'no_follows' ? null : (
+        <Text accessibilityRole="header" style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight, marginTop: space.md }}>
+          {board ? overline(board.day_label) : ''}
+        </Text>
+      )}
     </View>
   );
 
@@ -157,10 +159,6 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
         <View style={{ paddingHorizontal: space.lg, marginBottom: space.md }}>
           <SkippedBlock dayLabel={board.day_label} onGoToSpin={onSpin} />
         </View>
-      ) : board.state === 'no_follows' ? (
-        <View style={{ paddingHorizontal: space.lg }}>
-          <NoFollowsBlock onFindPeople={onFindPeople} />
-        </View>
       ) : null;
 
     const footer = load.loadingMore ? (
@@ -183,21 +181,27 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
         </View>
       ) : null;
 
-    body = (
-      <FlatList
-        style={{ flex: 1 }}
-        data={board.state === 'no_follows' ? [] : toRows(board.days)}
-        keyExtractor={(row) => row.key}
-        renderItem={renderRow}
-        ListHeaderComponent={listHeader}
-        ListEmptyComponent={empty}
-        ListFooterComponent={footer}
-        onEndReached={load.loadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={<RefreshControl refreshing={load.refreshing} onRefresh={load.refresh} tintColor={color.muted} />}
-        contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.xl }}
-      />
-    );
+    body =
+      board.state === 'no_follows' ? (
+        // Nothing to list yet: the one block sits in the middle of the page.
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.lg, paddingBottom: space.xxl }}>
+          <NoFollowsBlock onFindPeople={onFindPeople} />
+        </View>
+      ) : (
+        <FlatList
+          style={{ flex: 1 }}
+          data={toRows(board.days)}
+          keyExtractor={(row) => row.key}
+          renderItem={renderRow}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={empty}
+          ListFooterComponent={footer}
+          onEndReached={load.loadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={<RefreshControl refreshing={load.refreshing} onRefresh={load.refresh} tintColor={color.muted} />}
+          contentContainerStyle={{ paddingTop: space.md, paddingBottom: space.xl }}
+        />
+      );
   }
 
   return (
