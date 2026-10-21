@@ -166,6 +166,9 @@ type integrationOptions struct {
 	// wants to see the tickets and file removals passes its own; nil means a
 	// fresh one that nobody holds.
 	entryPhotos *fakeEntryPhotoStore
+	// wire, when set, adds to the wiring before the server is built (the
+	// push tests hang a fake push sender on the services).
+	wire func(socialSvc *social.Service, boardSvc *board.Service, deps *Deps)
 }
 
 // buildIntegrationServerWith is buildIntegrationServer with the spin slice's
@@ -229,6 +232,9 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	}
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
+	}
+	if opts.wire != nil {
+		opts.wire(socialSvc, boardSvc, &deps)
 	}
 	return NewServer(deps)
 }

@@ -196,8 +196,11 @@ export const api = {
   patch<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
     return request<T>('PATCH', path, body, opts);
   },
-  /** Added for DELETE /me/blocks/{user_id} (Settings > Blocked accounts); answers 204. */
-  delete<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    return request<T>('DELETE', path, undefined, opts);
+  /**
+   * Added for DELETE /me/blocks/{user_id} (Settings > Blocked accounts); answers 204. `body` is
+   * optional (DELETE /me/push-tokens sends the token in it).
+   */
+  delete<T>(path: string, opts: RequestOptions = {}, body?: unknown): Promise<T> {
+    return request<T>('DELETE', path, body, opts);
   },
 };

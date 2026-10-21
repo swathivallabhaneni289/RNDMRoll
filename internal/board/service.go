@@ -81,6 +81,18 @@ type Service struct {
 	facts    Facts
 	clk      clock.Clock
 	photoURL func(string) string
+	notify   CommentNotifier
+}
+
+// CommentNotifier hears about every new comment and reply (the phone push,
+// internal/push). It works in the background and never fails the request.
+type CommentNotifier interface {
+	CommentAdded(commentID uuid.UUID)
+}
+
+// SetCommentNotifier sets who hears about new comments; nil for no one.
+func (s *Service) SetCommentNotifier(n CommentNotifier) {
+	s.notify = n
 }
 
 // NewService builds a Service. photoURL turns a storage key into its link;
@@ -380,6 +392,9 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top, photoKey)
 	if err != nil {
 		return Comment{}, err
+	}
+	if s.notify != nil {
+		s.notify.CommentAdded(id)
 	}
 	me, err := s.social.Person(ctx, viewer)
 	if err != nil {

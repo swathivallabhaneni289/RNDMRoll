@@ -22,6 +22,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/push"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
@@ -161,6 +162,17 @@ func main() {
 		logger.Warn("spin test tools are ON: the test clock and pretend-day routes answer for the listed accounts only",
 			"app_env", cfg.AppEnv, "accounts", len(cfg.SpinTestUserEmails))
 	}
+	// Phone pushes (internal/push): the token routes are always on; sending
+	// is a no-op until PUSH_DRIVER=expo (docs/PUSH-SETUP.md).
+	pushRepo := postgres.NewPushRepo(pool)
+	if cfg.PushDriver == "expo" {
+		pushNotifier := push.NewNotifier(pushRepo, socialService, push.NewExpoSender(pushRepo, cfg.ExpoAccessToken, logger), logger)
+		boardService.SetCommentNotifier(pushNotifier)
+		socialService.SetFollowNotifier(pushNotifier)
+	}
+	deps.PushTokens = httpapi.NewPushTokenHandler(pushRepo)
+	logger.Info("push notifications", "driver", cfg.PushDriver)
+
 	server := httpapi.NewServer(deps)
 
 	httpServer := &http.Server{

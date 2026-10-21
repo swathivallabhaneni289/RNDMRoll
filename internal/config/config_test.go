@@ -331,3 +331,30 @@ func TestLoad_TestToolsOffLoadsWithAnyAppEnvAndRejectsOddSwitchValues(t *testing
 		})
 	}
 }
+
+func TestLoad_PushDriverDefaultsToOffAndRejectsUnknown(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("PUSH_DRIVER", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.PushDriver != "off" {
+		t.Errorf("PushDriver = %q, want off", cfg.PushDriver)
+	}
+
+	t.Setenv("PUSH_DRIVER", "expo")
+	t.Setenv("EXPO_ACCESS_TOKEN", "abc")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() with expo: %v", err)
+	}
+	if cfg.PushDriver != "expo" || cfg.ExpoAccessToken != "abc" {
+		t.Errorf("got %q %q", cfg.PushDriver, cfg.ExpoAccessToken)
+	}
+
+	t.Setenv("PUSH_DRIVER", "apns")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "PUSH_DRIVER") {
+		t.Errorf("Load() with PUSH_DRIVER=apns: want an error naming PUSH_DRIVER, got %v", err)
+	}
+}

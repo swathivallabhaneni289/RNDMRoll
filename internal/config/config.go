@@ -54,6 +54,13 @@ type Config struct {
 	// (/admin: reports, removing posts and comments, disabling accounts).
 	// Empty means the admin page is not mounted at all.
 	AdminEmails []string
+
+	// PushDriver is "off" (the default: phone pushes are not sent) or
+	// "expo" (sent through Expo's push service; docs/PUSH-SETUP.md).
+	PushDriver string
+	// ExpoAccessToken is optional: needed only when "enhanced push
+	// security" is turned on for the Expo project.
+	ExpoAccessToken string
 }
 
 // Load reads configuration from the process environment. If any required
@@ -159,6 +166,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	pushDriver := withDefault(os.Getenv("PUSH_DRIVER"), "off")
+	if pushDriver != "off" && pushDriver != "expo" {
+		return nil, fmt.Errorf("config: PUSH_DRIVER must be %q or %q, got %q", "off", "expo", pushDriver)
+	}
+
 	return &Config{
 		Port:            port,
 		DatabaseURL:     databaseURL,
@@ -188,6 +200,9 @@ func Load() (*Config, error) {
 		SpinTestTools:      spinTestTools,
 		SpinTestUserEmails: spinTestEmails,
 		AdminEmails:        parseEmailList(os.Getenv("ADMIN_EMAILS")),
+
+		PushDriver:      pushDriver,
+		ExpoAccessToken: os.Getenv("EXPO_ACCESS_TOKEN"),
 	}, nil
 }
 

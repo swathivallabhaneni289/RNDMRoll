@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, ApiError } from '@/lib/api/client';
+import { unregisterPushToken } from '@/lib/notifications/pushToken';
 import type { ApiUser, AuthResult } from '@/lib/api/types';
 
 /**
@@ -159,6 +160,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const doSignOut = useCallback(async () => {
     authBusyRef.current += 1;
     try {
+      // This phone stops getting pushes for this account. Never throws; it comes first, while the
+      // access token still works.
+      await unregisterPushToken();
       try {
         const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         if (storedRefreshToken) {

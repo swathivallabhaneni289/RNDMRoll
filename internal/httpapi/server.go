@@ -59,6 +59,8 @@ type Deps struct {
 	Admin *AdminHandler
 	// PasswordReset is Forgot password (public); nil mounts nothing.
 	PasswordReset *PasswordResetHandler
+	// PushTokens is POST and DELETE /me/push-tokens; nil mounts nothing.
+	PushTokens *PushTokenHandler
 	// DeepLinkScheme is the app's link scheme for the invite page's button
 	// ("rndmroll" when empty).
 	DeepLinkScheme string
@@ -170,6 +172,9 @@ func NewServer(deps Deps) *Server {
 	}
 	if deps.Notifications != nil {
 		deps.Notifications.Register(authed)
+	}
+	if deps.PushTokens != nil {
+		deps.PushTokens.Register(authed)
 	}
 	if deps.TestTools != nil {
 		deps.TestTools.Register(authed)

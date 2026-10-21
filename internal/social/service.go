@@ -93,8 +93,22 @@ type Repository interface {
 // Service is the follows, blocks and settings use cases. Every write reads
 // now once from the spin slice's clock, for the person acting.
 type Service struct {
-	repo Repository
-	clk  clock.Clock
+	repo   Repository
+	clk    clock.Clock
+	notify FollowNotifier
+}
+
+// FollowNotifier hears about new follow requests and accepted ones (the
+// phone push, internal/push). It works in the background and never fails
+// the request.
+type FollowNotifier interface {
+	FollowRequested(follower, followee uuid.UUID)
+	FollowAccepted(requestID uuid.UUID)
+}
+
+// SetFollowNotifier sets who hears about follow requests; nil for no one.
+func (s *Service) SetFollowNotifier(n FollowNotifier) {
+	s.notify = n
 }
 
 // NewService builds a Service.
@@ -163,7 +177,19 @@ func (s *Service) Follow(ctx context.Context, viewer, target uuid.UUID) (Relatio
 	if viewer == target {
 		return "", ErrNotFound
 	}
-	return s.repo.Follow(ctx, viewer, target, s.now(viewer))
+	if s.notify == nil {
+		return s.repo.Follow(ctx, viewer, target, s.now(viewer))
+	}
+	// A repeat answers the same relation and must not notify again.
+	before, _, err := s.repo.RelationOf(ctx, viewer, target)
+	if err != nil {
+		return "", err
+	}
+	rel, err := s.repo.Follow(ctx, viewer, target, s.now(viewer))
+	if err == nil && before == RelationNone && rel == RelationRequested {
+		s.notify.FollowRequested(viewer, target)
+	}
+	return rel, err
 }
 
 // Unfollow ends a follow or cancels a request. Silent.
@@ -178,7 +204,13 @@ func (s *Service) RemoveFollower(ctx context.Context, viewer, follower uuid.UUID
 
 // Accept accepts a request addressed to the viewer.
 func (s *Service) Accept(ctx context.Context, viewer, requestID uuid.UUID) error {
-	return s.repo.Accept(ctx, viewer, requestID, s.now(viewer))
+	if err := s.repo.Accept(ctx, viewer, requestID, s.now(viewer)); err != nil {
+		return err
+	}
+	if s.notify != nil {
+		s.notify.FollowAccepted(requestID)
+	}
+	return nil
 }
 
 // Decline deletes a request addressed to the viewer. Silent.
