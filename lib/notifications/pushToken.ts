@@ -23,10 +23,17 @@ export function expoProjectId(): string | null {
 }
 
 /**
- * The token sent to the server and for whom, so a repeat is not sent again. It is kept as soon as
- * its POST starts, with whether that POST went through, so a log out meanwhile can wait for it.
+ * A token already sent is sent again after this long, so a server that forgot it while this person
+ * stayed signed in (an admin's disable forgets every token of the account) gets it back.
  */
-let registered: { userId: string; token: string; sent: Promise<boolean> } | null = null;
+const RESEND_AFTER_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * The token sent to the server, for whom and when, so a repeat is not sent again. It is kept as
+ * soon as its POST starts, with whether that POST went through, so a log out meanwhile can wait
+ * for it.
+ */
+let registered: { userId: string; token: string; sent: Promise<boolean>; at: number } | null = null;
 /** The registration running now and for whom: a second call for the same person shares it. */
 let inFlight: { userId: string; done: Promise<void> } | null = null;
 /** Bumped by every sign in: a registration begun before one sends nothing. */
@@ -37,7 +44,7 @@ let loggedOut = false;
 /**
  * Sends this phone's push token to the server for userId when it can. Safe to call often (every
  * signed-in start and every return to the front): one at a time for each person, and a token
- * already sent for the same person is not sent again.
+ * already sent for the same person is not sent again for 12 hours.
  */
 export function registerPushToken(userId: string): Promise<void> {
   if (inFlight !== null && inFlight.userId === userId) return inFlight.done;
@@ -54,12 +61,19 @@ export function registerPushToken(userId: string): Promise<void> {
       if (typeof token !== 'string' || token === '') return;
       // Logged out, or signed in again, while this ran: it belongs to a session that is over.
       if (loggedOut || generation !== started) return;
-      if (registered !== null && registered.userId === userId && registered.token === token) return;
+      if (
+        registered !== null &&
+        registered.userId === userId &&
+        registered.token === token &&
+        Date.now() - registered.at < RESEND_AFTER_MS
+      ) {
+        return;
+      }
       const sent = api.post('/me/push-tokens', { token, platform: Platform.OS }).then(
         () => true,
         () => false
       );
-      const record = { userId, token, sent };
+      const record = { userId, token, sent, at: Date.now() };
       registered = record;
       // Forgotten when it did not go through, so the next start tries again.
       if (!(await sent) && registered === record) registered = null;

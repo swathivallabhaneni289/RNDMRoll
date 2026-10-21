@@ -56,8 +56,13 @@ export default function ForgotPasswordScreen() {
     setBusy(true);
     try {
       await api.post('/auth/password/forgot', { email: typed }, { auth: false });
+      // The server sends at most one code a minute and keeps the earlier one working until then.
+      setNotice(
+        step === 'code'
+          ? `If ${typed} has an account, a new code is on its way. If you asked less than a minute ago, use the code you already have.`
+          : `If ${typed} has an account, a 6-digit code is on its way. Check your email.`
+      );
       setStep('code');
-      setNotice(`If ${typed} has an account, a 6-digit code is on its way. Check your email.`);
     } catch (err) {
       setFormError(failure(err));
     } finally {
@@ -83,7 +88,10 @@ export default function ForgotPasswordScreen() {
       // The root guard routes the signed-in account to the app.
       await signIn(result);
     } catch (err) {
-      if (err instanceof ApiError && err.field === 'code') setCodeError("That code isn't right or has expired.");
+      // After 5 tries a code stops working, and no new one is sent until it expires (30 minutes).
+      if (err instanceof ApiError && err.field === 'code') {
+        setCodeError("That code isn't right or has expired. After 5 wrong tries, wait up to 30 minutes, then send a new code.");
+      }
       else if (err instanceof ApiError && err.field === 'new_password') setPasswordError(err.userMessage);
       else setFormError(failure(err));
     } finally {
