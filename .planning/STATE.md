@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 06
 current_phase_name: public-global
 status: building
-stopped_at: Phase 5 closed and pushed (d0fc4a4); Phase 6 partly built early; dev at version 12 (2026-10-18)
-last_updated: "2026-10-18T12:00:00.000Z"
-last_activity: 2026-10-18
-last_activity_desc: Phase 5 walkthrough finished and closed; reactions on posts removed; every post reads the same; person page, mute, report, hide and admin page built early by the other session
+stopped_at: Phase 6 built; review fixes and README on 2026-10-21
+last_updated: "2026-10-21T18:00:00.000Z"
+last_activity: 2026-10-21
+last_activity_desc: Forgot password, phone pushes, review fixes, README rewritten as a product case study
 progress:
   total_phases: 8
   completed_phases: 7
@@ -19,7 +19,7 @@ progress:
 
 # Project State
 
-> **CURRENT STATUS (2026-10-18).** Phases 1 to 5 are closed (5 walked on the simulator and pushed to GitHub, `phase-02-daily-roll` at d0fc4a4). Phase 6 is partly built: the person page (Posts, Followers and Following lists, bio), mute, report a person, a post or a comment, hide a comment, the blocked page with Unblock, and an admin page to review reports and disable accounts (migrations 0010 to 0012, dev at 12). Still open in Phase 6: photos in comments (migration 0013), GIFs (needs the developer's GIPHY key), the 8 PM reminder (needs a rebuild of the test app); Global and the public/private switch are deferred. Still open before launch: the developer's launch list (custom domain, favicon, AI tag removed, real Terms and Privacy, Forgot password, S3, Resend, universal links), the deferred device checks (Reduce Motion, Larger Text, offline, first-run sign-up page), and before real use: reset the test clocks and restart the API without the test variables (and without `ADMIN_EMAILS` unless the admin page is wanted live).
+> **CURRENT STATUS (2026-10-21).** Phases 1 to 5 are closed and walked on the simulator. Phase 6 is built: the person page, mute, report a person, a post or a comment, hide a comment, the blocked page, the admin page, photos in comments (0013), the 8 PM reminder, Forgot password with an emailed 6-digit code (0014) and phone pushes for comments, replies and follow requests (0015, off until Apple and Expo credentials exist). Every account is private and every follow is a request. Still open: GIFs (needs a GIPHY key), the deferred device checks (Reduce Motion, offline while open, first-run sign-up page). The project is now a portfolio piece: real email, photo storage, push credentials, domain and legal text are set aside; the app runs locally in test mode.
 
 > **BRANCH (2026-10-13): all work from Phase 2 on lives on `phase-02-daily-roll` (local and GitHub). `phase-01-foundation-accounts` is Phase 1 ONLY (tip e9d9b78); do not commit or push Phase 2 or later work there. Commit with explicit paths, push only when asked.**
 >
@@ -30,16 +30,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** A working daily habit loop — roll, log, diary, gated friend feed — used reliably every day by the developer and a small friend group.
-**Current focus:** Phase 02 — daily-roll (planned on paper, waiting for go)
+**Current focus:** Phase 06: final checks and demo readiness
 
 ## Current Position
 
-Phase: 02 (daily-roll) — PLANNED ON PAPER (Phase 01 closed 2026-10-09); 03 (daily-entry) — PLANNED ON PAPER (2026-10-09)
-Plan: 0 of 3
-Status: Waiting for the developer's go on Phase 2
-Last activity: 2026-10-09 — Apple and Google sign-in removed; Phase 3 planned on paper
+Phase: 06 (people pages, reports, admin, reminders): built; 01 to 05 closed
+Status: Final checks before a demo
+Last activity: 2026-10-21: Forgot password, phone pushes, review fixes, README rewritten as a product case study
 
-Progress: [██░░░░░░░░] 20%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
