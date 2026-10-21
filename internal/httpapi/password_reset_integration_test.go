@@ -340,3 +340,25 @@ func TestPasswordResetIntegration_ForgotAnswersBeforeTheEmail(t *testing.T) {
 		t.Fatalf("emails sent with context errors %v, want one email with none", sender.errs)
 	}
 }
+
+// One address may start at most 10 Forgot password requests a minute, whatever
+// the emails: forgot starts work after its answer, so a stranger cycling
+// through emails cannot pile that work up.
+func TestPasswordResetIntegration_OneAddressIsLimited(t *testing.T) {
+	w := newResetWorld(t, &captureSender{})
+	for i := range 11 {
+		req := integrationRequest(t, http.MethodPost, "/v1/auth/password/forgot", "",
+			map[string]any{"email": fmt.Sprintf("nobody-%d@example.com", i)})
+		req.RemoteAddr = "198.51.100.7:40000"
+		rec := httptest.NewRecorder()
+		w.routes.ServeHTTP(rec, req)
+		w.h.Wait()
+		want := http.StatusOK
+		if i == 10 {
+			want = http.StatusTooManyRequests
+		}
+		if rec.Code != want {
+			t.Fatalf("request %d: %d %s, want %d", i+1, rec.Code, rec.Body.String(), want)
+		}
+	}
+}

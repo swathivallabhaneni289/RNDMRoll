@@ -86,13 +86,19 @@ func NewPasswordResetHandler(users user.Repository, passwords user.PasswordChang
 // Wait waits for every code email started so far (tests and shutdown).
 func (h *PasswordResetHandler) Wait() { h.wg.Wait() }
 
-// Register mounts the routes on the public /v1 group.
+// Register mounts the routes on the public /v1 group. Like sign-up they are
+// limited twice: 10 a minute per address in total (forgot starts work after
+// its answer, so one address must not start it for email after email), then
+// 5 a minute per address and email.
 func (h *PasswordResetHandler) Register(rg *gin.RouterGroup) {
+	perAddress := middleware.RateLimit(middleware.LimitConfig{
+		Requests: 10, Window: time.Minute, KeyFunc: middleware.KeyByIP,
+	})
 	limit := middleware.RateLimit(middleware.LimitConfig{
 		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIPAndField("email"),
 	})
-	rg.POST("/auth/password/forgot", limit, h.forgot)
-	rg.POST("/auth/password/reset", limit, h.reset)
+	rg.POST("/auth/password/forgot", perAddress, limit, h.forgot)
+	rg.POST("/auth/password/reset", perAddress, limit, h.reset)
 }
 
 // ForgotPasswordRequest is the POST /auth/password/forgot body.

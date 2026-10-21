@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -129,13 +130,15 @@ func TestExpoSenderBatchesAuthAndRemovesDeadTokens(t *testing.T) {
 }
 
 func TestExpoSenderSurvivesErrorsAndSlowServer(t *testing.T) {
-	calls := 0
+	// Counted atomically: the slow second call is still running in the
+	// server when the client gives up and the test reads the count.
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		n := calls.Add(1)
 		if r.Header.Get("Authorization") != "" {
 			t.Errorf("no access token set, got Authorization %q", r.Header.Get("Authorization"))
 		}
-		if calls == 1 {
+		if n == 1 {
 			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
@@ -149,8 +152,8 @@ func TestExpoSenderSurvivesErrorsAndSlowServer(t *testing.T) {
 	s.Client.Timeout = 50 * time.Millisecond
 	s.Send(context.Background(), []Message{{UserID: alice, Title: Title, Body: "x"}})
 	s.Send(context.Background(), []Message{{UserID: alice, Title: Title, Body: "x"}})
-	if calls != 2 || len(tokens.removed) != 0 {
-		t.Errorf("calls %d removed %v", calls, tokens.removed)
+	if calls.Load() != 2 || len(tokens.removed) != 0 {
+		t.Errorf("calls %d removed %v", calls.Load(), tokens.removed)
 	}
 }
 

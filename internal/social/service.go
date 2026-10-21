@@ -28,9 +28,9 @@ type Repository interface {
 	// HasBlock reports a block either way.
 	HasBlock(ctx context.Context, a, b uuid.UUID) (bool, error)
 
-	// Follow makes or keeps follower's row toward followee: accepted at once
-	// when followee is public, else pending. made is true only for the call
-	// that made the row, decided under the pair lock. ErrNotFound for an
+	// Follow makes or keeps follower's row toward followee; a new row is always
+	// a pending request. made is true only for the call that made the row,
+	// decided under the pair lock. ErrNotFound for an
 	// unknown or unfinished account, yourself, or a block either way.
 	Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (rel Relation, made bool, err error)
 	// Unfollow deletes follower's row toward followee (a follow or a
