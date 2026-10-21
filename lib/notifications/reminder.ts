@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
+import { listenForTaps, loadNotifications } from '@/lib/notifications/module';
 import { useSession } from '@/lib/session/store';
 import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
@@ -118,23 +119,6 @@ export function permissionFrom(answer: { granted: boolean; status: string }): Re
   if (answer.granted) return 'granted';
   if (answer.status === 'undetermined') return 'undetermined';
   return 'denied';
-}
-
-let notifications: typeof NotificationsModule | null | undefined;
-
-/**
- * The notification module, loaded once on first use. Null when this build has no native module
- * (the dev client before its rebuild): loading it would throw, so the app goes on without it.
- */
-function loadNotifications(): typeof NotificationsModule | null {
-  if (notifications !== undefined) return notifications;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    notifications = require('expo-notifications') as typeof NotificationsModule;
-  } catch {
-    notifications = null;
-  }
-  return notifications;
 }
 
 /** True when the reminder can work on this build. */
@@ -314,30 +298,14 @@ export function useReminderSetup(): void {
       router.navigate(REMINDER_ROUTE);
     }
 
-    let alive = true;
-    api
-      .getLastNotificationResponseAsync()
-      .then((response) => {
-        if (alive) open(response);
-      })
-      .catch(() => {
-        // No launch tap to follow.
-      });
-
-    let subscription: { remove: () => void } | null = null;
-    try {
-      subscription = api.addNotificationResponseReceivedListener(open);
-    } catch {
-      subscription = null;
-    }
+    const stopTaps = listenForTaps(api, open);
 
     const foreground = AppState.addEventListener('change', (next) => {
       if (next === 'active') void rebuildReminder();
     });
 
     return () => {
-      alive = false;
-      subscription?.remove();
+      stopTaps();
       foreground.remove();
     };
   }, [router]);

@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, ApiError } from '@/lib/api/client';
-import { unregisterPushToken } from '@/lib/notifications/pushToken';
+import { resendPushToken, unregisterPushToken } from '@/lib/notifications/pushToken';
 import type { ApiUser, AuthResult } from '@/lib/api/types';
 
 /**
@@ -145,6 +145,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, result.access_token, KEYCHAIN_OPTIONS);
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
       setAccessToken(result.access_token);
+      // The push token goes to the server again now, even for the same person: a password change
+      // or reset makes the server forget every token of the account, this phone's too.
+      resendPushToken(result.user.id);
       // Set before the status flips, so the landing page never draws once as the edit page.
       // A plain log in clears it.
       setExtrasPending(options?.extras === true);
@@ -162,13 +165,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // The launch restore and the client's own 401 path can both ask at once: they share one call.
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
-  const doSignOut = useCallback(async () => {
+  // Ends the session. fromRefresh is true only when a failed refresh is what signs out.
+  const endSession = useCallback(async (fromRefresh: boolean) => {
     authBusyRef.current += 1;
     try {
       // This phone stops getting pushes for this account. Never throws; it comes first, while the
-      // access token still works. No refresh when a failed refresh is what signs out (it would
-      // wait on itself).
-      await unregisterPushToken(refreshInFlightRef.current === null);
+      // access token still works. A log out by the person may refresh an expired access token on
+      // the way (also while a routine refresh runs, which never waits on it). No refresh when a
+      // failed refresh is what signs out: it would wait on itself.
+      await unregisterPushToken(!fromRefresh);
       try {
         const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         if (storedRefreshToken) {
@@ -188,11 +193,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // A log out by the person, and the client's when an admin disabled the account.
+  const doSignOut = useCallback(() => endSession(false), [endSession]);
+
   const refreshOnce = useCallback(async () => {
     const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!storedRefreshToken) {
       // Nothing to refresh with: the device is already signed out, so clear state.
-      await doSignOut();
+      await endSession(true);
       throw new ApiError(401, 'token_invalid', 'no refresh token stored');
     }
     let result: AuthResult;
@@ -211,7 +219,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // in the keychain so a later attempt or launch can still succeed.
       const stillStored = (await SecureStore.getItemAsync(REFRESH_TOKEN_KEY)) === storedRefreshToken;
       if (isDefinitiveAuthFailure(err) && stillStored) {
-        await doSignOut();
+        await endSession(true);
       }
       throw err;
     }
@@ -220,7 +228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, result.access_token, KEYCHAIN_OPTIONS);
     await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
     setAccessToken(result.access_token);
-  }, [doSignOut]);
+  }, [endSession]);
 
   const doRefreshSession = useCallback((): Promise<void> => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;

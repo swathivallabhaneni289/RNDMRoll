@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import type * as NotificationsModule from 'expo-notifications';
 import { useSession } from '@/lib/session/store';
+import { listenForTaps, loadNotifications } from '@/lib/notifications/module';
 import { isReminderId } from '@/lib/notifications/reminder';
 import { pushTarget } from '@/lib/notifications/pushTarget';
 import { registerPushToken } from '@/lib/notifications/pushToken';
@@ -13,19 +14,6 @@ import { registerPushToken } from '@/lib/notifications/pushToken';
  * signed-in layout next to the 8 PM reminder, whose own taps it leaves alone. How a notification
  * shows while the app is open is set once, by useReminderSetup.
  */
-
-let notifications: typeof NotificationsModule | null | undefined;
-
-function loadNotifications(): typeof NotificationsModule | null {
-  if (notifications !== undefined) return notifications;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    notifications = require('expo-notifications') as typeof NotificationsModule;
-  } catch {
-    notifications = null;
-  }
-  return notifications;
-}
 
 /** The last push tap already followed, so a remount never opens its page twice. */
 let handledResponseId: string | null = null;
@@ -63,25 +51,6 @@ export function usePushSetup(): void {
       router.push(target);
     }
 
-    let alive = true;
-    api
-      .getLastNotificationResponseAsync()
-      .then((response) => {
-        if (alive) open(response);
-      })
-      .catch(() => {
-        // No launch tap to follow.
-      });
-
-    let subscription: { remove: () => void } | null = null;
-    try {
-      subscription = api.addNotificationResponseReceivedListener(open);
-    } catch {
-      subscription = null;
-    }
-    return () => {
-      alive = false;
-      subscription?.remove();
-    };
+    return listenForTaps(api, open);
   }, [router]);
 }
