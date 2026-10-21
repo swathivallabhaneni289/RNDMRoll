@@ -15,6 +15,7 @@ import { SettledBlock } from '@/components/today/SettledBlock';
 import { StatusMessage, type StatusKind } from '@/components/today/StatusMessage';
 import { WeeklyCard } from '@/components/today/WeeklyCard';
 import { BellButton } from '@/components/notifications/BellButton';
+import { ShutterMark } from '@/components/brand/ShutterMark';
 import type { Today, TodayState } from '@/lib/api/types';
 import { nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
@@ -28,6 +29,8 @@ const WHEEL_MAX = 232;
 /** The settled day's wheel, at rest above the entry or the struck word. */
 const REST_WHEEL_SCALE = 0.6;
 const noop = () => {};
+/** The logo's wheel beside the RNDMRoll title, about the bar icons' size with its pointer. */
+const HEADER_MARK = 20;
 /** The failsafe: a turn is 4 seconds, so a wheel that has not reported by now is not coming. */
 const LANDING_FAILSAFE_MS = 6000;
 /** After the landing nothing moves for this long, then the reveal runs (UI-SPEC 5). */
@@ -326,7 +329,11 @@ export function TodayScreen() {
         justifyContent: 'space-between',
       }}
     >
-      <AppText role="heading">RNDMRoll</AppText>
+      {/* The logo beside the name, here only (developer, 2026-10-21). */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+        <ShutterMark size={HEADER_MARK} />
+        <AppText role="heading">RNDMRoll</AppText>
+      </View>
       <BellButton unread={unread} onPress={() => router.push('/(app)/today/notifications')} />
     </View>
   );
