@@ -10,13 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PasswordReset is one outstanding Forgot password code.
-type PasswordReset struct {
-	CodeHash  []byte
-	ExpiresAt time.Time
-	Attempts  int
-}
-
 // PasswordResetRepo stores Forgot password codes (migration 0014).
 type PasswordResetRepo struct {
 	pool *pgxpool.Pool
@@ -27,34 +20,47 @@ func NewPasswordResetRepo(pool *pgxpool.Pool) *PasswordResetRepo {
 	return &PasswordResetRepo{pool: pool}
 }
 
-// Put replaces the person's code.
-func (r *PasswordResetRepo) Put(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at time.Time) error {
-	_, err := r.pool.Exec(ctx, `
+// Issue stores a new code for the person, in one statement, unless the one
+// they have must stand: a used-up code (maxTries tries) stays until it
+// expires, and one made after freshSince is not replaced. A new code keeps
+// the tries of an unexpired one, so asking again never buys more guesses;
+// only after an expiry does a code start from zero. stored reports whether
+// the new code was kept (and so is to be emailed).
+func (r *PasswordResetRepo) Issue(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at, freshSince time.Time, maxTries int) (stored bool, err error) {
+	tag, err := r.pool.Exec(ctx, `
 		insert into password_resets (user_id, code_hash, expires_at, attempts, created_at) values ($1, $2, $3, 0, $4)
 		on conflict (user_id) do update set code_hash = excluded.code_hash, expires_at = excluded.expires_at,
-			attempts = 0, created_at = excluded.created_at`, userID, codeHash, expiresAt, at)
-	return err
-}
-
-// Get reads the person's code; ok false when there is none.
-func (r *PasswordResetRepo) Get(ctx context.Context, userID uuid.UUID) (PasswordReset, bool, error) {
-	var p PasswordReset
-	err := r.pool.QueryRow(ctx, `select code_hash, expires_at, attempts from password_resets where user_id = $1`, userID).
-		Scan(&p.CodeHash, &p.ExpiresAt, &p.Attempts)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return PasswordReset{}, false, nil
+			attempts = case when password_resets.expires_at > excluded.created_at then password_resets.attempts else 0 end,
+			created_at = excluded.created_at
+		where password_resets.expires_at <= excluded.created_at
+			or (password_resets.attempts < $5 and password_resets.created_at <= $6)`,
+		userID, codeHash, expiresAt, at, maxTries, freshSince)
+	if err != nil {
+		return false, err
 	}
-	return p, err == nil, err
+	return tag.RowsAffected() == 1, nil
 }
 
-// CountTry adds one wrong try.
-func (r *PasswordResetRepo) CountTry(ctx context.Context, userID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `update password_resets set attempts = attempts + 1 where user_id = $1`, userID)
-	return err
+// Try counts one try at the person's code and returns its hash, in one
+// statement, so tries sent at once still stop at maxTries. ok is false, and
+// nothing is counted, when there is no code, it has expired or it is used up.
+func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, at time.Time, maxTries int) (codeHash []byte, ok bool, err error) {
+	err = r.pool.QueryRow(ctx, `
+		update password_resets set attempts = attempts + 1
+		where user_id = $1 and attempts < $2 and expires_at > $3
+		returning code_hash`, userID, maxTries, at).Scan(&codeHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	return codeHash, err == nil, err
 }
 
-// Delete removes the person's code (used, or replaced by the new password).
-func (r *PasswordResetRepo) Delete(ctx context.Context, userID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `delete from password_resets where user_id = $1`, userID)
-	return err
+// Spend deletes the person's code if it is still codeHash. Only one request
+// can spend a code: spent is true for that one.
+func (r *PasswordResetRepo) Spend(ctx context.Context, userID uuid.UUID, codeHash []byte) (spent bool, err error) {
+	tag, err := r.pool.Exec(ctx, `delete from password_resets where user_id = $1 and code_hash = $2`, userID, codeHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }

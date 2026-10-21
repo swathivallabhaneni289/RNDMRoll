@@ -37,8 +37,9 @@ const (
 	readTimeout       = 30 * time.Second
 	writeTimeout      = 30 * time.Second
 	// shutdownTimeout bounds how long an in-flight request (for example a
-	// mid-write signup) gets to finish before the process exits on SIGINT
-	// or SIGTERM (T-01-SRV-06).
+	// mid-write signup), and then the background work requests started
+	// (phone pushes, Forgot password emails), get to finish before the
+	// process exits on SIGINT or SIGTERM (T-01-SRV-06).
 	shutdownTimeout = 15 * time.Second
 )
 
@@ -165,8 +166,9 @@ func main() {
 	// Phone pushes (internal/push): the token routes are always on; sending
 	// is a no-op until PUSH_DRIVER=expo (docs/PUSH-SETUP.md).
 	pushRepo := postgres.NewPushRepo(pool)
+	var pushNotifier *push.Notifier
 	if cfg.PushDriver == "expo" {
-		pushNotifier := push.NewNotifier(pushRepo, socialService, push.NewExpoSender(pushRepo, cfg.ExpoAccessToken, logger), logger)
+		pushNotifier = push.NewNotifier(pushRepo, socialService, push.NewExpoSender(pushRepo, cfg.ExpoAccessToken, logger), logger)
 		boardService.SetCommentNotifier(pushNotifier)
 		socialService.SetFollowNotifier(pushNotifier)
 	}
@@ -210,8 +212,37 @@ func main() {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed, forcing close", "error", err)
 			_ = httpServer.Close()
+		} else {
+			// Then the work the requests left running gets the rest of that
+			// time. Only after a clean Shutdown: no handler can start more
+			// while this waits.
+			waits := []func(){deps.PasswordReset.Wait}
+			if pushNotifier != nil {
+				waits = append(waits, pushNotifier.Wait)
+			}
+			if !waitAll(shutdownCtx, waits...) {
+				logger.Warn("background work cut off at shutdown")
+			}
 		}
 	}
 
 	logger.Info("server stopped")
+}
+
+// waitAll runs each wait in turn and reports whether all of them returned
+// before ctx ended.
+func waitAll(ctx context.Context, waits ...func()) bool {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, wait := range waits {
+			wait()
+		}
+	}()
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }

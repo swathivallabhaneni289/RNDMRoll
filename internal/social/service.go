@@ -29,9 +29,10 @@ type Repository interface {
 	HasBlock(ctx context.Context, a, b uuid.UUID) (bool, error)
 
 	// Follow makes or keeps follower's row toward followee: accepted at once
-	// when followee is public, else pending. ErrNotFound for an unknown or
-	// unfinished account, yourself, or a block either way.
-	Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (Relation, error)
+	// when followee is public, else pending. made is true only for the call
+	// that made the row, decided under the pair lock. ErrNotFound for an
+	// unknown or unfinished account, yourself, or a block either way.
+	Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (rel Relation, made bool, err error)
 	// Unfollow deletes follower's row toward followee (a follow or a
 	// request). Absent is fine.
 	Unfollow(ctx context.Context, follower, followee uuid.UUID) error
@@ -177,16 +178,10 @@ func (s *Service) Follow(ctx context.Context, viewer, target uuid.UUID) (Relatio
 	if viewer == target {
 		return "", ErrNotFound
 	}
-	if s.notify == nil {
-		return s.repo.Follow(ctx, viewer, target, s.now(viewer))
-	}
-	// A repeat answers the same relation and must not notify again.
-	before, _, err := s.repo.RelationOf(ctx, viewer, target)
-	if err != nil {
-		return "", err
-	}
-	rel, err := s.repo.Follow(ctx, viewer, target, s.now(viewer))
-	if err == nil && before == RelationNone && rel == RelationRequested {
+	rel, made, err := s.repo.Follow(ctx, viewer, target, s.now(viewer))
+	// Only the call that made the request notifies, so a repeat, or the
+	// same request sent twice at once, notifies once.
+	if made && s.notify != nil {
 		s.notify.FollowRequested(viewer, target)
 	}
 	return rel, err

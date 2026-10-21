@@ -4,12 +4,17 @@
 // and signs the person in. No link is needed, so it works before the real web
 // address exists.
 //
-//   - forgot always answers 200 {}, whether or not the email has an account,
-//     so it never tells a stranger who is signed up.
-//   - Only an HMAC of the code is stored. A code lives 30 minutes, allows 5
-//     wrong tries, and a new request replaces it.
+//   - forgot always answers 200 {} at once, whether or not the email has an
+//     account: the lookup and the email run after the answer, so neither the
+//     answer nor its timing tells a stranger who is signed up.
+//   - Only an HMAC of the code is stored. A code lives 30 minutes and allows
+//     5 tries, which a new code never resets: a new request replaces the code
+//     but keeps its tries, a used-up code gets no new one until it expires,
+//     and a code under a minute old is not replaced (nothing is emailed).
 //   - A wrong code, an unknown email and a used-up code all answer the same
-//     400 field "code".
+//     400 field "code". A try is counted in the same step that reads the
+//     code, and the right code is spent before the password changes, so
+//     tries sent at once neither pass the limit nor change it twice.
 //   - The new password follows the sign-up rules; setting it ends every other
 //     session (as Change password does) and the answer is a fresh session.
 //   - A disabled account gets no code and cannot reset.
@@ -26,6 +31,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,23 +41,26 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
 const (
-	resetCodeTTL      = 30 * time.Minute
-	resetMaxAttempts  = 5
-	resetCodeDigits   = 6
-	resetSendDeadline = 10 * time.Second
+	resetCodeTTL     = 30 * time.Minute
+	resetMaxAttempts = 5
+	resetCodeDigits  = 6
+	// resetResendAfter: a younger code is not replaced, so a second tap
+	// cannot spoil the email on its way or fill the inbox.
+	resetResendAfter = time.Minute
+	// resetWorkDeadline bounds the lookup, the store and the email that
+	// forgot runs after its answer.
+	resetWorkDeadline = 15 * time.Second
 )
 
 // ResetStore keeps the Forgot password codes (postgres.PasswordResetRepo).
 type ResetStore interface {
-	Put(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at time.Time) error
-	Get(ctx context.Context, userID uuid.UUID) (postgres.PasswordReset, bool, error)
-	CountTry(ctx context.Context, userID uuid.UUID) error
-	Delete(ctx context.Context, userID uuid.UUID) error
+	Issue(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at, freshSince time.Time, maxTries int) (bool, error)
+	Try(ctx context.Context, userID uuid.UUID, at time.Time, maxTries int) ([]byte, bool, error)
+	Spend(ctx context.Context, userID uuid.UUID, codeHash []byte) (bool, error)
 }
 
 // PasswordResetHandler serves the two Forgot password routes.
@@ -64,6 +73,7 @@ type PasswordResetHandler struct {
 	secret    []byte
 	accessTTL time.Duration
 	now       func() time.Time
+	wg        sync.WaitGroup
 }
 
 // NewPasswordResetHandler builds the handler. sender delivers the code email.
@@ -72,6 +82,9 @@ func NewPasswordResetHandler(users user.Repository, passwords user.PasswordChang
 	return &PasswordResetHandler{users: users, passwords: passwords, refresh: refresh, store: store, sender: sender,
 		secret: secret, accessTTL: accessTTL, now: time.Now}
 }
+
+// Wait waits for every code email started so far (tests and shutdown).
+func (h *PasswordResetHandler) Wait() { h.wg.Wait() }
 
 // Register mounts the routes on the public /v1 group.
 func (h *PasswordResetHandler) Register(rg *gin.RouterGroup) {
@@ -129,13 +142,41 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		RespondFieldError(c, "email", reasonInvalid)
 		return
 	}
-	// The same answer whatever happens next, so nobody learns who has an
-	// account.
-	defer Respond(c, http.StatusOK, gin.H{})
+	// The same answer, at once, whatever happens next: the lookup and the
+	// email run after it, so nobody learns who has an account, and a slow
+	// email never makes the app give up on a code that was sent.
+	Respond(c, http.StatusOK, gin.H{})
+	h.background(email)
+}
 
-	ctx := c.Request.Context()
+// background runs sendCode for email on its own deadline, never the
+// request's.
+func (h *PasswordResetHandler) background(email string) {
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("httpapi: reset code panic: %v", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), resetWorkDeadline)
+		defer cancel()
+		h.sendCode(ctx, email)
+	}()
+}
+
+// sendCode emails a new code to the account of email, if it has one that
+// may reset and the store keeps the new code.
+func (h *PasswordResetHandler) sendCode(ctx context.Context, email string) {
 	u, err := h.users.GetByEmailCI(ctx, email)
-	if err != nil || u.Disabled || u.PasswordHash == nil || *u.PasswordHash == "" {
+	if err != nil {
+		if !errors.Is(err, user.ErrNotFound) {
+			log.Printf("httpapi: reset lookup: %v", err)
+		}
+		return
+	}
+	if u.Disabled || u.PasswordHash == nil || *u.PasswordHash == "" {
 		return
 	}
 	code, err := newResetCode()
@@ -144,14 +185,17 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 		return
 	}
 	now := h.now().UTC()
-	if err := h.store.Put(ctx, u.ID, h.codeHash(u.ID, code), now.Add(resetCodeTTL), now); err != nil {
+	stored, err := h.store.Issue(ctx, u.ID, h.codeHash(u.ID, code), now.Add(resetCodeTTL), now,
+		now.Add(-resetResendAfter), resetMaxAttempts)
+	if err != nil {
 		log.Printf("httpapi: reset store: %v", err)
 		return
 	}
+	if !stored {
+		return
+	}
 	subject, html, text := resetMessage(code)
-	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetSendDeadline)
-	defer cancel()
-	if err := h.sender.Send(sendCtx, u.Email, subject, html, text); err != nil {
+	if err := h.sender.Send(ctx, u.Email, subject, html, text); err != nil {
 		log.Printf("httpapi: reset email: %v", err)
 	}
 }
@@ -179,19 +223,13 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		wrong()
 		return
 	}
-	rec, ok, err := h.store.Get(ctx, u.ID)
+	stored, ok, err := h.store.Try(ctx, u.ID, h.now(), resetMaxAttempts)
 	if err != nil {
 		RespondError(c, err)
 		return
 	}
-	if !ok || !h.now().Before(rec.ExpiresAt) || rec.Attempts >= resetMaxAttempts {
-		wrong()
-		return
-	}
-	if !hmac.Equal(rec.CodeHash, h.codeHash(u.ID, code)) {
-		if err := h.store.CountTry(ctx, u.ID); err != nil {
-			log.Printf("httpapi: reset count try: %v", err)
-		}
+	codeHash := h.codeHash(u.ID, code)
+	if !ok || !hmac.Equal(stored, codeHash) {
 		wrong()
 		return
 	}
@@ -210,6 +248,18 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		RespondError(c, err)
 		return
 	}
+	// Spent before the password changes, by one request only: the right code
+	// sent twice at once changes the password once, and no change can leave
+	// the code usable.
+	spent, err := h.store.Spend(ctx, u.ID, codeHash)
+	if err != nil {
+		RespondError(c, err)
+		return
+	}
+	if !spent {
+		wrong()
+		return
+	}
 	userAgent := c.Request.UserAgent()
 	refreshToken, err := h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
 		return h.passwords.ChangePassword(ctx, u.ID, newHash, tokenHash, expiresAt, &userAgent)
@@ -221,9 +271,6 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		}
 		RespondError(c, err)
 		return
-	}
-	if err := h.store.Delete(ctx, u.ID); err != nil {
-		log.Printf("httpapi: reset delete: %v", err)
 	}
 	Respond(c, http.StatusOK, gin.H{
 		"access_token":  accessToken,

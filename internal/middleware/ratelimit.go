@@ -68,13 +68,15 @@ func KeyByIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// KeyByIPAndField keys the limiter by the client IP combined with a
-// lowercased JSON body field (e.g. "email"), so login throttling applies
-// per account as well as per source. It reads the body via
+// KeyByIPAndField keys the limiter by the client IP combined with a JSON
+// body field (e.g. "email"), trimmed and lowercased as the handlers read it,
+// so login throttling applies per account as well as per source and padding
+// never makes a fresh bucket. It reads the body via
 // ShouldBindBodyWith, which caches the raw body so the handler can still
 // bind it normally afterward. When a body can name the same thing under more
 // than one key (login accepts "login" and the older "email"), pass the others
-// as alternates: the first key that holds a non-empty string is used.
+// as alternates: the first key that holds a non-empty string is used, as Log
+// in picks it.
 func KeyByIPAndField(field string, alternates ...string) func(*gin.Context) string {
 	fields := append([]string{field}, alternates...)
 	return func(c *gin.Context) string {
@@ -84,7 +86,7 @@ func KeyByIPAndField(field string, alternates ...string) func(*gin.Context) stri
 		}
 		for _, f := range fields {
 			if value, _ := body[f].(string); value != "" {
-				return c.ClientIP() + "|" + strings.ToLower(value)
+				return c.ClientIP() + "|" + strings.ToLower(strings.TrimSpace(value))
 			}
 		}
 		return c.ClientIP() + "|"

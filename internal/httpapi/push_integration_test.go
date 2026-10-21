@@ -223,3 +223,34 @@ func TestPushIntegration_FourEventsSettingsBlocksAndSelf(t *testing.T) {
 	w.reply(cara, entry, "Still here", bobsComment)
 	w.expect("block")
 }
+
+// Follow requests sent at once notify once: the push goes only from the
+// request that made the row, decided under the pair lock.
+func TestPushIntegration_FollowsAtOnceNotifyOnce(t *testing.T) {
+	w := newPushWorld(t)
+	alice := w.member("pc_alice", "Alice Ames")
+	bob := w.member("pc_bob", "Bob Brown")
+
+	// Open the connections first, so the requests really run side by side.
+	var conns []*pgxpool.Conn
+	for range 8 {
+		conn, err := w.pool.Acquire(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, conn)
+	}
+	for _, conn := range conns {
+		conn.Release()
+	}
+	reqs := make([]*http.Request, 8)
+	for i := range reqs {
+		reqs[i] = integrationRequest(t, http.MethodPost, "/v1/follows", bob.token, map[string]any{"user_id": alice.id})
+	}
+	for i, rec := range integrationAtOnce(w.engine, reqs) {
+		if rec.Code != http.StatusOK {
+			t.Fatalf("follow %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+	}
+	w.expect("follows at once", "pc_alice: Bob wants to follow you.")
+}

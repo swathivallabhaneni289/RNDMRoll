@@ -283,10 +283,9 @@ func integrationRemote() string {
 	return fmt.Sprintf("192.0.2.%d:%d", integrationRemoteCounter.n%250+1, 30000+integrationRemoteCounter.n)
 }
 
-// integrationDo sends one request through the real server from a fresh
-// socket address, with an optional bearer token, and runs the "no birth key
-// in any response" check on whatever comes back.
-func integrationDo(t *testing.T, engine *gin.Engine, method, path, token string, body any) *httptest.ResponseRecorder {
+// integrationRequest builds one request from a fresh socket address, with an
+// optional bearer token and JSON body.
+func integrationRequest(t *testing.T, method, path, token string, body any) *http.Request {
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
@@ -304,10 +303,38 @@ func integrationDo(t *testing.T, engine *gin.Engine, method, path, token string,
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	return req
+}
+
+// integrationDo sends one request through the real server from a fresh
+// socket address, with an optional bearer token, and runs the "no birth key
+// in any response" check on whatever comes back.
+func integrationDo(t *testing.T, engine *gin.Engine, method, path, token string, body any) *httptest.ResponseRecorder {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
+	engine.ServeHTTP(rec, integrationRequest(t, method, path, token, body))
 	assertNoBirthKey(t, method+" "+path, rec.Body.Bytes())
 	return rec
+}
+
+// integrationAtOnce sends every request at the same moment and answers the
+// recorders in the same order. The goroutines never touch t.
+func integrationAtOnce(engine *gin.Engine, reqs []*http.Request) []*httptest.ResponseRecorder {
+	recs := make([]*httptest.ResponseRecorder, len(reqs))
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i, req := range reqs {
+		recs[i] = httptest.NewRecorder()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			engine.ServeHTTP(recs[i], req)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	return recs
 }
 
 // integrationOnboardAccount signs an account up in ONE request, leaving it

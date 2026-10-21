@@ -192,8 +192,11 @@ func (r *SocialRepo) HasBlock(ctx context.Context, a, b uuid.UUID) (bool, error)
 // Follow implements social.Repository. Every follow starts as a request; the
 // followee's users row is read with FOR SHARE so it cannot be deleted under
 // the insert.
-func (r *SocialRepo) Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (social.Relation, error) {
-	var rel social.Relation
+func (r *SocialRepo) Follow(ctx context.Context, follower, followee uuid.UUID, at time.Time) (social.Relation, bool, error) {
+	var (
+		rel  social.Relation
+		made bool
+	)
 	err := r.inTx(ctx, func(tx pgx.Tx) error {
 		if err := pairLock(ctx, tx, follower, followee); err != nil {
 			return err
@@ -233,10 +236,11 @@ func (r *SocialRepo) Follow(ctx context.Context, follower, followee uuid.UUID, a
 		_, err = tx.Exec(ctx, `
 			insert into follows (follower_id, followee_id, status, requested_at)
 			values ($1, $2, 'pending', $3)`, follower, followee, at)
-		rel = social.RelationRequested
+		rel, made = social.RelationRequested, true
 		return err
 	})
-	return rel, err
+	// made counts only once the row is committed.
+	return rel, made && err == nil, err
 }
 
 // Unfollow implements social.Repository.

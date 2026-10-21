@@ -79,6 +79,11 @@ func TestKeyByIPAndField_UsesTheFirstKeyThatHoldsText(t *testing.T) {
 		{"older key", `{"email":"A@B.com"}`, "192.0.2.1|a@b.com"},
 		{"first key wins", `{"login":"one","email":"two"}`, "192.0.2.1|one"},
 		{"empty first key falls through", `{"login":"","email":"two"}`, "192.0.2.1|two"},
+		// Trimmed as the handlers read it, so padding is not a new bucket.
+		{"padded email", `{"email":"  A@B.com "}`, "192.0.2.1|a@b.com"},
+		{"padded login", `{"login":"\tSome_Name\n"}`, "192.0.2.1|some_name"},
+		// Log in reads a blank login, not the email after it.
+		{"blank first key still wins", `{"login":"  ","email":"two"}`, "192.0.2.1|"},
 		{"neither key", `{"password":"x"}`, "192.0.2.1|"},
 		{"not json", `nope`, "192.0.2.1"},
 	}
