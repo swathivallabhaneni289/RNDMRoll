@@ -147,6 +147,16 @@ export default function LoginScreen() {
           />
         </View>
 
+        {/* Forgot password: plain words, not underlined (developer's rule). */}
+        <Pressable
+          onPress={() => router.push('/forgot-password')}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={{ marginTop: space.sm, alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' }}
+        >
+          <AppText role="button">Forgot password?</AppText>
+        </Pressable>
+
         {formError ? (
           <View style={{ marginTop: space.md }}>
             <AppText role="body" tone="default">

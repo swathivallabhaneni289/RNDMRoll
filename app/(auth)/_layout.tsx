@@ -30,6 +30,7 @@ export default function AuthLayout() {
       <Stack.Screen name="choose-method" options={fadeTransition} />
       <Stack.Screen name="make-it-yours" options={{ gestureEnabled: !signedIn }} />
       <Stack.Screen name="login" />
+      <Stack.Screen name="forgot-password" />
     </Stack>
   );
 }
