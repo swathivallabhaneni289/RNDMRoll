@@ -268,6 +268,11 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	if _, err := tx.Exec(ctx, revokeAll, userID); err != nil {
 		return err
 	}
+	// Every phone the account was signed in on stops getting its pushes; the
+	// phone that stays signed in registers its token again on its next start.
+	if _, err := tx.Exec(ctx, `delete from push_tokens where user_id = $1`, userID); err != nil {
+		return err
+	}
 
 	const insertToken = `insert into refresh_tokens (user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4::text)`
 	if _, err := tx.Exec(ctx, insertToken, userID, newTokenHash, expiresAt, userAgent); err != nil {

@@ -201,6 +201,12 @@ func (r *AdminRepo) SetDisabled(ctx context.Context, person uuid.UUID, at *time.
 	if tag.RowsAffected() == 0 {
 		return admin.ErrNotFound
 	}
+	// A disabled account's phones stop getting pushes at once.
+	if at != nil {
+		if _, err := r.pool.Exec(ctx, `delete from push_tokens where user_id = $1`, person); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
