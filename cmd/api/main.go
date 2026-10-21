@@ -20,6 +20,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/config"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
@@ -141,6 +142,16 @@ func main() {
 	// at least one account. The cookie is Secure everywhere but test mode,
 	// which runs over plain http on localhost.
 	deps.DeepLinkScheme = cfg.DeepLinkScheme
+	// Forgot password emails a code: printed to the log in test mode
+	// (MAIL_DRIVER=log), sent with Resend otherwise.
+	var codeSender mail.Sender
+	if cfg.MailDriver == "log" {
+		codeSender = mail.NewLogSender(os.Stdout)
+	} else {
+		codeSender = mail.NewResendSender(cfg.ResendAPIKey, cfg.MailFromAddress, cfg.MailFromName)
+	}
+	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, users, refreshSvc, postgres.NewPasswordResetRepo(pool),
+		codeSender, cfg.JWTSecret, cfg.AccessTokenTTL)
 	if len(cfg.AdminEmails) > 0 {
 		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler, refreshSvc,
 			cfg.JWTSecret, cfg.AdminEmails, cfg.AppEnv != "test")

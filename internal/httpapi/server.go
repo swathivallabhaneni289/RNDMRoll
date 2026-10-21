@@ -57,6 +57,8 @@ type Deps struct {
 	// Admin is the admin web page at /admin; nil (no ADMIN_EMAILS) mounts
 	// nothing.
 	Admin *AdminHandler
+	// PasswordReset is Forgot password (public); nil mounts nothing.
+	PasswordReset *PasswordResetHandler
 	// DeepLinkScheme is the app's link scheme for the invite page's button
 	// ("rndmroll" when empty).
 	DeepLinkScheme string
@@ -127,6 +129,9 @@ func NewServer(deps Deps) *Server {
 
 	public := v1.Group("")
 	deps.Username.Register(public)
+	if deps.PasswordReset != nil {
+		deps.PasswordReset.Register(public)
+	}
 
 	authed := v1.Group("")
 	authed.Use(middleware.RequireAuth(deps.JWTSecret), middleware.RequireUser(deps.Users))
