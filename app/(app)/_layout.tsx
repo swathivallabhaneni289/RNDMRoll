@@ -6,7 +6,6 @@ import { isSelectedTab, TabIcon } from '@/components/nav/TabIcon';
 import { spokenTabLabel, TabLabel } from '@/components/nav/TabLabel';
 import { useReminderSetup } from '@/lib/notifications/reminder';
 import { useSession } from '@/lib/session/store';
-import { requestPendingSpin } from '@/lib/wheel/todayStore';
 import { color, type } from '@/lib/theme/tokens';
 
 /**
@@ -14,8 +13,8 @@ import { color, type } from '@/lib/theme/tokens';
  * was dropped because it repeated the Spin page, and Diary because Profile shows every post). The `today` folder IS the Spin page and the
  * landing, reached by the explicit child path `/(app)/today` (a bare `/(app)` shows Unmatched
  * Route here). Its bar slot is a plain tab like the others (developer, 2026-10-16: no raised
- * circle), with the wheel mark as its icon; a press also asks the page to spin once it has
- * loaded and is still open (`pendingSpin` in the Today store).
+ * circle), with the wheel mark as its icon. A press only opens the page: the wheel spins only
+ * from the page's own Spin button (developer, 2026-10-21: it spun by itself).
  *
  *  - The bar is hidden on the one-time photo-and-bio page (the `profile` screen while
  *    `extrasPending` is true; the bar reads the focused route's options), on the pages pushed
@@ -86,13 +85,6 @@ export default function AppLayout() {
     >
       <Tabs.Screen
         name="today"
-        listeners={{
-          // The request goes before the navigation, as the old Spin button did: with unsaved
-          // changes in Edit wheel the leave sheet's guard clears it.
-          tabPress: () => {
-            if (userId !== null) requestPendingSpin(userId);
-          },
-        }}
         options={({ route, navigation }) => {
           // The Spin page: the wheel, the word, Log it and Skip it, the posted or skipped day, the
           // countdown and the week, all on one page.
