@@ -61,7 +61,13 @@ export interface ApiErrorBody {
   suggestions?: string[];
   /** Set on a 400 validation_failed: which form field the server rejected. */
   field?: string;
-  /** Set on a 400 wheel_invalid: a fixed word for what is wrong with the list. */
+  /**
+   * Set on a 400 wheel_invalid: a fixed word for what is wrong with the list. Also on the 400 of
+   * POST /auth/password/reset with field "code": "wrong_code" (a wrong, expired or used-up code, or
+   * an email with no account or a disabled one: the same answer for each), "replaced" (the code the
+   * newest code replaced; no try is counted), "used" (the right code, but another request used it
+   * first; no try is counted) or "invalid" (not 6 digits).
+   */
   reason?: string;
   /** Set on a 400 wheel_invalid: which row of the sent list is wrong, counted from 0. */
   index?: number;

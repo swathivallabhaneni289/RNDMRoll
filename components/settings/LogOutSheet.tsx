@@ -22,7 +22,9 @@ export function LogOutSheet({ visible, onClose }: { visible: boolean; onClose: (
           style: 'destructive',
           onPress: () => {
             onClose();
-            void signOut();
+            // A log out that fails (the keychain could not be cleared) leaves the person signed
+            // in, as before the tap; Log out can be tapped again.
+            signOut().catch(() => undefined);
           },
         },
       ],
