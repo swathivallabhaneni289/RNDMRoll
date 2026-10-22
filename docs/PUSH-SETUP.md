@@ -42,14 +42,17 @@ The code is all in place, but it is switched off. Until you do the steps below, 
    - `PUSH_DRIVER=expo` (the default is `off`, which sends nothing)
    - `EXPO_ACCESS_TOKEN=...` only if you turn on "Enhanced Security for Push Notifications" in the Expo project's settings. Make the token at expo.dev, Account settings, Access tokens.
 
-6. **Run the new database step.** Migration `0015_push_tokens` adds one table, `push_tokens`. Run it the same way as the others (`migrate ... up`).
+6. **Run the new database steps.** Run them the same way as the others (`migrate ... up`), which runs all three in order:
+   - `0015_push_tokens` adds the table `push_tokens`.
+   - `0016_password_reset_previous_code` lets Forgot password say a code was replaced by a newer one.
+   - `0017_push_token_sessions` ties each push token to the session (the refresh token) of the phone that sent it.
 
 7. **Rebuild the app** on a real iPhone (`eas build` or a new dev client build). The project id has to be in the build. A push token cannot be made on the Simulator.
 
 ## How to test
 
 1. Install the new build on a real iPhone, sign in, and say Allow when it asks about notifications. (If you said Don't Allow before, turn notifications on for RNDMRoll in the phone's Settings.)
-2. Check that the phone's token arrived: `select user_id, platform, last_seen_at from push_tokens;` shows one row.
+2. Check that the phone's token arrived and is tied to its session: `select user_id, platform, last_seen_at, refresh_token_id is not null as has_session from push_tokens;` shows one row, with `has_session` true. A row with `has_session` false gets nothing until the app sends its token again (sign out and in once).
 3. Close the app. From a second account, comment on a post of the first account, or send it a follow request.
 4. The phone shows the notification within a few seconds. Tap it: it opens the post, the follow requests page, or the person's profile.
 5. Quick check without the app: paste the token from the table into expo.dev/notifications and send a test.
@@ -59,5 +62,11 @@ The code is all in place, but it is switched off. Until you do the steps below, 
 
 - Comment and reply notifications follow the "Comments" switch in Settings > Notifications. Follow requests and accepted requests are always sent.
 - Nobody is notified about their own comment, and nothing is sent between two people with a block.
-- Logging out removes the phone's token, so that phone stops getting notifications for that account.
+- A phone's token follows the session it was sent from. Pushes go to it only while that session lasts, and stop on their own, even if the phone never reaches the server again, when:
+  - the person logs out (the app also deletes the token),
+  - the session runs out (30 days without opening the app),
+  - the password is changed, with Change password or Forgot password (every other phone stops too),
+  - an admin disables the account (enabling it again does not bring them back: each phone signs in again),
+  - an old copy of the session is used again, as when a refresh answer never reached the phone or someone copied it (the session ends for both).
+- Signing in as someone else on the same phone moves the token to that account. A late message from the old session never takes it back.
 - The 8 PM reminder is separate. It is made on the phone itself and needs none of this.

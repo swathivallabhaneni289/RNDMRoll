@@ -129,6 +129,7 @@ You need macOS with Xcode and the iOS Simulator, Node, Go 1.26, PostgreSQL, [gol
 Optional:
 
 - **Admin page.** Set `ADMIN_EMAILS` to your account's email before starting the server, then open `http://localhost:8080/admin`.
+  The admin account must exist before the server starts: sign up with that email while it is not in `ADMIN_EMAILS` (sign-up refuses a listed address), then add it and restart the server.
 - **Phone notifications.** These are off until Apple and Expo credentials are added. The steps are in [`docs/PUSH-SETUP.md`](./docs/PUSH-SETUP.md).
 
 Tests:
