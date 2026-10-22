@@ -50,6 +50,13 @@ const (
 	reasonNotAllow  = "not_allowed"
 	reasonIncorrect = "incorrect"
 	reasonUnchanged = "unchanged"
+	// reasonWrongCode: a Forgot password code that is wrong, expired or used
+	// up, or an email with no account or a disabled one. reasonReplaced: the
+	// code a newer one replaced (only someone who got the earlier email can
+	// know it). reasonUsed: the right code, which another request used first.
+	reasonWrongCode = "wrong_code"
+	reasonReplaced  = "replaced"
+	reasonUsed      = "used"
 )
 
 var fieldReasonText = map[string]string{
@@ -62,6 +69,9 @@ var fieldReasonText = map[string]string{
 	reasonNotAllow:  "This value can't be changed here.",
 	reasonIncorrect: "That password is not right.",
 	reasonUnchanged: "Choose a different password.",
+	reasonWrongCode: "That code isn't right or has expired.",
+	reasonReplaced:  "That code was replaced by a newer one. Use the newest code in your email.",
+	reasonUsed:      "That code has already been used.",
 }
 
 // Respond writes body as JSON with status.
@@ -102,18 +112,20 @@ func RespondError(c *gin.Context, err error) {
 
 // RespondFieldError writes a 400 validation_failed response that names the
 // request field that failed. field is one of email, password, birthday,
-// name, username, bio, avatar_url, account_visibility, current_password or
-// new_password; reason is one of the fixed reason constants above. The message
-// is fixed text.
+// name, username, bio, avatar_url, account_visibility, current_password,
+// new_password or code; reason is one of the fixed reason constants above,
+// and is sent as "reason" (the app's ApiError.reason) so a screen can tell
+// two refusals of one field apart. The message is fixed text.
 func RespondFieldError(c *gin.Context, field, reason string) {
 	text, ok := fieldReasonText[reason]
 	if !ok {
-		text = fieldReasonText[reasonInvalid]
+		reason, text = reasonInvalid, fieldReasonText[reasonInvalid]
 	}
 	Respond(c, http.StatusBadRequest, gin.H{
 		"error":   string(CodeValidationFailed),
 		"field":   field,
 		"message": text,
+		"reason":  reason,
 	})
 }
 

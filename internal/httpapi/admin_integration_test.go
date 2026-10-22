@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,19 +10,38 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
 
 const adminTestPassword = "Correct-horse-battery-staple1"
 
 // newAdminWorld is a feed world with the admin page mounted for the account
-// "ad_boss@example.com".
-func newAdminWorld(t *testing.T) *feedWorld {
+// "ad_boss@example.com", and that account.
+func newAdminWorld(t *testing.T) (*feedWorld, feedPerson) {
 	t.Helper()
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
-	engine := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}}).Engine()
-	return &feedWorld{t: t, engine: engine, clk: clk}
+	w := &feedWorld{t: t, clk: clk}
+	boss := adminFirst(w, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}}, "ad_boss")
+	return w, boss
+}
+
+// adminFirst signs the admin (username@example.com) up through a server
+// without the admin page, then points w at the server with it, built from
+// opts: the admins are the accounts their addresses have when the server
+// starts, and sign-up refuses an admin address that has none. One database
+// and one secret, so the admin's session works on both.
+func adminFirst(w *feedWorld, pool *pgxpool.Pool, opts integrationOptions, username string) feedPerson {
+	w.t.Helper()
+	plain := opts
+	plain.adminEmails = nil
+	w.engine = buildIntegrationServerWith(w.t, pool, plain).Engine()
+	admin := w.person(username, "Boss Admin")
+	w.engine = buildIntegrationServerWith(w.t, pool, opts).Engine()
+	return admin
 }
 
 // adminForm sends one form POST (or a GET when form is nil) to the admin
@@ -76,8 +97,7 @@ func csrfOf(t *testing.T, page string) string {
 }
 
 func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
-	w := newAdminWorld(t)
-	boss := w.person("ad_boss", "Boss Admin")
+	w, boss := newAdminWorld(t)
 	a := w.person("ad_alice", "Alice Ames")
 	b := w.person("ad_bob", "Bob Brown")
 	w.followAccepted(a, b)
@@ -218,5 +238,106 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	rec = adminDo(t, w, http.MethodPost, "/admin/logout", cookie, url.Values{"csrf": {csrfOf(t, page)}}, "")
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("logout: %d", rec.Code)
+	}
+}
+
+// adminLoginFrom signs in to the admin page from remote and returns where it
+// sent the browser and the session cookie ("" when refused).
+func adminLoginFrom(t *testing.T, w *feedWorld, remote, email, password string) (location, cookie string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(url.Values{"email": {email}, "password": {password}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = remote
+	rec := httptest.NewRecorder()
+	w.engine.ServeHTTP(rec, req)
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == adminCookie && c.Value != "" {
+			cookie = c.Value
+		}
+	}
+	return rec.Header().Get("Location"), cookie
+}
+
+// The admins are the accounts the ADMIN_EMAILS addresses had when the server
+// started. An address with no account then is reported, answered as taken at
+// sign-up (byte for byte, nothing stored), and is no admin even once an
+// account has it (one made through a server that does not list it).
+func TestAdminIntegration_AdminsAreTheAccountsFoundAtStart(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
+	w := &feedWorld{t: t, clk: clk}
+	plain := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk}).Engine()
+	opts := integrationOptions{clock: clk, adminEmails: []string{"as_boss@example.com", "AS_Late@Example.com"}}
+	adminFirst(w, pool, opts, "as_boss")
+
+	ids, missing, err := FindAdminAccounts(context.Background(), postgres.NewUserRepo(pool), opts.adminEmails)
+	if err != nil || len(ids) != 1 || len(missing) != 1 || missing[0] != "as_late@example.com" {
+		t.Fatalf("FindAdminAccounts: ids %v, missing %v, err %v", ids, missing, err)
+	}
+
+	signUp := func(email, username string) *httptest.ResponseRecorder {
+		return integrationDo(t, w.engine, http.MethodPost, "/v1/auth/signup", "", map[string]any{
+			"email": email, "password": adminTestPassword, "birthday": validBirthday, "name": "Late Comer", "username": username,
+		})
+	}
+	taken := signUp("as_boss@example.com", "as_taken")
+	if taken.Code != http.StatusConflict {
+		t.Fatalf("a taken email: %d %s", taken.Code, taken.Body.String())
+	}
+	before := integrationUserCount(t, pool)
+	for _, email := range []string{"as_late@example.com", "AS_LATE@example.com"} {
+		if rec := signUp(email, "as_late"); rec.Code != taken.Code || rec.Body.String() != taken.Body.String() {
+			t.Fatalf("sign-up with the listed address %s: %d %s, want the taken answer %d %s",
+				email, rec.Code, rec.Body.String(), taken.Code, taken.Body.String())
+		}
+	}
+	if n := integrationUserCount(t, pool); n != before {
+		t.Fatalf("a refused sign-up stored an account: %d, want %d", n, before)
+	}
+
+	// The account comes after the server started: not an admin.
+	integrationOnboardAccount(t, plain, "as_late@example.com", adminTestPassword, "Late Comer", "as_late")
+	if loc, cookie := adminLoginFrom(t, w, "198.51.100.80:1", "as_late@example.com", adminTestPassword); cookie != "" || !strings.Contains(loc, "n=badlogin") {
+		t.Fatalf("an account made after the start got in: %s", loc)
+	}
+	if _, cookie := adminLoginFrom(t, w, "198.51.100.80:2", "as_boss@example.com", adminTestPassword); cookie == "" {
+		t.Fatal("the admin found at the start could not log in")
+	}
+}
+
+// The admin page's log in counts tries at an account together with the app's
+// Log in, per address: five wrong tries on either page use up the share, and
+// then the right password gets each page's usual wrong-password answer from
+// that address, while another address still gets in.
+func TestAdminIntegration_LogInSharesTheAppsPerAccountLimit(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	appLogin := func(remote, login, password string) *httptest.ResponseRecorder {
+		return postRawJSON(t, w.engine, remote, "/v1/auth/login", fmt.Sprintf(`{"login":%q,"password":%q}`, login, password))
+	}
+
+	// Five wrong tries in the app, by the username; then the admin page, by
+	// the email, with the right password.
+	const app = "198.51.100.81:1"
+	for range 5 {
+		assertInvalidCredentials(t, appLogin(app, "ad_boss", "Wrong-password-1!"))
+	}
+	if loc, cookie := adminLoginFrom(t, w, app, "ad_boss@example.com", adminTestPassword); cookie != "" || !strings.Contains(loc, "n=badlogin") {
+		t.Fatalf("the admin page past the app's tries: %s (cookie %v)", loc, cookie != "")
+	}
+	if _, cookie := adminLoginFrom(t, w, "198.51.100.82:1", "ad_boss@example.com", adminTestPassword); cookie == "" {
+		t.Fatal("another address was refused")
+	}
+
+	// Five wrong tries on the admin page; then the app, with the right
+	// password: the wrong-password answer.
+	const page = "198.51.100.83:1"
+	for range 5 {
+		if loc, _ := adminLoginFrom(t, w, page, "ad_boss@example.com", "Wrong-password-1!"); !strings.Contains(loc, "n=badlogin") {
+			t.Fatalf("a wrong admin password: %s", loc)
+		}
+	}
+	assertInvalidCredentials(t, appLogin(page, "ad_boss", adminTestPassword))
+	if rec := appLogin("198.51.100.84:1", "ad_boss", adminTestPassword); rec.Code != http.StatusOK {
+		t.Fatalf("the app from another address: %d %s", rec.Code, rec.Body.String())
 	}
 }

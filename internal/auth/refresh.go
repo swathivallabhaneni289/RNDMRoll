@@ -62,24 +62,28 @@ func hashPresentedToken(token string) ([]byte, error) {
 
 // Issue creates a new refresh token for userID, persisting only its digest.
 // The raw token is returned once, for the client to store, and is never
-// itself persisted.
-func (s *RefreshService) Issue(ctx context.Context, userID uuid.UUID, userAgent *string) (string, error) {
+// itself persisted. id is the stored token's id: the session the access
+// tokens issued with it name (IssueSessionAccessToken).
+func (s *RefreshService) Issue(ctx context.Context, userID uuid.UUID, userAgent *string) (raw string, id uuid.UUID, err error) {
 	raw, hash, err := generateRefreshToken()
 	if err != nil {
-		return "", err
+		return "", uuid.UUID{}, err
 	}
-	if _, err := s.repo.Insert(ctx, userID, hash, time.Now().Add(s.ttl), userAgent); err != nil {
-		return "", err
+	id, err = s.repo.Insert(ctx, userID, hash, time.Now().Add(s.ttl), userAgent)
+	if err != nil {
+		return "", uuid.UUID{}, err
 	}
-	return raw, nil
+	return raw, id, nil
 }
 
 // IssueInTransaction makes a new refresh token and hands its digest and expiry
 // to persist, which stores it as a step of the caller's own transaction (a
 // password change replaces every session with this one token, in one
-// transaction). The raw token is returned only when persist succeeded, so a
-// token that was never stored is never handed out. Only the digest crosses
-// into persist; the raw token never touches storage.
+// transaction), under an id the caller chose: the session its access token,
+// made before anything is stored, already names. The raw token is returned
+// only when persist succeeded, so a token that was never stored is never
+// handed out. Only the digest crosses into persist; the raw token never
+// touches storage.
 func (s *RefreshService) IssueInTransaction(ctx context.Context, persist func(hash []byte, expiresAt time.Time) error) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -100,31 +104,63 @@ func (s *RefreshService) IssueInTransaction(ctx context.Context, persist func(ha
 // Rotate. Returning a new token on every redemption is the replay-window
 // mitigation RESEARCH.md prescribes: a stolen token is useful only until
 // the legitimate client's next refresh, at which point the thief's copy is
-// already revoked.
-func (s *RefreshService) Redeem(ctx context.Context, token string, userAgent *string) (uuid.UUID, string, error) {
+// already revoked. newID is the replacement's id, the session the new access
+// token names; the session carries on under it (Rotate moves what was tied
+// to the old id).
+//
+// A token that was already rotated is never taken twice: presenting it again
+// (the answer to its refresh was lost on the way to the phone, or a thief
+// has a copy) ends the whole session, the token it was rotated to and every
+// one after it (endSession), so neither the phone nor a thief keeps a live
+// session, or the pushes tied to it. The answer is ErrTokenInvalid either
+// way. Two refreshes with one token at once end the session the same way. A
+// token too many refreshes old (the repository caps its walk along the chain)
+// is refused and ends nothing.
+func (s *RefreshService) Redeem(ctx context.Context, token string, userAgent *string) (userID uuid.UUID, newToken string, newID uuid.UUID, err error) {
 	hash, err := hashPresentedToken(token)
 	if err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, "", uuid.UUID{}, err
 	}
 
 	record, err := s.repo.GetActiveByHash(ctx, hash)
+	if errors.Is(err, user.ErrTokenInvalid) {
+		return uuid.UUID{}, "", uuid.UUID{}, s.endSession(ctx, hash)
+	}
 	if err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, "", uuid.UUID{}, err
 	}
 
 	newRaw, newHash, err := generateRefreshToken()
 	if err != nil {
-		return uuid.UUID{}, "", err
+		return uuid.UUID{}, "", uuid.UUID{}, err
 	}
-	if _, err := s.repo.Rotate(ctx, record.ID, newHash, time.Now().Add(s.ttl)); err != nil {
-		return uuid.UUID{}, "", err
+	newID, err = s.repo.Rotate(ctx, record.ID, newHash, time.Now().Add(s.ttl))
+	if errors.Is(err, user.ErrTokenInvalid) {
+		// Rotated (or revoked) since the check above.
+		return uuid.UUID{}, "", uuid.UUID{}, s.endSession(ctx, hash)
 	}
-	return record.UserID, newRaw, nil
+	if err != nil {
+		return uuid.UUID{}, "", uuid.UUID{}, err
+	}
+	return record.UserID, newRaw, newID, nil
 }
 
-// Revoke invalidates token, tolerating a miss (an already-invalid or
-// malformed token) so that signing out with a stale token still succeeds.
-// Any other repository error is propagated.
+// endSession ends the session of a presented token that is no longer live
+// (RevokeByHash follows a rotated one to the end of its chain; one revoked by
+// a log out or a password change has nothing left to end) and answers
+// ErrTokenInvalid, unless the revoke itself failed.
+func (s *RefreshService) endSession(ctx context.Context, hash []byte) error {
+	if err := s.repo.RevokeByHash(ctx, hash); err != nil && !errors.Is(err, user.ErrTokenInvalid) {
+		return err
+	}
+	return user.ErrTokenInvalid
+}
+
+// Revoke ends the session of token, tolerating a miss (an already-invalid or
+// malformed token) so that signing out with a stale token still succeeds. A
+// token that was rotated since the phone stored it (a refresh answer that
+// never arrived) still ends its session: RevokeByHash follows it to the token
+// the session holds now. Any other repository error is propagated.
 func (s *RefreshService) Revoke(ctx context.Context, token string) error {
 	hash, err := hashPresentedToken(token)
 	if err != nil {

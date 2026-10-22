@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,7 @@ func newAuthTestHandler(t *testing.T) (*gin.Engine, *AuthHandler, TestDeps) {
 	router := newTestRouter(t, deps)
 	refreshSvc := auth.NewRefreshService(deps.RefreshTokens, 30*24*time.Hour)
 	handler := NewAuthHandler(deps.Users, refreshSvc, []byte("test-secret"), 15*time.Minute)
+	handler.clock = frozenClock
 	rg := router.Group("/v1")
 	handler.Register(rg)
 	return router, handler, deps
@@ -235,6 +237,20 @@ func TestSignup_BadFieldsReturn400NamingTheFieldAndStoreNothing(t *testing.T) {
 		{"email malformed", map[string]any{"email": "not-an-email"}, "email"},
 		{"email with display name", map[string]any{"email": "Bob <bob@example.com>"}, "email"},
 		{"email over 254", map[string]any{"email": strings.Repeat("a", 250) + "@example.com"}, "email"},
+		// No space, control or invisible character of any kind: each of these
+		// would make a second account that reads as victim@example.com.
+		{"email with a no-break space", map[string]any{"email": "victim@example.com\u00a0"}, "email"},
+		{"email with an ideographic space", map[string]any{"email": "vic\u3000tim@example.com"}, "email"},
+		{"email with a line separator", map[string]any{"email": "victim\u2028@example.com"}, "email"},
+		{"email with a zero-width space", map[string]any{"email": "victim@exa\u200bmple.com"}, "email"},
+		{"email with a soft hyphen", map[string]any{"email": "vic\u00adtim@example.com"}, "email"},
+		{"email with a byte order mark", map[string]any{"email": "\ufeffvictim@example.com"}, "email"},
+		{"email with a right-to-left mark", map[string]any{"email": "victim@example.com\u200f"}, "email"},
+		{"email with a C1 control", map[string]any{"email": "victim@example.com\u0085"}, "email"},
+		// Plain ASCII only, so Go and Postgres always lowercase it alike.
+		{"email with an accent", map[string]any{"email": "jos\u00e9@example.com"}, "email"},
+		{"email with a Kelvin sign", map[string]any{"email": "\u212aate@example.com"}, "email"},
+		{"email with a dotted capital I", map[string]any{"email": "v\u0130ctim@example.com"}, "email"},
 		{"password missing", map[string]any{"password": nil}, "password"},
 		{"password 7 characters", map[string]any{"password": "short12"}, "password"},
 		{"password 73 characters", map[string]any{"password": strings.Repeat("a", 73)}, "password"},
@@ -265,6 +281,52 @@ func TestSignup_BadFieldsReturn400NamingTheFieldAndStoreNothing(t *testing.T) {
 				t.Fatalf("a rejected signup stored %d account(s)", n)
 			}
 		})
+	}
+}
+
+// A look-alike of a taken email is refused as not valid: it is not a second
+// account, and not "email taken" either.
+func TestSignup_LookAlikeOfATakenEmailIsRefused(t *testing.T) {
+	router, _, deps := newAuthTestHandler(t)
+	if rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)); rec.Code != http.StatusOK {
+		t.Fatalf("first signup: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, lookAlike := range []string{"new-user@example.com\u00a0", "new-user\u200b@example.com"} {
+		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup",
+			signupBody(map[string]any{"email": lookAlike, "username": "other_user"}))
+		assertFieldError(t, rec, "email")
+		if got := decodeBody(t, rec)["reason"]; got != reasonInvalid {
+			t.Fatalf("look-alike %+q: reason %v, want %s", lookAlike, got, reasonInvalid)
+		}
+	}
+	if n := deps.Users.(*fakeUserRepo).count(); n != 1 {
+		t.Fatalf("a look-alike made an account: %d accounts", n)
+	}
+}
+
+// An ADMIN_EMAILS address is answered exactly as a taken email is (409
+// email_taken, the same bytes), in any case, whether or not an account has
+// it, and nothing is stored: nobody can sign up with an admin's address
+// before the admin does and become an admin when the server starts again.
+func TestSignup_AnAdminAddressIsAnsweredAsTaken(t *testing.T) {
+	router, h, deps := newAuthTestHandler(t)
+	h.SetAdminEmails([]string{" Boss@Example.com ", "taken-boss@example.com"})
+	if rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)); rec.Code != http.StatusOK {
+		t.Fatalf("first signup: %d %s", rec.Code, rec.Body.String())
+	}
+	taken := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"username": "other_one"}))
+	if taken.Code != http.StatusConflict {
+		t.Fatalf("a taken email: %d %s", taken.Code, taken.Body.String())
+	}
+	for i, email := range []string{"boss@example.com", "BOSS@example.COM", "taken-boss@example.com"} {
+		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup",
+			signupBody(map[string]any{"email": email, "username": fmt.Sprintf("boss_try_%d", i)}))
+		if rec.Code != taken.Code || rec.Body.String() != taken.Body.String() {
+			t.Fatalf("the admin address %s: %d %s, want the taken answer %d %s", email, rec.Code, rec.Body.String(), taken.Code, taken.Body.String())
+		}
+	}
+	if n := deps.Users.(*fakeUserRepo).count(); n != 1 {
+		t.Fatalf("%d accounts, want only the first", n)
 	}
 }
 
@@ -732,10 +794,14 @@ func TestLogin_EmptyLogin_Returns400NamingTheLoginField(t *testing.T) {
 
 func TestLogin_MalformedEmail_Returns400NamingTheLoginField(t *testing.T) {
 	cases := map[string]string{
-		"two at signs":        "a@@b.com",
-		"no dot in domain":    "me@gmail",
-		"no name before @":    "@nope.com",
-		"over 254 characters": strings.Repeat("a", 250) + "@b.com",
+		"two at signs":             "a@@b.com",
+		"no dot in domain":         "me@gmail",
+		"no name before @":         "@nope.com",
+		"over 254 characters":      strings.Repeat("a", 250) + "@b.com",
+		"a no-break space":         "victim@example.com\u00a0",
+		"a zero-width space":       "vic\u200btim@example.com",
+		"an ideographic space":     "victim\u3000@example.com",
+		"a right-to-left override": "victim@example.com\u202e",
 	}
 	for name, typed := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -851,6 +917,132 @@ func TestLogin_LimitCountsTheAccountLogInChecks(t *testing.T) {
 	}
 }
 
+// --- the per-account limit counts the account however it is named ---
+
+// An account's email and username are two names but one account: from one
+// address they share 5 tries a minute, the right password included, though
+// each name stays under its own limit. Past the share the answer is a wrong
+// password's, byte for byte, even for the right password: never a 429, which
+// would tell that the email just typed belongs to the account the username
+// named. Another address has its own share, and so does another IPv6 /64,
+// while the addresses of one /64 share one.
+func TestLogin_AccountLimitCountsEveryNameOfTheAccount(t *testing.T) {
+	const password = "Correct-horse-battery1"
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "victim@example.com", "victim_x", password)
+	send := func(remote, login, pw string) *httptest.ResponseRecorder {
+		return postRawJSON(t, router, remote, "/v1/auth/login", fmt.Sprintf(`{"login":%q,"password":%q}`, login, pw))
+	}
+	wrongPassword := ""
+	assertWrongPassword := func(rec *httptest.ResponseRecorder, what string) {
+		t.Helper()
+		assertInvalidCredentials(t, rec)
+		if wrongPassword == "" {
+			wrongPassword = rec.Body.String()
+		}
+		if rec.Body.String() != wrongPassword {
+			t.Fatalf("%s: %q, want the wrong-password body %q", what, rec.Body.String(), wrongPassword)
+		}
+	}
+
+	const here = "198.51.100.70:1"
+	for _, login := range []string{"victim_x", "victim_x", "victim_x", "victim@example.com", "VICTIM@example.com"} {
+		assertWrongPassword(send(here, login, "wrong-guess"), "a wrong guess")
+	}
+	for _, login := range []string{"victim_x", "victim@example.com"} {
+		assertWrongPassword(send(here, login, password), "the right password past the account's share, by "+login)
+	}
+	assertLoggedInAs(t, send("198.51.100.71:1", "victim_x", password), "victim@example.com")
+
+	for i := range 5 {
+		assertWrongPassword(send(fmt.Sprintf("[2001:db8:70:1::%x]:1", i+1), "victim_x", "wrong-guess"), "a wrong guess from the /64")
+	}
+	assertWrongPassword(send("[2001:db8:70:1:ffff::9]:1", "victim@example.com", password), "a 6th try from the same /64, by the email")
+	assertLoggedInAs(t, send("[2001:db8:70:2::1]:1", "victim@example.com", password), "victim@example.com")
+}
+
+// The per-account limit's answer runs the same comparison as a wrong
+// password: the account's own hash is compared, once, for every try.
+func TestLogin_PastTheAccountLimitThePasswordIsStillCompared(t *testing.T) {
+	const password = "Correct-horse-battery1"
+	router, h, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "compared@example.com", "compared_x", password)
+	compared := 0
+	h.compare = func(hash, plain string) error {
+		compared++
+		return auth.ComparePassword(hash, plain)
+	}
+	for i := range 7 {
+		before := compared
+		rec := postRawJSON(t, router, "198.51.100.73:1", "/v1/auth/login", fmt.Sprintf(`{"login":"compared_x","password":"wrong-%d"}`, i))
+		if i >= 5 {
+			// The per-login limit is 5 too: past it the middleware answers 429
+			// before any comparison, as for any name.
+			if rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("try %d by one name: %d, want the per-login 429", i+1, rec.Code)
+			}
+			continue
+		}
+		assertInvalidCredentials(t, rec)
+		if compared != before+1 {
+			t.Fatalf("try %d compared %d times, want once", i+1, compared-before)
+		}
+	}
+	// By the email, past the account's share: still one comparison.
+	before := compared
+	assertInvalidCredentials(t, postRawJSON(t, router, "198.51.100.73:1", "/v1/auth/login", `{"login":"compared@example.com","password":"wrong-9"}`))
+	if compared != before+1 {
+		t.Fatalf("a try past the account's share compared %d times, want once", compared-before)
+	}
+}
+
+// failingLookups is a user.Repository whose account lookups fail.
+type failingLookups struct{ user.Repository }
+
+func (failingLookups) GetByEmailCI(context.Context, string) (*user.User, error) {
+	return nil, errors.New("httpapi test: the database is down")
+}
+
+func (failingLookups) GetByUsernameCI(context.Context, string) (*user.User, error) {
+	return nil, errors.New("httpapi test: the database is down")
+}
+
+// A lookup that fails is a server error, not a wrong password: the app must
+// not tell the person their password is wrong when the server failed. Only
+// an account that is not there takes the dummy comparison.
+func TestLogin_ALookupThatFailsIsAServerError(t *testing.T) {
+	router := newTestRouter(t, TestDeps{})
+	h := NewAuthHandler(failingLookups{newFakeUserRepo()}, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
+		[]byte("test-secret"), 15*time.Minute)
+	h.clock = frozenClock
+	h.Register(router.Group("/v1"))
+	for _, login := range []string{"someone@example.com", "some_one"} {
+		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Login: login, Password: "Correct-horse-battery1"})
+		if rec.Code != http.StatusInternalServerError || decodeBody(t, rec)["error"] != string(CodeServerError) {
+			t.Fatalf("a failed lookup by %s: %d %s, want 500 server_error", login, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// A name that finds no account is counted only by its own per-login limit, so
+// no number of unknown names makes a 429 for another name: a 429 never tells
+// an unknown name from a known one.
+func TestLogin_UnknownNamesShareNoBucket(t *testing.T) {
+	const password = "Correct-horse-battery1"
+	router, _, deps := newAuthTestHandler(t)
+	seedLoginAccount(t, deps, "known@example.com", "known_x", password)
+	send := func(login, pw string) *httptest.ResponseRecorder {
+		return postRawJSON(t, router, "198.51.100.72:1", "/v1/auth/login", fmt.Sprintf(`{"login":%q,"password":%q}`, login, pw))
+	}
+	for i := range 8 {
+		assertInvalidCredentials(t, send(fmt.Sprintf("nobody_%d", i), "wrong-guess"))
+		assertInvalidCredentials(t, send(fmt.Sprintf("nobody-%d@example.com", i), "wrong-guess"))
+	}
+	assertInvalidCredentials(t, send("nobody_99", "wrong-guess"))
+	assertInvalidCredentials(t, send("known_x", "wrong-guess"))
+	assertLoggedInAs(t, send("known@example.com", password), "known@example.com")
+}
+
 // --- Task 2: Refresh and logout handlers ---
 
 // loginAndGetTokens seeds a verified user and performs a real login over
@@ -929,7 +1121,7 @@ func TestRefresh_ExpiredToken_Returns401TokenExpired(t *testing.T) {
 	rg := router.Group("/v1")
 	handler.Register(rg)
 
-	expiredToken, err := expiredRefreshSvc.Issue(context.Background(), uuid.New(), nil)
+	expiredToken, _, err := expiredRefreshSvc.Issue(context.Background(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("issue expired token: %v", err)
 	}
@@ -984,4 +1176,57 @@ func TestLogout_MissingRefreshToken_Returns400ValidationFailed(t *testing.T) {
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/logout", map[string]string{})
 
 	assertValidationFailed(t, rec)
+}
+
+// Every 409 email_taken comes no sooner than the floor after the request came
+// in: a taken email (which runs the insert) and an ADMIN_EMAILS address
+// (which does not) wait the same, so the timing cannot tell them apart. The
+// other answers do not wait.
+func TestSignup_EmailTakenWaitsForTheFloor(t *testing.T) {
+	router, h, _ := newAuthTestHandler(t)
+	if h.floor != resetAnswerFloor {
+		t.Fatalf("a new handler's floor is %v, want the reset's %v", h.floor, resetAnswerFloor)
+	}
+	h.SetAdminEmails([]string{"boss@example.com"})
+	var waits []time.Duration
+	h.sleep = func(d time.Duration) { waits = append(waits, d) }
+	send := func(what string, mods map[string]any, want int, wantWaits ...time.Duration) {
+		t.Helper()
+		waits = nil
+		rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(mods))
+		if rec.Code != want {
+			t.Fatalf("%s: %d %s, want %d", what, rec.Code, rec.Body.String(), want)
+		}
+		if fmt.Sprint(waits) != fmt.Sprint(wantWaits) {
+			t.Fatalf("%s: waits %v, want %v", what, waits, wantWaits)
+		}
+	}
+	send("a new account", nil, http.StatusOK)
+	send("a taken email", map[string]any{"username": "other_one"}, http.StatusConflict, resetAnswerFloor)
+	send("an admin address", map[string]any{"email": "boss@example.com", "username": "boss_try"}, http.StatusConflict, resetAnswerFloor)
+	send("a taken username", map[string]any{"email": "fresh@example.com"}, http.StatusConflict)
+}
+
+// Refresh and log out are each limited to 60 a minute per address: the 61st
+// from one address is 429 whatever its token, while another address, and the
+// other route, still get through.
+func TestRefresh_AndLogOutAreLimitedPerAddress(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+	for _, path := range []string{"/v1/auth/refresh", "/v1/auth/logout"} {
+		for i := range refreshAndLogoutPerMinute {
+			if rec := postRawJSON(t, router, "198.51.100.20:1", path, `{"refresh_token":"made-up"}`); rec.Code == http.StatusTooManyRequests {
+				t.Fatalf("%s: request %d of %d was refused", path, i+1, refreshAndLogoutPerMinute)
+			}
+		}
+		rec := postRawJSON(t, router, "198.51.100.20:2", path, `{"refresh_token":"made-up"}`)
+		if rec.Code != http.StatusTooManyRequests || decodeBody(t, rec)["error"] != "rate_limited" {
+			t.Fatalf("%s: the request past the limit: %d %s, want 429 rate_limited", path, rec.Code, rec.Body.String())
+		}
+		if rec := postRawJSON(t, router, "198.51.100.21:1", path, `{"refresh_token":"made-up"}`); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("%s: another address was refused", path)
+		}
+	}
+	if refreshAndLogoutPerMinute != 60 {
+		t.Fatalf("the limit is %d a minute, want 60", refreshAndLogoutPerMinute)
+	}
 }

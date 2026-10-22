@@ -28,6 +28,11 @@ type TestDeps struct {
 	RefreshTokens user.RefreshTokenRepository
 }
 
+// frozenClock is a limit clock that never moves: a test's limits never
+// refill, so they never depend on how fast the machine runs the requests
+// (bcrypt under the race detector can take seconds).
+func frozenClock() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) }
+
 // newTestRouter returns a bare gin.Engine with panic recovery attached and
 // no routes registered. Each wave 4 handler test mounts its own handler(s)
 // on the returned engine -- this harness never assumes a specific route
@@ -269,10 +274,11 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 }
 
 // ChangePassword mirrors the Postgres repository's one transaction: the hash,
-// every session and the one new session change together or not at all. It
-// needs the tokens field (the rigs set it) and fails loudly without it, so a
-// rig that forgot to wire it cannot pass by accident.
-func (f *fakeUserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+// every session and the one new session change together or not at all, and
+// a disabled account changes nothing. It needs the tokens field (the rigs set
+// it) and fails loudly without it, so a rig that forgot to wire it cannot pass
+// by accident.
+func (f *fakeUserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.changePasswordErr != nil {
@@ -285,16 +291,26 @@ func (f *fakeUserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, pas
 	if !ok {
 		return user.ErrNotFound
 	}
+	if u.Disabled {
+		return user.ErrAccountDisabled
+	}
 	if err := f.tokens.RevokeAllForUser(ctx, userID); err != nil {
 		return err
 	}
-	if _, err := f.tokens.Insert(ctx, userID, newTokenHash, expiresAt, userAgent); err != nil {
-		return err
-	}
+	f.tokens.insertWithID(sessionID, userID, newTokenHash, expiresAt)
 	hash := passwordHash
 	u.PasswordHash = &hash
 	u.UpdatedAt = time.Now()
 	return nil
+}
+
+// setDisabled disables the account id, as an admin's disable does.
+func (f *fakeUserRepo) setDisabled(id uuid.UUID) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.users[id]; ok {
+		u.Disabled = true
+	}
 }
 
 // storedPasswordHash returns the password hash on file for id, "" when none.
@@ -320,6 +336,7 @@ type fakeRefreshRow struct {
 	tokenHash string
 	expiresAt time.Time
 	revokedAt *time.Time
+	rotatedTo *uuid.UUID
 }
 
 type fakeRefreshRepo struct {
@@ -337,6 +354,14 @@ func (f *fakeRefreshRepo) Insert(ctx context.Context, userID uuid.UUID, tokenHas
 	id := uuid.New()
 	f.rows[id] = &fakeRefreshRow{id: id, userID: userID, tokenHash: string(tokenHash), expiresAt: expiresAt}
 	return id, nil
+}
+
+// insertWithID stores a token under an id the caller chose, as a password
+// change stores the new session's.
+func (f *fakeRefreshRepo) insertWithID(id, userID uuid.UUID, tokenHash []byte, expiresAt time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rows[id] = &fakeRefreshRow{id: id, userID: userID, tokenHash: string(tokenHash), expiresAt: expiresAt}
 }
 
 func (f *fakeRefreshRepo) GetActiveByHash(ctx context.Context, tokenHash []byte) (*user.RefreshToken, error) {
@@ -357,29 +382,41 @@ func (f *fakeRefreshRepo) GetActiveByHash(ctx context.Context, tokenHash []byte)
 	return nil, user.ErrTokenInvalid
 }
 
+// Rotate, like the Postgres repository's, refuses an old token that is no
+// longer live and names the new one in the old one's rotatedTo.
 func (f *fakeRefreshRepo) Rotate(ctx context.Context, oldID uuid.UUID, newHash []byte, expiresAt time.Time) (uuid.UUID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	old, ok := f.rows[oldID]
-	if !ok {
+	if !ok || old.revokedAt != nil {
 		return uuid.UUID{}, user.ErrTokenInvalid
 	}
 	newID := uuid.New()
 	f.rows[newID] = &fakeRefreshRow{id: newID, userID: old.userID, tokenHash: string(newHash), expiresAt: expiresAt}
 	now := time.Now()
 	old.revokedAt = &now
+	old.rotatedTo = &newID
 	return newID, nil
 }
 
+// RevokeByHash, like the Postgres repository's, ends the session: it follows
+// rotatedTo to the end of the chain and revokes that token when it is live.
 func (f *fakeRefreshRepo) RevokeByHash(ctx context.Context, tokenHash []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, row := range f.rows {
-		if row.tokenHash == string(tokenHash) && row.revokedAt == nil {
-			now := time.Now()
-			row.revokedAt = &now
-			return nil
+		if row.tokenHash != string(tokenHash) {
+			continue
 		}
+		for row.rotatedTo != nil {
+			row = f.rows[*row.rotatedTo]
+		}
+		if row.revokedAt != nil {
+			return user.ErrTokenInvalid
+		}
+		now := time.Now()
+		row.revokedAt = &now
+		return nil
 	}
 	return user.ErrTokenInvalid
 }

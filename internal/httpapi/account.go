@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
@@ -32,6 +33,17 @@ type AccountHandler struct {
 	refresh   *auth.RefreshService
 	jwtSecret []byte
 	accessTTL time.Duration
+	// clock is the time the limits count by; nil is the real clock. A test
+	// sets it before sending anything.
+	clock func() time.Time
+}
+
+// now is the limits' clock: clock, or the real one.
+func (h *AccountHandler) now() time.Time {
+	if h.clock != nil {
+		return h.clock()
+	}
+	return time.Now()
 }
 
 // NewAccountHandler constructs an AccountHandler. passwords is the one
@@ -61,10 +73,12 @@ func (h *AccountHandler) Register(rg *gin.RouterGroup) {
 		Requests: 5,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyBySubject,
+		Clock:    h.now,
 	}), middleware.RateLimit(middleware.LimitConfig{
 		Requests: 20,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyByIP,
+		Clock:    h.now,
 	}), h.changePassword)
 }
 
@@ -76,7 +90,9 @@ func (h *AccountHandler) Register(rg *gin.RouterGroup) {
 // current one; the new password hashed (bcrypt counts 72 BYTES, so a long
 // multi-byte one is a field error on new_password); then ONE transaction that
 // stores the hash, revokes every refresh token the account holds and inserts
-// one new one; then the response.
+// one new one; then the response. An account an admin disabled while this
+// ran is refused inside that transaction, as RequireUser refuses it (401
+// account_disabled), and keeps its password.
 //
 // A wrong current password is 400 validation_failed field current_password,
 // never a 401: a 401 on a signed-in call means "your session is gone" and the
@@ -138,8 +154,10 @@ func (h *AccountHandler) changePassword(c *gin.Context) {
 	}
 
 	// The access token is made before anything is stored: it cannot fail
-	// after the sessions are gone and leave the caller with nothing.
-	accessToken, err := auth.IssueAccessToken(u.ID, h.jwtSecret, h.accessTTL)
+	// after the sessions are gone and leave the caller with nothing. It names
+	// the new session, whose id is chosen here for that.
+	session := uuid.New()
+	accessToken, err := auth.IssueSessionAccessToken(u.ID, session, h.jwtSecret, h.accessTTL)
 	if err != nil {
 		RespondError(c, err)
 		return
@@ -148,12 +166,16 @@ func (h *AccountHandler) changePassword(c *gin.Context) {
 	ctx := c.Request.Context()
 	userAgent := c.Request.UserAgent()
 	refreshToken, err := h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
-		return h.passwords.ChangePassword(ctx, u.ID, newHash, tokenHash, expiresAt, &userAgent)
+		return h.passwords.ChangePassword(ctx, u.ID, newHash, session, tokenHash, expiresAt, &userAgent)
 	})
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
 			// The account went away between the token check and the change.
 			RespondError(c, user.ErrTokenInvalid)
+			return
+		}
+		if errors.Is(err, user.ErrAccountDisabled) {
+			Respond(c, http.StatusUnauthorized, gin.H{"error": string(CodeAccountDisabled)})
 			return
 		}
 		RespondError(c, err)

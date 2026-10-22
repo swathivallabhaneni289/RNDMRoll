@@ -1,6 +1,7 @@
 // Package httpapi: push.go keeps the phone's Expo push token for the
 // signed-in person (POST after sign-in, DELETE on log out). The tokens are
-// kept whatever PUSH_DRIVER says; sending is internal/push's.
+// kept whatever PUSH_DRIVER says; sending is internal/push's. A token is tied
+// to the session that sent it and is sent to only while that session lasts.
 package httpapi
 
 import (
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/push"
 )
 
@@ -54,7 +56,12 @@ func (h *PushTokenHandler) save(c *gin.Context) {
 		RespondFieldError(c, "platform", reasonInvalid)
 		return
 	}
-	if err := h.repo.SaveToken(c.Request.Context(), u.ID, token, req.Platform, time.Now().UTC()); err != nil {
+	// The token is tied to the session this access token belongs to, so it is
+	// sent to only while that session lasts. A token issued before sessions
+	// were named has none: the phone's token is then kept but not sent to
+	// until the app sends it again with a newer access token.
+	session, _ := middleware.SessionFromContext(c)
+	if err := h.repo.SaveToken(c.Request.Context(), u.ID, session, token, req.Platform, time.Now().UTC()); err != nil {
 		log.Printf("httpapi: push token save: %v", err)
 		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
 		return
@@ -76,7 +83,11 @@ func (h *PushTokenHandler) remove(c *gin.Context) {
 		RespondFieldError(c, "token", reasonInvalid)
 		return
 	}
-	if err := h.repo.DeleteToken(c.Request.Context(), u.ID, token); err != nil {
+	// Only this session's token, or one whose session is over, is deleted:
+	// a token a newer sign in on the phone has saved again stays (204 all the
+	// same), so a DELETE that arrives late never takes that sign in's pushes.
+	session, _ := middleware.SessionFromContext(c)
+	if err := h.repo.DeleteToken(c.Request.Context(), u.ID, session, token); err != nil {
 		log.Printf("httpapi: push token delete: %v", err)
 		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
 		return

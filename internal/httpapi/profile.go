@@ -93,6 +93,7 @@ func (h *ProfileHandler) Register(rg *gin.RouterGroup) {
 		Requests: 30,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyBySubject,
+		Clock:    limitClock,
 	}), h.patchMe)
 	rg.POST("/me/avatar/upload-url", h.createAvatarUploadURL)
 }

@@ -157,9 +157,23 @@ func main() {
 	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, refreshSvc, postgres.NewPasswordResetRepo(pool),
 		codeSender, cfg.JWTSecret, cfg.AccessTokenTTL)
 	if len(cfg.AdminEmails) > 0 {
-		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler, refreshSvc,
-			cfg.JWTSecret, cfg.AdminEmails, cfg.AppEnv != "test")
+		// The admins are the accounts these addresses have now, found once.
+		// An address with no account is no admin until it has one and the
+		// server starts again, and sign-up answers it as taken meanwhile, so
+		// make the account first and add its address after.
+		admins, missing, err := httpapi.FindAdminAccounts(ctx, users, cfg.AdminEmails)
+		if err != nil {
+			logger.Error("failed to look up the ADMIN_EMAILS accounts", "error", err)
+			os.Exit(1)
+		}
+		for _, email := range missing {
+			logger.Warn("ADMIN_EMAILS names an address no account has: it is not an admin, and sign-up refuses it. "+
+				"Take it out of ADMIN_EMAILS, sign up with it, put it back and restart.", "email", email)
+		}
+		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler,
+			cfg.JWTSecret, admins, cfg.AppEnv != "test")
 	}
+	authHandler.SetAdminEmails(cfg.AdminEmails)
 	if cfg.SpinTestTools {
 		deps.TestTools = httpapi.NewSpinTestTools(true, spinService, testClock, cfg.SpinTestUserEmails)
 		logger.Warn("spin test tools are ON: the test clock and pretend-day routes answer for the listed accounts only",

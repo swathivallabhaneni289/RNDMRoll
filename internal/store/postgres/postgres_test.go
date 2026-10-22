@@ -1256,7 +1256,8 @@ func TestUserRepo_ChangePassword_ReplacesHashAndEverySession(t *testing.T) {
 
 	newTokenHash := []byte("pw-change-token-new-0000000001")
 	agent := "RNDMRoll test phone"
-	if err := repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", newTokenHash, expires, &agent); err != nil {
+	session := uuid.New()
+	if err := repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", session, newTokenHash, expires, &agent); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
 	}
 
@@ -1274,6 +1275,10 @@ func TestUserRepo_ChangePassword_ReplacesHashAndEverySession(t *testing.T) {
 	}
 	if live.UserID != owner.ID {
 		t.Fatalf("the new token belongs to %v, want %v", live.UserID, owner.ID)
+	}
+	// It is stored under the session the caller's access token names.
+	if live.ID != session {
+		t.Fatalf("the new token's id is %v, want the session %v", live.ID, session)
 	}
 	if n := activeTokenCount(t, pool, owner.ID); n != 1 {
 		t.Fatalf("active tokens after the change = %d, want exactly 1", n)
@@ -1320,7 +1325,7 @@ func TestUserRepo_ChangePassword_UnknownAccountChangesNothing(t *testing.T) {
 	}
 
 	newTokenHash := []byte("pw-unknown-new-token-000000001")
-	err = repo.ChangePassword(ctx, uuid.New(), "new-bcrypt-hash", newTokenHash, expires, nil)
+	err = repo.ChangePassword(ctx, uuid.New(), "new-bcrypt-hash", uuid.New(), newTokenHash, expires, nil)
 	if !errors.Is(err, user.ErrNotFound) {
 		t.Fatalf("ChangePassword for an unknown account: got %v, want ErrNotFound", err)
 	}
@@ -1358,7 +1363,7 @@ func TestUserRepo_ChangePassword_RollsBackWhenTheTokenInsertFails(t *testing.T) 
 
 	// A new token whose digest is already stored: the insert breaks the unique
 	// index after the hash was written and the sessions revoked.
-	err = repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", hashA, expires, nil)
+	err = repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", uuid.New(), hashA, expires, nil)
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
 		t.Fatalf("ChangePassword with a duplicate token hash: got %v, want a unique violation", err)
@@ -1436,7 +1441,7 @@ func TestUserRepo_ChangePassword_RevokesARefreshThatCommitsWhileItRuns(t *testin
 	newHash := []byte("pw-inflight-new-token-00000001")
 	done := make(chan error, 1)
 	go func() {
-		done <- repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", newHash, expires, nil)
+		done <- repo.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", uuid.New(), newHash, expires, nil)
 	}()
 	waitForALockWait(t, pool)
 

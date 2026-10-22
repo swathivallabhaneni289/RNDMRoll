@@ -18,12 +18,27 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 )
 
+// testLimitClock, when a test sets it, is the clock of the limits that no
+// handler's own clock covers: every perSubject limit, the username checks and
+// PATCH /me. nil is the real clock. Only tests set it, before they send
+// anything, so a limit never refills while a slow test runs.
+var testLimitClock func() time.Time
+
+// limitClock is the clock of those limits.
+func limitClock() time.Time {
+	if testLimitClock != nil {
+		return testLimitClock()
+	}
+	return time.Now()
+}
+
 // perSubject limits a route to requests a minute per signed-in person.
 func perSubject(requests int) gin.HandlerFunc {
 	return middleware.RateLimit(middleware.LimitConfig{
 		Requests: requests,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyBySubject,
+		Clock:    limitClock,
 	})
 }
 

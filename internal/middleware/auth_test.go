@@ -110,3 +110,56 @@ func TestAuth_SubjectFromContextErrorsWhenMiddlewareDidNotRun(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+// RequireAuth keeps the session a token names, and a token from before
+// sessions were named still gets through, with none.
+func TestAuth_SessionFromContext(t *testing.T) {
+	secret := []byte("test-secret-at-least-32-bytes!!")
+	userID, sessionID := uuid.New(), uuid.New()
+	withSession, err := auth.IssueSessionAccessToken(userID, sessionID, secret, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("IssueSessionAccessToken: %v", err)
+	}
+	without, err := auth.IssueAccessToken(userID, secret, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("IssueAccessToken: %v", err)
+	}
+
+	type seen struct {
+		subject uuid.UUID
+		session uuid.UUID
+		ok      bool
+	}
+	var got seen
+	router := gin.New()
+	router.GET("/protected", RequireAuth(secret), func(c *gin.Context) {
+		got.subject, _ = SubjectFromContext(c)
+		got.session, got.ok = SessionFromContext(c)
+		c.Status(http.StatusOK)
+	})
+	call := func(token string) int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := call(withSession); code != http.StatusOK || got != (seen{userID, sessionID, true}) {
+		t.Fatalf("a session token: %d, %+v", code, got)
+	}
+	got = seen{}
+	if code := call(without); code != http.StatusOK || got != (seen{userID, uuid.Nil, false}) {
+		t.Fatalf("a token without a session: %d, %+v", code, got)
+	}
+
+	// Without RequireAuth there is no session either.
+	plain := gin.New()
+	plain.GET("/open", func(c *gin.Context) {
+		if _, ok := SessionFromContext(c); ok {
+			t.Error("a session without RequireAuth")
+		}
+		c.Status(http.StatusOK)
+	})
+	plain.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/open", nil))
+}

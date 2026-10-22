@@ -55,7 +55,7 @@ type Deps struct {
 	Board         *BoardHandler
 	Notifications *NotificationsHandler
 	// Admin is the admin web page at /admin; nil (no ADMIN_EMAILS) mounts
-	// nothing.
+	// nothing. NewServer gives it the Log in's per-account limit.
 	Admin *AdminHandler
 	// PasswordReset is Forgot password (public); nil mounts nothing.
 	PasswordReset *PasswordResetHandler
@@ -121,6 +121,9 @@ func NewServer(deps Deps) *Server {
 	})
 
 	if deps.Admin != nil {
+		// The admin page's log in counts tries at an account together with
+		// the app's Log in: one share per address and account for both.
+		deps.Admin.accountLimit = deps.Auth.accountLimit
 		deps.Admin.Register(engine)
 	}
 	RegisterInvite(engine, deps.DeepLinkScheme)

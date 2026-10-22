@@ -620,3 +620,29 @@ func TestServer_PasswordRouteIsNotMountedWhenTheAccountHandlerIsNotWired(t *test
 		t.Fatalf("expected 404 when no AccountHandler is wired, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// disableFirst is a user.PasswordChanger that disables the account just
+// before the change: an admin's disable that lands after RequireUser let the
+// request in.
+type disableFirst struct{ fake *fakeUserRepo }
+
+func (d disableFirst) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	d.fake.setDisabled(userID)
+	return d.fake.ChangePassword(ctx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent)
+}
+
+// An account an admin disables while its change runs is refused inside the
+// change, with the answer RequireUser gives a disabled account (401
+// account_disabled, which signs the app out), and nothing changes.
+func TestChangePassword_AnAccountDisabledMeanwhileIsRefused(t *testing.T) {
+	fake := newFakeUserRepo()
+	rig := &accountRig{fullTestRig: newFullTestRigWith(t, fake, rigOptions{account: true, passwords: disableFirst{fake}}), fake: fake}
+	s := rig.signUp(t, "disabled-meanwhile@example.com", "disabled_mw", "Password-for-d-1!")
+	hashBefore := fake.storedPasswordHash(s.id)
+
+	rec := rig.changePassword(t, s.access, map[string]any{"current_password": s.password, "new_password": "Another-password-2!"})
+	if rec.Code != http.StatusUnauthorized || decodeBody(t, rec)["error"] != string(CodeAccountDisabled) {
+		t.Fatalf("a change on an account disabled meanwhile: %d %s, want 401 account_disabled", rec.Code, rec.Body.String())
+	}
+	rig.assertNothingChanged(t, s, hashBefore, 1)
+}

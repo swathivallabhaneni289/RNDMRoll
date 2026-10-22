@@ -68,8 +68,10 @@ type rigOptions struct {
 	// perUser, when set, is the spin clock instead of a Fixed one.
 	perUser *clock.PerUser
 	// account registers the change-password route. The user repository must
-	// then implement user.PasswordChanger (fakeUserRepo does).
-	account bool
+	// then implement user.PasswordChanger (fakeUserRepo does), unless
+	// passwords stands in for it.
+	account   bool
+	passwords user.PasswordChanger
 	// logger is the logger handed to NewServer; nil discards.
 	logger *slog.Logger
 }
@@ -81,6 +83,10 @@ func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
 
 func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions) *fullTestRig {
 	t.Helper()
+	// Every limit of the rig stands still for the test: the handlers' own
+	// clocks below, and the limits no handler clock covers.
+	testLimitClock = frozenClock
+	t.Cleanup(func() { testLimitClock = nil })
 
 	tokens := newFakeRefreshRepo()
 	if fake, ok := usersRepo.(*fakeUserRepo); ok {
@@ -89,6 +95,7 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	refreshSvc := auth.NewRefreshService(tokens, 30*24*time.Hour)
 
 	authHandler := NewAuthHandler(usersRepo, refreshSvc, testServerJWTSecret, 15*time.Minute)
+	authHandler.clock = frozenClock
 	profileHandler := NewProfileHandler(usersRepo, &fakeAvatarStore{}, testAvatarBaseURL)
 	usernameHandler := NewUsernameHandler(usersRepo)
 
@@ -126,10 +133,14 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	}
 	if opts.account {
 		passwords, ok := usersRepo.(user.PasswordChanger)
+		if opts.passwords != nil {
+			passwords, ok = opts.passwords, true
+		}
 		if !ok {
 			t.Fatalf("rigOptions.account needs a user repository that implements user.PasswordChanger, got %T", usersRepo)
 		}
 		deps.Account = NewAccountHandler(usersRepo, passwords, refreshSvc, testServerJWTSecret, 15*time.Minute)
+		deps.Account.clock = frozenClock
 	}
 
 	return &fullTestRig{

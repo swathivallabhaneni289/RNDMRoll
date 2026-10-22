@@ -19,7 +19,10 @@ import (
 // with a context key set by another package.
 type contextKey int
 
-const authSubjectKey contextKey = iota
+const (
+	authSubjectKey contextKey = iota
+	authSessionKey
+)
 
 // ErrNoSubjectInContext is returned by SubjectFromContext when RequireAuth
 // did not run for this request.
@@ -27,7 +30,8 @@ var ErrNoSubjectInContext = errors.New("middleware: no authenticated subject in 
 
 // RequireAuth returns Gin middleware that requires a valid HS256 bearer
 // access token signed with secret. On success it stores the token's
-// subject in the request context for SubjectFromContext to retrieve. On
+// subject in the request context for SubjectFromContext to retrieve, and its
+// session, when it names one, for SessionFromContext. On
 // failure it aborts with 401 and a body of {"error":"token_expired"} for a
 // specifically expired token or {"error":"token_invalid"} otherwise --
 // codes the mobile client branches on to trigger its refresh flow.
@@ -41,7 +45,7 @@ func RequireAuth(secret []byte) gin.HandlerFunc {
 		}
 		tokenString := strings.TrimPrefix(header, prefix)
 
-		subject, err := auth.ParseAccessToken(tokenString, secret)
+		subject, session, err := auth.ParseSessionAccessToken(tokenString, secret)
 		if err != nil {
 			code := "token_invalid"
 			if errors.Is(err, user.ErrTokenExpired) {
@@ -52,9 +56,21 @@ func RequireAuth(secret []byte) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), authSubjectKey, subject)
+		if session != uuid.Nil {
+			ctx = context.WithValue(ctx, authSessionKey, session)
+		}
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
+}
+
+// SessionFromContext returns the session RequireAuth found in this request's
+// access token: the id of the refresh token it was issued with. ok is false
+// for a token issued before sessions were named (it has none), or when
+// RequireAuth did not run.
+func SessionFromContext(c *gin.Context) (session uuid.UUID, ok bool) {
+	session, ok = c.Request.Context().Value(authSessionKey).(uuid.UUID)
+	return session, ok
 }
 
 // SubjectFromContext returns the authenticated user ID RequireAuth stored

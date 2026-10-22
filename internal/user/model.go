@@ -74,6 +74,15 @@ var (
 	ErrTokenInvalid       = errors.New("user: token invalid")
 	ErrTokenExpired       = errors.New("user: token expired")
 	ErrTokenConsumed      = errors.New("user: token already consumed")
+	// ErrAccountDisabled: an admin disabled the account, so its password is
+	// not changed (Change password and Forgot password both refuse it).
+	ErrAccountDisabled = errors.New("user: account disabled")
+	// ErrResetCodeReplaced: the Forgot password code was right, but a newer
+	// code replaced it before the password could change. ErrResetCodeUsed:
+	// the code was right, but another request used it first. Only someone who
+	// got the code can meet either.
+	ErrResetCodeReplaced = errors.New("user: reset code replaced")
+	ErrResetCodeUsed     = errors.New("user: reset code already used")
 )
 
 // FieldError reports that a stored value broke a database check constraint,

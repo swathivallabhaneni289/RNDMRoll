@@ -92,11 +92,26 @@ type Target struct {
 
 // Repository is the storage behind pushes.
 type Repository interface {
-	// SaveToken stores token for userID, moving it from any other account.
-	SaveToken(ctx context.Context, userID uuid.UUID, token, platform string, at time.Time) error
-	// DeleteToken deletes userID's token. Absent is fine.
-	DeleteToken(ctx context.Context, userID uuid.UUID, token string) error
-	// Tokens are the tokens of userID (none for a disabled account).
+	// SaveToken stores token for userID, moving it from any other account,
+	// and ties it to session: the refresh token the saving request's access
+	// token was issued with (uuid.Nil for a token from before sessions were
+	// named, which ties it to none). A token is sent to only while its
+	// session lasts, so a phone that left without its DELETE reaching the
+	// server stops getting pushes all the same. A token tied to a live
+	// session is moved only by a save from a live session: a late save from
+	// a session that has ended, or one that names none, leaves it alone, and
+	// so does a late save from an older live session of the same person
+	// while the token is tied to a newer one (its refresh token was made
+	// later). A save from the newer session always takes it.
+	SaveToken(ctx context.Context, userID, session uuid.UUID, token, platform string, at time.Time) error
+	// DeleteToken deletes userID's token when it is tied to session (the
+	// caller's own), to a session that has ended, or to none. A token tied to
+	// another live session stays, so a late DELETE from an older session
+	// never takes a newer sign in's pushes. Absent is fine.
+	DeleteToken(ctx context.Context, userID, session uuid.UUID, token string) error
+	// Tokens are the tokens of userID whose session is live: not logged out,
+	// not expired and not ended by a password change (none for a disabled
+	// account, none tied to no session).
 	Tokens(ctx context.Context, userID uuid.UUID) ([]string, error)
 	// RemoveTokens deletes tokens Expo said are no longer valid.
 	RemoveTokens(ctx context.Context, tokens []string) error

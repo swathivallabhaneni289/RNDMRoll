@@ -236,10 +236,12 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 
 // ChangePassword replaces the account's password hash and its sessions in ONE
 // transaction: the new hash is stored, every active refresh token is revoked,
-// and one new token is inserted, so the caller's own session continues and
-// every other phone is signed out at its next refresh. Any error rolls the
-// whole change back (the old hash and the old tokens stay as they were).
-// An account that is gone is user.ErrNotFound and changes nothing.
+// and one new token is inserted under sessionID (the session the caller's new
+// access token names), so the caller's own session continues and every other
+// phone is signed out at its next refresh. Any error rolls the whole change
+// back (the old hash and the old tokens stay as they were). An account that
+// is gone is user.ErrNotFound, and one an admin disabled is
+// user.ErrAccountDisabled; neither changes.
 //
 // The revoke runs twice, on purpose. A refresh on another phone that is in
 // flight at this moment (it has made its new token and holds the lock on its
@@ -247,14 +249,14 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 // visible to that statement, so it would survive the change. The second
 // revoke starts after that wait and sees it. A refresh that has not yet
 // locked its old token finds it revoked and rolls back by itself.
-func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
-	if err := changePassword(ctx, tx, userID, passwordHash, newTokenHash, expiresAt, userAgent); err != nil {
+	if err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -264,34 +266,52 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 // transaction tx (ChangePassword says why the revoke runs twice). Forgot
 // password runs them in the transaction that spends its code
 // (PasswordResetRepo.SpendAndChangePassword), so both changes follow one set
-// of rules.
-func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
-	// The users_set_updated_at trigger stamps the row.
-	const setHash = `update users set password_hash = $2 where id = $1`
+// of rules. The tables come in the order every session write takes them
+// (session_locks.go): the account, then every refresh token, the second
+// revoke included, and the push tokens last. Going back to the refresh
+// tokens after the push tokens is what once let a phone saving its push
+// token and a password change wait on each other.
+func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	// The users_set_updated_at trigger stamps the row. A disabled account
+	// keeps its password: the update finds no row.
+	const setHash = `update users set password_hash = $2 where id = $1 and disabled_at is null`
 	tag, err := tx.Exec(ctx, setHash, userID, passwordHash)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
+		return unchangedAccount(ctx, tx, userID)
+	}
+
+	if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
+		return err
+	}
+	const insertToken = `insert into refresh_tokens (id, user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4, $5::text)`
+	if _, err := tx.Exec(ctx, insertToken, sessionID, userID, newTokenHash, expiresAt, userAgent); err != nil {
+		return err
+	}
+	const revokeOthers = `update refresh_tokens set revoked_at = now() where id in (
+		select id from refresh_tokens where user_id = $1 and revoked_at is null and id <> $2 order by id for no key update)`
+	if _, err := tx.Exec(ctx, revokeOthers, userID, sessionID); err != nil {
+		return err
+	}
+
+	// Every phone the account was signed in on stops getting its pushes: their
+	// sessions are over, and their tokens go too. The phone that made the
+	// change sends its token again with its new session.
+	_, err = tx.Exec(ctx, deletePushTokensQ, userID)
+	return err
+}
+
+// unchangedAccount says why the account userID matched no update: it is gone
+// (user.ErrNotFound), or an admin disabled it (user.ErrAccountDisabled).
+func unchangedAccount(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	var exists bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from users where id = $1)`, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
 		return user.ErrNotFound
 	}
-
-	const revokeAll = `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null`
-	if _, err := tx.Exec(ctx, revokeAll, userID); err != nil {
-		return err
-	}
-	// Every phone the account was signed in on stops getting its pushes; the
-	// phone that stays signed in registers its token again on its next start.
-	if _, err := tx.Exec(ctx, `delete from push_tokens where user_id = $1`, userID); err != nil {
-		return err
-	}
-
-	const insertToken = `insert into refresh_tokens (user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4::text)`
-	if _, err := tx.Exec(ctx, insertToken, userID, newTokenHash, expiresAt, userAgent); err != nil {
-		return err
-	}
-
-	const revokeOthers = `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null and token_hash <> $2`
-	_, err = tx.Exec(ctx, revokeOthers, userID, newTokenHash)
-	return err
+	return user.ErrAccountDisabled
 }

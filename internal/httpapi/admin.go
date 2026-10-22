@@ -4,8 +4,13 @@
 // remove the reported post or comment, disable or enable the account).
 //
 // It is a plain server-rendered page, outside /v1 and its bearer tokens:
-//   - Only the accounts in ADMIN_EMAILS may sign in, with their app password.
-//     Without ADMIN_EMAILS nothing here is mounted.
+//   - Only the accounts that had an ADMIN_EMAILS address when the server
+//     started may sign in, with their app password (FindAdminAccounts). An
+//     address with no account then cannot be signed up meanwhile. Without
+//     ADMIN_EMAILS nothing here is mounted.
+//   - Log in counts its tries at an account with the app's log in (5 a
+//     minute per address and account), and past that answers as a wrong
+//     password does.
 //   - The session is an HttpOnly, SameSite=Strict cookie signed for the admin
 //     page only (an app token never works here, and this cookie never works
 //     in the app). The allowlist and the disabled flag are checked again on
@@ -80,24 +85,31 @@ type AdminHandler struct {
 	repo    admin.Repository
 	users   user.Repository
 	entries *EntryHandler
-	refresh *auth.RefreshService
 	secret  []byte
-	emails  map[string]bool
+	admins  map[uuid.UUID]bool
 	secure  bool
 	pages   *template.Template
 	css     []byte
+	// accountLimit counts log in tries per address and account. NewServer
+	// gives it the app's log in's (AuthHandler.accountLimit), so tries on
+	// either page count against one share.
+	accountLimit *middleware.Limiter
+	// clock is the time the limits count by; nil is the real clock.
+	clock func() time.Time
 }
 
-// NewAdminHandler builds the admin page. emails are the admin accounts
-// (lower case); secure sets the Secure flag on the cookie (off only in test
-// mode, which runs over plain http on localhost).
-func NewAdminHandler(repo admin.Repository, users user.Repository, entries *EntryHandler, refresh *auth.RefreshService,
-	secret []byte, emails []string, secure bool) *AdminHandler {
-	h := &AdminHandler{repo: repo, users: users, entries: entries, refresh: refresh, secret: secret, secure: secure,
-		emails: map[string]bool{}}
-	for _, e := range emails {
-		h.emails[strings.ToLower(strings.TrimSpace(e))] = true
+// NewAdminHandler builds the admin page. admins are the admin accounts' ids,
+// found once when the server starts (FindAdminAccounts); secure sets the
+// Secure flag on the cookie (off only in test mode, which runs over plain
+// http on localhost).
+func NewAdminHandler(repo admin.Repository, users user.Repository, entries *EntryHandler,
+	secret []byte, admins []uuid.UUID, secure bool) *AdminHandler {
+	h := &AdminHandler{repo: repo, users: users, entries: entries, secret: secret, secure: secure,
+		admins: map[uuid.UUID]bool{}}
+	for _, id := range admins {
+		h.admins[id] = true
 	}
+	h.accountLimit = middleware.NewLimiter(loginAccountTries, time.Minute, h.now)
 	h.pages = template.Must(template.New("admin").Funcs(template.FuncMap{
 		"when": func(t any) string {
 			switch v := t.(type) {
@@ -137,6 +149,38 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 	return h
 }
 
+// FindAdminAccounts finds the account of each ADMIN_EMAILS address, once,
+// when the server starts: only those accounts are admins until it starts
+// again. missing are the addresses no account has (cmd/api warns about each).
+// Sign-up answers them as taken meanwhile (AuthHandler.SetAdminEmails), so
+// nobody can become an admin by signing up with one first.
+func FindAdminAccounts(ctx context.Context, users user.Repository, emails []string) (ids []uuid.UUID, missing []string, err error) {
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email == "" {
+			continue
+		}
+		u, err := users.GetByEmailCI(ctx, email)
+		if errors.Is(err, user.ErrNotFound) {
+			missing = append(missing, email)
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		ids = append(ids, u.ID)
+	}
+	return ids, missing, nil
+}
+
+// now is the limits' clock: clock, or the real one.
+func (h *AdminHandler) now() time.Time {
+	if h.clock != nil {
+		return h.clock()
+	}
+	return time.Now()
+}
+
 // Register mounts /admin on the engine (outside /v1).
 func (h *AdminHandler) Register(engine *gin.Engine) {
 	g := engine.Group("/admin")
@@ -146,7 +190,7 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 	})
 	g.GET("/login", h.loginPage)
 	g.POST("/login", middleware.RateLimit(middleware.LimitConfig{
-		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP,
+		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP, Clock: h.now,
 	}), h.sameOrigin, h.login)
 
 	in := g.Group("")
@@ -211,9 +255,10 @@ func (h *AdminHandler) setCookie(c *gin.Context, value string, maxAge int) {
 	})
 }
 
-// isAdmin: the account exists, is on the list and is not disabled.
+// isAdmin: the account exists, is one of the admin accounts found when the
+// server started, and is not disabled.
 func (h *AdminHandler) isAdmin(u *user.User) bool {
-	return u != nil && !u.Disabled && h.emails[strings.ToLower(u.Email)]
+	return u != nil && !u.Disabled && h.admins[u.ID]
 }
 
 const adminUserKey = "admin_user"
@@ -297,16 +342,26 @@ func (h *AdminHandler) loginPage(c *gin.Context) {
 	h.render(c, "login", adminPage{Title: "Log in"})
 }
 
+// login signs an admin in. Like the app's Log in: a lookup that fails for
+// any reason but "no such account" is a failure, not a bad login; the
+// password is compared for every account, and with the dummy hash for none;
+// and past the account's limit (shared with the app's Log in) the answer is
+// the bad-login page, after the same comparison.
 func (h *AdminHandler) login(c *gin.Context) {
 	email := strings.ToLower(strings.TrimSpace(c.PostForm("email")))
 	password := c.PostForm("password")
 	u, err := h.users.GetByEmailCI(c.Request.Context(), email)
-	if err != nil || u.PasswordHash == nil {
-		_ = auth.ComparePassword(dummyPasswordHash, password)
-		h.toLogin(c, "badlogin")
+	if err != nil && !errors.Is(err, user.ErrNotFound) {
+		h.fail(c, err)
 		return
 	}
-	if auth.ComparePassword(*u.PasswordHash, password) != nil || !h.isAdmin(u) {
+	allowed := true
+	if err == nil {
+		allowed = h.accountLimit.Allow(middleware.KeyByIP(c) + "|" + u.ID.String())
+	} else {
+		u = nil
+	}
+	if !passwordMatches(auth.ComparePassword, u, password, allowed) || !h.isAdmin(u) {
 		h.toLogin(c, "badlogin")
 		return
 	}
@@ -462,14 +517,12 @@ func (h *AdminHandler) disable(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	now := time.Now().UTC()
+	// Logged out everywhere: SetDisabled revokes every refresh token in the
+	// transaction that disables the account, so no refresh token works again,
+	// and every request with an old access token is refused (RequireUser).
 	if err := h.repo.SetDisabled(ctx, id, &now); err != nil {
 		back(c, id, "failed")
 		return
-	}
-	// Logged out everywhere: no refresh token works again, and every request
-	// with an old access token is refused (RequireUser).
-	if err := h.refresh.RevokeAll(ctx, id); err != nil {
-		log.Printf("httpapi: admin disable revoke: %v", err)
 	}
 	if err := h.repo.ResolvePerson(ctx, id, admin.Disabled, now); err != nil {
 		log.Printf("httpapi: admin disable resolve: %v", err)

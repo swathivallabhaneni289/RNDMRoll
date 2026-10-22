@@ -176,6 +176,11 @@ type integrationOptions struct {
 func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrationOptions) *Server {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	// Every limit of the server stands still for the test, as in the unit
+	// rigs (newFullTestRigWith): the handlers' own clocks below, and the
+	// limits no handler clock covers.
+	testLimitClock = frozenClock
+	t.Cleanup(func() { testLimitClock = nil })
 
 	users := postgres.NewUserRepo(pool)
 	refreshTokens := postgres.NewRefreshTokenRepo(pool)
@@ -183,6 +188,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	refreshSvc := auth.NewRefreshService(refreshTokens, 30*24*time.Hour)
 
 	authHandler := NewAuthHandler(users, refreshSvc, integrationJWTSecret, 15*time.Minute)
+	authHandler.clock = frozenClock
 	profileHandler := NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL)
 	usernameHandler := NewUsernameHandler(users)
 
@@ -205,6 +211,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 
 	// users is the Postgres repository, which is also the PasswordChanger.
 	accountHandler := NewAccountHandler(users, users, refreshSvc, integrationJWTSecret, 15*time.Minute)
+	accountHandler.clock = frozenClock
 
 	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.PublicURL)
@@ -227,9 +234,17 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Logger:        logger,
 	}
 	if len(opts.adminEmails) > 0 {
-		deps.Admin = NewAdminHandler(postgres.NewAdminRepo(pool), users, deps.Entry, refreshSvc,
-			integrationJWTSecret, opts.adminEmails, false)
+		// As cmd/api does: the admins are the accounts the addresses have
+		// now, so a test signs its admin up (newAdminEngine) before this.
+		admins, _, err := FindAdminAccounts(context.Background(), users, opts.adminEmails)
+		if err != nil {
+			t.Fatalf("find the admin accounts: %v", err)
+		}
+		deps.Admin = NewAdminHandler(postgres.NewAdminRepo(pool), users, deps.Entry,
+			integrationJWTSecret, admins, false)
+		deps.Admin.clock = frozenClock
 	}
+	authHandler.SetAdminEmails(opts.adminEmails)
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
 	}
@@ -830,5 +845,21 @@ func TestIntegrationLegacyAccountWithNullBirthdayCanStillEdit(t *testing.T) {
 	var hasBirthday bool
 	if err := pool.QueryRow(context.Background(), `select birthday is not null from users where id = $1`, id).Scan(&hasBirthday); err != nil || hasBirthday {
 		t.Fatalf("legacy account gained a birthday (has = %v, err %v)", hasBirthday, err)
+	}
+}
+
+// The integration server's limits stand still, as the unit rigs' do: the
+// limits no handler clock covers (perSubject, the username checks, PATCH /me)
+// read the frozen clock while the test runs, and the real one after it.
+func TestIntegrationServer_LimitsCountOnAFrozenClock(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	t.Run("server", func(t *testing.T) {
+		buildIntegrationServer(t, pool)
+		if testLimitClock == nil || !limitClock().Equal(frozenClock()) {
+			t.Fatal("the integration server's limits count on the wall clock")
+		}
+	})
+	if testLimitClock != nil {
+		t.Fatal("the frozen limit clock outlived its test")
 	}
 }

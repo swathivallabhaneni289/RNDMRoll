@@ -192,22 +192,44 @@ func (r *AdminRepo) ReportTarget(ctx context.Context, kind string, id uuid.UUID)
 	return target, owner, err
 }
 
-// SetDisabled implements admin.Repository.
+// SetDisabled implements admin.Repository. Disabling also deletes the
+// account's Forgot password code, so none can be used while it is disabled
+// (or after it is enabled again), revokes every refresh token, so the account
+// is logged out everywhere, and deletes its push tokens, so its phones stop
+// getting pushes at once. One transaction, in the order of session_locks.go.
+// The revoke runs twice, as in a password change (UserRepo.ChangePassword
+// says why): a refresh in flight at this moment cannot leave a live session
+// behind.
 func (r *AdminRepo) SetDisabled(ctx context.Context, person uuid.UUID, at *time.Time) error {
-	tag, err := r.pool.Exec(ctx, `update users set disabled_at = $2 where id = $1`, person, at)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	if at != nil {
+		if _, err := tx.Exec(ctx, `delete from password_resets where user_id = $1`, person); err != nil {
+			return err
+		}
+	}
+	tag, err := tx.Exec(ctx, `update users set disabled_at = $2 where id = $1`, person, at)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return admin.ErrNotFound
 	}
-	// A disabled account's phones stop getting pushes at once.
 	if at != nil {
-		if _, err := r.pool.Exec(ctx, `delete from push_tokens where user_id = $1`, person); err != nil {
+		for range 2 {
+			if _, err := tx.Exec(ctx, revokeAllQ, person); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, deletePushTokensQ, person); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 // DeleteComment implements admin.Repository (its replies go with it).

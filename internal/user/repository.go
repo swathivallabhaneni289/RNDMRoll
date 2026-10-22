@@ -59,11 +59,12 @@ type Repository interface {
 // double has to grow a method.
 type PasswordChanger interface {
 	// ChangePassword stores passwordHash for userID, revokes every active
-	// refresh token the account holds, and inserts one new token
-	// (newTokenHash, expiresAt, userAgent), all in one transaction: on any
+	// refresh token the account holds, and inserts one new token (id
+	// sessionID, the session the caller's new access token names, with
+	// newTokenHash, expiresAt, userAgent), all in one transaction: on any
 	// error nothing at all has changed. It returns ErrNotFound when the
-	// account is gone.
-	ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error
+	// account is gone and ErrAccountDisabled when an admin disabled it.
+	ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error
 }
 
 // RefreshToken is the domain representation of a refresh_tokens row.
@@ -82,8 +83,18 @@ type RefreshTokenRepository interface {
 	// ErrTokenInvalid for a revoked or missing row.
 	GetActiveByHash(ctx context.Context, tokenHash []byte) (*RefreshToken, error)
 	// Rotate revokes oldID and inserts a new row in one transaction, so a
-	// crash mid-rotation cannot leave two simultaneously valid tokens.
+	// crash mid-rotation cannot leave two simultaneously valid tokens. The old
+	// row's rotated_to names the new one. It returns ErrTokenInvalid when
+	// oldID is no longer live.
 	Rotate(ctx context.Context, oldID uuid.UUID, newHash []byte, expiresAt time.Time) (uuid.UUID, error)
+	// RevokeByHash ends the session tokenHash belongs to: it revokes the
+	// token when it is live, and when it was rotated, the live token at the
+	// end of its rotated_to chain (refresh after refresh), so an old token
+	// still ends the session that grew from it. The walk along the chain is
+	// capped: a token more refreshes old than the cap ends nothing. It
+	// returns ErrTokenInvalid when nothing live was left to revoke within
+	// the cap (an unknown token, one revoked by a log out or a password
+	// change, or one too many refreshes old).
 	RevokeByHash(ctx context.Context, tokenHash []byte) error
 	RevokeAllForUser(ctx context.Context, userID uuid.UUID) error
 }

@@ -46,6 +46,7 @@ func (h *UsernameHandler) Register(rg *gin.RouterGroup) {
 		Requests: 90,
 		Window:   time.Minute,
 		KeyFunc:  middleware.KeyByIP,
+		Clock:    limitClock,
 	}))
 	limited.GET("/suggest", h.suggest)
 	limited.GET("/available", h.available)
