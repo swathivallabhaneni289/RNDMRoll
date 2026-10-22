@@ -2,7 +2,7 @@
 
 **A daily ritual for a small group of friends.** Once a day you spin a wheel. It lands on a category, like a meal, a movie or a book, and you post one real thing you had, watched or read for it. Your friends' posts open once you've posted yours.
 
-I took this from an idea to a working iPhone app on my own: research, product decisions, specs, design, build and testing. The app is React Native with Expo, backed by a Go API and PostgreSQL.
+I took this from an idea to a working iPhone app by directing Claude, Anthropic's AI coding assistant. The idea, the product decisions, the designs and the testing are mine; Claude wrote the code to my prompts. The app is React Native with Expo, backed by a Go API and PostgreSQL.
 
 <!-- Screenshots and a short screen recording go here. -->
 
@@ -69,9 +69,25 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **Notifications.** A list in the app, an 8 PM reminder on the phone, and phone notifications for comments, replies and follow requests.
 - **Accounts.** Two short sign-up pages, and Forgot password with a 6-digit emailed code.
 
-## How I built it
+## How I built it with Claude
 
-I worked in phases. Each phase had a written scope, a screen-by-screen design spec, a build plan and a test checklist. Each one ended with a walkthrough of every screen in the iPhone simulator before it was closed. The plans and specs are in [`.planning/`](./.planning).
+I built RNDMRoll by prompting Claude Code. I decided what the app should do and how it should look, and Claude wrote the code to those instructions.
+
+**My part**
+
+- **The idea and the research.** I came up with the concept, asked for the competitor research in [`RESEARCH.md`](./RESEARCH.md), and chose what to keep and what to cut.
+- **The product calls.** The decisions in the table above are mine, and so is the list of what I left out.
+- **The look.** I shared my own mockups and reference pictures, picked the fonts and the black and white style, and chose the logo from options I asked for.
+- **The plan.** The work ran in phases, and I approved each phase's scope and design before anything was built.
+- **The testing.** I walked through each phase on the iPhone simulator and sent back what to change, often as screenshots and voice notes, until it worked the way I wanted.
+- **The quality bar.** I asked for code reviews and had every problem fixed and checked again before pushing.
+
+**Claude's part**
+
+- Writing the Go server, the database migrations, the app screens and the tests, following those plans.
+- Running the reviews and checks I asked for.
+
+Each phase had a written scope, a screen-by-screen design spec, a build plan and a test checklist. They're in [`.planning/`](./.planning), the record of what I asked for and approved.
 
 1. Accounts and sign-up
 2. The daily spin, then Settings and smoother navigation
