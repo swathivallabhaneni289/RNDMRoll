@@ -135,12 +135,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const restoringRef = useRef(false);
   // Counts sign-ins and sign-outs in flight so a restore never races them.
   const authBusyRef = useRef(0);
-  // Bumped by signIn so a restore that started earlier cannot overwrite a newer sign-in.
+  // Bumped by signIn so a restore that started earlier cannot overwrite a newer sign-in, and a log
+  // out that started earlier stops before it touches the newer session (endSession).
   const signInEpochRef = useRef(0);
+  // The person's log out running now (doSignOut). A sign in forgets it, so the new session's log
+  // out never joins one from before.
+  const signOutInFlightRef = useRef<Promise<void> | null>(null);
 
   const signIn = useCallback(async (result: AuthResult, options?: { extras?: boolean }) => {
     authBusyRef.current += 1;
     signInEpochRef.current += 1;
+    signOutInFlightRef.current = null;
     try {
       await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, result.access_token, KEYCHAIN_OPTIONS);
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, result.refresh_token, KEYCHAIN_OPTIONS);
@@ -166,24 +171,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   // Ends the session. fromRefresh is true only when a failed refresh is what signs out.
+  // A sign in while it runs (after a failed refresh signed out, say) starts a session this one
+  // must not touch: after each wait it stops if one happened, before /auth/logout (which would
+  // end the new session on the server), the keychain or the state.
   const endSession = useCallback(async (fromRefresh: boolean) => {
     authBusyRef.current += 1;
+    const epoch = signInEpochRef.current;
+    const signedInSince = () => signInEpochRef.current !== epoch;
     try {
       // This phone stops getting pushes for this account. Never throws; it comes first, while the
       // access token still works. A log out by the person may refresh an expired access token on
       // the way (also while a routine refresh runs, which never waits on it). No refresh when a
       // failed refresh is what signs out: it would wait on itself.
       await unregisterPushToken(!fromRefresh);
+      if (signedInSince()) return;
       try {
         const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+        if (signedInSince()) return;
         if (storedRefreshToken) {
           await api.post('/auth/logout', { refresh_token: storedRefreshToken }, { auth: false });
         }
       } catch {
         // Best-effort: a network failure here must not trap the user in a signed-in shell.
       }
+      if (signedInSince()) return;
       await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+      if (signedInSince()) return;
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+      if (signedInSince()) return;
       setAccessToken(null);
       setExtrasPending(false);
       setUser(null);
@@ -193,8 +208,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // A log out by the person, and the client's when an admin disabled the account.
-  const doSignOut = useCallback(() => endSession(false), [endSession]);
+  // A log out by the person, and the client's when an admin disabled the account. One at a time:
+  // a second one while the first runs (Settings' Log out confirmed twice) shares it. Run again, it
+  // would find the push token already taken by the first, finish at once and clear the access
+  // token that the first one's DELETE of the push token still needs. A failed refresh that signs
+  // out (endSession(true)) never joins it: it must never wait. Neither does a log out after a new
+  // sign in (signIn forgets the old one), and the old one's end then leaves the new one in place.
+  const doSignOut = useCallback((): Promise<void> => {
+    if (signOutInFlightRef.current) return signOutInFlightRef.current;
+    const attempt: Promise<void> = endSession(false).finally(() => {
+      if (signOutInFlightRef.current === attempt) signOutInFlightRef.current = null;
+    });
+    signOutInFlightRef.current = attempt;
+    return attempt;
+  }, [endSession]);
 
   const refreshOnce = useCallback(async () => {
     const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
