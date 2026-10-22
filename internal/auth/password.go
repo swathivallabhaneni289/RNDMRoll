@@ -12,12 +12,13 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
-// maxPasswordBytes is bcrypt's hard algorithmic ceiling, measured in bytes
+// MaxPasswordBytes is bcrypt's hard algorithmic ceiling, measured in bytes
 // rather than characters -- a multi-byte UTF-8 password hits it sooner than
 // its visible length suggests. RESEARCH.md Pitfall 1: the correct response
 // is a clear validation error, not a pre-hash workaround such as hashing
-// with SHA-256 before bcrypt.
-const maxPasswordBytes = 72
+// with SHA-256 before bcrypt. Forgot password checks it before a code try is
+// counted.
+const MaxPasswordBytes = 72
 
 // ErrPasswordTooLong is returned by HashPassword when plain exceeds
 // bcrypt's 72-byte ceiling.
@@ -27,7 +28,7 @@ var ErrPasswordTooLong = errors.New("auth: password exceeds 72 bytes")
 // rejects input over 72 bytes before ever calling bcrypt, since bcrypt
 // itself would otherwise silently ignore bytes past that ceiling.
 func HashPassword(plain string) (string, error) {
-	if len(plain) > maxPasswordBytes {
+	if len(plain) > MaxPasswordBytes {
 		return "", ErrPasswordTooLong
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)

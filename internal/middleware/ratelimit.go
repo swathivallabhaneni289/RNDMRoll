@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -8,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/gin-gonic/gin/codec/json"
 	"golang.org/x/time/rate"
 )
 
@@ -68,29 +72,54 @@ func KeyByIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// KeyByIPAndField keys the limiter by the client IP combined with a JSON
-// body field (e.g. "email"), trimmed and lowercased as the handlers read it,
-// so login throttling applies per account as well as per source and padding
-// never makes a fresh bucket. It reads the body via
-// ShouldBindBodyWith, which caches the raw body so the handler can still
-// bind it normally afterward. When a body can name the same thing under more
-// than one key (login accepts "login" and the older "email"), pass the others
-// as alternates: the first key that holds a non-empty string is used, as Log
-// in picks it.
-func KeyByIPAndField(field string, alternates ...string) func(*gin.Context) string {
-	fields := append([]string{field}, alternates...)
+// KeyByIPAndBody keys the limiter by the client IP combined with the name a
+// JSON body is for (an email or a login), trimmed and lowercased as the
+// handlers compare it, so throttling applies per account as well as per
+// source and padding or capitals never make a fresh bucket. pick reads the
+// name from the body decoded into T, the handler's own request type, exactly
+// as the handler decodes it: encoding/json matches keys in any case and lets
+// the last of two win, so reading the body any other way could count one name
+// while the handler uses another. The binding rules are left to the handler,
+// so a body it will refuse still counts against the name it carries. The body
+// is read with ShouldBindBodyWith, which caches it so the handler can still
+// bind it afterward. A body that does not decode is keyed by the IP alone.
+func KeyByIPAndBody[T any](pick func(*T) string) func(*gin.Context) string {
 	return func(c *gin.Context) string {
-		var body map[string]any
-		if err := c.ShouldBindBodyWith(&body, binding.JSON); err != nil {
+		var body T
+		if err := c.ShouldBindBodyWith(&body, decodeOnly{}); err != nil {
 			return c.ClientIP()
 		}
-		for _, f := range fields {
-			if value, _ := body[f].(string); value != "" {
-				return c.ClientIP() + "|" + strings.ToLower(strings.TrimSpace(value))
-			}
-		}
-		return c.ClientIP() + "|"
+		return c.ClientIP() + "|" + strings.ToLower(strings.TrimSpace(pick(&body)))
 	}
+}
+
+// decodeOnly decodes a JSON body as binding.JSON does (gin's JSON codec and
+// its two decoder switches) without the binding rules, which only the
+// handler applies.
+type decodeOnly struct{}
+
+func (decodeOnly) Name() string { return "json" }
+
+func (d decodeOnly) Bind(req *http.Request, obj any) error {
+	if req == nil || req.Body == nil {
+		return errors.New("invalid request")
+	}
+	return d.decode(req.Body, obj)
+}
+
+func (d decodeOnly) BindBody(body []byte, obj any) error {
+	return d.decode(bytes.NewReader(body), obj)
+}
+
+func (decodeOnly) decode(r io.Reader, obj any) error {
+	decoder := json.API.NewDecoder(r)
+	if binding.EnableDecoderUseNumber {
+		decoder.UseNumber()
+	}
+	if binding.EnableDecoderDisallowUnknownFields {
+		decoder.DisallowUnknownFields()
+	}
+	return decoder.Decode(obj)
 }
 
 // KeyBySubject keys the limiter by the authenticated subject, for routes

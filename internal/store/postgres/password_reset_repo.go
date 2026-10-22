@@ -44,6 +44,8 @@ func (r *PasswordResetRepo) Issue(ctx context.Context, userID uuid.UUID, codeHas
 // Try counts one try at the person's code and returns its hash, in one
 // statement, so tries sent at once still stop at maxTries. ok is false, and
 // nothing is counted, when there is no code, it has expired or it is used up.
+// The right code's try is counted too; RefundTry gives it back if the
+// password then does not change.
 func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, at time.Time, maxTries int) (codeHash []byte, ok bool, err error) {
 	err = r.pool.QueryRow(ctx, `
 		update password_resets set attempts = attempts + 1
@@ -55,12 +57,46 @@ func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, at time.T
 	return codeHash, err == nil, err
 }
 
-// Spend deletes the person's code if it is still codeHash. Only one request
-// can spend a code: spent is true for that one.
-func (r *PasswordResetRepo) Spend(ctx context.Context, userID uuid.UUID, codeHash []byte) (spent bool, err error) {
-	tag, err := r.pool.Exec(ctx, `delete from password_resets where user_id = $1 and code_hash = $2`, userID, codeHash)
+// RefundTry gives back one try at the person's code, if it is still codeHash
+// and has a try to give: the right code's try, when the password then did not
+// change. It only ever lowers the count of the code it names, and never below
+// zero, so it cannot give back a wrong guess at another code; a code spent or
+// replaced in the meantime is left as it is, and a spent one never comes back.
+func (r *PasswordResetRepo) RefundTry(ctx context.Context, userID uuid.UUID, codeHash []byte) error {
+	_, err := r.pool.Exec(ctx, `
+		update password_resets set attempts = attempts - 1
+		where user_id = $1 and code_hash = $2 and attempts > 0`, userID, codeHash)
+	return err
+}
+
+// SpendAndChangePassword deletes the person's code if it is still codeHash
+// and, in the same transaction, changes their password as
+// UserRepo.ChangePassword does: both commit or neither does, so a change that
+// fails or is given up part way leaves the code as it was. Only one request
+// can spend a code: the delete holds the code's row until the end, so a second
+// request with the same code waits for the first and then finds nothing to
+// spend (spent is false, and nothing changed), unless the first rolled back.
+// An account that is gone is user.ErrNotFound.
+func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
+	passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) (spent bool, err error) {
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	tag, err := tx.Exec(ctx, `delete from password_resets where user_id = $1 and code_hash = $2`, userID, codeHash)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if err := changePassword(ctx, tx, userID, passwordHash, newTokenHash, expiresAt, userAgent); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

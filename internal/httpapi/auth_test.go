@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -746,6 +747,106 @@ func TestLogin_MalformedEmail_Returns400NamingTheLoginField(t *testing.T) {
 			})
 
 			assertFieldError(t, rec, "login")
+		})
+	}
+}
+
+// --- the per-login limit counts the account Log in checks ---
+
+// postRawJSON sends body exactly as written, from remote. json.Marshal would
+// sort a map's keys, and the order of two keys is what a decoy relies on.
+func postRawJSON(t *testing.T, router http.Handler, remote, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.RemoteAddr = remote
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// The per-login key is the login Log in reads (LoginRequest.typed), trimmed
+// and lowercased: login wins over the older email key unless it is empty.
+func TestLogin_LimitKeyIsTheLoginLogInReads(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"login", `{"login":"Some_Name"}`, "192.0.2.1|some_name"},
+		{"older key", `{"email":"A@B.com"}`, "192.0.2.1|a@b.com"},
+		{"login wins", `{"login":"one","email":"two"}`, "192.0.2.1|one"},
+		{"empty login falls through", `{"login":"","email":"two"}`, "192.0.2.1|two"},
+		// Trimmed as the handlers compare it, so padding is not a new bucket.
+		{"padded email", `{"email":"  A@B.com "}`, "192.0.2.1|a@b.com"},
+		{"padded login", `{"login":"\tSome_Name\n"}`, "192.0.2.1|some_name"},
+		// Log in reads a blank login, not the email after it.
+		{"blank login still wins", `{"login":"  ","email":"two"}`, "192.0.2.1|"},
+		{"neither key", `{"password":"x"}`, "192.0.2.1|"},
+		// Keys match in any case and the last of two wins, as in Log in.
+		{"login in capitals after a decoy", `{"login":"decoy","Login":"victim"}`, "192.0.2.1|victim"},
+		{"email in capitals after a decoy", `{"email":"decoy@x.com","EMAIL":"victim@x.com"}`, "192.0.2.1|victim@x.com"},
+		{"not json", `nope`, "192.0.2.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			if got := loginLimitKey(c); got != tc.want {
+				t.Fatalf("key for %s: got %q, want %q", tc.body, got, tc.want)
+			}
+		})
+	}
+}
+
+// Log in's limit of 5 a minute per address and login counts the account Log
+// in goes on to check. JSON keys match in any case and the last of two wins,
+// so a body could name a decoy where the limit looked and the account after
+// it: 20 guesses a minute at one account (the per-address limit) instead of 5.
+func TestLogin_LimitCountsTheAccountLogInChecks(t *testing.T) {
+	const password = "Correct-horse-battery1"
+	// Each body names the account victim_x (victim@example.com) to Log in, the
+	// way plain does; %[1]d is a decoy number and %[2]s the password.
+	cases := map[string]struct{ body, plain string }{
+		"a decoy, then the login in capitals": {
+			`{"login":"decoy-%[1]d","Login":"victim_x","password":"%[2]s"}`, "victim_x"},
+		"an empty login, then the login in capitals": {
+			`{"login":"","LOGIN":"Victim_X","password":"%[2]s","decoy":%[1]d}`, "victim_x"},
+		"a decoy, then the older email in capitals": {
+			`{"email":"decoy-%[1]d@example.com","Email":"victim@example.com","password":"%[2]s"}`, "victim@example.com"},
+		"a decoy, then the login again": {
+			`{"login":"decoy-%[1]d","password":"%[2]s","login":"victim_x"}`, "victim_x"},
+	}
+	for name, tc := range cases {
+		body := tc.body
+		t.Run(name, func(t *testing.T) {
+			router, _, deps := newAuthTestHandler(t)
+			seedLoginAccount(t, deps, "victim@example.com", "victim_x", password)
+			send := func(remote string, decoy int, password string) *httptest.ResponseRecorder {
+				return postRawJSON(t, router, remote, "/v1/auth/login", fmt.Sprintf(body, decoy, password))
+			}
+
+			// Log in checks the account the body names last.
+			assertLoggedInAs(t, send("198.51.100.50:1", 99, password), "victim@example.com")
+
+			// Five guesses behind five decoys, then the sixth is refused.
+			for i := 0; i < 5; i++ {
+				assertInvalidCredentials(t, send("198.51.100.51:1", i, "wrong-guess"))
+			}
+			if rec := send("198.51.100.51:1", 5, "wrong-guess"); rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("a 6th guess behind a new decoy: %d %s, want 429", rec.Code, rec.Body.String())
+			}
+
+			// Five plain guesses fill the same bucket.
+			for i := 0; i < 5; i++ {
+				assertInvalidCredentials(t, postRawJSON(t, router, "198.51.100.52:1", "/v1/auth/login",
+					fmt.Sprintf(`{"login":%q,"password":"wrong-guess"}`, tc.plain)))
+			}
+			if rec := send("198.51.100.52:1", 6, "wrong-guess"); rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("a guess after 5 plain ones: %d %s, want 429", rec.Code, rec.Body.String())
+			}
 		})
 	}
 }

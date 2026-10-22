@@ -72,7 +72,7 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 	}), middleware.RateLimit(middleware.LimitConfig{
 		Requests: 3,
 		Window:   time.Minute,
-		KeyFunc:  middleware.KeyByIPAndField("email"),
+		KeyFunc:  signupLimitKey,
 	}), h.Signup)
 	// Log in is limited twice as well: 20 a minute per address in total, so one
 	// address cannot try many different usernames (a username is shown to
@@ -84,7 +84,7 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 	}), middleware.RateLimit(middleware.LimitConfig{
 		Requests: 5,
 		Window:   time.Minute,
-		KeyFunc:  middleware.KeyByIPAndField("login", "email"),
+		KeyFunc:  loginLimitKey,
 	}), h.Login)
 	// Neither refresh nor logout sits behind RequireAuth: refresh exists
 	// precisely because the access token has already expired, and logout
@@ -92,6 +92,13 @@ func (h *AuthHandler) Register(rg *gin.RouterGroup) {
 	rg.POST("/auth/refresh", h.Refresh)
 	rg.POST("/auth/logout", h.Logout)
 }
+
+// The per-email and per-login limits read the body into the handler's own
+// request type, so each counts the very name its handler goes on to use.
+var (
+	signupLimitKey = middleware.KeyByIPAndBody(func(r *SignupRequest) string { return r.Email })
+	loginLimitKey  = middleware.KeyByIPAndBody(func(r *LoginRequest) string { return r.typed() })
+)
 
 // Field limits shared by sign-up and PATCH /me.
 const (
@@ -125,6 +132,16 @@ type LoginRequest struct {
 	Login    string `json:"login,omitempty"`
 	Email    string `json:"email,omitempty"`
 	Password string `json:"password" binding:"required,max=72"`
+}
+
+// typed is what the person typed on the Log in page: Login, or the older Email
+// when Login is empty. Log in and its limit both read it here, so the limit
+// always counts the account Log in checks.
+func (r *LoginRequest) typed() string {
+	if r.Login != "" {
+		return r.Login
+	}
+	return r.Email
 }
 
 // passwordReason checks a new password: required, 8 to 72 characters, with at
@@ -227,7 +244,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	var req SignupRequest
 	// ShouldBindBodyWith (not ShouldBindJSON) so the request body survives
 	// being read here even though the rate limiter already consumed it via
-	// KeyByIPAndField.
+	// signupLimitKey.
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		RespondValidationError(c, err)
 		return
@@ -351,10 +368,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	login := req.Login
-	if login == "" {
-		login = req.Email
-	}
+	login := req.typed()
 	// An empty or email-shaped login is checked the way sign-up checks an
 	// address, so a typo in an address gets a field error the screen can name.
 	byEmail := login == "" || strings.Contains(login, "@")

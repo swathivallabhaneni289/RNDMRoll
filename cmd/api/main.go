@@ -152,7 +152,9 @@ func main() {
 	} else {
 		codeSender = mail.NewResendSender(cfg.ResendAPIKey, cfg.MailFromAddress, cfg.MailFromName)
 	}
-	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, users, refreshSvc, postgres.NewPasswordResetRepo(pool),
+	// The reset store spends a code and changes the password in one
+	// transaction, so a change that fails never loses the code.
+	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, refreshSvc, postgres.NewPasswordResetRepo(pool),
 		codeSender, cfg.JWTSecret, cfg.AccessTokenTTL)
 	if len(cfg.AdminEmails) > 0 {
 		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler, refreshSvc,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 func TestRateLimit_AllowsNThenRejectsTheNextWithinWindow(t *testing.T) {
@@ -68,24 +69,37 @@ func TestRateLimit_DifferentKeysDoNotShareABucket(t *testing.T) {
 	}
 }
 
-func TestKeyByIPAndField_UsesTheFirstKeyThatHoldsText(t *testing.T) {
-	key := KeyByIPAndField("login", "email")
+// keyTestBody stands in for a handler's request type, binding rule and all.
+type keyTestBody struct {
+	Login    string `json:"login"`
+	Password string `json:"password" binding:"required"`
+}
+
+func TestKeyByIPAndBody_ReadsTheNameAsTheHandlerDecodesIt(t *testing.T) {
+	key := KeyByIPAndBody(func(b *keyTestBody) string { return b.Login })
 	cases := []struct {
 		name string
 		body string
 		want string
 	}{
-		{"first key", `{"login":"Some_Name"}`, "192.0.2.1|some_name"},
-		{"older key", `{"email":"A@B.com"}`, "192.0.2.1|a@b.com"},
-		{"first key wins", `{"login":"one","email":"two"}`, "192.0.2.1|one"},
-		{"empty first key falls through", `{"login":"","email":"two"}`, "192.0.2.1|two"},
-		// Trimmed as the handlers read it, so padding is not a new bucket.
-		{"padded email", `{"email":"  A@B.com "}`, "192.0.2.1|a@b.com"},
-		{"padded login", `{"login":"\tSome_Name\n"}`, "192.0.2.1|some_name"},
-		// Log in reads a blank login, not the email after it.
-		{"blank first key still wins", `{"login":"  ","email":"two"}`, "192.0.2.1|"},
-		{"neither key", `{"password":"x"}`, "192.0.2.1|"},
+		{"the name", `{"login":"Some_Name","password":"x"}`, "192.0.2.1|some_name"},
+		// Trimmed and lowercased as the handlers compare it, so padding is not
+		// a new bucket.
+		{"padded", `{"login":"\tSome_Name\n","password":"x"}`, "192.0.2.1|some_name"},
+		// Keys match in any case and the last of two wins, as in the handler.
+		{"key in capitals", `{"LOGIN":"victim","password":"x"}`, "192.0.2.1|victim"},
+		{"decoy, then capitals", `{"login":"decoy","Login":"victim","password":"x"}`, "192.0.2.1|victim"},
+		{"capitals, then decoy", `{"Login":"victim","login":"decoy","password":"x"}`, "192.0.2.1|decoy"},
+		{"the same key twice", `{"login":"decoy","password":"x","login":"victim"}`, "192.0.2.1|victim"},
+		{"empty, then capitals", `{"login":"","lOgIn":"victim","password":"x"}`, "192.0.2.1|victim"},
+		// What follows the body is ignored, as the handler's decoder ignores it.
+		{"a second body after", `{"login":"victim","password":"x"} {"login":"decoy"}`, "192.0.2.1|victim"},
+		// The binding rules are the handler's: a body it will refuse still
+		// counts against its name.
+		{"no password", `{"login":"Some_Name"}`, "192.0.2.1|some_name"},
+		{"no name", `{"password":"x"}`, "192.0.2.1|"},
 		{"not json", `nope`, "192.0.2.1"},
+		{"not text", `{"login":5,"password":"x"}`, "192.0.2.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,6 +109,14 @@ func TestKeyByIPAndField_UsesTheFirstKeyThatHoldsText(t *testing.T) {
 
 			if got := key(c); got != tc.want {
 				t.Fatalf("key for %s: got %q, want %q", tc.body, got, tc.want)
+			}
+			// The handler still binds the body afterward and, when it accepts
+			// it, reads the same name.
+			var bound keyTestBody
+			if err := c.ShouldBindBodyWith(&bound, binding.JSON); err == nil {
+				if got := "192.0.2.1|" + strings.ToLower(strings.TrimSpace(bound.Login)); got != tc.want {
+					t.Fatalf("the handler read %q, the key %q", got, tc.want)
+				}
 			}
 		})
 	}

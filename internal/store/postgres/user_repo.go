@@ -254,6 +254,18 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
+	if err := changePassword(ctx, tx, userID, passwordHash, newTokenHash, expiresAt, userAgent); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// changePassword is ChangePassword's writes, as steps of the caller's
+// transaction tx (ChangePassword says why the revoke runs twice). Forgot
+// password runs them in the transaction that spends its code
+// (PasswordResetRepo.SpendAndChangePassword), so both changes follow one set
+// of rules.
+func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
 	// The users_set_updated_at trigger stamps the row.
 	const setHash = `update users set password_hash = $2 where id = $1`
 	tag, err := tx.Exec(ctx, setHash, userID, passwordHash)
@@ -280,9 +292,6 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	}
 
 	const revokeOthers = `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null and token_hash <> $2`
-	if _, err := tx.Exec(ctx, revokeOthers, userID, newTokenHash); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	_, err = tx.Exec(ctx, revokeOthers, userID, newTokenHash)
+	return err
 }

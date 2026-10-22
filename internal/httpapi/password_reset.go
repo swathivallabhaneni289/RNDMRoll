@@ -13,10 +13,15 @@
 //     and a code under a minute old is not replaced (nothing is emailed).
 //   - A wrong code, an unknown email and a used-up code all answer the same
 //     400 field "code". A try is counted in the same step that reads the
-//     code, and the right code is spent before the password changes, so
-//     tries sent at once neither pass the limit nor change it twice.
-//   - The new password follows the sign-up rules; setting it ends every other
-//     session (as Change password does) and the answer is a fresh session.
+//     code, and the right code is spent in the same transaction that
+//     changes the password, so tries sent at once neither pass the limit nor
+//     change it twice, and a change that fails or is given up part way
+//     leaves the code as it was. Such a change also gives the right code's
+//     try back, so even on the last try the code still works; a wrong
+//     code's try is never given back.
+//   - The new password follows the sign-up rules, and bcrypt's 72 bytes,
+//     checked before a try is counted; setting it ends every other session
+//     (as Change password does) and the answer is a fresh session.
 //   - A disabled account gets no code and cannot reset.
 package httpapi
 
@@ -54,19 +59,35 @@ const (
 	// resetWorkDeadline bounds the lookup, the store and the email that
 	// forgot runs after its answer.
 	resetWorkDeadline = 15 * time.Second
+	// resetRefundDeadline bounds giving the right code's try back when the
+	// password did not change. It is the refund's own deadline, not the
+	// request's, so a reset the app gave up on still gives the try back.
+	resetRefundDeadline = 5 * time.Second
 )
 
 // ResetStore keeps the Forgot password codes (postgres.PasswordResetRepo).
 type ResetStore interface {
 	Issue(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at, freshSince time.Time, maxTries int) (bool, error)
 	Try(ctx context.Context, userID uuid.UUID, at time.Time, maxTries int) ([]byte, bool, error)
-	Spend(ctx context.Context, userID uuid.UUID, codeHash []byte) (bool, error)
+	// SpendAndChangePassword spends the code if it is still codeHash and, in
+	// the same transaction, changes the password as
+	// user.PasswordChanger.ChangePassword does: both happen or neither does.
+	// spent is false, with nothing changed, when another request spent the
+	// code first.
+	SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte, passwordHash string,
+		newTokenHash []byte, expiresAt time.Time, userAgent *string) (spent bool, err error)
+	// RefundTry gives back one try at the code, if it is still codeHash and
+	// has one to give: the right code's try, when the password then did not
+	// change.
+	RefundTry(ctx context.Context, userID uuid.UUID, codeHash []byte) error
 }
+
+// errCodeSpent: another request spent the code first.
+var errCodeSpent = errors.New("httpapi: reset code already spent")
 
 // PasswordResetHandler serves the two Forgot password routes.
 type PasswordResetHandler struct {
 	users     user.Repository
-	passwords user.PasswordChanger
 	refresh   *auth.RefreshService
 	store     ResetStore
 	sender    mail.Sender
@@ -76,10 +97,11 @@ type PasswordResetHandler struct {
 	wg        sync.WaitGroup
 }
 
-// NewPasswordResetHandler builds the handler. sender delivers the code email.
-func NewPasswordResetHandler(users user.Repository, passwords user.PasswordChanger, refresh *auth.RefreshService,
-	store ResetStore, sender mail.Sender, secret []byte, accessTTL time.Duration) *PasswordResetHandler {
-	return &PasswordResetHandler{users: users, passwords: passwords, refresh: refresh, store: store, sender: sender,
+// NewPasswordResetHandler builds the handler. sender delivers the code email;
+// store keeps the codes and changes the password with the code it spends.
+func NewPasswordResetHandler(users user.Repository, refresh *auth.RefreshService, store ResetStore,
+	sender mail.Sender, secret []byte, accessTTL time.Duration) *PasswordResetHandler {
+	return &PasswordResetHandler{users: users, refresh: refresh, store: store, sender: sender,
 		secret: secret, accessTTL: accessTTL, now: time.Now}
 }
 
@@ -95,11 +117,17 @@ func (h *PasswordResetHandler) Register(rg *gin.RouterGroup) {
 		Requests: 10, Window: time.Minute, KeyFunc: middleware.KeyByIP,
 	})
 	limit := middleware.RateLimit(middleware.LimitConfig{
-		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIPAndField("email"),
+		Requests: 5, Window: time.Minute, KeyFunc: resetLimitKey,
 	})
 	rg.POST("/auth/password/forgot", perAddress, limit, h.forgot)
 	rg.POST("/auth/password/reset", perAddress, limit, h.reset)
 }
+
+// resetLimitKey keys the per-email limit the two routes share by the email the
+// handlers use. A reset body names the account in the same email field as a
+// forgot body, and no other field of it matches that key, so reading either
+// body as a ForgotPasswordRequest gives the email its handler reads.
+var resetLimitKey = middleware.KeyByIPAndBody(func(r *ForgotPasswordRequest) string { return r.Email })
 
 // ForgotPasswordRequest is the POST /auth/password/forgot body.
 type ForgotPasswordRequest struct {
@@ -221,6 +249,12 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		RespondFieldError(c, "new_password", reason)
 		return
 	}
+	// bcrypt's ceiling counts bytes, so 72 characters can still be too many.
+	// Said before the try is counted, so it never costs one.
+	if len(req.NewPassword) > auth.MaxPasswordBytes {
+		RespondFieldError(c, "new_password", reasonTooLong)
+		return
+	}
 
 	ctx := c.Request.Context()
 	wrong := func() { RespondFieldError(c, "code", reasonIncorrect) }
@@ -240,39 +274,22 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		return
 	}
 
-	newHash, err := auth.HashPassword(req.NewPassword)
+	accessToken, refreshToken, err := h.setPassword(ctx, u.ID, codeHash, req.NewPassword, c.Request.UserAgent())
 	if err != nil {
-		if errors.Is(err, auth.ErrPasswordTooLong) {
-			RespondFieldError(c, "new_password", reasonTooLong)
+		// Another request spent the code, or it went with its account: there
+		// is no try to give back.
+		if errors.Is(err, errCodeSpent) || errors.Is(err, user.ErrNotFound) {
+			wrong()
 			return
 		}
-		RespondError(c, err)
-		return
-	}
-	accessToken, err := auth.IssueAccessToken(u.ID, h.secret, h.accessTTL)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
-	// Spent before the password changes, by one request only: the right code
-	// sent twice at once changes the password once, and no change can leave
-	// the code usable.
-	spent, err := h.store.Spend(ctx, u.ID, codeHash)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
-	if !spent {
-		wrong()
-		return
-	}
-	userAgent := c.Request.UserAgent()
-	refreshToken, err := h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
-		return h.passwords.ChangePassword(ctx, u.ID, newHash, tokenHash, expiresAt, &userAgent)
-	})
-	if err != nil {
-		if errors.Is(err, user.ErrNotFound) {
-			wrong()
+		// The code was right but the password did not change: the server or
+		// the database failed, or the app gave up. Its try is given back before
+		// the answer, so the code works when the app asks again; kept, the last
+		// try would use the code up, and no new code would be sent until it
+		// expired.
+		h.refundTry(ctx, u.ID, codeHash)
+		if errors.Is(err, auth.ErrPasswordTooLong) {
+			RespondFieldError(c, "new_password", reasonTooLong)
 			return
 		}
 		RespondError(c, err)
@@ -284,4 +301,45 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		"expires_in":    int(h.accessTTL.Seconds()),
 		"user":          apiUser(u),
 	})
+}
+
+// setPassword sets the new password with the right code and makes the new
+// session. The code is spent in the same transaction that changes the
+// password, by one request only: the right code sent twice at once changes the
+// password once (the other request gets errCodeSpent), no change can leave the
+// code usable, and a change that fails or is given up part way leaves the code
+// as it was.
+func (h *PasswordResetHandler) setPassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
+	newPassword, userAgent string) (accessToken, refreshToken string, err error) {
+	newHash, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return "", "", err
+	}
+	accessToken, err = auth.IssueAccessToken(userID, h.secret, h.accessTTL)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err = h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
+		spent, err := h.store.SpendAndChangePassword(ctx, userID, codeHash, newHash, tokenHash, expiresAt, &userAgent)
+		if err == nil && !spent {
+			return errCodeSpent
+		}
+		return err
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, refreshToken, nil
+}
+
+// refundTry gives back the try the right code was counted for, when the
+// password did not change after all. It runs on its own short deadline, not
+// the request's, so a reset the app gave up on still gives the try back. A
+// failure is only logged: the answer is the same either way.
+func (h *PasswordResetHandler) refundTry(ctx context.Context, userID uuid.UUID, codeHash []byte) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetRefundDeadline)
+	defer cancel()
+	if err := h.store.RefundTry(ctx, userID, codeHash); err != nil {
+		log.Printf("httpapi: reset refund: %v", err)
+	}
 }
