@@ -43,7 +43,13 @@ const NAME_MAX_LENGTH = 50;
 const EMAIL_MAX_LENGTH = 254;
 const USERNAME_DEBOUNCE_MS = 400;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Sign-up keeps only addresses the server keeps (internal/httpapi/auth.go, validEmail and
+// asciiEmail): plain printable ASCII, no spaces, one @, dot-separated parts on both sides made of
+// letters, digits and ! # $ % & ' * + - / = ? ^ _ ` { | } ~, and a dot after the @. So "Looks
+// good." never shows for an address the server refuses. (The server also takes an IP address in
+// brackets after the @. This page does not: nobody signs up with one.)
+const EMAIL_PART = "[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+";
+const EMAIL_PATTERN = new RegExp(`^${EMAIL_PART}(\\.${EMAIL_PART})*@${EMAIL_PART}(\\.${EMAIL_PART})+$`);
 
 const LOOKS_GOOD_MESSAGE = 'Looks good.';
 const EMAIL_MESSAGE = 'Enter a valid email address.';
@@ -633,6 +639,8 @@ export function ProfileForm({
     try {
       await signOut();
       // Edit: the root guard routes back to Welcome once status flips to unauthenticated.
+    } catch {
+      // The keychain could not be cleared: still signed in, and Log out can be tapped again.
     } finally {
       setSigningOut(false);
       setConfirmingSignOut(false);

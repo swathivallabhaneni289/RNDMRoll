@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { OfflineScreen } from '@/components/session/OfflineScreen';
+import { clearResetTries } from '@/lib/auth/clearResetTries';
 import { SessionProvider, useSession } from '@/lib/session/store';
 import { useAppFonts } from '@/lib/theme/fonts';
 import { useIntroSeen } from '@/lib/onboarding/intro-seen';
@@ -11,6 +12,10 @@ import { useIntroSeen } from '@/lib/onboarding/intro-seen';
 // restore, and the intro flag have all settled, never sooner, so no wrong first
 // screen ever flashes before the route decision is ready.
 SplashScreen.preventAutoHideAsync();
+
+// In the background, once (a mark remembers it ran): the Forgot password count an earlier build
+// kept on the phone.
+clearResetTries();
 
 // Mirrors (auth)/_layout.tsx's own unstable_settings as a defensive default
 // now that "index" and the two Stack.Protected groups sit side by side. It did
