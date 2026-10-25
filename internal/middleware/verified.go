@@ -56,9 +56,12 @@ func RequireUser(repo user.Repository) gin.HandlerFunc {
 			return
 		}
 
-		// An admin disabled the account: every request with an old token
-		// is refused at once (the access token may still be unexpired).
-		if u.Disabled {
+		// An admin disabled the account, or its owner asked for it to be
+		// deleted: every request with an old token is refused at once (the
+		// access token may still be unexpired), and the app signs out on
+		// this code. A deletion stays refused here inside its grace period
+		// and past it; only log in or a Forgot password reset cancels it.
+		if u.Disabled || u.DeletionRequested {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "account_disabled"})
 			return
 		}

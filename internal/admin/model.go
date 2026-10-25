@@ -50,6 +50,10 @@ type Person struct {
 	Bio        string
 	CreatedAt  time.Time
 	DisabledAt *time.Time
+	// DeletionRequestedAt is when the person asked, in the app, for the
+	// account to be deleted (nil when they have not). Such an account is not
+	// disabled and is not in the disabled list.
+	DeletionRequestedAt *time.Time
 }
 
 // Report is one report about a person: about them, one of their posts, or

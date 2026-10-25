@@ -9,6 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
+import { sayIfRestored } from '@/lib/auth/restored';
 import { useSession } from '@/lib/session/store';
 import { passwordProblem } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
@@ -62,7 +63,8 @@ function answerLost(err: unknown): boolean {
  * checklist). The new password signs you in at once and ends every other session. The server
  * answers the same for any email, so the page never says whether an account exists. A code that
  * worked is never sent again: if this phone then cannot keep the new session, the page says the
- * password is set and offers Log in instead.
+ * password is set and offers Log in instead. A reset within 30 days of Delete account keeps the
+ * account, and says so once it has signed in.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -175,6 +177,8 @@ export default function ForgotPasswordScreen() {
     try {
       // The root guard routes the signed-in account to the app.
       await signIn(result);
+      // This reset cancelled a pending deletion: "Welcome back" (developer, 2026-10-25).
+      sayIfRestored(result);
     } catch {
       // The password did change; only keeping the new session on this phone failed.
       setStep('done');

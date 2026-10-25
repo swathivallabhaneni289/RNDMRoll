@@ -22,6 +22,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/httpapi"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/purge"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/push"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
@@ -85,6 +86,13 @@ func main() {
 		logger.Error("failed to construct entry photo store", "error", err)
 		os.Exit(1)
 	}
+	// The purge's view of the same bucket: it lists and deletes the folders
+	// of an account being deleted for good, and nothing else.
+	accountFiles, err := storage.NewAccountFiles(storageConfig)
+	if err != nil {
+		logger.Error("failed to construct account file store", "error", err)
+		os.Exit(1)
+	}
 
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
@@ -135,6 +143,11 @@ func main() {
 		Follow:        httpapi.NewFollowHandler(socialService),
 		Board:         httpapi.NewBoardHandler(boardService),
 		Notifications: httpapi.NewNotificationsHandler(notificationsService, entryPhotos),
+
+		// The Postgres user repository also asks for and cancels a deletion:
+		// delete account marks the account, and log in inside the grace
+		// period cancels it.
+		DeleteAccount: httpapi.NewDeleteAccountHandler(users, users),
 
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,
@@ -193,6 +206,15 @@ func main() {
 
 	server := httpapi.NewServer(deps)
 
+	// Accounts whose owners asked for them to be deleted are deleted for good
+	// once user.DeletionGracePeriod has passed (internal/purge): a first run
+	// soon after start, then one an hour, each a bounded batch, one account
+	// at a time, until shutdown.
+	purgeCtx, stopPurge := context.WithCancel(context.Background())
+	defer stopPurge()
+	purger := purge.New(postgres.NewPurgeRepo(pool), accountFiles, logger)
+	purger.Start(purgeCtx)
+
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           server.Engine(),
@@ -218,6 +240,10 @@ func main() {
 		}
 	case sig := <-shutdownSignal:
 		logger.Info("shutdown signal received", "signal", sig.String())
+		// The purge starts no new account from here. One in progress stops
+		// at its next storage call and rolls back; its row stays for the
+		// next start, and the files already deleted stay deleted.
+		stopPurge()
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
@@ -232,7 +258,7 @@ func main() {
 			// Then the work the requests left running gets the rest of that
 			// time. Only after a clean Shutdown: no handler can start more
 			// while this waits.
-			waits := []func(){deps.PasswordReset.Wait}
+			waits := []func(){deps.PasswordReset.Wait, purger.Wait}
 			if pushNotifier != nil {
 				waits = append(waits, pushNotifier.Wait)
 			}

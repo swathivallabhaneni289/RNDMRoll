@@ -61,6 +61,9 @@ type Deps struct {
 	PasswordReset *PasswordResetHandler
 	// PushTokens is POST and DELETE /me/push-tokens; nil mounts nothing.
 	PushTokens *PushTokenHandler
+	// DeleteAccount is POST /me/delete; nil mounts nothing. Its store is also
+	// the one log in cancels a deletion with, inside the grace period.
+	DeleteAccount *DeleteAccountHandler
 	// DeepLinkScheme is the app's link scheme for the invite page's button
 	// ("rndmroll" when empty).
 	DeepLinkScheme string
@@ -100,7 +103,8 @@ type Server struct {
 //     both by construction, and so does any future route mounted here
 //     (T-01-SRV-03). There is no verified check: sign-up has no email step.
 //     The change-password route (POST /me/password) is mounted on this group
-//     when Deps carries an AccountHandler. The daily spin routes (time zone,
+//     when Deps carries an AccountHandler, and delete account
+//     (POST /me/delete) when it carries a DeleteAccountHandler. The daily spin routes (time zone,
 //     Today, spin, bonus spin, wheel) are mounted on this group when Deps
 //     carries them; so are the test-only clock and pretend-day routes, which
 //     exist only when the server was started in test mode (see
@@ -128,6 +132,10 @@ func NewServer(deps Deps) *Server {
 	}
 	RegisterInvite(engine, deps.DeepLinkScheme)
 
+	if deps.DeleteAccount != nil {
+		deps.Auth.deletions = deps.DeleteAccount.deletions
+	}
+
 	v1 := engine.Group("/v1")
 	v1.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
 	deps.Auth.Register(v1)
@@ -143,6 +151,9 @@ func NewServer(deps Deps) *Server {
 	deps.Profile.Register(authed)
 	if deps.Account != nil {
 		deps.Account.Register(authed)
+	}
+	if deps.DeleteAccount != nil {
+		deps.DeleteAccount.Register(authed)
 	}
 	if deps.Spin != nil {
 		if deps.Entry != nil && deps.Entry.photos != nil {

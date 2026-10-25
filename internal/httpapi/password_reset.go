@@ -92,8 +92,10 @@ type ResetStore interface {
 	// With nothing changed, it answers user.ErrResetCodeReplaced (a newer
 	// code replaced this one meanwhile), user.ErrResetCodeUsed (another
 	// request spent it first), user.ErrAccountDisabled or user.ErrNotFound.
+	// restored is true when the change also cancelled a deletion the owner
+	// had asked for (inside its grace period).
 	SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte, passwordHash string,
-		sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error
+		sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) (restored bool, err error)
 }
 
 // PasswordResetHandler serves the two Forgot password routes.
@@ -304,7 +306,9 @@ func (h *PasswordResetHandler) sendCode(ctx context.Context, email string) {
 		}
 		return
 	}
-	if u.Disabled || u.PasswordHash == nil || *u.PasswordHash == "" {
+	// Past the grace period of a deletion its owner asked for, the account
+	// is answered as no account: no code (Issue checks the same rule).
+	if u.Disabled || u.DeletionDue || u.PasswordHash == nil || *u.PasswordHash == "" {
 		return
 	}
 	code, err := newResetCode()
@@ -357,13 +361,14 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	ctx, cancelWork := context.WithTimeout(context.WithoutCancel(c.Request.Context()), resetWorkDeadline)
 	defer cancelWork()
 	wrong := func() { RespondFieldError(c, "code", reasonWrongCode) }
-	// An email with no account, or with a disabled one, runs the same
+	// An email with no account, with a disabled one, or with one past the
+	// grace period of a deletion its owner asked for, runs the same
 	// statement as any other, for no one (uuid.Nil has no code), so its
 	// answer, the wrong-code answer, comes after the same work.
 	userID := uuid.Nil
 	u, err := h.users.GetByEmailCI(ctx, strings.ToLower(strings.TrimSpace(req.Email)))
 	switch {
-	case err == nil && !u.Disabled:
+	case err == nil && !u.Disabled && !u.DeletionDue:
 		userID = u.ID
 	case err != nil && !errors.Is(err, user.ErrNotFound):
 		// The lookup failed: not a wrong code, which the app would count.
@@ -387,7 +392,7 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 
 	// The change itself runs on the request's context: a person who gives up part way keeps the
 	// code, and only someone with the right code gets this far.
-	accessToken, refreshToken, err := h.setPassword(c.Request.Context(), userID, codeHash, req.NewPassword, c.Request.UserAgent())
+	accessToken, refreshToken, restored, err := h.setPassword(c.Request.Context(), userID, codeHash, req.NewPassword, c.Request.UserAgent())
 	switch {
 	case err == nil:
 	case errors.Is(err, user.ErrResetCodeReplaced):
@@ -414,12 +419,18 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		RespondError(c, err)
 		return
 	}
-	Respond(c, http.StatusOK, gin.H{
+	body := gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),
 		"user":          apiUser(u),
-	})
+	}
+	// Inside the grace period of a deletion its owner asked for, the reset
+	// kept the account, as log in does, and says so once.
+	if restored {
+		body["restored"] = true
+	}
+	Respond(c, http.StatusOK, body)
 }
 
 // setPassword sets the new password with the right code and makes the new
@@ -427,25 +438,28 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 // password, by one request only: the right code sent twice at once changes the
 // password once (the other request gets user.ErrResetCodeUsed), no change can
 // leave the code usable, and a change that fails or is given up part way
-// leaves the code as it was.
+// leaves the code as it was. restored is true when the change also cancelled
+// a deletion the owner had asked for.
 func (h *PasswordResetHandler) setPassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
-	newPassword, userAgent string) (accessToken, refreshToken string, err error) {
+	newPassword, userAgent string) (accessToken, refreshToken string, restored bool, err error) {
 	newHash, err := auth.HashPassword(newPassword)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	// The new session's id is chosen here, so its access token can be made
 	// before anything is stored and still name it.
 	session := uuid.New()
 	accessToken, err = auth.IssueSessionAccessToken(userID, session, h.secret, h.accessTTL)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	refreshToken, err = h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
-		return h.store.SpendAndChangePassword(ctx, userID, codeHash, newHash, session, tokenHash, expiresAt, &userAgent)
+		var spendErr error
+		restored, spendErr = h.store.SpendAndChangePassword(ctx, userID, codeHash, newHash, session, tokenHash, expiresAt, &userAgent)
+		return spendErr
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
-	return accessToken, refreshToken, nil
+	return accessToken, refreshToken, restored, nil
 }

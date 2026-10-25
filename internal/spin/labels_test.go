@@ -98,3 +98,27 @@ func TestPostedLocalTime(t *testing.T) {
 		}
 	}
 }
+
+// TestLongDateLabel: the date is the one in loc, not in UTC, near midnight
+// either way, and reads like the app's long date lines.
+func TestLongDateLabel(t *testing.T) {
+	ny := mustZone(t, "America/New_York")
+	tokyo := mustZone(t, "Asia/Tokyo")
+	cases := []struct {
+		at   time.Time
+		loc  *time.Location
+		want string
+	}{
+		{time.Date(2026, 11, 24, 15, 0, 0, 0, time.UTC), ny, "Tuesday, November 24"},
+		// 2:30 AM UTC on the 25th is still the evening of the 24th in New York.
+		{time.Date(2026, 11, 25, 2, 30, 0, 0, time.UTC), ny, "Tuesday, November 24"},
+		// 4 PM UTC on the 24th is already the 25th in Tokyo.
+		{time.Date(2026, 11, 24, 16, 0, 0, 0, time.UTC), tokyo, "Wednesday, November 25"},
+		{time.Date(2027, 1, 3, 12, 0, 0, 0, time.UTC), time.UTC, "Sunday, January 3"},
+	}
+	for _, c := range cases {
+		if got := LongDateLabel(c.at, c.loc); got != c.want {
+			t.Errorf("LongDateLabel(%s, %s) = %q, want %q", c.at, c.loc, got, c.want)
+		}
+	}
+}

@@ -2,8 +2,9 @@ package postgres
 
 // The session tables are written by several transactions at once: a log in,
 // a refresh (RefreshTokenRepo.Rotate), a log out (RevokeByHash), a password
-// change or reset (changePassword), an admin's disable, and the phone saving
-// or deleting its push token (PushRepo). So that no two of them can ever wait
+// change or reset (changePassword), an admin's disable, a deletion request
+// (UserRepo.RequestDeletion), the purge (PurgeRepo.Purge), and the phone
+// saving or deleting its push token (PushRepo). So that no two of them can ever wait
 // on each other in a circle (Postgres would end one of them with a deadlock
 // error), each takes rows in this order and never goes back to an earlier
 // table once it holds a later one:
@@ -18,7 +19,10 @@ package postgres
 // write that names them (refresh_tokens and push_tokens name users,
 // push_tokens names refresh_tokens) takes a key share on them. A statement
 // that takes several rows of one table takes them in id order, so two such
-// statements over the same rows cannot each hold a row the other wants.
+// statements over the same rows cannot each hold a row the other wants. The
+// purge is the one writer that holds a users row for update: it is about to
+// delete the row, and any write that would name the account must wait for
+// that and then fail.
 const (
 	// revokeAllQ revokes every live refresh token of the account $1.
 	revokeAllQ = `update refresh_tokens set revoked_at = now() where id in (

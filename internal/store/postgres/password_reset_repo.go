@@ -29,14 +29,18 @@ func NewPasswordResetRepo(pool *pgxpool.Pool) *PasswordResetRepo {
 // only after an expiry does a code start from zero. The unexpired code a new
 // one replaces is kept as the previous code, so Try can say it was replaced;
 // an expired one is not. A disabled account gets no code: the statement
-// inserts or replaces one only for an account it reads as not disabled. The
-// read takes no lock (users comes after password_resets in the order of
-// session_locks.go), and a disable deletes the code in its own transaction.
+// inserts or replaces one only for an account it reads as not disabled, and,
+// when its owner asked for it to be deleted, only inside the grace period
+// (account_deletion.go): a reset then keeps the account, and past it the
+// email is answered as one with no account. The read takes no lock (users
+// comes after password_resets in the order of session_locks.go), and a
+// disable or a deletion request deletes the code in its own transaction.
 // stored reports whether the new code was kept (and so is to be emailed).
 func (r *PasswordResetRepo) Issue(ctx context.Context, userID uuid.UUID, codeHash []byte, expiresAt, at, freshSince time.Time, maxTries int) (stored bool, err error) {
 	tag, err := r.pool.Exec(ctx, `
 		insert into password_resets (user_id, code_hash, expires_at, attempts, created_at)
-		select id, $2::bytea, $3::timestamptz, 0, $4::timestamptz from users where id = $1 and disabled_at is null
+		select id, $2::bytea, $3::timestamptz, 0, $4::timestamptz from users
+		where id = $1 and disabled_at is null and (deletion_requested_at is null or `+insideGrace("deletion_requested_at")+`)
 		on conflict (user_id) do update set code_hash = excluded.code_hash, expires_at = excluded.expires_at,
 			attempts = case when password_resets.expires_at > excluded.created_at then password_resets.attempts else 0 end,
 			previous_code_hash = case when password_resets.expires_at > excluded.created_at then password_resets.code_hash end,
@@ -79,7 +83,9 @@ func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, codeHash 
 // SpendAndChangePassword deletes the person's code if it is still codeHash
 // and, in the same transaction, changes their password as
 // UserRepo.ChangePassword does (the new session's refresh token is stored
-// under sessionID): both commit or neither does, so a change that fails or is
+// under sessionID), except that inside the grace period of a deletion the
+// owner asked for it also cancels the deletion (restored is true then): both
+// commit or neither does, so a change that fails or is
 // given up part way leaves the code as it was. Only one request can spend a
 // code: the delete holds the code's row until the end, so a second request
 // with the same code waits for the first and then finds nothing to spend,
@@ -88,39 +94,45 @@ func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, codeHash 
 // It returns nil once the code is spent and the password changed. When there
 // was no code to spend, nothing changes and the error says why (whyNotSpent):
 // user.ErrNotFound or user.ErrAccountDisabled for an account that is gone or
-// disabled, user.ErrResetCodeReplaced when a newer code replaced this one
-// meanwhile, and user.ErrResetCodeUsed when another request spent it. A
-// disabled account is also refused when the code is still there
+// disabled (or past its deletion grace period), user.ErrResetCodeReplaced
+// when a newer code replaced this one meanwhile, and user.ErrResetCodeUsed
+// when another request spent it. A disabled account, and one past its
+// deletion grace period, is also refused when the code is still there
 // (changePassword), and keeps its code.
 func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
-	passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) (restored bool, err error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
 	tag, err := tx.Exec(ctx, `delete from password_resets where user_id = $1 and code_hash = $2`, userID, codeHash)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if tag.RowsAffected() == 0 {
-		return whyNotSpent(ctx, tx, userID, codeHash)
+		return false, whyNotSpent(ctx, tx, userID, codeHash)
 	}
-	if err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent); err != nil {
-		return err
+	restored, err = changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent, true)
+	if err != nil {
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return restored, nil
 }
 
 // whyNotSpent says why the code codeHash, right when it was tried a moment
 // ago, was no longer there to spend. The account comes first, so one that is
-// gone or disabled (a disable deletes the code) gets the answer any wrong
-// code gets. Then: the code is the one the newest code replaced, or else
+// gone, disabled (a disable deletes the code) or past its deletion grace
+// period gets the answer any wrong code gets. Then: the code is the one the newest code replaced, or else
 // another request spent it (and a new code may have been asked for since).
 func whyNotSpent(ctx context.Context, tx pgx.Tx, userID uuid.UUID, codeHash []byte) error {
 	var disabled bool
-	err := tx.QueryRow(ctx, `select disabled_at is not null from users where id = $1`, userID).Scan(&disabled)
+	err := tx.QueryRow(ctx, `select disabled_at is not null or coalesce(`+pastGrace("deletion_requested_at")+`, false)
+		from users where id = $1`, userID).Scan(&disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return user.ErrNotFound
 	}

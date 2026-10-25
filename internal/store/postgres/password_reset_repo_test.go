@@ -112,7 +112,7 @@ func TestPasswordResetRepo_Try_CountsOnlyAWrongCode(t *testing.T) {
 	e := []byte("code-e")
 	issue(e, later.Add(2*time.Minute))
 	try(owner.ID, d, later.Add(2*time.Minute), false, true, 1)
-	if err := repo.SpendAndChangePassword(ctx, owner.ID, e, "new-bcrypt-hash", uuid.New(),
+	if _, err := repo.SpendAndChangePassword(ctx, owner.ID, e, "new-bcrypt-hash", uuid.New(),
 		[]byte("try-test-session-token-0000001"), later.Add(time.Hour), nil); err != nil {
 		t.Fatalf("SpendAndChangePassword: %v", err)
 	}

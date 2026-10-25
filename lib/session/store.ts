@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, ApiError, isRetryable } from '@/lib/api/client';
+import { cancelScheduledNotifications } from '@/lib/notifications/module';
 import {
   beginSignIn,
   deleteLeftPushToken,
@@ -51,7 +52,9 @@ export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated' | 'o
 // ---------------------------------------------------------------------------
 // Module-level accessors lib/api/client.ts imports. These exist so the fetch
 // client can attach a bearer token and drive refresh/sign-out without ever
-// importing React context or touching SecureStore itself.
+// importing React context or touching SecureStore itself. The 8 PM reminder
+// (lib/notifications/reminder.ts) reads getAccessToken too, as its check that
+// someone is signed in before it schedules anything.
 // ---------------------------------------------------------------------------
 
 let inMemoryAccessToken: string | null = null;
@@ -515,7 +518,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // started a session this one must not touch otherwise: it stops at once if one happened already,
   // and after each wait before the keychain or the state. When /auth/logout cannot reach the
   // server, its refresh token is kept to be sent later (drainPendingLogouts). When the keychain
-  // cannot be cleared, the person stays signed in, as if Log out had never been tapped.
+  // cannot be cleared, the person stays signed in, as if Log out had never been tapped. Every way
+  // out of a session ends here (Log out, a deleted or disabled account, a refusal of its refresh),
+  // so this is where the 8 PM reminder stops: once the session has really ended, never for one a
+  // newer sign in replaced.
   const endSession = useCallback(async (fromRefresh: boolean, epoch: number) => {
     const signedInSince = () => signInEpoch !== epoch;
     if (signedInSince()) return;
@@ -591,6 +597,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setExtrasPending(false);
       setUser(null);
       setStatus('unauthenticated');
+      // The phone's scheduled reminders go with the session (developer, 2026-10-25: a deleted
+      // account must not keep getting "Your spin is open."). Queued in this same moment, after the
+      // last check above, with the reminder's rebuilds: a rebuild still running finishes first, and
+      // the rebuild of whoever signs in next is queued after this and is never undone by it. Never
+      // waited on, and it never throws.
+      void cancelScheduledNotifications();
     } finally {
       authBusyRef.current -= 1;
     }

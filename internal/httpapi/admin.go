@@ -256,9 +256,11 @@ func (h *AdminHandler) setCookie(c *gin.Context, value string, maxAge int) {
 }
 
 // isAdmin: the account exists, is one of the admin accounts found when the
-// server started, and is not disabled.
+// server started, is not disabled, and its owner has not asked for it to be
+// deleted (an admin who did is no admin from that moment, as for any other
+// session of the account).
 func (h *AdminHandler) isAdmin(u *user.User) bool {
-	return u != nil && !u.Disabled && h.admins[u.ID]
+	return u != nil && !u.Disabled && !u.DeletionRequested && h.admins[u.ID]
 }
 
 const adminUserKey = "admin_user"

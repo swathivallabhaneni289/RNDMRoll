@@ -79,8 +79,10 @@ func (r *AdminRepo) DisabledPeople(ctx context.Context) ([]admin.Summary, error)
 func (r *AdminRepo) Person(ctx context.Context, id uuid.UUID) (admin.Person, error) {
 	var p admin.Person
 	err := r.pool.QueryRow(ctx, `
-		select id, coalesce(username, ''), coalesce(name, ''), email, coalesce(bio, ''), created_at, disabled_at
-		from users where id = $1`, id).Scan(&p.ID, &p.Username, &p.Name, &p.Email, &p.Bio, &p.CreatedAt, &p.DisabledAt)
+		select id, coalesce(username, ''), coalesce(name, ''), email, coalesce(bio, ''), created_at, disabled_at,
+		       deletion_requested_at
+		from users where id = $1`, id).Scan(&p.ID, &p.Username, &p.Name, &p.Email, &p.Bio, &p.CreatedAt, &p.DisabledAt,
+		&p.DeletionRequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.Person{}, admin.ErrNotFound
 	}

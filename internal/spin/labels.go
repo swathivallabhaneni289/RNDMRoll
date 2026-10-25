@@ -50,3 +50,12 @@ func ViewerLabel(at, now time.Time, loc *time.Location) string {
 func DaysBefore(at, now time.Time, loc *time.Location) int {
 	return CivilDaysBetween(LocalDate(at, loc), LocalDate(now, loc))
 }
+
+// LongDateLabel writes the local date of t in loc the long way: the weekday
+// and the month in full, the day with no leading zero and no year
+// ("Tuesday, November 24"), the way the app's long date lines read
+// (lib/wheel/format.ts, dateLineLong). Delete account says with it the day
+// the account will be deleted for good.
+func LongDateLabel(t time.Time, loc *time.Location) string {
+	return t.In(loc).Format("Monday, January 2")
+}

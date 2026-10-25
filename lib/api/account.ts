@@ -1,10 +1,10 @@
 import { api } from '@/lib/api/client';
-import type { AuthResult } from '@/lib/api/types';
+import type { AccountDeletion, AuthResult } from '@/lib/api/types';
 
 /**
- * Account calls of the Settings pages (plan 02.1-02, and the notification and block calls of
- * decision D-16). Thin, like `lib/api/profile.ts`: no reshaping beyond filling a missing field, and
- * nothing here logs or keeps either password.
+ * Account calls of the Settings pages (plan 02.1-02, the notification and block calls of decision
+ * D-16, and Delete account of 2026-10-25). Thin, like `lib/api/profile.ts`: no reshaping beyond
+ * filling a missing field, and nothing here logs or keeps a password.
  *
  * The paths have no `/v1`: the client adds it.
  */
@@ -23,6 +23,25 @@ export async function changePassword(currentPassword: string, newPassword: strin
     current_password: currentPassword,
     new_password: newPassword,
   });
+}
+
+/**
+ * POST /me/delete (developer, 2026-10-25: "like how instagram has"). The server checks the
+ * password, hides the account from everyone at once and ends every session, this phone's too; the
+ * account is deleted for good after 30 days unless the person logs back in before then. The answer
+ * says when, in words the server wrote (`delete_on_label`, printed as sent). A label the answer
+ * leaves out comes back as '' (the page then says "after 30 days" instead).
+ *
+ * Errors (all surface as `ApiError`): a 400 `validation_failed` whose `field` is `password` and
+ * whose `reason` is `incorrect` (wrong password) or `required`, a 429 `rate_limited`, and
+ * `network_unavailable`.
+ */
+export async function deleteAccount(password: string): Promise<AccountDeletion> {
+  const body = await api.post<Partial<AccountDeletion> | null>('/me/delete', { password });
+  return {
+    delete_after: typeof body?.delete_after === 'string' ? body.delete_after : '',
+    delete_on_label: typeof body?.delete_on_label === 'string' ? body.delete_on_label : '',
+  };
 }
 
 // ---------------------------------------------------------------------------

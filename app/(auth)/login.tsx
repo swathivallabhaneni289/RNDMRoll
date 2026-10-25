@@ -9,12 +9,14 @@ import { TextField } from '@/components/ui/TextField';
 import { color, space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
+import { sayIfRestored } from '@/lib/auth/restored';
 import { useSession } from '@/lib/session/store';
 
 /**
  * Log in with an email or a username, plus a password. Sign-up is its own page now
  * (make-it-yours). Back and "Sign up instead" both return to choose-method, which offers Sign up
- * and Log in. An account that never verified its email logs in like any other.
+ * and Log in. An account that never verified its email logs in like any other. A log in within 30
+ * days of Delete account keeps the account, and says so once it has signed in.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,6 +85,8 @@ export default function LoginScreen() {
       );
       // The root guard routes a signed-in account to the app.
       await signIn(result);
+      // This log in cancelled a pending deletion: "Welcome back" (developer, 2026-10-25).
+      sayIfRestored(result);
     } catch (err) {
       // One message for a wrong password, an unknown email and an unknown username
       // (invalid_credentials): the server refuses to tell them apart and so does this screen.

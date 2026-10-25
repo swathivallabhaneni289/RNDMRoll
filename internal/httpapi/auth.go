@@ -52,6 +52,10 @@ type AuthHandler struct {
 	// adminEmails are the ADMIN_EMAILS addresses (lower case): sign-up
 	// answers each as taken (SetAdminEmails).
 	adminEmails map[string]bool
+	// deletions cancels a deletion the owner asked for, when they log in
+	// inside its grace period. NewServer hands over the delete account
+	// route's; nil cancels nothing, so such an account cannot log in.
+	deletions user.AccountDeleter
 	// clock is the time every limit of these routes counts by; nil is the
 	// real clock. A test sets it before sending anything.
 	clock func() time.Time
@@ -459,7 +463,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	h.issueSession(c, u, http.StatusOK)
+	h.issueSession(c, u, http.StatusOK, false)
 }
 
 // hashSignupPassword hashes the sign-up password. On failure it has
@@ -554,16 +558,70 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		RespondError(c, user.ErrInvalidCredentials)
 		return
 	}
+	// Past the grace period of a deletion its owner asked for, the account
+	// is as good as gone: the answer is an unknown account's, after the same
+	// comparison (the purge may delete the row at any moment).
+	if u.DeletionDue {
+		RespondError(c, user.ErrInvalidCredentials)
+		return
+	}
 	// Said only after the right password, so it never tells a stranger
 	// that an account exists.
 	if u.Disabled {
 		Respond(c, http.StatusForbidden, gin.H{"error": string(CodeAccountDisabled)})
 		return
 	}
+	// Inside the grace period the right password keeps the account, as on
+	// Instagram: the deletion is cancelled and the answer says so, once.
+	restored := false
+	if u.DeletionRequested {
+		var ok bool
+		if u, restored, ok = h.cancelDeletion(c, u); !ok {
+			return
+		}
+	}
 
 	// No verified check: sign-up sends no email, so an unverified account
 	// logs in like any other.
-	h.issueSession(c, u, http.StatusOK)
+	h.issueSession(c, u, http.StatusOK, restored)
+}
+
+// cancelDeletion cancels the deletion u's owner asked for, now that the
+// right password was given inside the grace period, and answers the account
+// to sign in. ok is false once it has answered the request itself. The
+// cancel is guarded by the grace period on the database's clock. When it
+// clears nothing the account is read again: another log in may have
+// cancelled it a moment ago (this one then signs in as usual, restored
+// false), an admin may have disabled it meanwhile (refused as any disabled
+// account is), or the grace period ended in between, or no canceller is
+// wired (answered as an unknown account).
+func (h *AuthHandler) cancelDeletion(c *gin.Context, u *user.User) (*user.User, bool, bool) {
+	ctx := c.Request.Context()
+	if h.deletions != nil {
+		restored, err := h.deletions.CancelDeletion(ctx, u.ID)
+		if err != nil {
+			RespondError(c, err)
+			return nil, false, false
+		}
+		if restored {
+			u.DeletionRequested = false
+			return u, true, true
+		}
+	}
+	again, err := h.users.GetByID(ctx, u.ID)
+	if err != nil && !errors.Is(err, user.ErrNotFound) {
+		RespondError(c, err)
+		return nil, false, false
+	}
+	switch {
+	case err != nil || again.DeletionDue || (again.DeletionRequested && !again.Disabled):
+		RespondError(c, user.ErrInvalidCredentials)
+	case again.Disabled:
+		Respond(c, http.StatusForbidden, gin.H{"error": string(CodeAccountDisabled)})
+	default:
+		return again, false, true
+	}
+	return nil, false, false
 }
 
 // passwordMatches compares password with u's stored hash through compare
@@ -583,8 +641,10 @@ func passwordMatches(compare func(hash, plain string) error, u *user.User, passw
 
 // issueSession mints an access+refresh token pair for u and writes the
 // AuthResult response body (lib/api/types.ts's AuthResult shape). The refresh
-// token comes first: the access token names it as its session.
-func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int) {
+// token comes first: the access token names it as its session. restored adds
+// "restored": true, only when this log in cancelled a deletion the owner had
+// asked for (the app then says the account will not be deleted).
+func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int, restored bool) {
 	ctx := c.Request.Context()
 	userAgent := c.Request.UserAgent()
 	refreshToken, session, err := h.refresh.Issue(ctx, u.ID, &userAgent)
@@ -600,12 +660,16 @@ func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int) {
 		return
 	}
 
-	Respond(c, status, gin.H{
+	body := gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),
 		"user":          apiUser(u),
-	})
+	}
+	if restored {
+		body["restored"] = true
+	}
+	Respond(c, status, body)
 }
 
 // apiUser maps the domain user to lib/api/types.ts's ApiUser shape.
@@ -657,7 +721,9 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		RespondError(c, err)
 		return
 	}
-	if u, err := h.users.GetByID(ctx, userID); err == nil && u.Disabled {
+	// Disabled, or its owner asked for it to be deleted (whose tokens were
+	// all revoked with the ask anyway).
+	if u, err := h.users.GetByID(ctx, userID); err == nil && (u.Disabled || u.DeletionRequested) {
 		Respond(c, http.StatusForbidden, gin.H{"error": string(CodeAccountDisabled)})
 		return
 	}

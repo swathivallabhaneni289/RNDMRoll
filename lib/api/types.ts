@@ -37,7 +37,27 @@ export interface SessionTokens {
  */
 export type AuthResult = SessionTokens & {
   user: ApiUser;
+  /**
+   * True on a log in or a Forgot password reset that cancelled the account's pending deletion (it
+   * was asked for less than 30 days before; POST /me/delete). Left out otherwise, so read it with
+   * `=== true`.
+   */
+  restored?: boolean;
 };
+
+/**
+ * The answer of POST /me/delete (developer, 2026-10-25: delete the account like Instagram). The
+ * account is hidden from everyone at once and deleted for good after 30 days.
+ */
+export interface AccountDeletion {
+  /** When the account is deleted for good, an RFC 3339 instant. */
+  delete_after: string;
+  /**
+   * That day, written by the server in the person's time zone ("Tuesday, November 24"). Printed
+   * as sent: the phone never formats a date itself.
+   */
+  delete_on_label: string;
+}
 
 export interface UsernameSuggestion {
   username: string;
@@ -66,7 +86,8 @@ export interface ApiErrorBody {
    * POST /auth/password/reset with field "code": "wrong_code" (a wrong, expired or used-up code, or
    * an email with no account or a disabled one: the same answer for each), "replaced" (the code the
    * newest code replaced; no try is counted), "used" (the right code, but another request used it
-   * first; no try is counted) or "invalid" (not 6 digits).
+   * first; no try is counted) or "invalid" (not 6 digits). And on the 400 of POST /me/delete with
+   * field "password": "incorrect" (a wrong password) or "required".
    */
   reason?: string;
   /** Set on a 400 wheel_invalid: which row of the sent list is wrong, counted from 0. */

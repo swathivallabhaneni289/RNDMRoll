@@ -200,13 +200,14 @@ func (r *PushRepo) DeleteToken(ctx context.Context, userID, session uuid.UUID, t
 // Tokens implements push.Repository: only tokens whose session is live. A
 // log out revokes the session's refresh token, a password change revokes all
 // of them (and deletes the tokens), and a session left alone expires; none of
-// those needs the phone's DELETE to arrive. A disabled account gets nothing.
+// those needs the phone's DELETE to arrive. A disabled account gets nothing,
+// and neither does one whose owner asked for it to be deleted.
 func (r *PushRepo) Tokens(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `
 		select t.token from push_tokens t
 		join users u on u.id = t.user_id
 		join refresh_tokens s on s.id = t.refresh_token_id and s.user_id = t.user_id
-		where t.user_id = $1 and u.disabled_at is null
+		where t.user_id = $1 and not `+goneAccount("u")+`
 		  and s.revoked_at is null and s.expires_at > now()
 		order by t.last_seen_at desc
 		limit 20`, userID)

@@ -128,7 +128,7 @@ export const TERMS: LegalDocument = {
           `You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. To remove any other comment of yours, email us at ${CONTACT_EMAIL}. You can remove a follower whenever you like.`,
         ),
         paragraph(
-          `To delete your whole account, email us at ${CONTACT_EMAIL} from the address on your account. We'll delete the account and everything in it within 30 days and tell you when it's done. The Privacy Policy explains the few copies that take longer to clear.`,
+          "To delete your whole account, go to Settings, then Delete account, and enter your password. Your account is hidden from everyone right away and deleted for good after 30 days, with everything in it. If you log back in before then, it won't be deleted. The Privacy Policy explains the few copies that take longer to clear.",
         ),
         paragraph('We may disable or delete an account that breaks these terms.'),
       ],
@@ -281,7 +281,7 @@ export const PRIVACY: LegalDocument = {
       heading: 'How long we keep it',
       blocks: [
         list(
-          'Your account and everything in it, for as long as your account exists.',
+          'Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in before then.',
           'When you delete a post, it is deleted with its photos and its comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.',
           'Some photo files can stay in storage after what they belonged to is gone: a profile photo you replaced, photos in comments on a deleted post, photos you uploaded but never posted, and, rarely, a photo whose removal failed. We delete all of your photo files when your account is deleted.',
           'Archived posts stay, hidden from everyone else in the app, until you restore or delete them.',
@@ -302,7 +302,7 @@ export const PRIVACY: LegalDocument = {
           'Remove a follower, unfollow, mute or block anyone.',
           "In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.",
           `Ask for a copy of your information, or ask us to correct it, by emailing ${CONTACT_EMAIL} from the address on your account. We'll answer within 30 days.`,
-          `Delete your account by emailing ${CONTACT_EMAIL} from the address on your account. We'll delete the account and everything in it, photos included, within 30 days. Copies in server logs and backups are cleared on their normal schedule.`,
+          'Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in before then keeps it. Copies in server logs and backups are cleared on their normal schedule.',
         ),
         paragraph(
           'Depending on where you live, the law may give you more rights over your information, such as the right to complain to a data protection authority. Email us and we will help.',

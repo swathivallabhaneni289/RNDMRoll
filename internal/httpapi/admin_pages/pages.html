@@ -35,7 +35,8 @@
 {{with .Person}}<h2>@{{.Username}}</h2>
 <p>{{.Name}}<br><span class="muted">{{.Email}} · joined {{when .CreatedAt}}</span></p>
 {{if .Bio}}<div class="quote">{{.Bio}}</div>{{end}}
-{{if .DisabledAt}}<p><strong>Disabled</strong> <span class="muted">{{when .DisabledAt}}</span></p>{{end}}{{end}}
+{{if .DisabledAt}}<p><strong>Disabled</strong> <span class="muted">{{when .DisabledAt}}</span></p>{{end}}
+{{if .DeletionRequestedAt}}<p><strong>Deletion requested</strong> <span class="muted">{{when .DeletionRequestedAt}}</span></p>{{end}}{{end}}
 <div class="actions">{{if .Person.DisabledAt}}
 <form class="inline" method="post" action="/admin/people/{{.Person.ID}}/enable"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Enable account</button></form>
 {{else if not .Self}}

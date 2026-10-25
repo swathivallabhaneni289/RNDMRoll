@@ -95,7 +95,7 @@ func (r *SocialRepo) Suggestions(ctx context.Context, viewer uuid.UUID, limit in
 			-- People who joined lately fill the list, so a new person who
 			-- follows no one yet still has people to find.
 			select n.id, 0, false from (
-				select id from users where disabled_at is null order by created_at desc limit 60
+				select nu.id from users nu where not `+goneAccount("nu")+` order by nu.created_at desc limit 60
 			) n
 		), scored as (
 			select id, sum(mutual)::int as mutual, bool_or(follows_you) as follows_you

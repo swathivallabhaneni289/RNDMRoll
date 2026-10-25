@@ -45,6 +45,17 @@ type User struct {
 	// Disabled: an admin disabled the account (migration 0012). Login,
 	// refresh and every signed-in request refuse it with account_disabled.
 	Disabled bool
+	// DeletionRequested: the person asked for the account to be deleted
+	// (migration 0018). Like a disabled account it is gone for everyone
+	// else, and refresh and every signed-in request refuse it with
+	// account_disabled. Log in or a Forgot password reset inside
+	// DeletionGracePeriod cancels the ask.
+	DeletionRequested bool
+	// DeletionDue: that grace period is over, on the database's clock when
+	// the row was read. The account is as good as gone: the purge may delete
+	// it at any moment, and log in and Forgot password answer exactly as for
+	// an email with no account.
+	DeletionDue bool
 }
 
 // OnboardingComplete reports whether the account has a name and a username.
@@ -75,7 +86,11 @@ var (
 	ErrTokenExpired       = errors.New("user: token expired")
 	ErrTokenConsumed      = errors.New("user: token already consumed")
 	// ErrAccountDisabled: an admin disabled the account, so its password is
-	// not changed (Change password and Forgot password both refuse it).
+	// not changed (Change password and Forgot password both refuse it). An
+	// account whose owner asked for it to be deleted is refused the same way
+	// by Change password and by asking again; Forgot password refuses it
+	// only once the grace period is over (inside it, a reset keeps the
+	// account).
 	ErrAccountDisabled = errors.New("user: account disabled")
 	// ErrResetCodeReplaced: the Forgot password code was right, but a newer
 	// code replaced it before the password could change. ErrResetCodeUsed:

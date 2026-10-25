@@ -3,8 +3,8 @@ import { AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
-import { listenForTaps, loadNotifications } from '@/lib/notifications/module';
-import { useSession } from '@/lib/session/store';
+import { listenForTaps, loadNotifications, queueScheduleChange } from '@/lib/notifications/module';
+import { getAccessToken, useSession } from '@/lib/session/store';
 import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 /**
@@ -20,6 +20,11 @@ import { useTodaySnapshot } from '@/lib/wheel/todayStore';
  *    schedule: cancel everything, then schedule one if the switch is on and the phone allows it.
  *    Every rebuild runs one after another and the one notification has a fixed id, so the reminder
  *    can never be scheduled twice.
+ *  - When a session ends (any log out, also an account deleted or disabled), the session store
+ *    cancels every scheduled notification in the same queue as the rebuilds (module.ts), so a phone
+ *    nobody is signed in on is never told "Your spin is open." The switch and the "asked once" mark
+ *    stay as they are: the next person who signs in here is scheduled by the same rules, with no
+ *    new ask.
  *  - The native module arrives with a dev-client rebuild. Until then (or on any build without it)
  *    the module is loaded lazily and every call is guarded: the reminder is simply unavailable, the
  *    switch shows off, there is no ask, and the app starts as before.
@@ -171,21 +176,22 @@ async function askPermission(): Promise<ReminderPermission> {
   }
 }
 
-let rebuildChain: Promise<void> = Promise.resolve();
-
 /**
- * Cancels every scheduled notification, then schedules the one reminder if the switch is on and
- * the phone allows it. Rebuilds run strictly one after another, so two never interleave into two
+ * Cancels every scheduled notification, then schedules the one reminder if the switch is on, the
+ * phone allows it and someone is signed in. Rebuilds run strictly one after another, in the queue
+ * that also holds the cancel when a session ends (module.ts), so two never interleave into two
  * reminders. Never throws.
  */
 export function rebuildReminder(): Promise<void> {
-  const next = rebuildChain.then(async () => {
-    const api = loadNotifications();
-    if (api === null) return;
+  return queueScheduleChange(async (api) => {
     try {
       await api.cancelAllScheduledNotificationsAsync();
       const [switchOn, permission] = await Promise.all([readReminderOn(), getReminderPermission()]);
       if (!shouldSchedule(switchOn, permission)) return;
+      // Only while a session is signed in on this phone (its access token is in memory). A rebuild
+      // the signed-in pages queued just before a log out (one held behind the first-start
+      // permission prompt, say) runs after that log out's cancel, and must not schedule again.
+      if (getAccessToken() === null) return;
       if (nextOpenMs === null) {
         // Not known yet: every evening, until the first Today answer narrows it.
         await api.scheduleNotificationAsync({
@@ -208,8 +214,6 @@ export function rebuildReminder(): Promise<void> {
       // Nothing scheduled this time; the next app start tries again.
     }
   });
-  rebuildChain = next;
-  return next;
 }
 
 /**

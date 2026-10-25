@@ -232,6 +232,9 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Users:         users,
 		JWTSecret:     integrationJWTSecret,
 		Logger:        logger,
+		// As cmd/api does: the Postgres user repository is also the
+		// AccountDeleter, and log in cancels a deletion through it.
+		DeleteAccount: NewDeleteAccountHandler(users, users),
 	}
 	if len(opts.adminEmails) > 0 {
 		// As cmd/api does: the admins are the accounts the addresses have

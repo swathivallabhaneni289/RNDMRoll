@@ -32,8 +32,13 @@ var (
 
 // userColumns is the one column list every query selects or returns, in the
 // order scanUser reads it. It selects whether a birthday is on file, never
-// the date itself, so no code path can return or log a birthday.
-const userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility, (disabled_at is not null) as disabled`
+// the date itself, so no code path can return or log a birthday. Whether a
+// deletion was asked for, and whether its grace period is over, are read in
+// the same statement, on the database's clock (account_deletion.go), so a
+// handler never compares a time itself. It is a var only because that rule
+// is built from user.DeletionGracePeriod.
+var userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility, (disabled_at is not null) as disabled, ` +
+	`(deletion_requested_at is not null) as deletion_requested, coalesce(` + pastGrace("deletion_requested_at") + `, false) as deletion_due`
 
 // scanUser scans a single row shaped like userColumns. The caller decides how to
 // interpret a returned error (pgx.ErrNoRows means different things to
@@ -45,6 +50,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Username, &u.Bio, &u.AvatarURL,
 		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt, &u.AccountVisibility, &u.Disabled,
+		&u.DeletionRequested, &u.DeletionDue,
 	)
 	if err != nil {
 		return nil, err
@@ -116,7 +122,7 @@ func (r *UserRepo) Create(ctx context.Context, email string, passwordHash *strin
 		s := string(*via)
 		viaStr = &s
 	}
-	const q = `
+	q := `
 		insert into users (email, password_hash, email_verified, email_verified_via)
 		values ($1::text, $2::text, $3, $4::text)
 		returning ` + userColumns + `
@@ -138,7 +144,7 @@ func (r *UserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*use
 	if visibility == "" {
 		visibility = user.VisibilityPublic
 	}
-	const q = `
+	q := `
 		insert into users (email, password_hash, name, username, bio, birthday, email_verified, email_verified_via, account_visibility)
 		values ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, false, null, $7::text)
 		returning ` + userColumns + `
@@ -152,7 +158,7 @@ func (r *UserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*use
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*user.User, error) {
-	const q = `select ` + userColumns + ` from users where id = $1`
+	q := `select ` + userColumns + ` from users where id = $1`
 	u, err := scanUser(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -164,7 +170,7 @@ func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*user.User, error
 }
 
 func (r *UserRepo) GetByEmailCI(ctx context.Context, email string) (*user.User, error) {
-	const q = `select ` + userColumns + ` from users where lower(email) = lower($1::text)`
+	q := `select ` + userColumns + ` from users where lower(email) = lower($1::text)`
 	u, err := scanUser(r.pool.QueryRow(ctx, q, email))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -176,7 +182,7 @@ func (r *UserRepo) GetByEmailCI(ctx context.Context, email string) (*user.User, 
 }
 
 func (r *UserRepo) GetByUsernameCI(ctx context.Context, username string) (*user.User, error) {
-	const q = `select ` + userColumns + ` from users where lower(username) = lower($1::text)`
+	q := `select ` + userColumns + ` from users where lower(username) = lower($1::text)`
 	u, err := scanUser(r.pool.QueryRow(ctx, q, username))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -213,7 +219,7 @@ func (r *UserRepo) MarkEmailVerified(ctx context.Context, id uuid.UUID, via user
 // dynamically built SET list ever varies with input. The birthday is not part
 // of it: it is set once, at sign-up, and never changes.
 func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.ProfilePatch) (*user.User, error) {
-	const q = `
+	q := `
 		update users
 		set name = coalesce($1::text, name),
 		    username = coalesce($2::text, username),
@@ -240,8 +246,8 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 // access token names), so the caller's own session continues and every other
 // phone is signed out at its next refresh. Any error rolls the whole change
 // back (the old hash and the old tokens stay as they were). An account that
-// is gone is user.ErrNotFound, and one an admin disabled is
-// user.ErrAccountDisabled; neither changes.
+// is gone is user.ErrNotFound, and one an admin disabled, or whose owner
+// asked for it to be deleted, is user.ErrAccountDisabled; neither changes.
 //
 // The revoke runs twice, on purpose. A refresh on another phone that is in
 // flight at this moment (it has made its new token and holds the lock on its
@@ -256,7 +262,8 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
-	if err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent); err != nil {
+	// Change password never cancels a deletion (changePassword says why).
+	if _, err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent, false); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -271,40 +278,62 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 // revoke included, and the push tokens last. Going back to the refresh
 // tokens after the push tokens is what once let a phone saving its push
 // token and a password change wait on each other.
-func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+//
+// restore is true for Forgot password only. Inside the grace period of a
+// deletion the owner asked for, a reset changes the password and cancels the
+// deletion, as log in does: the person has shown they hold the account's
+// email. restored reports whether this call cancelled one. Change password
+// never restores: no signed-in request outlives the ask (RequireUser), and
+// one already in flight when the ask lands must not quietly undo it, so it
+// is refused like a disabled account.
+func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string, restore bool) (restored bool, err error) {
 	// The users_set_updated_at trigger stamps the row. A disabled account
-	// keeps its password: the update finds no row.
-	const setHash = `update users set password_hash = $2 where id = $1 and disabled_at is null`
-	tag, err := tx.Exec(ctx, setHash, userID, passwordHash)
+	// keeps its password: the update finds no row. So does an account whose
+	// deletion was asked for, unless this is a reset inside the grace period.
+	setHash := `update users set password_hash = $2 where id = $1 and disabled_at is null
+		and (deletion_requested_at is null or ($3::boolean and ` + insideGrace("deletion_requested_at") + `))`
+	tag, err := tx.Exec(ctx, setHash, userID, passwordHash, restore)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if tag.RowsAffected() == 0 {
-		return unchangedAccount(ctx, tx, userID)
+		return false, unchangedAccount(ctx, tx, userID)
+	}
+	if restore {
+		// setHash holds the row, so this sees the ask exactly as it saw it.
+		tag, err := tx.Exec(ctx, `update users set deletion_requested_at = null where id = $1 and deletion_requested_at is not null`, userID)
+		if err != nil {
+			return false, err
+		}
+		restored = tag.RowsAffected() == 1
 	}
 
 	if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
-		return err
+		return false, err
 	}
 	const insertToken = `insert into refresh_tokens (id, user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4, $5::text)`
 	if _, err := tx.Exec(ctx, insertToken, sessionID, userID, newTokenHash, expiresAt, userAgent); err != nil {
-		return err
+		return false, err
 	}
 	const revokeOthers = `update refresh_tokens set revoked_at = now() where id in (
 		select id from refresh_tokens where user_id = $1 and revoked_at is null and id <> $2 order by id for no key update)`
 	if _, err := tx.Exec(ctx, revokeOthers, userID, sessionID); err != nil {
-		return err
+		return false, err
 	}
 
 	// Every phone the account was signed in on stops getting its pushes: their
 	// sessions are over, and their tokens go too. The phone that made the
 	// change sends its token again with its new session.
-	_, err = tx.Exec(ctx, deletePushTokensQ, userID)
-	return err
+	if _, err := tx.Exec(ctx, deletePushTokensQ, userID); err != nil {
+		return false, err
+	}
+	return restored, nil
 }
 
 // unchangedAccount says why the account userID matched no update: it is gone
-// (user.ErrNotFound), or an admin disabled it (user.ErrAccountDisabled).
+// (user.ErrNotFound), or an admin disabled it or its owner asked for it to be
+// deleted (user.ErrAccountDisabled, which Forgot password answers as a wrong
+// code).
 func unchangedAccount(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	var exists bool
 	if err := tx.QueryRow(ctx, `select exists(select 1 from users where id = $1)`, userID).Scan(&exists); err != nil {
