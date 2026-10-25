@@ -4,6 +4,8 @@
 
 I took this from an idea to a working iPhone app by directing Claude, Anthropic's AI coding assistant. The idea, the product decisions, the designs and the testing are mine; Claude wrote the code to my prompts. The app is React Native with Expo, backed by a Go API and PostgreSQL.
 
+**Documents:** the [product requirements document](./PRD.md) (every requirement, rule, metric and decision in detail), the [research](./RESEARCH.md), the [Terms of Use](./docs/legal/TERMS.md) and the [Privacy Policy](./docs/legal/PRIVACY.md).
+
 <!-- Screenshots and a short screen recording go here. -->
 
 ## The problem
@@ -32,7 +34,7 @@ The research also named the risks I designed around: a locked feed is empty with
 
 | Decision | What I chose | Why | What it costs |
 |---|---|---|---|
-| How the category is picked | A spin wheel you can edit, not a dice roll | A wheel shows every option before it lands, and people can rename, add and resize slices. A die tops out around six faces. | A wheel can read like a prize wheel, so it's kept flat and black and white. |
+| How the category is picked | A spin wheel you can edit, not a dice roll | A wheel shows every option before it lands, and people can rename, add and remove slices. A die tops out around six faces. | A wheel can read like a prize wheel, so it's kept flat and black and white. |
 | How often | Once a day, from 8 PM in your own time zone | Scarcity keeps it a ritual (Wordle's one puzzle a day is the model). Your own time zone means nobody spins at 3 AM to keep up with friends abroad. | Less of BeReal's "everyone at once" surprise. |
 | When the category doesn't fit | A free skip, and a weekly goal of 4 posted days instead of a daily streak | "Book" on a day you read nothing shouldn't break a streak. Four days out of seven earns a bonus spin. | Weaker pressure than a strict daily streak. |
 | Photo source | Camera or photo library | You can log the book you finished two nights ago without staging a photo. | No guarantee the photo is your own. Accepted for now. |
@@ -67,7 +69,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page where an admin can remove content or disable an account.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone, and phone notifications for comments, replies and follow requests.
-- **Accounts.** Two short sign-up pages, and Forgot password with a 6-digit emailed code.
+- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code, and the Terms of Use and Privacy Policy, linked from sign-up and Settings.
 
 ## How I built it with Claude
 
@@ -138,6 +140,7 @@ Tests:
 make test                  # quick tests, no database needed
 make test-all-integration  # everything, against TEST_DATABASE_URL, one package at a time
 npm run typecheck          # the app's TypeScript check
+node --experimental-strip-types scripts/check-legal.ts  # the Terms and Privacy text; add --write to refresh docs/legal
 ```
 
 Where things are:
