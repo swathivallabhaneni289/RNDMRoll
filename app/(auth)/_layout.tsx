@@ -5,8 +5,9 @@ import { useSession } from '@/lib/session/store';
 /**
  * The signed-out screens, in the order a person meets them. Welcome is the single
  * pre-signup page (UI-SPEC revision 11); choose-method offers Sign up and Log in;
- * make-it-yours is the sign-up page; login is the log-in page. 'welcome' is the file-system
- * default entry (see unstable_settings below) for every cold start.
+ * make-it-yours is the sign-up page; login is the log-in page; terms and privacy are opened from
+ * the sign-up page. 'welcome' is the file-system default entry (see unstable_settings below) for
+ * every cold start.
  */
 export const unstable_settings = {
   initialRouteName: 'welcome',
@@ -31,6 +32,8 @@ export default function AuthLayout() {
       <Stack.Screen name="make-it-yours" options={{ gestureEnabled: !signedIn }} />
       <Stack.Screen name="login" />
       <Stack.Screen name="forgot-password" />
+      <Stack.Screen name="terms" />
+      <Stack.Screen name="privacy" />
     </Stack>
   );
 }

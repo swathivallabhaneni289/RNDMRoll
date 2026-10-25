@@ -12,7 +12,7 @@ import { color, space } from '@/lib/theme/tokens';
 /**
  * The Settings page (02.1-UI-SPEC section 4, as changed by decision D-16), pushed over the Profile
  * page with the bottom bar showing: Back, the title, the notice line, then the rows in this order:
- * Notifications, Blocked accounts, Archive, Password and Log out.
+ * Notifications, Blocked accounts, Archive, Password, Terms of Use, Privacy Policy and Log out.
  *
  * The bio and the username are not here: they live on the Profile page and its Edit page (D-16).
  * The bar adds the bottom safe-area inset itself, so the screen takes the top and side edges only.
@@ -75,6 +75,16 @@ export function SettingsScreen() {
             label="Password"
             accessibilityHint="Opens the page."
             onPress={() => router.push('/(app)/profile/password')}
+          />
+          <SettingsRow
+            label="Terms of Use"
+            accessibilityHint="Opens the page."
+            onPress={() => router.push('/(app)/profile/terms')}
+          />
+          <SettingsRow
+            label="Privacy Policy"
+            accessibilityHint="Opens the page."
+            onPress={() => router.push('/(app)/profile/privacy')}
           />
           <SettingsRow
             label="Log out"

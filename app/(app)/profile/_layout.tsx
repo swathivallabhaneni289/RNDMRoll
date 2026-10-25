@@ -4,7 +4,7 @@ import { color } from '@/lib/theme/tokens';
 /**
  * The Profile tab's stack: the Profile page (index), the Edit page (edit), the entry page and edit
  * entry opened from recent activity (entry, edit-entry; Back reads 'Profile'), and Settings with
- * its pages (settings, notification-settings, blocked-accounts, password), and People (people,
+ * its pages (settings, notification-settings, blocked-accounts, password, terms, privacy), and People (people,
  * Phase 5: opened from the Followers figure and from follow notifications). The username and the bio
  * are edited on the Profile page and its Edit page, so Settings has no page for them (decision
  * D-16 of Phase 2.1). This file is what turns "profile" into a real nested-layout route name
@@ -32,6 +32,8 @@ export default function ProfileLayout() {
       <Stack.Screen name="blocked-accounts" />
       <Stack.Screen name="password" />
       <Stack.Screen name="archive" />
+      <Stack.Screen name="terms" />
+      <Stack.Screen name="privacy" />
       <Stack.Screen name="people" />
       <Stack.Screen name="person" />
       <Stack.Screen name="person-people" />

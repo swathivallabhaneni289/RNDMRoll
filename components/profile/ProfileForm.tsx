@@ -65,6 +65,9 @@ const GENERIC_MESSAGE = 'Something went wrong. Please try again.';
 const REFUSAL_TITLE = 'RNDMRoll is for ages 13 and up.';
 const REFUSAL_MESSAGE = "We can't make an account for you. We didn't keep your birthday.";
 
+/** The Terms of Use and Privacy Policy names in the sign-up line: ink and semibold, the line's own size. */
+const LEGAL_LINK = { fontFamily: type.button.fontFamily, color: color.ink } as const;
+
 // Without alternates the "Try one of these:" lead-in would point at nothing.
 function takenMessage(alternates: string[]): string {
   return alternates.length > 0 ? USERNAME_TAKEN_MESSAGE : USERNAME_TAKEN_NO_ALTERNATES_MESSAGE;
@@ -949,7 +952,37 @@ export function ProfileForm({
           </View>
         ) : null}
 
-        <View style={{ marginTop: space.lg }}>
+        {signup ? (
+          // Above Continue, so it is read before the tap that makes the account. The two names open
+          // their pages: ink in the line's own size, never underlined (developer, 2026-10-18).
+          // VoiceOver cannot tap a word inside a line, so they are also the line's two actions.
+          <View style={{ marginTop: space.lg }}>
+            <AppText
+              role="label"
+              tone="muted"
+              accessibilityActions={[
+                { name: 'terms', label: 'Open the Terms of Use' },
+                { name: 'privacy', label: 'Open the Privacy Policy' },
+              ]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'terms') router.push('/terms');
+                if (event.nativeEvent.actionName === 'privacy') router.push('/privacy');
+              }}
+            >
+              {'By tapping Continue, you agree to the '}
+              <Text style={LEGAL_LINK} onPress={() => router.push('/terms')}>
+                Terms of Use
+              </Text>
+              {" and confirm you've read the "}
+              <Text style={LEGAL_LINK} onPress={() => router.push('/privacy')}>
+                Privacy Policy
+              </Text>
+              {'.'}
+            </AppText>
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: signup ? space.md : space.lg }}>
           {edit && !hasChanges && !pushedEdit ? (
             // Nothing to save, so the one button moves on to Today (no greyed button at rest). The
             // pushed Edit page has no such button: "Save changes" stays, grey, until something changes.
