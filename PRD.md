@@ -195,7 +195,13 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 3. It's their fourth posted day this week, so they earn a bonus spin. The week section says "You have a bonus spin.", and the notifications list says "You hit your goal this week. One bonus spin added."
 4. A few days later, "Use bonus spin" turns an unwanted word into a different one.
 
-### Journey 5: something goes wrong
+### Journey 5: leaving
+
+1. Settings, then Delete account. They read what will go, type their password and tap Delete account, then Delete.
+2. The phone says the account will be deleted for good on a date 30 days away, and logs out.
+3. If they log back in before then, the app says "Your account won't be deleted." and everything is as it was.
+
+### Journey 6: something goes wrong
 
 1. A comment breaks the rules. They press and hold it, tap Report and pick a reason.
 2. The app says "Thanks for letting us know. They won't be told."
@@ -216,7 +222,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ACC-07 | Forgot password sends a 6-digit code by email and sets a new password | P0 | Built; real email is Launch |
 | ACC-08 | Sign-up shows the Terms of Use and Privacy Policy before Continue | P0 | Built |
 | ACC-09 | The email address is verified | P1 | Launch |
-| ACC-10 | A person can delete their account in the app | P0 | Launch (by email request until then) |
+| ACC-10 | A person can delete their account in the app | P0 | Built (October 25, 2026) |
 | ACC-11 | A person can download a copy of their data | P2 | Later (by email request until then) |
 
 **Acceptance criteria and rules**
@@ -240,6 +246,12 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A code lasts 30 minutes and allows 5 wrong tries. Asking again within a minute sends nothing. A newer code replaces the old one, and wrong tries carry over.
   - Only a hash of the code is stored.
 - **ACC-07 the result.** A reset signs the person in on this phone and ends every other session.
+- **ACC-10, like Instagram.**
+  - Settings, then Delete account. The page says what goes and when, asks for the password, and confirms once: "Delete your account?"
+  - The account is hidden from everyone at once, every session ends, and the phone shows the date it will be deleted for good, 30 days later, then logs out.
+  - Logging in, or resetting the password, within the 30 days cancels the deletion and says "Your account won't be deleted."
+  - After 30 days a job on the server deletes the photo files first, then the account and every row tied to it. The account then behaves as if it never existed.
+  - Limit: 5 tries a minute per person.
 
 ### 8.2 Sessions and passwords
 
@@ -511,7 +523,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 | ID | Requirement | Priority | Status |
 |---|---|---|---|
-| SET-01 | Settings, from the gear on Profile: Notifications, Blocked accounts, Archive, Password, Terms of Use, Privacy Policy and Log out | P0 | Built |
+| SET-01 | Settings, from the gear on Profile: Notifications, Blocked accounts, Archive, Password, Terms of Use, Privacy Policy, Delete account and Log out | P0 | Built |
 | SET-02 | The Terms of Use and the Privacy Policy, readable in the app and on GitHub, from one source | P0 | Built (October 25, 2026); legal review is Launch |
 | SET-03 | Record which version of the terms a person accepted, and tell people when the terms change | P1 | Launch |
 | SET-04 | Change email, two-factor sign-in and Face ID | P2 | Later |
@@ -542,6 +554,7 @@ These rules decide what counts. The server owns all of them.
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who posted a first spin today or has never spun |
 | Who sees a post | The author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, and they posted for that date themselves. On the admin page, an admin also sees a reported post's title and cover photo. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
+| Deleted account | Hidden from everyone at once, like a disabled account, and logged out. Deleted for good 30 days later; logging in or resetting the password before then cancels it. One 30-day rule, on the database clock, decides both. |
 | Time labels | Written by the server ("8:41 PM", "Mon", "Oct 3"). The app never works out a time from the phone's clock, except the 8 PM reminder and the birthday check, which the server checks again. |
 
 ## 10. Non-functional requirements
@@ -630,7 +643,7 @@ These rules decide what counts. The server owns all of them.
 - Say "spin", never "roll".
 - No em dashes.
 - Plain, short sentences.
-- No underlined text used as a button; actions are buttons, icons or ink words. Exceptions today: the underlined links in section 16, issue 10, and the grey "Skip for now" on the second sign-up page.
+- No underlined text used as a button; actions are buttons, icons or ink words. Exceptions today: the underlined links in section 16, issue 9, and the grey "Skip for now" on the second sign-up page.
 - No counts that can grow large under posts.
 - No fake reviews or counters.
 - No vague hero lines.
@@ -643,7 +656,7 @@ These rules decide what counts. The server owns all of them.
 **Architecture.**
 
 - **App:** an Expo and React Native app (TypeScript, Expo Router, Reanimated).
-- **API:** a Go server (Gin, pgx) with PostgreSQL and 17 SQL migrations.
+- **API:** a Go server (Gin, pgx) with PostgreSQL and 18 SQL migrations.
 - **Photos:** uploaded straight from the phone to S3-compatible storage through short-lived signed links.
 - **Services:** email through Resend, and phone notifications through Expo's push service and Apple. Both are built but off until the accounts exist; today emails print to the server log.
 - **Web pages:** the admin page and the invite page are plain server-rendered pages on the API.
@@ -662,10 +675,10 @@ Two unused tables remain: email_verification_tokens and post_reactions.
 
 **What is kept, and for how long.**
 
-- Accounts are deleted by hand, on request, until in-app deletion is built (see the launch checklist). In the database every table is tied to the account, so deleting it removes its rows; its photo files are deleted separately.
-- A deleted post removes its photos and comments from the database, and the server tries once to remove its photo files. Photos inside its comments stay in storage (section 16, issue 5). Its spin and posted day stay.
+- A deleted account is hidden at once and deleted for good 30 days later by an hourly job on the server: its photo files first, then its row, which removes every other row tied to it. The job only touches that account's own photo folders, plus the photos other people added to comments on its posts.
+- A deleted post removes its photos and comments from the database, and the server tries once to remove its photo files. Photos inside its comments stay in storage (section 16, issue 4). Its spin and posted day stay.
 - Reports outlive the reported content, with a copy of the title or comment text.
-- There is no automatic cleanup yet (see the launch checklist in section 14, and issue 5 in section 16).
+- There is no automatic cleanup yet (see the launch checklist in section 14, and issue 4 in section 16).
 
 ## 13. Success metrics
 
@@ -713,7 +726,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 
 - [ ] A lawyer reviews the Terms of Use and the Privacy Policy, including which law applies.
 - [ ] A real contact email for the Terms and the Privacy Policy.
-- [ ] Account deletion in the app (Apple requires it for apps with sign-up).
+- [x] Account deletion in the app (Apple requires it for apps with sign-up). Built October 25, 2026.
 - [ ] Record the accepted terms version, and tell people when the terms change.
 - [ ] Verify email addresses at sign-up.
 
@@ -769,21 +782,20 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 
 Some were found while writing this document; others were already in the planning notes. None blocks the demo, and all are on the launch list.
 
-1. **The 8 PM reminder survives log out.** Reminders already scheduled on the phone keep firing after logging out.
-2. **A hidden reply still appears in a notification list.** The person it answers still sees its text in their list.
-3. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
-4. **Photo links are public.** The app hands a link only to people allowed to see the photo, but anyone with the link can open it.
-5. **Some photo files are never removed from storage.** This covers replaced profile photos, comment photos on a deleted post, uploads never posted, and any file whose one removal try failed.
-6. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
-7. **Search words appear in server logs.**
-8. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
-9. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
-10. **Some underlined text links remain**, against the design rule: "Log in instead", "Sign up instead", "Edit wheel", "Use bonus spin" and "View entry".
-11. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
-12. **A closed report about a person stays closed** when the same reporter reports them again, so the admin page never shows it. Post and comment reports open again.
-13. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
-14. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
-15. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
+1. **A hidden reply still appears in a notification list.** The person it answers still sees its text in their list.
+2. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
+3. **Photo links are public.** The app hands a link only to people allowed to see the photo, but anyone with the link can open it.
+4. **Some photo files are never removed from storage.** This covers replaced profile photos, comment photos on a deleted post, uploads never posted, and any file whose one removal try failed.
+5. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
+6. **Search words appear in server logs.**
+7. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
+8. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
+9. **Some underlined text links remain**, against the design rule: "Log in instead", "Sign up instead", "Edit wheel", "Use bonus spin" and "View entry".
+10. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
+11. **A closed report about a person stays closed** when the same reporter reports them again, so the admin page never shows it. Post and comment reports open again.
+12. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
+13. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
+14. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
 
 ### Open questions
 
@@ -843,6 +855,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 19 | Find your friends, invite links and suggestions | It should work like sending an invite link | None recorded |
 | Oct 21 | The Shutter logo as the app icon | Chosen from options I asked for | None recorded |
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
+| Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 
 ## 18. Out of scope and future ideas
 
@@ -889,7 +902,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 | Area | Routes | Limits |
 |---|---|---|
 | Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
-| Me | `GET`, `PATCH /me`; `POST /me/avatar/upload-url`; `POST /me/password`; `GET`, `PATCH /me/notification-settings`; `GET`, `POST /me/blocks`; `DELETE /me/blocks/:user_id`; `GET /me/archive`; `GET /me/summary`; `POST`, `DELETE /me/push-tokens` | Profile edit 30; password 5 per person and 20 per IP; `GET /me` and the photo upload link have no limit |
+| Me | `GET`, `PATCH /me`; `POST /me/avatar/upload-url`; `POST /me/password`; `POST /me/delete`; `GET`, `PATCH /me/notification-settings`; `GET`, `POST /me/blocks`; `DELETE /me/blocks/:user_id`; `GET /me/archive`; `GET /me/summary`; `POST`, `DELETE /me/push-tokens` | Profile edit 30; password 5 per person and 20 per IP; delete 5 per person; `GET /me` and the photo upload link have no limit |
 | Spin | `POST /time-zone`; `GET /today`; `POST /spin`, `/spin/bonus`, `/spin/skip`; `GET`, `PATCH /wheel` | Spin, bonus and skip 10; today 60; wheel save 20 |
 | Posts | `POST /entry-photos/upload-url`; `POST /entries`; `GET`, `PATCH /entries/:id`; `POST /entries/:id/archive`, `/unarchive`, `/delete`; `GET /diary` | Post 10; edits 20 |
 | People | `GET /people/search`, `/people/lookup`, `/people/suggestions`, `/people/:user_id`, `/followers`, `/following`; `POST /people/:user_id/mute`, `/unmute`, `/report` | Search 120; report 10 |

@@ -69,7 +69,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page where an admin can remove content or disable an account.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone, and phone notifications for comments, replies and follow requests.
-- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code, and the Terms of Use and Privacy Policy, linked from sign-up and Settings.
+- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code, the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
 
 ## How I built it with Claude
 
@@ -101,7 +101,7 @@ Each phase had a written scope, a screen-by-screen design spec, a build plan and
 | Part | Tools |
 |---|---|
 | App | TypeScript, React Native 0.86, Expo 57, Expo Router, Reanimated |
-| Server | Go 1.26, Gin, PostgreSQL through pgx, 17 SQL migrations |
+| Server | Go 1.26, Gin, PostgreSQL through pgx, 18 SQL migrations |
 | Photos | S3-compatible storage with presigned uploads (MinIO when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
 | Email and push | Resend for email, the Expo push service for phone notifications |
