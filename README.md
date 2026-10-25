@@ -99,7 +99,7 @@ Each phase had a written scope, a screen-by-screen design spec, a build plan and
 | Part | Tools |
 |---|---|
 | App | TypeScript, React Native 0.86, Expo 57, Expo Router, Reanimated |
-| Server | Go 1.26, Gin, PostgreSQL through pgx, 15 SQL migrations |
+| Server | Go 1.26, Gin, PostgreSQL through pgx, 17 SQL migrations |
 | Photos | S3-compatible storage with presigned uploads (MinIO when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
 | Email and push | Resend for email, the Expo push service for phone notifications |
@@ -108,7 +108,7 @@ A few things that took real care:
 
 - **Time zones.** Every person's day, 8 PM opening and late window follow their own zone, including the days clocks jump for daylight saving (`internal/spin/window.go`).
 - **One source of time.** The server writes every time label ("8:41 PM", "Mon", "Oct 3") so the app never guesses.
-- **Tests.** About 450 Go test functions, most of them running against a real PostgreSQL database.
+- **Tests.** More than 500 Go test functions, and more than 100 of them run against a real PostgreSQL database.
 
 <details>
 <summary><b>Run it locally</b></summary>
