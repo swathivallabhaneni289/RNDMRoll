@@ -16,6 +16,7 @@ import { AppText } from '@/components/ui/AppText';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { useKeepFocusedInputInView } from '@/components/ui/useKeepFocusedInputInView';
 import { Wheel } from '@/components/wheel/Wheel';
 import { ApiError } from '@/lib/api/client';
 import { getWheel, saveWheel } from '@/lib/api/spin';
@@ -95,6 +96,8 @@ export function WheelEditor() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // A category tapped low on the list is scrolled back into view once the keyboard is up.
+  const focusedInView = useKeepFocusedInputInView();
   const { user } = useSession();
   const userId = user?.id ?? null;
   const snapshot = useTodaySnapshot(userId);
@@ -263,6 +266,7 @@ export function WheelEditor() {
         style={{ flex: 1 }}
       >
         <ScrollView
+          {...focusedInView}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: space.sm, paddingBottom: space.lg }}

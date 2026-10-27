@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonRow } from '@/components/people/PeopleScreen';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
@@ -39,6 +40,7 @@ function messageFor(err: unknown): string {
  */
 export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const openPerson = useOpenPerson();
   const { user } = useSession();
   const [suggestions, setSuggestions] = useState<SearchHit[] | null>(null);
@@ -196,8 +198,17 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const trimmed = query.trim().replace(/^@/, '');
 
   return (
-    <Screen edges={['top', 'left', 'right']} scroll={false}>
-      <View style={{ flex: 1 }}>
+    // Find your friends has no bottom bar, so it adds the bottom inset itself and Done clears the home
+    // indicator. On Board search the bar shows and adds that inset.
+    <Screen edges={welcome ? undefined : ['top', 'left', 'right']} scroll={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // The keyboard's top is measured from the top of the phone, but this view's place is measured
+        // from just under the top safe area. Passing that inset lines the two up. Without it, the view
+        // pads too little and the keyboard covers the end of the list and the Done button.
+        keyboardVerticalOffset={insets.top}
+        style={{ flex: 1 }}
+      >
         {welcome ? (
           <View style={{ marginTop: space.md, marginBottom: space.md }}>
             <AppText role="title" accessibilityRole="header">
@@ -334,7 +345,7 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
             <PrimaryButton label="Done" onPress={done} />
           </View>
         ) : null}
-      </View>
+      </KeyboardAvoidingView>
       <MenuSheet visible={menu !== null} items={menuItems} onClose={() => setMenu(null)} />
     </Screen>
   );

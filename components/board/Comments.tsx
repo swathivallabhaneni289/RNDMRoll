@@ -335,7 +335,8 @@ export function CommentList({
 /**
  * The comment bar (05-UI-SPEC 4.2): a round field 'Add a comment' and the word 'Post'. It sends
  * once (a ref blocks a second tap) and clears only when the server took it; a failure keeps the
- * text and shows one quiet line above the bar. Pinned at the bottom of the page above the safe area.
+ * text and shows one quiet line above the bar. Pinned at the bottom of the page; the page adds the
+ * bottom safe area under it, so with the keyboard up the bar sits right on the keyboard.
  *
  * Reply mode (`replyTo` set, from a comment's 'Reply'): a small line 'Replying to {name}' with a
  * close mark sits above the field, the field gets '@username ' in front and the keyboard comes up;
@@ -355,7 +356,6 @@ export function CommentBar({
   /** A new number puts the cursor in the field (the comment mark under a post was tapped). */
   focusKey?: number;
 }) {
-  const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
@@ -478,7 +478,7 @@ export function CommentBar({
         borderTopColor: color.divider,
         paddingHorizontal: space.lg,
         paddingTop: space.md,
-        paddingBottom: space.md + insets.bottom,
+        paddingBottom: space.md,
       }}
     >
       {message !== '' ? (
@@ -612,7 +612,6 @@ export function CommentBar({
 
 /** 'Commenting is off.' in the comment bar's place. */
 export function CommentsOffBar() {
-  const insets = useSafeAreaInsets();
   return (
     <View
       style={{
@@ -620,7 +619,7 @@ export function CommentsOffBar() {
         borderTopColor: color.divider,
         paddingHorizontal: space.lg,
         paddingTop: space.md,
-        paddingBottom: space.md + insets.bottom,
+        paddingBottom: space.md,
         alignItems: 'center',
       }}
     >

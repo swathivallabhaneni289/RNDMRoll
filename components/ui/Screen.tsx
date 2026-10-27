@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-ar
 import { color, space } from '@/lib/theme/tokens';
 import { BackgroundDotGrid } from '@/components/brand/BackgroundDotGrid';
 import { WheelBackground } from '@/components/brand/WheelBackground';
+import { useKeepFocusedInputInView } from '@/components/ui/useKeepFocusedInputInView';
 
 const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
 
@@ -14,7 +15,8 @@ const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
  * `wheels` opts in to the faint wheel illustration used on Welcome and the method
  * chooser (it replaced the dot grid there). `scroll` wraps children in
  * keyboard-avoiding scroll for form screens. Its keyboard offset is the top inset when `edges`
- * includes 'top'. `edges` chooses which safe-area insets the shell
+ * includes 'top', and a box tapped low on the form is scrolled back into view once the keyboard is
+ * up. `edges` chooses which safe-area insets the shell
  * adds; the default is all four, so signed-out screens and the first-run page are unchanged.
  * Inside the bottom tab bar (which adds the bottom inset itself) a screen passes
  * ['top', 'left', 'right'] so the bottom inset is not counted twice.
@@ -37,6 +39,7 @@ export function Screen({
   edges?: readonly Edge[];
 }) {
   const insets = useSafeAreaInsets();
+  const focusedInView = useKeepFocusedInputInView();
   const content = scroll ? (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -46,7 +49,7 @@ export function Screen({
       keyboardVerticalOffset={edges.includes('top') ? insets.top : 0}
       style={{ flex: 1 }}
     >
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
+      <ScrollView {...focusedInView} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
         {children}
       </ScrollView>
     </KeyboardAvoidingView>

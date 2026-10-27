@@ -147,7 +147,9 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
         : [];
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.dominant }}>
+    // The page adds the bottom inset (the bottom bar is hidden here), so the keyboard view ends above
+    // the home indicator and the comment bar sits right on the keyboard when it is up.
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: color.dominant }}>
       <View style={{ height: minTouchTarget, paddingHorizontal: space.lg, justifyContent: 'center' }}>
         <Pressable
           onPress={goBack}
