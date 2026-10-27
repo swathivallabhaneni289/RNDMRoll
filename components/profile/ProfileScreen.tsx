@@ -58,7 +58,8 @@ export type ProfileViewProps = {
  * the Diary tab and 'Recent activity' were removed).
  *
  * Differences from the picture, on purpose: the gear and the bio (asked for in words, the picture
- * draws neither), 'Spins' for 'Rolls', and the section labels at the app's Label size.
+ * draws neither), 'Spins' for 'Rolls', 'Streak' for 'Week streak' (so it fits its column), and the
+ * small words at the app's Label size.
  */
 export function ProfileView({
   name,
@@ -121,12 +122,11 @@ export function ProfileView({
                   {name}
                 </AppText>
               ) : null}
+              {/* Right under the name, smaller than the bio, as in the developer's picture. */}
               {username !== '' ? (
-                <View style={{ marginTop: name !== '' ? space.xs : 0 }}>
-                  <AppText role="body" tone="muted" numberOfLines={1} ellipsizeMode="tail">
-                    {`@${username}`}
-                  </AppText>
-                </View>
+                <AppText role="label" tone="muted" numberOfLines={1} ellipsizeMode="tail">
+                  {`@${username}`}
+                </AppText>
               ) : null}
             </View>
             <View style={{ marginLeft: space.md }}>

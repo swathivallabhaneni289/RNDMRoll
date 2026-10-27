@@ -1,11 +1,11 @@
 import { Fragment, ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
 import { followersSpoken, followingSpoken, spinsSpoken, streakSpoken } from '@/components/profile/summaryText';
-import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
+import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 /**
- * The four figures of the Profile page (04-UI-SPEC 4.2): Spins, Week streak, Followers and
+ * The four figures of the Profile page (04-UI-SPEC 4.2): Spins, Streak, Followers and
  * Following (developer, 2026-10-17, like Instagram). A dark rule above, four equal columns with a
  * faint vertical rule between them, a faint rule below. Each figure is printed as the server sent
  * it. One spoken element per column. Followers and Following are buttons to that list on People
@@ -14,6 +14,11 @@ import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
  *
  * The figure is the light serif (`note`, as the developer's picture draws it) and keeps its size
  * with the phone's text size, shrinking only to stay on one line.
+ *
+ * The word under it is the Label role, muted, with no letter spacing, so even 'Followers' keeps 8
+ * points clear of the rules on the narrowest phone. 'Week streak' did not fit its column and is
+ * shown as 'Streak' (developer, 2026-10-27); it is still spoken 'Week streak, 4'. Each column keeps
+ * 4 points of padding at both sides, so a word that Larger Text shrinks to fit never touches a rule.
  */
 export function StatsRow({
   spins,
@@ -42,7 +47,7 @@ export function StatsRow({
       : { label: 'Spins', figure: spins, spoken: spinsSpoken(spins) };
   const items: { label: string; figure: number; spoken: string; hint?: string; onPress?: () => void }[] = [
     first,
-    { label: 'Week streak', figure: weekStreak, spoken: streakSpoken(weekStreak) },
+    { label: 'Streak', figure: weekStreak, spoken: streakSpoken(weekStreak) },
     { label: 'Followers', figure: followers, spoken: followersSpoken(followers), hint: theirs ? 'Opens their followers.' : 'Opens your followers.', onPress: onOpenFollowers },
     { label: 'Following', figure: following, spoken: followingSpoken(following), hint: theirs ? 'Opens the people they follow.' : 'Opens the people you follow.', onPress: onOpenFollowing },
   ];
@@ -53,20 +58,12 @@ export function StatsRow({
         <AppText role="note" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} allowFontScaling={false}>
           {String(item.figure)}
         </AppText>
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
-          style={{
-            fontFamily: type.label.fontFamily,
-            fontSize: type.label.fontSize,
-            lineHeight: type.label.lineHeight,
-            letterSpacing: 1,
-            color: color.muted,
-          }}
-        >
-          {item.label}
-        </Text>
+        {/* Pulled 4 points up, so the figure and its word read as one, as in the developer's picture. */}
+        <View style={{ marginTop: -space.xs }}>
+          <AppText role="label" tone="muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+            {item.label}
+          </AppText>
+        </View>
       </>
     );
     if (item.onPress) {
@@ -76,14 +73,14 @@ export function StatsRow({
           accessibilityRole="button"
           accessibilityLabel={item.spoken}
           accessibilityHint={item.hint}
-          style={{ flex: 1, alignItems: 'center', minHeight: minTouchTarget, justifyContent: 'center' }}
+          style={{ flex: 1, alignItems: 'center', minHeight: minTouchTarget, justifyContent: 'center', paddingHorizontal: space.xs }}
         >
           {content}
         </Pressable>
       );
     }
     return (
-      <View accessible accessibilityLabel={item.spoken} style={{ flex: 1, alignItems: 'center' }}>
+      <View accessible accessibilityLabel={item.spoken} style={{ flex: 1, alignItems: 'center', paddingHorizontal: space.xs }}>
         {content}
       </View>
     );

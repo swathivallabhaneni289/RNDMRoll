@@ -38,7 +38,7 @@ const GENERIC = 'Something went wrong. Please try again.';
 /**
  * Another person's page, like Instagram's (developer, 2026-10-17: tap anyone's photo or name and
  * it opens their profile). It looks like your own Profile seen by a visitor: their photo, name,
- * @username, bio and the four figures (Posts, Week streak, Followers, Following; the two lists open
+ * @username, bio and the four figures (Posts, Streak, Followers, Following; the two lists open
  * for an accepted follower), with one button where your Edit is: Follow, Follow back,
  * Requested (a tap cancels) or Following (a tap offers Unfollow). The three dots at the top right
  * hold Remove follower (when they follow you), Mute or Unmute (their posts leave your Board), Report
@@ -316,11 +316,10 @@ export function PersonScreen({ id }: { id: string }) {
                     {page.person.name}
                   </AppText>
                 ) : null}
-                <View style={{ marginTop: page.person.name !== '' ? space.xs : 0 }}>
-                  <AppText role="body" tone="muted" numberOfLines={1} ellipsizeMode="tail">
-                    {`@${page.person.username}`}
-                  </AppText>
-                </View>
+                {/* Right under the name, set as on your own Profile. */}
+                <AppText role="label" tone="muted" numberOfLines={1} ellipsizeMode="tail">
+                  {`@${page.person.username}`}
+                </AppText>
               </View>
               <View style={{ marginLeft: space.md }}>{relationButton(page)}</View>
             </View>
