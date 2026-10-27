@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
 import { color, space } from '@/lib/theme/tokens';
 import { BackgroundDotGrid } from '@/components/brand/BackgroundDotGrid';
 import { WheelBackground } from '@/components/brand/WheelBackground';
@@ -13,7 +13,8 @@ const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
  * UI-SPEC to the choose-method screen only, hence the false default).
  * `wheels` opts in to the faint wheel illustration used on Welcome and the method
  * chooser (it replaced the dot grid there). `scroll` wraps children in
- * keyboard-avoiding scroll for form screens. `edges` chooses which safe-area insets the shell
+ * keyboard-avoiding scroll for form screens. Its keyboard offset is the top inset when `edges`
+ * includes 'top'. `edges` chooses which safe-area insets the shell
  * adds; the default is all four, so signed-out screens and the first-run page are unchanged.
  * Inside the bottom tab bar (which adds the bottom inset itself) a screen passes
  * ['top', 'left', 'right'] so the bottom inset is not counted twice.
@@ -35,8 +36,16 @@ export function Screen({
   scroll?: boolean;
   edges?: readonly Edge[];
 }) {
+  const insets = useSafeAreaInsets();
   const content = scroll ? (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // The keyboard's top is measured from the top of the phone, but this view's place is measured
+      // from just under the top safe area when the shell adds it. Passing that inset lines the two up.
+      // Without it, the view pads too little and the keyboard covers the bottom of the form.
+      keyboardVerticalOffset={edges.includes('top') ? insets.top : 0}
+      style={{ flex: 1 }}
+    >
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
         {children}
       </ScrollView>

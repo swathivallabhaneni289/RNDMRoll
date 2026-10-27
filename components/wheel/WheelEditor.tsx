@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -93,6 +94,7 @@ export function WheelEditor() {
   const router = useRouter();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { user } = useSession();
   const userId = user?.id ?? null;
   const snapshot = useTodaySnapshot(userId);
@@ -252,7 +254,14 @@ export function WheelEditor() {
 
   return (
     <Screen scroll={false} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // The keyboard's top is measured from the top of the phone, but this view's place is measured
+        // from just under the top safe area. Passing that inset lines the two up. Without it, the view
+        // pads too little and the keyboard covers the Save wheel button.
+        keyboardVerticalOffset={insets.top}
+        style={{ flex: 1 }}
+      >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PhotoField } from '@/components/entry/PhotoField';
 import { ReactionPicker } from '@/components/entry/ReactionPicker';
 import { StarInput } from '@/components/entry/StarInput';
@@ -61,6 +62,7 @@ export function EntryForm({
 }: EntryFormProps) {
   const scrollRef = useRef<ScrollView>(null);
   const commentFocusedRef = useRef(false);
+  const insets = useSafeAreaInsets();
 
   // A photo message sits under the strip at the top of the form; the person pressed Save in the
   // footer and may have scrolled down to the comment, so bring the strip into view.
@@ -73,7 +75,14 @@ export function EntryForm({
   const figure = formatStars(draft.stars);
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // The keyboard's top is measured from the top of the phone, but this view's place is measured
+      // from just under the top safe area, which the route's Screen adds. Passing that inset lines the
+      // two up. Without it, the view pads too little and the keyboard covers the footer's button.
+      keyboardVerticalOffset={insets.top}
+      style={{ flex: 1 }}
+    >
       {header}
 
       <ScrollView
