@@ -8,7 +8,13 @@ import { color } from '@/lib/theme/tokens';
  * from the Board's bell (notifications), all pushed over it so Back always returns to the Board.
  * The Tabs layout hides the bottom bar on post, entry, edit-entry and notifications by reading
  * this stack's focused route name; People keeps the bar, as it does in the Profile stack.
+ * 'index' is the initial route (unstable_settings below), so a page opened straight from a link or
+ * a notification still has the Board under it: Back returns there, not to another tab.
  */
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 export default function BoardLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.dominant } }}>

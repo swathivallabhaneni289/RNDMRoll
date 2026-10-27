@@ -14,7 +14,13 @@ import { color } from '@/lib/theme/tokens';
  * ancestor layout, which would leave that parent declaration unmatched. With this file present,
  * "profile" becomes its own nested Stack, and every page here pushes and pops within it, with the
  * bottom bar showing on each of them except `entry` and `edit-entry` (the Tabs layout hides it).
+ * 'index' is the initial route (unstable_settings below), so a page opened straight from a link or
+ * a notification still has the Profile page under it: Back returns there, not to another tab.
  */
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 export default function ProfileLayout() {
   return (
     <Stack
