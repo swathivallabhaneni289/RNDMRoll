@@ -77,14 +77,15 @@ export const SETTLED_LABEL = "Today's spin was";
  * The line once a post would count as late (Today's `post_late`, from noon the day after the spin),
  * on the Spin page and the entry screen. The space before PM is a no-break space.
  */
-export const LATE_LINE = 'You missed noon. You can still post until 8:00\u00A0PM, and it will show as late.';
+export const LATE_LINE = 'Missed noon? You still have until 8:00\u00A0PM. It will just show as late.';
 
 /**
  * The line under 'Your spin is open.' when the date before closed with its spin neither posted nor
- * skipped (Today's `missed`): "Monday's movie wasn't posted." The weekday is the server's.
+ * skipped (Today's `missed`): "Monday's movie got away. Make tonight's count." The weekday is the
+ * server's.
  */
 export function missedLine(weekday: string, category: string): string {
-  return `${weekday}'s ${category.toLowerCase()} wasn't posted.`;
+  return `${weekday}'s ${category.toLowerCase()} got away. Make tonight's count.`;
 }
 
 // ---- Plan 03-03: the entry page, edit and skip --------------------------------------------------

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
 import { listenForTaps, loadNotifications, queueScheduleChange } from '@/lib/notifications/module';
-import { postNoteBody, postNoteDate } from '@/lib/notifications/postNote';
+import { POST_NOTE_BODY, postNoteDate, postNoteTitle } from '@/lib/notifications/postNote';
 import { getAccessToken, useSession } from '@/lib/session/store';
 import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
@@ -40,8 +40,8 @@ import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 export const REMINDER_HOUR = 20;
 export const REMINDER_MINUTE = 0;
 
-export const REMINDER_TITLE = 'RNDMRoll';
-export const REMINDER_BODY = 'Your spin is open.';
+export const REMINDER_TITLE = 'Your spin is open';
+export const REMINDER_BODY = 'What will the wheel pick tonight?';
 
 /** Tapping the reminder opens the Spin tab. */
 export const REMINDER_ROUTE = '/(app)/today';
@@ -222,7 +222,7 @@ export function rebuildReminder(): Promise<void> {
       if (postNote !== null && noteAt !== null) {
         await api.scheduleNotificationAsync({
           identifier: POST_NOTE_ID,
-          content: { title: REMINDER_TITLE, body: postNoteBody(postNote.category), data: { url: REMINDER_ROUTE } },
+          content: { title: postNoteTitle(postNote.category), body: POST_NOTE_BODY, data: { url: REMINDER_ROUTE } },
           trigger: { type: api.SchedulableTriggerInputTypes.DATE, date: noteAt },
         });
       }

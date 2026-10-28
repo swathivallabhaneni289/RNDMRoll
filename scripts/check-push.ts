@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const { pushTarget } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/pushTarget.ts')).href);
-const { postNoteBody, postNoteDate } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/postNote.ts')).href);
+const { POST_NOTE_BODY, postNoteDate, postNoteTitle } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/postNote.ts')).href);
 
 let checks = 0;
 let failures = 0;
@@ -54,6 +54,7 @@ check('note just before 10 AM', postNoteDate(noon - 2 * 3600_000 - 1, noon)?.toI
 check('no note from 10 AM', postNoteDate(noon - 2 * 3600_000, noon), null);
 check('no note after noon', postNoteDate(noon + 1, noon), null);
 check('no note without a spin', postNoteDate(Date.parse('2026-10-28T15:00:00.000Z'), null), null);
-check('note text', postNoteBody('Movie'), 'Your movie is waiting. Post it by noon to be on time.');
+check('note title', postNoteTitle('Movie'), '2 hours left for your movie');
+check('note line', POST_NOTE_BODY, 'Post it by noon to stay on time, and see what your friends posted.');
 
 console.log(`${checks - failures}/${checks} push checks passed`);

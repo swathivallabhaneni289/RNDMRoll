@@ -176,7 +176,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 ### Journey 2: a normal evening
 
-1. At 8 PM the phone reminds them: "Your spin is open."
+1. At 8 PM the phone reminds them: "Your spin is open. What will the wheel pick tonight?"
 2. The Spin page says "Your spin is open." They tap the hub and get "Movie".
 3. They post the film they watched this week, with 4.5 stars.
 4. The Board unlocks. They see three friends' posts for tonight, open one and reply to a comment.
@@ -190,7 +190,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 ### Journey 4: late, and the weekly goal
 
-1. They spin at 11 PM and get Movie, but don't post that night. At 10 AM the phone says "Your movie is waiting. Post it by noon to be on time." They post at 2 PM: the page still says "Today's spin." and adds "You missed noon. You can still post until 8:00 PM, and it will show as late." Posting before noon would still have been on time.
+1. They spin at 11 PM and get Movie, but don't post that night. At 10 AM the phone says "2 hours left for your movie. Post it by noon to stay on time, and see what your friends posted." They post at 2 PM: the page still says "Today's spin." and adds "Missed noon? You still have until 8:00 PM. It will just show as late." Posting before noon would still have been on time.
 2. The post counts for the day and opens the Board. Their card shows "Late".
 3. It's their fourth posted day this week, so they earn a bonus spin. The week section says "You have a bonus spin.", and the notifications list says "You hit your goal this week. One bonus spin added."
 4. A few days later, "Use bonus spin" turns an unwanted word into a different one.
@@ -294,11 +294,11 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SPIN-08 | A bonus spin swaps today's word for a different one | P1 | Built |
 | SPIN-09 | A countdown shows when the next spin opens | P1 | Built |
 | SPIN-10 | The phone reports its time zone; days follow it through daylight saving changes | P0 | Built |
-| SPIN-11 | A reminder on the phone at 8 PM: "Your spin is open." | P1 | Built |
+| SPIN-11 | A reminder on the phone at 8 PM: "Your spin is open. What will the wheel pick tonight?" | P1 | Built |
 | SPIN-12 | People choose the reminder's time | P2 | Later |
 | SPIN-13 | Weighted or resizable slices | P2 | Removed October 10, 2026; dragging slice edges is a Later idea |
-| SPIN-14 | A note on the phone at 10 AM while a spin is not posted or skipped: "Your movie is waiting. Post it by noon to be on time." | P1 | Built |
-| SPIN-15 | When a day closes with its spin not posted or skipped, the next open spin says so: "Monday's movie wasn't posted." | P1 | Built |
+| SPIN-14 | A note on the phone at 10 AM while a spin is not posted or skipped: "2 hours left for your movie. Post it by noon to stay on time, and see what your friends posted." | P1 | Built |
+| SPIN-15 | When a day closes with its spin not posted or skipped, the next open spin says so: "Monday's movie got away. Make tonight's count." | P1 | Built |
 
 **Acceptance criteria and rules**
 
