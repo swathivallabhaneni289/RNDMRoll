@@ -746,7 +746,7 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		}
 	})
 
-	run("a post is refused once its late window has ended and counts late before that", func(t *testing.T, e *Env) {
+	run("a post is refused once its late window has ended and counts late from late_from before that", func(t *testing.T, e *Env) {
 		u := e.ready(t, ny)
 		loc := zone(t, ny)
 		d := date(t, "2026-10-07")
@@ -772,23 +772,40 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 			t.Fatalf("one nanosecond before late_until: %+v %v, want accepted and late", r, err)
 		}
 
-		// Exactly at the close is late.
+		// Exactly at the close is not late: a post is on time until noon of
+		// the next date.
 		d3 := date(t, "2026-10-09")
 		w3 := spin.WindowFor(d3, loc)
 		e.Clock.Set(w3.ClosesAt)
 		r, err = e.Service.MarkPosted(ctx, u, d3, spin.SourcePost)
-		if err != nil || !r.Late {
-			t.Fatalf("at close: %+v %v, want late", r, err)
+		if err != nil || !r.Inserted || r.Late {
+			t.Fatalf("at close: %+v %v, want not late", r, err)
+		}
+
+		// One nanosecond before late_from is not late; exactly at it is.
+		d4 := date(t, "2026-10-10")
+		w4 := spin.WindowFor(d4, loc)
+		e.Clock.Set(w4.LateFrom.Add(-time.Nanosecond))
+		r, err = e.Service.MarkPosted(ctx, u, d4, spin.SourcePost)
+		if err != nil || !r.Inserted || r.Late {
+			t.Fatalf("one nanosecond before late_from: %+v %v, want not late", r, err)
+		}
+		d5 := date(t, "2026-10-11")
+		w5 := spin.WindowFor(d5, loc)
+		e.Clock.Set(w5.LateFrom)
+		r, err = e.Service.MarkPosted(ctx, u, d5, spin.SourcePost)
+		if err != nil || !r.Inserted || !r.Late {
+			t.Fatalf("at late_from: %+v %v, want late", r, err)
 		}
 
 		// A pretend day skips the late check, and a date that has not
 		// begun is refused.
-		d4 := date(t, "2026-10-01")
+		d6 := date(t, "2026-10-01")
 		e.Clock.Set(w3.LateUntil.Add(48 * time.Hour))
-		if _, err := e.Service.MarkPosted(ctx, u, d4, spin.SourcePost); !errors.Is(err, spin.ErrClosed) {
+		if _, err := e.Service.MarkPosted(ctx, u, d6, spin.SourcePost); !errors.Is(err, spin.ErrClosed) {
 			t.Fatalf("old date as a post: %v, want ErrClosed", err)
 		}
-		if r, err := e.Service.MarkPosted(ctx, u, d4, spin.SourceTest); err != nil || !r.Inserted {
+		if r, err := e.Service.MarkPosted(ctx, u, d6, spin.SourceTest); err != nil || !r.Inserted {
 			t.Fatalf("old date as a test day: %+v %v", r, err)
 		}
 		future := date(t, "2026-12-25")

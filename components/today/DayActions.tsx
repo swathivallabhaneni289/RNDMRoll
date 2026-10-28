@@ -27,8 +27,9 @@ const labelLine = {
 
 /**
  * What sits under the stamp row of Result and Late (03-UI-SPEC section 3.2, the developer's picture
- * `today-after-spin-02`): in Late the line 'Posting it now would count as late.', then the 'Log it'
- * button, which pushes the entry screen, and under it the outlined button 'Skip it'.
+ * `today-after-spin-02`): once a post would count as late (`postLate`, from noon the day after the
+ * spin) the line 'Posting it now would count as late.', then the 'Log it' button, which pushes the
+ * entry screen, and under it the outlined button 'Skip it'.
  *
  * Skip asks once with the phone's own alert (Cancel, and 'Skip it'), sends the date and
  * spin number of the spin that is on screen, and puts the answer's Today into the store; Today
@@ -36,8 +37,9 @@ const labelLine = {
  * answers also ask the server for Today again. While a skip runs both controls are inert.
  *
  * Spacing: `xxl` between the stamp row and 'Log it'; when the late line, the bonus link or a
- * message already sits there (`followsLink`), `md` after the last of them. Both controls are
- * inert while a spin is running or in the non-live copy (`disabled`).
+ * message already sits there (`followsLink`), `md` after the last of them. Between midnight and
+ * noon Late has no late line, so 'Log it' keeps `xxl`. Both controls are inert while a spin is
+ * running or in the non-live copy (`disabled`).
  *
  * `animate` runs the reveal's last step (a rise 240ms after the word); a relaunch or a refetch
  * shows everything at once.
@@ -45,7 +47,8 @@ const labelLine = {
 export function DayActions({
   day,
   userId,
-  late,
+  lastNight,
+  postLate,
   followsLink,
   disabled,
   animate = false,
@@ -53,8 +56,10 @@ export function DayActions({
   /** The Today that is on screen: its spin, week and goal are what the skip names and says. */
   day: Today;
   userId: string | null;
-  /** The state is Late: last night's spin, and a post now counts as late. */
-  late: boolean;
+  /** The state is Late (past midnight): last night's spin, so the skip asks 'Skip this spin?'. */
+  lastNight: boolean;
+  /** A post made now counts as late (the server's `post_late`, from noon): the late line shows. */
+  postLate: boolean;
   /** The bonus link or a message sits between the stamp row and these actions. */
   followsLink: boolean;
   disabled: boolean;
@@ -102,7 +107,7 @@ export function DayActions({
   function askSkip() {
     if (inert || busyRef.current || spin === null) return;
     Alert.alert(
-      late ? 'Skip this spin?' : "Skip today's spin?",
+      lastNight ? 'Skip this spin?' : "Skip today's spin?",
       skipBody(spin.local_date, day.week.start, day.week.posted, day.week.goal),
       [
         { text: 'Cancel', style: 'cancel' },
@@ -114,13 +119,13 @@ export function DayActions({
 
   return (
     <Step animate={animate}>
-      {late ? (
+      {postLate ? (
         <View style={{ marginTop: space.md }}>
           <Text style={{ ...labelLine, color: color.muted }}>Posting it now would count as late.</Text>
         </View>
       ) : null}
 
-      <View style={{ marginTop: late || followsLink ? space.md : space.xxl }}>
+      <View style={{ marginTop: postLate || followsLink ? space.md : space.xxl }}>
         <PrimaryButton label="Log it" onPress={() => router.push('/(app)/today/log')} disabled={inert} />
       </View>
 

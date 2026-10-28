@@ -124,7 +124,10 @@ func TestWindow_ApiaSkippedDay(t *testing.T) {
 	if got, want := LocalDate(w.ClosesAt, loc), d31; got != want {
 		t.Fatalf("the 29th closes onto %v, want %v (the 30th never happened)", got, want)
 	}
-	// Late runs to 8 PM on the 31st, local.
+	// Late runs from noon to 8 PM on the 31st, local.
+	if got := w.LateFrom.In(loc); got.Day() != 31 || got.Hour() != 12 || got.Minute() != 0 {
+		t.Errorf("LateFrom = %v, want 2011-12-31 12:00 local", got)
+	}
 	if got := w.LateUntil.In(loc); got.Day() != 31 || got.Hour() != 20 || got.Minute() != 0 {
 		t.Errorf("LateUntil = %v, want 2011-12-31 20:00 local", got)
 	}
@@ -145,6 +148,9 @@ func TestWindow_ApiaSkippedDay(t *testing.T) {
 	empty := WindowFor(d30, loc)
 	if empty.ClosesAt.Before(empty.OpensAt) {
 		t.Errorf("skipped date: closes %v before opens %v", empty.ClosesAt, empty.OpensAt)
+	}
+	if empty.LateFrom.Before(empty.ClosesAt) || !empty.LateFrom.Before(empty.LateUntil) {
+		t.Errorf("skipped date: late from %v is not in [closes %v, late until %v)", empty.LateFrom, empty.ClosesAt, empty.LateUntil)
 	}
 }
 
@@ -278,6 +284,26 @@ func checkWindowAgainstOracle(t *testing.T, loc *time.Location, d Date) {
 	}
 	if l := w.LateUntil.In(loc); l.Hour() != OpenHour || l.Minute() != 0 || DateOf(l) != closeDate {
 		t.Fatalf("%s: LateUntil reads %v, want 20:00 on %v", label, l, closeDate)
+	}
+
+	// LateFrom is 12:00 on the same date, at or after the close and before
+	// LateUntil.
+	if w.LateFrom.Before(w.ClosesAt) || !w.LateFrom.Before(w.LateUntil) {
+		t.Fatalf("%s: LateFrom %v is not in [ClosesAt %v, LateUntil %v)", label, w.LateFrom.In(loc), w.ClosesAt.In(loc), w.LateUntil.In(loc))
+	}
+	if _, ok := InstantOfLocal(closeDate.utc().Add(LateHour*time.Hour), loc); ok {
+		// Oracle: the first instant from the close that reads 12:00 on
+		// that date.
+		wantLateFrom := scanFirst(t, w.ClosesAt, func(at time.Time) bool {
+			l := at.In(loc)
+			return DateOf(l) == closeDate && l.Hour() == LateHour && l.Minute() == 0
+		})
+		if !w.LateFrom.Equal(wantLateFrom) {
+			t.Fatalf("%s: LateFrom = %v, oracle %v", label, w.LateFrom.In(loc), wantLateFrom.In(loc))
+		}
+		if l := w.LateFrom.In(loc); l.Hour() != LateHour || l.Minute() != 0 || l.Second() != 0 || DateOf(l) != closeDate {
+			t.Fatalf("%s: LateFrom reads %v, want 12:00 on %v", label, l, closeDate)
+		}
 	}
 
 	// PrevDate is the date of the instant before the start.

@@ -11,25 +11,29 @@ type CategoryHeaderProps = {
   localDate: string;
   /** The category as written on that day. */
   categoryName: string;
-  /** New only: the spin is last night's, so the label and the late line change. */
-  late?: boolean;
+  /** New only: the spin is last night's (Today's state Late, past midnight), so the label says so. */
+  lastNight?: boolean;
+  /** New only: a post made now counts as late (Today's `post_late`, from noon), so the late line shows. */
+  postLate?: boolean;
   onCancel: () => void;
 };
 
 /**
  * The fixed header of the entry screen (UI spec 4): 'Cancel' and the date on a 44dp row, the
- * category word large with its small label at the right on one baseline, and the late line.
- * The word shrinks to fit down to 60 percent and is then cut with an ellipsis.
+ * category word large with its small label at the right on one baseline, and, when a post now
+ * counts as late, the late line. The word shrinks to fit down to 60 percent and is then cut with
+ * an ellipsis.
  */
 export function CategoryHeader({
   variant = 'new',
   localDate,
   categoryName,
-  late = false,
+  lastNight = false,
+  postLate = false,
   onCancel,
 }: CategoryHeaderProps) {
   const edit = variant === 'edit';
-  const spinLabel = late ? "Last night's spin" : "Today's spin";
+  const spinLabel = lastNight ? "Last night's spin" : "Today's spin";
   const date = dateDot(localDate);
 
   return (
@@ -69,7 +73,7 @@ export function CategoryHeader({
         </View>
       </View>
 
-      {late && !edit ? (
+      {postLate && !edit ? (
         <View style={{ marginTop: space.xs }}>
           <AppText role="label" tone="muted">
             Posting it now would count as late.

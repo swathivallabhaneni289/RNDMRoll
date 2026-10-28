@@ -28,9 +28,9 @@ import { useSession } from '@/lib/session/store';
  *  - One request runs at a time. A load asked for while another request runs waits behind it,
  *    and several waiting loads become one.
  *  - Today is asked for on mount, on tab focus, on foreground, when a countdown reaches zero
- *    and at the server's `next_open_at` and close time (nearest first, re-armed after every
- *    answer). If the answer at zero still says waiting, ask again after 1 second, at most 5
- *    times.
+ *    and at the server's `next_open_at`, close time and `late_from` (nearest first, re-armed
+ *    after every answer). If the answer at zero still says waiting, ask again after 1 second,
+ *    at most 5 times.
  *  - While the wheel turns, triggers are ignored and one refetch runs when it lands.
  *  - After `spin_closed` or `spin_not_open` Today is asked for again and the message shows
  *    once; "Try again" for those is a refetch, not a new POST. Only a network failure sends
@@ -333,12 +333,17 @@ export function useToday() {
     return () => subscription.remove();
   }, [userId]);
 
-  // The server's next opening and close time, nearest first, re-armed after every answer.
+  // The server's next opening, close time and the noon a post turns late (so the late line shows
+  // while the page is open), nearest first, re-armed after every answer. A null or past one is skipped.
   const today = snapshot.today;
   const anchor = snapshot.anchor;
   useEffect(() => {
     if (userId === null || !today || !anchor || snapshot.spinning) return undefined;
-    const wait = nextWaitMs([today.next_open_at, today.window.closes_at], anchor, performance.now());
+    const wait = nextWaitMs(
+      [today.next_open_at, today.window.closes_at, today.late_from],
+      anchor,
+      performance.now()
+    );
     if (wait === null) return undefined;
     const id = setTimeout(() => instantReached(userId, anchor.mark), Math.min(wait, MAX_TIMER_MS));
     return () => clearTimeout(id);

@@ -140,6 +140,7 @@ type lockedView struct {
 	Names       []string `json:"names"`
 	Category    *string  `json:"category"`
 	Action      string   `json:"action"`
+	PostLate    bool     `json:"post_late"`
 }
 
 type dayView struct {
@@ -191,7 +192,7 @@ func (h *BoardHandler) board(c *gin.Context) {
 		if names == nil {
 			names = []string{}
 		}
-		locked = &lockedView{PostedCount: b.Locked.PostedCount, Names: names, Category: b.Locked.Category, Action: b.Locked.Action}
+		locked = &lockedView{PostedCount: b.Locked.PostedCount, Names: names, Category: b.Locked.Category, Action: b.Locked.Action, PostLate: b.Locked.PostLate}
 	}
 	Respond(c, http.StatusOK, gin.H{
 		"state":       b.State,

@@ -144,7 +144,7 @@ func (s *Service) Board(ctx context.Context, viewer uuid.UUID, before *string, l
 		for _, n := range names {
 			first = append(first, FirstName(n))
 		}
-		out.Locked = &Locked{PostedCount: n, Names: first, Category: bf.CategoryName, Action: bf.Action}
+		out.Locked = &Locked{PostedCount: n, Names: first, Category: bf.CategoryName, Action: bf.Action, PostLate: bf.PostLate}
 	}
 
 	dates, err := s.repo.PostedDates(ctx, viewer, dip, before, limit+1)

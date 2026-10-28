@@ -14,7 +14,7 @@ import { space } from '@/lib/theme/tokens';
 import { clearPendingSpin, readToday } from '@/lib/wheel/todayStore';
 
 /** What the screen keeps from Today for the whole visit (plan 03-02 binding decision 5). */
-type LoggedSpin = { localDate: string; seq: number; categoryName: string; late: boolean };
+type LoggedSpin = { localDate: string; seq: number; categoryName: string; lastNight: boolean; postLate: boolean };
 
 /**
  * Today's spin, read once from the store: only a spin whose day is still open to a post (state
@@ -29,7 +29,9 @@ function spinToLog(userId: string | null): LoggedSpin | null {
     localDate: spin.local_date,
     seq: spin.seq,
     categoryName: spin.category.name,
-    late: today.state === 'late',
+    // Past midnight the spin is last night's (state Late); a post counts as late from noon (`post_late`).
+    lastNight: today.state === 'late',
+    postLate: today.post_late === true,
   };
 }
 
@@ -130,7 +132,8 @@ export default function LogRoute() {
           <CategoryHeader
             localDate={shown.localDate}
             categoryName={shown.categoryName}
-            late={shown.late}
+            lastNight={shown.lastNight}
+            postLate={shown.postLate}
             onCancel={cancel}
           />
         }

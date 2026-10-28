@@ -171,8 +171,9 @@ function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: bo
  *  - the wheel states (loading, waiting, open, spinning, offline): the wheel, the state block
  *    (slot A a small-caps label, slot B the countdown, slot C a Label line), the Edit wheel link;
  *  - the day states (result, late, posted, skipped): no wheel at all. Result and Late show the
- *    word with the time it was spun and `DayActions` under it (Log it, and the late line); Posted
- *    shows the entry as a row and Skipped the struck word under its sentence (`SettledBlock`).
+ *    word with the time it was spun and `DayActions` under it (Log it, and the late line once the
+ *    server's `post_late` says a post now counts as late, from noon); Posted shows the entry as a
+ *    row and Skipped the struck word under its sentence (`SettledBlock`).
  * The week section is last in both. A spin that was already made when the screen arrived shows
  * the day composition at once and animates nothing; a spin made here turns the wheel, waits
  * 600ms, then fades the wheel out while the word rises in (section 5). A bonus spin brings the
@@ -453,13 +454,15 @@ export function TodayScreen() {
 
   /**
    * Result and Late (picture 02): the word, its stamp row, then the day's actions (the late line
-   * and 'Log it'). `live` is false for the copy that fades out over a change: no link, no
-   * handlers, nothing animating.
+   * and 'Log it'). Late (`lastNight`, past midnight) names last night's spin; the late line follows
+   * the server's `post_late` (`postLate`, from noon), not the state. `live` is false for the copy
+   * that fades out over a change: no link, no handlers, nothing animating.
    */
   function dayComposition(day: Today, live: boolean): ReactNode {
     const spun = day.spin;
     if (!spun) return null;
-    const dayLate = day.state === 'late';
+    const lastNight = day.state === 'late';
+    const postLate = day.post_late === true;
     const bonusLinkShown = live && Boolean(day.bonus.can_use) && !busy;
     const bonusFailed = live && failureKind !== null && spinFailure?.action === 'bonus';
     return (
@@ -467,7 +470,7 @@ export function TodayScreen() {
         <ResultBlock
           name={spun.category.name}
           spunLocalTime={spun.spun_local_time}
-          late={dayLate}
+          lastNight={lastNight}
           canUseBonus={bonusLinkShown}
           onUseBonus={live ? openBonusSheet : () => {}}
           animate={live && animateResult}
@@ -484,7 +487,8 @@ export function TodayScreen() {
         <DayActions
           day={day}
           userId={userId}
-          late={dayLate}
+          lastNight={lastNight}
+          postLate={postLate}
           followsLink={bonusLinkShown || bonusFailed}
           disabled={!live || busy}
           animate={live && animateResult}

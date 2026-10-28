@@ -494,10 +494,14 @@ func TestBuildToday_WireShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "wheel", "week", "bonus", "first_spin"} {
+	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "late_from", "post_late", "wheel", "week", "bonus", "first_spin"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q in %s", key, raw)
 		}
+	}
+	// A result: a post counts late from noon of the next date (EDT).
+	if m["late_from"] != "2026-10-08T16:00:00.000Z" || m["post_late"] != false {
+		t.Errorf("late_from %v post_late %v", m["late_from"], m["post_late"])
 	}
 	// Instants are RFC 3339 in UTC; dates are plain dates.
 	if got := m["now"]; got != "2026-10-08T00:02:30.000Z" {
@@ -546,6 +550,94 @@ func TestBuildToday_WireShape(t *testing.T) {
 	if !strings.Contains(string(raw2), `"spin":null`) || !strings.Contains(string(raw2), `"wheel":[]`) {
 		t.Errorf("no-spin body = %s", raw2)
 	}
+	if !strings.Contains(string(raw2), `"late_from":null`) || !strings.Contains(string(raw2), `"post_late":false`) {
+		t.Errorf("no-spin body = %s, want late_from null and post_late false", raw2)
+	}
+}
+
+// instantOrNil reads an optional instant for a message.
+func instantOrNil(i *Instant) any {
+	if i == nil {
+		return nil
+	}
+	return time.Time(*i)
+}
+
+func TestBuildToday_LateFromIsNoonOfTheNextDateWhileTheDayIsUnsettled(t *testing.T) {
+	loc := mustLoc(t, ny)
+	spun := at(t, loc, "2026-10-07", 20, 30, 0)
+	daily := spinAt(t, ny, spun, KindDaily, 0)
+	noon := at(t, loc, "2026-10-08", 12, 0, 0)
+	spinDay := func(h, m, s int) time.Time { return at(t, loc, "2026-10-07", h, m, s) }
+	nextDay := func(h, m, s int) time.Time { return at(t, loc, "2026-10-08", h, m, s) }
+
+	cases := []struct {
+		name         string
+		now          time.Time
+		spin         *Spin // the local date's latest spin
+		yesterday    *Spin
+		wantState    TodayState
+		wantLateFrom *time.Time
+		wantPostLate bool
+	}{
+		{"result", spinDay(21, 0, 0), daily, nil, StateResult, &noon, false},
+		{"result on a first spin before 8 PM", spinDay(15, 0, 0), spinAt(t, ny, spinDay(10, 0, 0), KindDaily, 0), nil, StateResult, &noon, false},
+		{"late just after midnight", nextDay(0, 30, 0), nil, daily, StateLate, &noon, false},
+		{"late one nanosecond before noon", noon.Add(-time.Nanosecond), nil, daily, StateLate, &noon, false},
+		{"late at noon", noon, nil, daily, StateLate, &noon, true},
+		{"late after noon", nextDay(19, 59, 59), nil, daily, StateLate, &noon, true},
+		{"posted", spinDay(21, 0, 0), settledAs(daily, ResultPosted, instantPtr(spinDay(20, 45, 0))), nil, StatePosted, nil, false},
+		{"skipped", spinDay(21, 0, 0), settledAs(daily, ResultSkipped, instantPtr(spinDay(20, 45, 0))), nil, StateSkipped, nil, false},
+		{"posted after noon, shown until 8 PM", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, instantPtr(nextDay(12, 30, 0))), StatePosted, nil, false},
+		{"skipped after midnight, shown until 8 PM", nextDay(1, 0, 0), nil, settledAs(daily, ResultSkipped, instantPtr(nextDay(0, 30, 0))), StateSkipped, nil, false},
+		{"open", nextDay(20, 30, 0), nil, nil, StateOpen, nil, false},
+		{"waiting after a post before midnight", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, instantPtr(spinDay(22, 0, 0))), StateWaiting, nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput(t, ny, c.now)
+			in.Spin, in.YesterdaySpin = c.spin, c.yesterday
+			last := spun
+			if c.spin != nil {
+				last = c.spin.SpunAt
+			}
+			in.LastDailySpunAt = &last
+
+			got := BuildToday(in)
+			if got.State != c.wantState {
+				t.Fatalf("state = %s, want %s", got.State, c.wantState)
+			}
+			switch {
+			case c.wantLateFrom == nil && got.LateFrom != nil:
+				t.Errorf("late_from = %v, want null", instantOrNil(got.LateFrom))
+			case c.wantLateFrom != nil && (got.LateFrom == nil || !time.Time(*got.LateFrom).Equal(*c.wantLateFrom)):
+				t.Errorf("late_from = %v, want %v", instantOrNil(got.LateFrom), *c.wantLateFrom)
+			}
+			if got.PostLate != c.wantPostLate {
+				t.Errorf("post_late = %v, want %v", got.PostLate, c.wantPostLate)
+			}
+		})
+	}
+
+	t.Run("the person's current zone decides, as it does for the post", func(t *testing.T) {
+		// Last night's spin was made in Tokyo and the person is now in Los
+		// Angeles. A post is judged in the current zone, so late_from is noon
+		// in Los Angeles, though it is already past noon in Tokyo.
+		la := mustLoc(t, "America/Los_Angeles")
+		when := at(t, mustLoc(t, "Asia/Tokyo"), "2026-10-07", 20, 30, 0) // 4:30 AM the same date in Los Angeles
+		in := baseInput(t, "America/Los_Angeles", at(t, la, "2026-10-08", 9, 0, 0))
+		in.YesterdaySpin = spinAt(t, "Asia/Tokyo", when, KindDaily, 0)
+		in.LastDailySpunAt = &when
+
+		got := BuildToday(in)
+		want := at(t, la, "2026-10-08", 12, 0, 0)
+		if got.State != StateLate || got.LateFrom == nil || !time.Time(*got.LateFrom).Equal(want) || got.PostLate {
+			t.Fatalf("state %s late_from %v post_late %v, want late, %v and false", got.State, instantOrNil(got.LateFrom), got.PostLate, want)
+		}
+		if w := WindowFor(in.YesterdaySpin.LocalDate, la); !w.LateFrom.Equal(want) {
+			t.Fatalf("the window a post is judged by has late_from %v, want %v", w.LateFrom, want)
+		}
+	})
 }
 
 // --- the entry phase: posted, skipped, the entry summary, the skipped flag ---

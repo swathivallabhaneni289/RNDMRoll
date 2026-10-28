@@ -59,7 +59,7 @@ export function LockedBlock({
   const second = names.slice(2, 4);
   const tileHeight = Math.round(columnWidth / TILE_ASPECT);
   const button = lockedButton(locked.action, locked.category);
-  const footnote = lockedFootnote(locked.action, dayLabel);
+  const footnote = lockedFootnote(locked.action, locked.post_late);
   const heading = postedLine(locked.posted_count, dayLabel);
 
   const card = (

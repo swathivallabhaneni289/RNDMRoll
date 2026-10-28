@@ -28,10 +28,14 @@ export function lockedButton(action: 'log' | 'spin' | 'wait', category: string |
   return null;
 }
 
-/** The quiet line under the locked card's text. The space before PM never breaks. */
-export function lockedFootnote(action: 'log' | 'spin' | 'wait', dayLabel: DayLabel): string | null {
+/**
+ * The quiet line under the locked card's text. The space before PM never breaks. The late line
+ * shows once a post made now counts as late (the server's `post_late`, from noon the day after
+ * the spin), not from midnight.
+ */
+export function lockedFootnote(action: 'log' | 'spin' | 'wait', postLate: boolean): string | null {
   if (action === 'wait') return 'Your next spin opens at 8:00 PM.';
-  if (action === 'log' && dayLabel === 'last_night') return 'Posting it now would count as late.';
+  if (action === 'log' && postLate) return 'Posting it now would count as late.';
   return null;
 }
 

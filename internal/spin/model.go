@@ -48,7 +48,9 @@ const (
 	// StateResult: a spin was made today.
 	StateResult TodayState = "result"
 	// StateLate: after midnight, before the next opening, and yesterday's
-	// spin is still unsettled.
+	// spin is still unsettled. The name does not make a post late: a post
+	// for that spin is on time until noon and late from then (see
+	// Today.PostLate).
 	StateLate TodayState = "late"
 	// StatePosted: the shown spin's day was posted. The shown spin is the
 	// local date's latest spin, or, until the next opening, last night's
@@ -224,6 +226,13 @@ type BonusView struct {
 // rule: the person has never spun and it is before 8:00 PM, so the phone can
 // say "Your first spin is ready." At 8:00 PM or later the normal rule opens
 // the wheel and FirstSpin is false.
+//
+// LateFrom is the instant from which a post for the shown spin counts late:
+// noon of the local date after the spin's date, in the person's current zone
+// (Window.LateFrom). It is set only while the shown spin's day is unsettled
+// (result and late) and is null in every other state. PostLate is true when
+// LateFrom is set and now is at or after it: a post made now would count
+// late.
 type Today struct {
 	Now             Instant      `json:"now"`
 	TimeZone        string       `json:"time_zone"`
@@ -233,6 +242,8 @@ type Today struct {
 	NextOpenAt      Instant      `json:"next_open_at"`
 	NextOpenWeekday string       `json:"next_open_weekday"`
 	Spin            *SpinView    `json:"spin"`
+	LateFrom        *Instant     `json:"late_from"`
+	PostLate        bool         `json:"post_late"`
 	Entry           *EntryRef    `json:"entry"`
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
@@ -336,6 +347,11 @@ func settledAfterClose(s *Spin) bool {
 // The entry summary is shown only in posted and skipped, and is the one of
 // the shown spin's date.
 //
+// late_from and post_late are set only in result and late: late_from is the
+// LateFrom of the shown spin's date in the person's current zone, the same
+// date and zone a post for it gives markPostedIn, so what the screen says
+// and the late flag the post stores always agree.
+//
 // next_open_at is the first opening strictly after now and at or after the
 // last daily spin plus 12 hours. When the local date already has a spin (a
 // first spin made before 8:00 PM), that date's own opening is passed over.
@@ -367,6 +383,15 @@ func BuildToday(in TodayInput) Today {
 		case settledAfterClose(y):
 			state, shown, entry = stateOfResult(y.Result), y, in.YesterdayEntry
 		}
+	}
+
+	var lateFrom *Instant
+	postLate := false
+	if shown != nil && (state == StateResult || state == StateLate) {
+		at := WindowFor(shown.LocalDate, loc).LateFrom
+		v := Instant(at)
+		lateFrom = &v
+		postLate = !in.Now.Before(at)
 	}
 
 	next := NextOpen(in.Now, loc)
@@ -426,6 +451,8 @@ func BuildToday(in TodayInput) Today {
 		NextOpenAt:      Instant(next),
 		NextOpenWeekday: weekdayName(next, loc),
 		Spin:            spinView,
+		LateFrom:        lateFrom,
+		PostLate:        postLate,
 		Entry:           entry,
 		Wheel:           wheel,
 		Week: WeekView{

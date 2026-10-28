@@ -679,7 +679,8 @@ func canonicalUUID(s string) (string, bool) {
 type PostedResult struct {
 	// Inserted is false when the date already had a posted day.
 	Inserted bool
-	// Late is true when the post came at or after the date's close.
+	// Late is true when the post came at or after the date's late_from
+	// (noon of the local date after it).
 	Late bool
 	// WeekCount is how many days of the date's week are now posted.
 	WeekCount int
@@ -710,7 +711,9 @@ func (s *Service) MarkPosted(ctx context.Context, userID string, date Date, sour
 // rule:
 //
 //   - a date after the local date is refused (ErrNotOpen);
-//   - late is true when now is at or after the date's close;
+//   - late is true when now is at or after the date's late_from (noon of
+//     the local date that begins at its close), so a post after midnight
+//     is still on time until then;
 //   - for source "post", a date whose late window has ended is ErrClosed
 //     (source "test" skips that check);
 //   - the posted day is stored once; when new, the week is counted, and at
@@ -725,7 +728,7 @@ func markPostedIn(tx Tx, now time.Time, loc *time.Location, userID string, date 
 		return PostedResult{}, ErrNotOpen
 	}
 	window := WindowFor(date, loc)
-	late := !now.Before(window.ClosesAt)
+	late := !now.Before(window.LateFrom)
 	if source == SourcePost && !now.Before(window.LateUntil) {
 		return PostedResult{}, ErrClosed
 	}

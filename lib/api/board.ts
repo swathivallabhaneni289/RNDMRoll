@@ -87,6 +87,11 @@ export type BoardLocked = {
   names: string[];
   category: string | null;
   action: LockedAction;
+  /**
+   * A post made now would count as late (the server's `post_late`, from noon the day after the
+   * spin), so the card says so. An older server leaves the key out, which reads as false.
+   */
+  post_late: boolean;
 };
 
 export type BoardDay = {
@@ -204,6 +209,7 @@ function readLocked(value: unknown): BoardLocked | null {
     names: Array.isArray(raw.names) ? raw.names.filter((name): name is string => typeof name === 'string') : [],
     category: textOrNull(raw.category),
     action,
+    post_late: raw.post_late === true,
   };
 }
 

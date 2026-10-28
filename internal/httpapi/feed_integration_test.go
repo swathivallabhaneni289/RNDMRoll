@@ -620,6 +620,47 @@ func TestBoardIntegration_TheGate(t *testing.T) {
 	w.call(b, http.MethodGet, "/v1/posts/"+aEntry, nil, http.StatusNotFound)
 }
 
+func TestBoardIntegration_TheLockedCardIsLateFromNoon(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("bn_alice", "Alice Ames")
+	b := w.person("bn_bob", "Bob Brown")
+	c := w.person("bn_cara", "Cara Cole")
+	w.followAccepted(a, b)
+	w.followAccepted(c, b)
+	const day, next = "2026-10-08", "2026-10-09"
+
+	// C, new, makes a first spin at 1 PM and does not post: the Board is on
+	// last night and offers to log it, and a post now is on time.
+	w.at(day, 13, 0)
+	w.ok(c, http.MethodPost, "/v1/spin", map[string]any{"for_date": day})
+	if got := w.board(c, ""); got["state"] != "locked" || got["day_label"] != "last_night" ||
+		dig(t, got, "locked", "action") != "log" || dig(t, got, "locked", "post_late") != false {
+		t.Fatalf("an unposted first spin: %v", got)
+	}
+
+	// A spins at 9 PM and does not post. The locked card's post_late is
+	// Today's: on time until noon the next day, late from it.
+	w.at(day, 21, 0)
+	w.ok(a, http.MethodPost, "/v1/spin", map[string]any{"for_date": day})
+	for _, at := range []struct {
+		date     string
+		h, m     int
+		label    string
+		postLate bool
+	}{
+		{day, 21, 0, "today", false},
+		{next, 9, 0, "last_night", false},
+		{next, 11, 59, "last_night", false},
+		{next, 12, 0, "last_night", true},
+	} {
+		w.at(at.date, at.h, at.m)
+		if got := w.board(a, ""); got["state"] != "locked" || got["day_label"] != at.label ||
+			dig(t, got, "locked", "action") != "log" || dig(t, got, "locked", "post_late") != at.postLate {
+			t.Fatalf("%s %d:%02d: %v", at.date, at.h, at.m, got)
+		}
+	}
+}
+
 func TestPostIntegration_ReactionsAndComments(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("pr_alice", "Alice Ames")

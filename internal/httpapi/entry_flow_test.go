@@ -231,7 +231,8 @@ func TestEntryLateWindowPostAndSkipCountForLastNight(t *testing.T) {
 	poster, seqP := r.dayOf(day)
 	skipper, seqS := r.dayOf(day)
 
-	// Just after midnight: late, with last night's spin.
+	// Just after midnight: late, with last night's spin, and a post would
+	// still be on time until noon (EDT).
 	r.clockAt(ny, next, 0, 30, 0)
 	var lastNight [2]any
 	for i, p := range []spinPerson{poster, skipper} {
@@ -239,7 +240,16 @@ func TestEntryLateWindowPostAndSkipCountForLastNight(t *testing.T) {
 		if today["state"] != "late" || today["local_date"] != next || dig(t, today, "spin", "local_date") != day || dig(t, today, "entry") != nil {
 			t.Fatalf("00:30: %v", today)
 		}
+		if today["late_from"] != "2026-10-08T16:00:00.000Z" || today["post_late"] != false {
+			t.Fatalf("00:30: late_from %v post_late %v, want noon and false", today["late_from"], today["post_late"])
+		}
 		lastNight[i] = dig(t, today, "spin", "id")
+	}
+
+	// From noon a post for last night counts late.
+	r.clockAt(ny, next, 12, 0, 0)
+	if today := r.today(poster); today["state"] != "late" || today["post_late"] != true {
+		t.Fatalf("noon: %v", today)
 	}
 
 	// A post for last night: 201, late, and Today is posted with last night's

@@ -302,6 +302,19 @@ func wantInstant(t *testing.T, label string, got, want time.Time) {
 	}
 }
 
+// wantLateFrom checks Today's late_from (want nil for null) and post_late.
+func wantLateFrom(t *testing.T, label string, got spin.Today, want *time.Time, postLate bool) {
+	t.Helper()
+	var at *time.Time
+	if got.LateFrom != nil {
+		v := time.Time(*got.LateFrom)
+		at = &v
+	}
+	if (at == nil) != (want == nil) || (at != nil && !at.Equal(*want)) || got.PostLate != postLate {
+		t.Fatalf("%s: late_from %v post_late %v, want %v and %v", label, at, got.PostLate, want, postLate)
+	}
+}
+
 // wantNoEntry checks that a refused post wrote no entry and no posted day,
 // and that none of keys is held by a photo row.
 func (e *EntryEnv) wantNoEntry(t *testing.T, u, day string, keys []string) {
@@ -760,6 +773,41 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		}
 	})
 
+	run("a post after the close is on time until late_from and late from it, as Today said just before", func(t *testing.T, e *EntryEnv) {
+		w := spin.WindowFor(date(t, "2026-10-07"), zone(t, ny))
+		for _, c := range []struct {
+			name string
+			at   time.Time
+			late bool
+		}{
+			{"exactly at the close", w.ClosesAt, false},
+			{"one nanosecond before late_from", w.LateFrom.Add(-time.Nanosecond), false},
+			{"exactly at late_from", w.LateFrom, true},
+		} {
+			// A post settles its day, so each moment has a person of its own.
+			u := e.ready(t, ny)
+			e.openDay(t, u, "2026-10-07")
+			e.Clock.Set(c.at)
+			before := e.today(t, u)
+			if before.State != spin.StateLate {
+				t.Fatalf("%s: state %s, want late", c.name, before.State)
+			}
+			wantLateFrom(t, c.name+", before the post", before, &w.LateFrom, c.late)
+
+			out := e.post(t, u, "2026-10-07", 0, e.input(u, 1))
+			if out.Entry.Late != c.late {
+				t.Errorf("%s: entry late = %v, want %v", c.name, out.Entry.Late, c.late)
+			}
+			if pd := e.postedRow(t, u, "2026-10-07"); pd == nil || pd.Late != before.PostLate {
+				t.Fatalf("%s: posted day = %+v, want late %v as Today said", c.name, pd, before.PostLate)
+			}
+			if out.Today.State != spin.StatePosted {
+				t.Fatalf("%s: state after the post = %s, want posted", c.name, out.Today.State)
+			}
+			wantLateFrom(t, c.name+", after the post", out.Today, nil, false)
+		}
+	})
+
 	run("four real posts grant one bonus, a fifth none, and a paid week pays no more", func(t *testing.T, e *EntryEnv) {
 		u := e.ready(t, ny)
 		postDay := func(day string, seq int) spin.Today {
@@ -811,7 +859,7 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		wantHeld(t, e.Env, u, 1)
 	})
 
-	run("a late post just after midnight on a Monday counts for Sunday's week", func(t *testing.T, e *EntryEnv) {
+	run("a post just after midnight on a Monday is on time and counts for Sunday's week", func(t *testing.T, e *EntryEnv) {
 		u := e.ready(t, ny)
 		e.setClock(t, ny, "2026-10-11", 12, 0, 0)
 		if _, err := e.Service.MarkTestDays(ctx, u, []spin.Date{date(t, "2026-10-05"), date(t, "2026-10-06"), date(t, "2026-10-07")}); err != nil {
@@ -822,8 +870,8 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		e.setClock(t, ny, "2026-10-12", 0, 30, 0)
 
 		out := e.post(t, u, "2026-10-11", 0, e.input(u, 1))
-		if !out.Entry.Late {
-			t.Error("the entry is not late")
+		if out.Entry.Late {
+			t.Error("the entry is late, want on time until noon")
 		}
 		// Sunday's week reached its goal: the fourth day of that week.
 		wantHeld(t, e.Env, u, 1)
@@ -1360,7 +1408,8 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 			t.Fatalf("same evening: state %s entry %+v spin %+v", got.State, got.Entry, got.Spin)
 		}
 
-		// A late post, then a delete, still shows last night's spin as posted.
+		// A post after midnight, then a delete, still shows last night's spin
+		// as posted.
 		u2 := e.ready(t, ny)
 		e.openDay(t, u2, "2026-10-07")
 		e.setClock(t, ny, "2026-10-08", 0, 30, 0)
@@ -1374,13 +1423,23 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 	// --- the late window as the screen shows it ---
 
 	run("the late window shows posted and skipped until the next opening", func(t *testing.T, e *EntryEnv) {
-		// A late post: late, then posted with last night's spin until 8 PM.
+		// After midnight: late, and a post is on time until noon. A post from
+		// noon is late, then posted with last night's spin until 8 PM.
 		u := e.ready(t, ny)
 		sp := e.openDay(t, u, "2026-10-07")
+		lateFrom := spin.WindowFor(date(t, "2026-10-07"), zone(t, ny)).LateFrom
 		e.setClock(t, ny, "2026-10-08", 0, 30, 0)
-		if got := e.today(t, u); got.State != spin.StateLate || got.Spin == nil || got.Spin.ID != sp.ID {
+		got := e.today(t, u)
+		if got.State != spin.StateLate || got.Spin == nil || got.Spin.ID != sp.ID {
 			t.Fatalf("00:30: state %s spin %+v, want late with last night's spin", got.State, got.Spin)
 		}
+		wantLateFrom(t, "00:30", got, &lateFrom, false)
+		e.setClock(t, ny, "2026-10-08", 12, 0, 0)
+		got = e.today(t, u)
+		if got.State != spin.StateLate || got.Spin == nil || got.Spin.ID != sp.ID {
+			t.Fatalf("noon: state %s spin %+v, want late with last night's spin", got.State, got.Spin)
+		}
+		wantLateFrom(t, "noon", got, &lateFrom, true)
 		out := e.post(t, u, "2026-10-07", 0, e.input(u, 2))
 		if !out.Entry.Late {
 			t.Error("the late entry is not late")
@@ -1395,13 +1454,10 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		if out.Today.Bonus.CanUse {
 			t.Error("a bonus can be used on a posted day")
 		}
-		e.setClock(t, ny, "2026-10-08", 12, 0, 0)
-		if got := e.today(t, u); got.State != spin.StatePosted || got.Entry == nil || got.Spin == nil || got.Spin.ID != sp.ID {
-			t.Fatalf("noon: state %s entry %+v spin %+v, want posted", got.State, got.Entry, got.Spin)
-		}
+		wantLateFrom(t, "after the late post", out.Today, nil, false)
 		e.setClock(t, ny, "2026-10-08", 19, 59, 59)
-		if got := e.today(t, u); got.State != spin.StatePosted {
-			t.Fatalf("19:59:59: state %s, want posted", got.State)
+		if got := e.today(t, u); got.State != spin.StatePosted || got.Entry == nil || got.Spin == nil || got.Spin.ID != sp.ID {
+			t.Fatalf("19:59:59: state %s entry %+v spin %+v, want posted", got.State, got.Entry, got.Spin)
 		}
 		e.setClock(t, ny, "2026-10-08", 20, 0, 0)
 		if got := e.today(t, u); got.State != spin.StateOpen || got.Spin != nil || got.Entry != nil {
@@ -1425,6 +1481,7 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		if sk.Today.State != spin.StateSkipped || sk.Today.Spin == nil || sk.Today.Spin.ID != sp3.ID || sk.Today.Entry != nil {
 			t.Fatalf("late skip: state %s spin %+v entry %+v", sk.Today.State, sk.Today.Spin, sk.Today.Entry)
 		}
+		wantLateFrom(t, "late skip", sk.Today, nil, false)
 		e.setClock(t, ny, "2026-10-08", 20, 0, 0)
 		if got := e.today(t, u3); got.State != spin.StateOpen {
 			t.Fatalf("20:00 after a late skip: state %s, want open", got.State)

@@ -41,9 +41,12 @@ type BoardFacts struct {
 	Skipped bool
 	// Action is ActionLog, ActionSpin or ActionWait, decided by the same
 	// Today rules the Spin page uses. CategoryName is the shown spin's
-	// category as written when Action is ActionLog, else nil.
+	// category as written when Action is ActionLog, else nil. PostLate is
+	// Today's PostLate when Action is ActionLog (a post made now counts
+	// late, from noon of the date after the spin's), else false.
 	Action       string
 	CategoryName *string
+	PostLate     bool
 }
 
 // BoardFacts reads the viewer's Board facts. Before 8:00 PM the Board's day
@@ -103,6 +106,7 @@ func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, er
 				out.Action = ActionLog
 				name := today.Spin.Category.Name
 				out.CategoryName = &name
+				out.PostLate = today.PostLate
 			}
 		}
 		return nil

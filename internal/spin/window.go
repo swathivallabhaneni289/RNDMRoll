@@ -7,6 +7,10 @@ const (
 	// a product constant: 8:00 PM in the person's own zone.
 	OpenHour = 20
 
+	// LateHour is the local hour (24-hour clock) on the date after a spin's
+	// date from which a post for that spin counts late: 12:00 noon.
+	LateHour = 12
+
 	// MinSpinGap is the least time between two daily spins, so a zone change
 	// cannot buy a second spin inside 12 hours.
 	MinSpinGap = 12 * time.Hour
@@ -18,11 +22,14 @@ const (
 //   - ClosesAt is the first instant whose local date is later than the date
 //     (local midnight, or the first instant after it when midnight is
 //     skipped).
-//   - LateUntil is the next opening after ClosesAt. A post made from ClosesAt
+//   - LateFrom is 12:00 noon on the local date that begins at ClosesAt. A
+//     post made from ClosesAt up to LateFrom is still on time.
+//   - LateUntil is the next opening after ClosesAt. A post made from LateFrom
 //     up to LateUntil is late but still counts.
 type Window struct {
 	OpensAt   time.Time
 	ClosesAt  time.Time
+	LateFrom  time.Time
 	LateUntil time.Time
 }
 
@@ -87,9 +94,12 @@ func WindowFor(d Date, loc *time.Location) Window {
 	closes := DayStart(d.AddDays(1), loc)
 	// The close is where the next local date begins, which is not always
 	// d plus one (after a skipped day it is the date after that), so the
-	// late window is measured to that date's own opening.
-	lateUntil := OpensAt(LocalDate(closes, loc), loc)
-	return Window{OpensAt: opens, ClosesAt: closes, LateUntil: lateUntil}
+	// late window is measured on that date: late from its noon, closed at
+	// its own opening.
+	next := LocalDate(closes, loc)
+	lateFrom := firstAtOrAfter(next.utc().Add(LateHour*time.Hour), loc)
+	lateUntil := OpensAt(next, loc)
+	return Window{OpensAt: opens, ClosesAt: closes, LateFrom: lateFrom, LateUntil: lateUntil}
 }
 
 // PrevDate returns the local date of the instant just before d begins in

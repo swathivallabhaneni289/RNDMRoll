@@ -142,6 +142,8 @@ export type ApiErrorCode =
 /**
  * `waiting`, `open`, `result` and `late` are what Phase 2 sends. `posted` and `skipped` are
  * Phase 3's; the type is kept open to them so Phase 3 adds states without editing this file.
+ * `late` means it is past midnight and last night's spin is still unsettled. Whether a post made
+ * now counts as late is `Today.post_late`, not this state.
  */
 export type TodayState = 'waiting' | 'open' | 'result' | 'late' | 'posted' | 'skipped';
 
@@ -232,6 +234,17 @@ export interface Today {
   /** "Friday", written by the server. Printed as sent. */
   next_open_weekday: string;
   spin: Spin | null;
+  /**
+   * The instant from which a post for the shown spin counts as late: noon of the day after the
+   * spin's date, in the person's zone. Null unless a spin is shown and its day is not settled
+   * (state Result or Late).
+   */
+  late_from: string | null;
+  /**
+   * A post made now would count as late (the server's now is at or after `late_from`). An older
+   * server leaves the key out, so read it with `=== true`.
+   */
+  post_late: boolean;
   /**
    * Phase 3: the entry of the shown spin's date, or null (no entry, or it was deleted). A Phase 2
    * server leaves the key out, so read it with `!today.entry`.

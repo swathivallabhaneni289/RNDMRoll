@@ -167,12 +167,14 @@ type Post struct {
 	Received []Received
 }
 
-// Locked is the locked card's data.
+// Locked is the locked card's data. PostLate is true when a post made now
+// counts late (spin.BoardFacts.PostLate), so the card says so.
 type Locked struct {
 	PostedCount int
 	Names       []string
 	Category    *string
 	Action      string
+	PostLate    bool
 }
 
 // Day is one day of cards.
