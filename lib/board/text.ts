@@ -34,7 +34,7 @@ export function lockedButton(action: 'log' | 'spin' | 'wait', category: string |
  */
 export function lockedFootnote(action: 'log' | 'spin' | 'wait', postLate: boolean): string | null {
   if (action === 'wait') return 'Your next spin opens at 8:00 PM.';
-  if (action === 'log' && postLate) return "Noon's gone, but the wheel's a softie. Post by 8:00 PM, Late tag and all.";
+  if (action === 'log' && postLate) return 'Fashionably late is fine until 8:00 PM.';
   return null;
 }
 

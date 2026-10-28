@@ -40,8 +40,8 @@ import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 export const REMINDER_HOUR = 20;
 export const REMINDER_MINUTE = 0;
 
-export const REMINDER_TITLE = 'The wheel waited all day for this';
-export const REMINDER_BODY = 'Your spin is open. Give it a tap and see what it picks.';
+export const REMINDER_TITLE = "Spin o'clock";
+export const REMINDER_BODY = 'Your wheel is ready when you are.';
 
 /** Tapping the reminder opens the Spin tab. */
 export const REMINDER_ROUTE = '/(app)/today';

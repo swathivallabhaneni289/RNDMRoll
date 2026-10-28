@@ -54,7 +54,7 @@ check('note just before 10 AM', postNoteDate(noon - 2 * 3600_000 - 1, noon)?.toI
 check('no note from 10 AM', postNoteDate(noon - 2 * 3600_000, noon), null);
 check('no note after noon', postNoteDate(noon + 1, noon), null);
 check('no note without a spin', postNoteDate(Date.parse('2026-10-28T15:00:00.000Z'), null), null);
-check('note title', POST_NOTE_TITLE, '2 hours to noon. The wheel is pacing.');
-check('note line', postNoteBody('Movie'), "Post your movie pick by noon to be on time. Your friends' posts open once yours is in.");
+check('note title', POST_NOTE_TITLE, 'Beat the noon bell');
+check('note line', postNoteBody('Movie'), 'Post your movie pick to stay on time.');
 
 console.log(`${checks - failures}/${checks} push checks passed`);
