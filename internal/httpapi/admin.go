@@ -136,7 +136,18 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			case admin.KindComment:
 				return "Comment"
 			}
-			return "The account"
+			return "Account"
+		},
+		"closed": func(resolution string) string {
+			switch resolution {
+			case admin.Dismissed:
+				return "Dismissed"
+			case admin.Removed:
+				return "Removed"
+			case admin.Disabled:
+				return "Closed when the account was disabled"
+			}
+			return "Closed"
 		},
 		"photo": func(key string) string {
 			if entries == nil || entries.photos == nil {
