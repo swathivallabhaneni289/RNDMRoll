@@ -1047,8 +1047,9 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		for _, hm := range [][2]int{{0, 30}, {9, 0}} {
 			e.setClock(t, ny, "2026-10-10", hm[0], hm[1], 0)
 			got := e.today(t, u)
-			if got.State != spin.StateWaiting || got.Spin != nil || got.Entry != nil {
-				t.Fatalf("%02d:%02d next day: state %s spin %+v, want waiting and none", hm[0], hm[1], got.State, got.Spin)
+			// Skipped before midnight stays on the page until the next opening.
+			if got.State != spin.StateSkipped || got.Spin == nil || got.Spin.ID != latest.ID {
+				t.Fatalf("%02d:%02d next day: state %s spin %+v, want skipped with the bonus spin", hm[0], hm[1], got.State, got.Spin)
 			}
 			if flags := skippedFlags(got.Week); len(flags) != 1 || flags[0] != date(t, "2026-10-09") {
 				t.Fatalf("%02d:%02d next day: skipped flags %v, want 2026-10-09 once", hm[0], hm[1], flags)
@@ -1467,13 +1468,18 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 			t.Fatalf("20:00: state %s spin %+v entry %+v, want open and none", got.State, got.Spin, got.Entry)
 		}
 
-		// A post made before midnight is not shown after it.
+		// A post made before midnight is shown after it too, until 8 PM: a
+		// spin's day runs from 8 PM to the next 8 PM.
 		u2 := e.ready(t, ny)
 		e.openDay(t, u2, "2026-10-07")
 		e.post(t, u2, "2026-10-07", 0, e.input(u2, 1))
 		e.setClock(t, ny, "2026-10-08", 0, 30, 0)
-		if got := e.today(t, u2); got.State != spin.StateWaiting || got.Spin != nil || got.Entry != nil {
-			t.Fatalf("posted before midnight: state %s spin %+v entry %+v, want waiting", got.State, got.Spin, got.Entry)
+		if got := e.today(t, u2); got.State != spin.StatePosted || got.Spin == nil || got.Entry == nil {
+			t.Fatalf("posted before midnight: state %s spin %+v entry %+v, want posted", got.State, got.Spin, got.Entry)
+		}
+		e.setClock(t, ny, "2026-10-08", 20, 0, 0)
+		if got := e.today(t, u2); got.State != spin.StateOpen || got.Spin != nil {
+			t.Fatalf("posted before midnight, at 20:00: state %s spin %+v, want open", got.State, got.Spin)
 		}
 
 		// A skip after midnight is shown as skipped until 8 PM.

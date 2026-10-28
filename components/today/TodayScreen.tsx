@@ -4,6 +4,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { scheduleOnRN } from 'react-native-worklets';
 import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { Screen } from '@/components/ui/Screen';
 import { Wheel } from '@/components/wheel/Wheel';
@@ -17,7 +18,7 @@ import { WeeklyCard } from '@/components/today/WeeklyCard';
 import { BellButton } from '@/components/notifications/BellButton';
 import { ShutterMark } from '@/components/brand/ShutterMark';
 import type { Today, TodayState } from '@/lib/api/types';
-import { missedLine, nextSpinLine } from '@/lib/entry/rules';
+import { BOARD_OPEN_LINE, MISSED_SPIN_LINE, missedLine, nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
@@ -518,6 +519,13 @@ export function TodayScreen() {
     view !== null ? (
       <View style={{ marginTop: space.lg }}>
         <SettledBlock today={view} />
+        {/* Posting is what opens the Board, so the page says so and points the way there. */}
+        <View style={{ marginTop: space.lg, alignItems: 'center' }}>
+          <AppText role="body">{BOARD_OPEN_LINE}</AppText>
+          <View style={{ marginTop: space.sm, alignSelf: 'stretch' }}>
+            <PrimaryButton label="See the Board" variant="outline" onPress={() => router.navigate('/(app)/board')} />
+          </View>
+        </View>
         {/* Once the day is settled the page counts down to the next spin. */}
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
@@ -547,7 +555,12 @@ export function TodayScreen() {
   // until the next spin is made (the server's `missed`). While the wheel turns the held Today keeps
   // it, so it goes with the reveal and the wheel never jumps mid-turn.
   const missed = viewState === 'open' ? (view?.missed ?? null) : null;
-  const missedText = missed !== null ? missedLine(missed.weekday, missed.category) : null;
+  const missedText =
+    missed !== null
+      ? missedLine(missed.weekday, missed.category)
+      : viewState === 'waiting' && view?.missed_spin === true
+        ? MISSED_SPIN_LINE
+        : null;
 
   // What fades out while the other composition takes over (400ms).
   let overlay: ReactNode = null;

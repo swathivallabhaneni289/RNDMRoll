@@ -246,7 +246,8 @@ type BonusView struct {
 //
 // Missed is set only in open and waiting, when the date before had a spin
 // that is still neither posted nor skipped and its day has closed; it is
-// null in every other state.
+// null in every other state. MissedSpin is true in waiting, after midnight,
+// when the evening before had no spin at all ("The wheel missed you.").
 type Today struct {
 	Now             Instant      `json:"now"`
 	TimeZone        string       `json:"time_zone"`
@@ -259,6 +260,7 @@ type Today struct {
 	LateFrom        *Instant     `json:"late_from"`
 	PostLate        bool         `json:"post_late"`
 	Missed          *MissedView  `json:"missed"`
+	MissedSpin      bool         `json:"missed_spin"`
 	Entry           *EntryRef    `json:"entry"`
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
@@ -332,14 +334,13 @@ func stateOfResult(r SpinResult) TodayState {
 	return StateResult
 }
 
-// settledAfterClose reports whether a posted or skipped spin was settled at
-// or after its window closed, so that a post or skip made after midnight
-// keeps Today on posted or skipped until the next opening. A spin settled
-// earlier, or with no settled time (a pretend posted day made by the test
-// tools), does not.
-func settledAfterClose(s *Spin) bool {
-	return (s.Result == ResultPosted || s.Result == ResultSkipped) &&
-		s.SettledAt != nil && !s.SettledAt.Before(s.WindowClosesAt)
+// postedOrSkipped reports whether a spin was settled by a post or a skip, so
+// that Today stays on posted or skipped until the next opening, whenever the
+// post or the skip was made: a spin's day runs from 8:00 PM to the next 8:00
+// PM. A spin with no settled time (a pretend posted day made by the test
+// tools) does not.
+func postedOrSkipped(s *Spin) bool {
+	return (s.Result == ResultPosted || s.Result == ResultSkipped) && s.SettledAt != nil
 }
 
 // BuildToday turns the facts into the Today screen's data. It is pure: no
@@ -353,11 +354,12 @@ func settledAfterClose(s *Spin) bool {
 //     spin rule), and no daily spin was made in the last 12 hours: open;
 //  3. yesterday's latest spin is open and the late window has not ended
 //     (whatever zone made it): late;
-//  4. yesterday's latest spin was posted or skipped at or after its window
-//     closed and the late window has not ended: posted or skipped, showing
+//  4. yesterday's latest spin was posted or skipped, before or after
+//     midnight, and the late window has not ended: posted or skipped, showing
 //     that spin, until the next opening;
-//  5. waiting (this includes yesterday settled before midnight, and a
-//     pretend posted day, which has no settled time).
+//  5. waiting (this includes a pretend posted day, which has no settled
+//     time). missed_spin is true here after midnight when the evening before
+//     had no spin at all and the person has spun before.
 //
 // The entry summary is shown only in posted and skipped, and is the one of
 // the shown spin's date.
@@ -395,7 +397,7 @@ func BuildToday(in TodayInput) Today {
 		switch {
 		case y.Result == ResultOpen:
 			state, shown = StateLate, y
-		case settledAfterClose(y):
+		case postedOrSkipped(y):
 			state, shown, entry = stateOfResult(y.Result), y, in.YesterdayEntry
 		}
 	}
@@ -408,6 +410,11 @@ func BuildToday(in TodayInput) Today {
 		lateFrom = &v
 		postLate = !in.Now.Before(at)
 	}
+
+	// The evening before went by with no spin at all: after midnight and
+	// before 8:00 PM, nothing on the date before, and not a new person (who
+	// gets the first spin rule instead).
+	missedSpin := state == StateWaiting && in.YesterdaySpin == nil && !in.NeverSpun && in.Now.Before(win.OpensAt)
 
 	var missed *MissedView
 	if y := in.YesterdaySpin; (state == StateOpen || state == StateWaiting) && y != nil && y.Result == ResultOpen &&
@@ -482,6 +489,7 @@ func BuildToday(in TodayInput) Today {
 		LateFrom:        lateFrom,
 		PostLate:        postLate,
 		Missed:          missed,
+		MissedSpin:      missedSpin,
 		Entry:           entry,
 		Wheel:           wheel,
 		Week: WeekView{

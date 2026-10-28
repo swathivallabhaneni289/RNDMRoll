@@ -171,7 +171,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 3. **Page 2, "Make it yours."** An optional photo and bio, then Continue or Skip for now. Shown once.
 4. **Find your friends.** Invite friends (a link through the share sheet), Suggested for you and search. Done goes to the Spin page.
 5. **The first spin.** A new person can spin at once, at any hour; before 8 PM the page says "Your first spin is ready." They tap the centre of the wheel; it turns for about 4 seconds and lands; the word rises.
-6. **Log it.** Photos, a title, stars, an optional emoji and an optional note, then Save. The page shows "Posted."
+6. **Log it.** Photos, a title, stars, an optional emoji and an optional note, then Save. The page shows "Posted." with "You're in. The Board is open." and a "See the Board" button, and stays that way until the next spin at 8 PM.
 7. **The Board.** With no follows yet, it shows "See your friends' spins" and Find people.
 
 ### Journey 2: a normal evening
@@ -299,6 +299,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SPIN-13 | Weighted or resizable slices | P2 | Removed October 10, 2026; dragging slice edges is a Later idea |
 | SPIN-14 | A note on the phone at 10 AM while a spin is not posted or skipped: "Beat the noon bell. Post your movie pick to stay on time." | P1 | Built |
 | SPIN-15 | When a day closes with its spin not posted or skipped, the next open spin says so: "Monday's movie got away. New night, new spin." | P1 | Built |
+| SPIN-16 | After an evening with no spin at all, the countdown page says "The wheel missed you." | P1 | Built |
 
 **Acceptance criteria and rules**
 
@@ -318,7 +319,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Changes apply from the next spin. Removed categories stay in past spins.
   - Leaving with unsaved changes asks "Leave without saving?"
 - **SPIN-05 the question.** Skip it asks once: "You are at {n} of 4 this week. A skipped day doesn't count toward it, and it isn't a miss. You can't post for this day afterwards."
-- **SPIN-05 the effect.** A skip has no limit and no cost. The week row shows a dash, and the Board stays locked for that day.
+- **SPIN-05 the effect.** A skip has no limit and no cost. The week row shows a dash, and the Board stays locked for that day. "Skipped." stays on the page until the next spin at 8 PM.
 - **SPIN-06.**
   - The server's clock decides lateness, and late posts show "Late" on the Board.
   - At the next 8 PM the day closes: "This day has closed. It can't be posted or skipped any more."
@@ -861,7 +862,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
-| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post; the week row and the date follow the spin's day too | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
+| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post; the week row and the date follow the spin's day too; "Posted." and "Skipped." stay until the next 8 PM, the posted page points to the Board, and an evening with no spin is mentioned | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
 
 ## 18. Out of scope and future ideas
 

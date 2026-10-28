@@ -21,6 +21,8 @@ import {
   SETTLED_LABEL,
   LATE_LINE,
   missedLine,
+  BOARD_OPEN_LINE,
+  MISSED_SPIN_LINE,
   skipBody,
   stillNeededLine,
 } from '../lib/entry/rules.ts';
@@ -265,6 +267,8 @@ const NBSP = '\u00A0';
   check('no weekday sent (empty)', nextSpinLine('2026-10-08', '2026-10-08', '') === without);
 
   check('settled label is today all day', SETTLED_LABEL === "Today's spin was", SETTLED_LABEL);
+  check('board open line', BOARD_OPEN_LINE === "You're in. The Board is open.", BOARD_OPEN_LINE);
+  check('missed spin line', MISSED_SPIN_LINE === 'The wheel missed you.', MISSED_SPIN_LINE);
   check('missed line', missedLine('Monday', 'Movie') === "Monday's movie got away. New night, new spin.", missedLine('Monday', 'Movie'));
   check('late line names noon and 8 PM', LATE_LINE === `Fashionably late is fine until 8:00${NBSP}PM.`, LATE_LINE);
 }

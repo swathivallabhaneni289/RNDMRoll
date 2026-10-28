@@ -98,9 +98,10 @@ func TestFirstSpinIntegration_NewPersonSpinsAtTenAMOverPostgres(t *testing.T) {
 		t.Fatalf("spin rows = %d, want 1", n)
 	}
 
-	// Thursday: waiting at 10 AM, open at 8 PM.
+	// Thursday: Wednesday's post stays on the page at 10 AM (a spin's day runs
+	// to the next 8 PM), and the spin opens at 8 PM.
 	at("2026-10-08", 10, 0, 0)
-	if got := do(fresh.AccessToken, http.MethodGet, "/v1/today", nil, http.StatusOK); got["state"] != "waiting" || got["first_spin"] != false {
+	if got := do(fresh.AccessToken, http.MethodGet, "/v1/today", nil, http.StatusOK); got["state"] != "posted" || got["first_spin"] != false {
 		t.Fatalf("Thursday 10 AM: %v", got)
 	}
 	wantCode(t, integrationDo(t, engine, http.MethodPost, "/v1/spin", fresh.AccessToken, nil), http.StatusConflict, "spin_not_open")

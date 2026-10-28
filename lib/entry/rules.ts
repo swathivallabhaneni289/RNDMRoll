@@ -79,6 +79,12 @@ export const SETTLED_LABEL = "Today's spin was";
  */
 export const LATE_LINE = 'Fashionably late is fine until 8:00\u00A0PM.';
 
+/** Under "Posted.", over the way to the Board: posting is what opens it. */
+export const BOARD_OPEN_LINE = "You're in. The Board is open.";
+
+/** Under "Your next spin is coming." after an evening with no spin at all (Today's `missed_spin`). */
+export const MISSED_SPIN_LINE = 'The wheel missed you.';
+
 /**
  * The line under 'Your spin is open.' when the date before closed with its spin neither posted nor
  * skipped (Today's `missed`): "Monday's movie got away. New night, new spin." The weekday is the

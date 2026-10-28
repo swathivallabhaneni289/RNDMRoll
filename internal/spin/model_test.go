@@ -536,7 +536,7 @@ func TestBuildToday_WireShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "late_from", "post_late", "missed", "wheel", "week", "bonus", "first_spin"} {
+	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "late_from", "post_late", "missed", "missed_spin", "wheel", "week", "bonus", "first_spin"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q in %s", key, raw)
 		}
@@ -597,6 +597,45 @@ func TestBuildToday_WireShape(t *testing.T) {
 	}
 	if !strings.Contains(string(raw2), `"missed":null`) {
 		t.Errorf("no-spin body = %s, want missed null", raw2)
+	}
+}
+
+func TestBuildToday_MissedSpinWhenTheEveningBeforeHadNoSpin(t *testing.T) {
+	loc := mustLoc(t, ny)
+	spun := at(t, loc, "2026-10-05", 20, 30, 0) // two evenings before
+	nextDay := func(h, m int) time.Time { return at(t, loc, "2026-10-08", h, m, 0) }
+	yesterday := spinAt(t, ny, at(t, loc, "2026-10-07", 20, 30, 0), KindDaily, 0)
+
+	cases := []struct {
+		name      string
+		now       time.Time
+		neverSpun bool
+		yesterday *Spin
+		wantState TodayState
+		want      bool
+	}{
+		{"after midnight with no spin the evening before", nextDay(9, 0), false, nil, StateWaiting, true},
+		{"one minute before 8 PM", nextDay(19, 59), false, nil, StateWaiting, true},
+		{"from 8 PM the new spin is open", nextDay(20, 0), false, nil, StateOpen, false},
+		{"a new person gets the first spin instead", nextDay(9, 0), true, nil, StateOpen, false},
+		{"the evening before was spun", nextDay(9, 0), false, yesterday, StateLate, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput(t, ny, c.now)
+			in.NeverSpun, in.YesterdaySpin = c.neverSpun, c.yesterday
+			last := spun
+			if c.yesterday != nil {
+				last = c.yesterday.SpunAt
+			}
+			if !c.neverSpun {
+				in.LastDailySpunAt = &last
+			}
+			got := BuildToday(in)
+			if got.State != c.wantState || got.MissedSpin != c.want {
+				t.Fatalf("state %s missed_spin %v, want %s and %v", got.State, got.MissedSpin, c.wantState, c.want)
+			}
+		})
 	}
 }
 
@@ -686,7 +725,9 @@ func TestBuildToday_LateFromIsNoonOfTheNextDateWhileTheDayIsUnsettled(t *testing
 		{"posted after noon, shown until 8 PM", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, instantPtr(nextDay(12, 30, 0))), StatePosted, nil, false},
 		{"skipped after midnight, shown until 8 PM", nextDay(1, 0, 0), nil, settledAs(daily, ResultSkipped, instantPtr(nextDay(0, 30, 0))), StateSkipped, nil, false},
 		{"open", nextDay(20, 30, 0), nil, nil, StateOpen, nil, false},
-		{"waiting after a post before midnight", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, instantPtr(spinDay(22, 0, 0))), StateWaiting, nil, false},
+		{"posted before midnight, shown until 8 PM", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, instantPtr(spinDay(22, 0, 0))), StatePosted, nil, false},
+		{"skipped before midnight, shown until 8 PM", nextDay(13, 0, 0), nil, settledAs(daily, ResultSkipped, instantPtr(spinDay(22, 0, 0))), StateSkipped, nil, false},
+		{"a pretend posted day (no settled time) waits", nextDay(13, 0, 0), nil, settledAs(daily, ResultPosted, nil), StateWaiting, nil, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -853,14 +894,15 @@ func TestBuildToday_BonusThenPostAndBonusThenSkip(t *testing.T) {
 			}
 
 			// The next morning, 00:30. Seq 0 is open, but the latest spin is
-			// not, and it was settled before midnight: waiting, never late.
+			// not: it was settled before midnight, so Today stays on it until
+			// the next opening (a spin's day runs to 8 PM), never late.
 			in = baseInput(t, ny, at(t, loc, "2026-10-08", 0, 30, 0))
 			in.YesterdaySpin = latest
 			in.YesterdayEntry = entrySummary("Dune")
 			in.LastDailySpunAt = &spun
 			got = BuildToday(in)
-			if got.State != StateWaiting || got.Spin != nil || got.Entry != nil {
-				t.Fatalf("next morning: state %s spin %v entry %v, want waiting with none", got.State, got.Spin, got.Entry)
+			if got.State != stateOfResult(c.result) || got.Spin == nil || got.Spin.ID != latest.ID {
+				t.Fatalf("next morning: state %s spin %v, want %s with the bonus spin", got.State, got.Spin, c.result)
 			}
 		})
 	}
@@ -899,9 +941,9 @@ func TestBuildToday_LateWindowRows(t *testing.T) {
 		{"posted at 00:30 is posted with yesterday's spin and entry", morning(0, 45, 0), ResultPosted, instantPtr(morning(0, 30, 0)), entry, false, StatePosted, true, entry},
 		{"skipped at 00:30 is skipped", morning(0, 45, 0), ResultSkipped, instantPtr(morning(0, 30, 0)), nil, false, StateSkipped, true, nil},
 		{"posted exactly at the close is posted", morning(0, 45, 0), ResultPosted, instantPtr(closes), entry, false, StatePosted, true, entry},
-		{"posted one nanosecond before the close is waiting", morning(0, 45, 0), ResultPosted, instantPtr(closes.Add(-time.Nanosecond)), entry, false, StateWaiting, false, nil},
-		{"posted at 22:00 is waiting", morning(0, 30, 0), ResultPosted, instantPtr(evening), entry, false, StateWaiting, false, nil},
-		{"skipped at 22:00 is waiting", morning(0, 30, 0), ResultSkipped, instantPtr(evening), nil, false, StateWaiting, false, nil},
+		{"posted one nanosecond before the close is posted too", morning(0, 45, 0), ResultPosted, instantPtr(closes.Add(-time.Nanosecond)), entry, false, StatePosted, true, entry},
+		{"posted at 22:00 is posted until 8 PM", morning(0, 30, 0), ResultPosted, instantPtr(evening), entry, false, StatePosted, true, entry},
+		{"skipped at 22:00 is skipped until 8 PM", morning(0, 30, 0), ResultSkipped, instantPtr(evening), nil, false, StateSkipped, true, nil},
 		{"a pretend posted day has no settled time and is waiting", morning(0, 30, 0), ResultPosted, nil, nil, false, StateWaiting, false, nil},
 		{"posted at 00:30 is still posted at 19:59:59", morning(19, 59, 59), ResultPosted, instantPtr(morning(0, 30, 0)), entry, false, StatePosted, true, entry},
 		{"at exactly 20:00 the same day gives open", morning(20, 0, 0), ResultPosted, instantPtr(morning(0, 30, 0)), entry, false, StateOpen, false, nil},

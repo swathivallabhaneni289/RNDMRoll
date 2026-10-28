@@ -253,6 +253,11 @@ export interface Today {
    */
   missed: { category: string; weekday: string } | null;
   /**
+   * Waiting, after midnight: the evening before had no spin at all, so the page says "The wheel
+   * missed you." An older server leaves the key out, so read it with `=== true`.
+   */
+  missed_spin: boolean;
+  /**
    * Phase 3: the entry of the shown spin's date, or null (no entry, or it was deleted). A Phase 2
    * server leaves the key out, so read it with `!today.entry`.
    */
