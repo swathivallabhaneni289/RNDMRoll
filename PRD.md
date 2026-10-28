@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a local server. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | October 25, 2026 |
+| **Last updated** | October 28, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -190,7 +190,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 ### Journey 4: late, and the weekly goal
 
-1. They spin at 11 PM but post at 12:30 AM. The page says "Last night's spin." and "Posting it now would count as late."
+1. They spin at 11 PM but don't post until 2 PM the next day. The page says "Last night's spin." and "Posting it now would count as late." Posting before noon would still have been on time.
 2. The post counts for the day and opens the Board. Their card shows "Late".
 3. It's their fourth posted day this week, so they earn a bonus spin. The week section says "You have a bonus spin.", and the notifications list says "You hit your goal this week. One bonus spin added."
 4. A few days later, "Use bonus spin" turns an unwanted word into a different one.
@@ -289,7 +289,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SPIN-03 | The server picks the category; the app animates the wheel to it | P0 | Built |
 | SPIN-04 | People edit their wheel: rename, add and remove categories | P0 | Built |
 | SPIN-05 | A person can skip a day for free | P0 | Built |
-| SPIN-06 | A post after midnight and before the next 8 PM still counts, marked late | P0 | Built |
+| SPIN-06 | A post is on time until noon the next day; from noon to the next 8 PM it still counts, marked late | P0 | Built |
 | SPIN-07 | Four posted days in a week earn one bonus spin | P0 | Built |
 | SPIN-08 | A bonus spin swaps today's word for a different one | P1 | Built |
 | SPIN-09 | A countdown shows when the next spin opens | P1 | Built |
@@ -542,7 +542,7 @@ These rules decide what counts. The server owns all of them.
 |---|---|
 | Today | The calendar date of the server's clock in the person's stored time zone |
 | The spin window | 8:00 PM to local midnight. A person who has never spun can spin at once, at any hour, and gets no second spin at 8 PM that day. Two daily spins are at least 12 hours apart. When a clock change skips or repeats the hour, the first real instant counts. |
-| Late window | Midnight to the next 8:00 PM. A post then is late and still counts. |
+| Late window | Noon the next day to the next 8:00 PM. A post then is late and still counts. A post between midnight and noon is on time. |
 | Day closed | At the next 8:00 PM a day can no longer be posted or skipped |
 | Posted day | A day with a post. It stays posted if the post is later deleted or archived. |
 | Skip | Final, free and unlimited. It is not a posted day and not a miss. |
@@ -856,6 +856,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 21 | The Shutter logo as the app icon | Chosen from options I asked for | None recorded |
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
+| Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
 
 ## 18. Out of scope and future ideas
 
@@ -884,7 +885,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Post | One real thing for the day's category: photos, title, rating, optional emoji and note. Called an "entry" in the code. |
 | Posted day | A date with a post; it stays posted if the post is deleted |
 | Skip | Passing on a day for free; final for that day |
-| Late | Posted after midnight and before the next 8 PM |
+| Late | Posted from noon the day after the spin until the next 8 PM |
 | Board | The friends' page, locked until you post for the day in play |
 | Day in play | The date the Board's lock is about: the date of the most recent 8 PM that has passed, or today on a new person's first day |
 | Weekly goal | 4 posted days, Monday to Sunday |

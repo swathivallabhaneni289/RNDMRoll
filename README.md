@@ -38,7 +38,7 @@ The research also named the risks I designed around: a locked feed is empty with
 | How often | Once a day, from 8 PM in your own time zone | Scarcity keeps it a ritual (Wordle's one puzzle a day is the model). Your own time zone means nobody spins at 3 AM to keep up with friends abroad. | Less of BeReal's "everyone at once" surprise. |
 | When the category doesn't fit | A free skip, and a weekly goal of 4 posted days instead of a daily streak | "Book" on a day you read nothing shouldn't break a streak. Four days out of seven earns a bonus spin. | Weaker pressure than a strict daily streak. |
 | Photo source | Camera or photo library | You can log the book you finished two nights ago without staging a photo. | No guarantee the photo is your own. Accepted for now. |
-| Late posts | A post after midnight still counts until the next spin opens, marked late | Life happens. A late post still opens the Board. | The day boundary is softer. |
+| Late posts | A post is on time until noon the next day, then still counts until the next spin opens, marked late | Life happens, and four hours to post on time were too few. A late post still opens the Board. | The day boundary is softer, and so is the nudge to post the same night. |
 | Who sees posts | Every account is private, and following is by request | Small trusted circles, safer for younger users (13 and over can join), and less to moderate. | Slower to find people. Find your friends, invite links and suggestions help. |
 | Signing in | Email and password, then log in with email or username | Enough for a friend group, and it dropped two native SDKs and their setup. | No one-tap sign-in. |
 

@@ -111,7 +111,7 @@ Plans:
 
 **Closed 2026-10-13 with device checks open**: not walked with hands: Reduce Motion, the bonus-spin sheet, the Profile tab "Saved." line, offline, the first-run page after a sign-up, and Larger Text. More steps are not on record (the late screen, wheel counts 2 to 12 on screen, logging in as a real account, string approval). See `02-03-SUMMARY.md` and the Status column of `02-VALIDATION.md`.
 
-**Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post after midnight and before the next 8:00 PM is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
+**Resolved**: Roll timing is each user's own local 8:00 PM, not one globally-synced moment — day boundaries and streaks follow each user's local calendar day. The window stays open until local midnight. A post is on time until noon the next day; from noon until the next 8:00 PM it is late (the feed still unlocks, with a late badge). After that the day is missed and does not count toward the weekly goal.
 
 ### Phase 2.1: Settings (INSERTED)
 
