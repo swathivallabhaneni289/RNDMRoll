@@ -494,7 +494,7 @@ func TestBuildToday_WireShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "late_from", "post_late", "wheel", "week", "bonus", "first_spin"} {
+	for _, key := range []string{"now", "time_zone", "local_date", "state", "window", "next_open_at", "next_open_weekday", "spin", "late_from", "post_late", "missed", "wheel", "week", "bonus", "first_spin"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q in %s", key, raw)
 		}
@@ -552,6 +552,59 @@ func TestBuildToday_WireShape(t *testing.T) {
 	}
 	if !strings.Contains(string(raw2), `"late_from":null`) || !strings.Contains(string(raw2), `"post_late":false`) {
 		t.Errorf("no-spin body = %s, want late_from null and post_late false", raw2)
+	}
+	if !strings.Contains(string(raw2), `"missed":null`) {
+		t.Errorf("no-spin body = %s, want missed null", raw2)
+	}
+}
+
+func TestBuildToday_MissedNamesYesterdaysSpinOnceItsDayHasClosed(t *testing.T) {
+	loc := mustLoc(t, ny)
+	spun := at(t, loc, "2026-10-07", 20, 30, 0) // a Wednesday
+	daily := spinAt(t, ny, spun, KindDaily, 0)
+	nextDay := func(h, m, s int) time.Time { return at(t, loc, "2026-10-08", h, m, s) }
+	eightPM := nextDay(20, 0, 0)
+
+	cases := []struct {
+		name       string
+		now        time.Time
+		spin       *Spin // the local date's latest spin
+		yesterday  *Spin
+		wantState  TodayState
+		wantMissed bool
+	}{
+		{"open once the day has closed", eightPM, nil, daily, StateOpen, true},
+		{"open later that evening", nextDay(22, 0, 0), nil, daily, StateOpen, true},
+		{"still late one nanosecond before 8 PM", eightPM.Add(-time.Nanosecond), nil, daily, StateLate, false},
+		{"posted the day before", eightPM, nil, settledAs(daily, ResultPosted, instantPtr(spun.Add(time.Hour))), StateOpen, false},
+		{"skipped the day before", eightPM, nil, settledAs(daily, ResultSkipped, instantPtr(spun.Add(time.Hour))), StateOpen, false},
+		{"no spin the day before", eightPM, nil, nil, StateOpen, false},
+		{"after today's spin", nextDay(20, 5, 0), spinAt(t, ny, nextDay(20, 1, 0), KindDaily, 0), daily, StateResult, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput(t, ny, c.now)
+			in.Spin, in.YesterdaySpin = c.spin, c.yesterday
+			last := spun
+			if c.spin != nil {
+				last = c.spin.SpunAt
+			}
+			in.LastDailySpunAt = &last
+
+			got := BuildToday(in)
+			if got.State != c.wantState {
+				t.Fatalf("state = %s, want %s", got.State, c.wantState)
+			}
+			if !c.wantMissed {
+				if got.Missed != nil {
+					t.Errorf("missed = %+v, want null", *got.Missed)
+				}
+				return
+			}
+			if got.Missed == nil || got.Missed.Category != "Song" || got.Missed.Weekday != "Wednesday" {
+				t.Errorf("missed = %+v, want Song on Wednesday", got.Missed)
+			}
+		})
 	}
 }
 

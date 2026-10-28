@@ -79,6 +79,14 @@ export const SETTLED_LABEL = "Today's spin was";
  */
 export const LATE_LINE = 'You missed noon. You can still post until 8:00\u00A0PM, and it will show as late.';
 
+/**
+ * The line under 'Your spin is open.' when the date before closed with its spin neither posted nor
+ * skipped (Today's `missed`): "Monday's movie wasn't posted." The weekday is the server's.
+ */
+export function missedLine(weekday: string, category: string): string {
+  return `${weekday}'s ${category.toLowerCase()} wasn't posted.`;
+}
+
 // ---- Plan 03-03: the entry page, edit and skip --------------------------------------------------
 
 const ENTRY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -247,6 +247,12 @@ export interface Today {
    */
   post_late: boolean;
   /**
+   * The spin of the date before, when its day closed (the next 8 PM) with no post and no skip: its
+   * category and the server's weekday, for "Monday's movie wasn't posted." Null in every state but
+   * Open and Waiting. An older server leaves the key out, so read it with `?? null`.
+   */
+  missed: { category: string; weekday: string } | null;
+  /**
    * Phase 3: the entry of the shown spin's date, or null (no entry, or it was deleted). A Phase 2
    * server leaves the key out, so read it with `!today.entry`.
    */

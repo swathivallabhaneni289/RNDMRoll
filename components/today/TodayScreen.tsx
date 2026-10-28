@@ -17,7 +17,7 @@ import { WeeklyCard } from '@/components/today/WeeklyCard';
 import { BellButton } from '@/components/notifications/BellButton';
 import { ShutterMark } from '@/components/brand/ShutterMark';
 import type { Today, TodayState } from '@/lib/api/types';
-import { nextSpinLine } from '@/lib/entry/rules';
+import { missedLine, nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
@@ -543,6 +543,11 @@ export function TodayScreen() {
     comp === 'result' && viewState === 'skipped' && view !== null
       ? nextSpinLine(view.spin?.local_date ?? view.local_date, view.local_date, view.next_open_weekday)
       : null;
+  // The day before closed with its spin neither posted nor skipped: said under 'Your spin is open.'
+  // until the next spin is made (the server's `missed`). While the wheel turns the held Today keeps
+  // it, so it goes with the reveal and the wheel never jumps mid-turn.
+  const missed = viewState === 'open' ? (view?.missed ?? null) : null;
+  const missedText = missed !== null ? missedLine(missed.weekday, missed.category) : null;
 
   // What fades out while the other composition takes over (400ms).
   let overlay: ReactNode = null;
@@ -583,6 +588,12 @@ export function TodayScreen() {
         {skippedLine !== null ? (
           <View style={{ marginTop: space.sm }}>
             <AppText role="body">{skippedLine}</AppText>
+          </View>
+        ) : null}
+
+        {missedText !== null ? (
+          <View style={{ marginTop: space.sm }}>
+            <AppText role="body">{missedText}</AppText>
           </View>
         ) : null}
 

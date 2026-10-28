@@ -149,6 +149,14 @@ type WindowView struct {
 	ClosesAt Instant `json:"closes_at"`
 }
 
+// MissedView names the spin of the date before when its day closed (the next
+// 8:00 PM) with no post and no skip, so the Spin page can say "Monday's movie
+// wasn't posted." Weekday is written by the server.
+type MissedView struct {
+	Category string `json:"category"`
+	Weekday  string `json:"weekday"`
+}
+
 // CategoryRef names the category a spin landed on.
 type CategoryRef struct {
 	ID   string `json:"id"`
@@ -233,6 +241,10 @@ type BonusView struct {
 // (result and late) and is null in every other state. PostLate is true when
 // LateFrom is set and now is at or after it: a post made now would count
 // late.
+//
+// Missed is set only in open and waiting, when the date before had a spin
+// that is still neither posted nor skipped and its day has closed; it is
+// null in every other state.
 type Today struct {
 	Now             Instant      `json:"now"`
 	TimeZone        string       `json:"time_zone"`
@@ -244,6 +256,7 @@ type Today struct {
 	Spin            *SpinView    `json:"spin"`
 	LateFrom        *Instant     `json:"late_from"`
 	PostLate        bool         `json:"post_late"`
+	Missed          *MissedView  `json:"missed"`
 	Entry           *EntryRef    `json:"entry"`
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
@@ -394,6 +407,12 @@ func BuildToday(in TodayInput) Today {
 		postLate = !in.Now.Before(at)
 	}
 
+	var missed *MissedView
+	if y := in.YesterdaySpin; (state == StateOpen || state == StateWaiting) && y != nil && y.Result == ResultOpen &&
+		!in.Now.Before(WindowFor(prev, loc).LateUntil) {
+		missed = &MissedView{Category: y.CategoryName, Weekday: y.LocalDate.Weekday().String()}
+	}
+
 	next := NextOpen(in.Now, loc)
 	if in.LastDailySpunAt != nil {
 		if earliest := in.LastDailySpunAt.Add(MinSpinGap); next.Before(earliest) {
@@ -453,6 +472,7 @@ func BuildToday(in TodayInput) Today {
 		Spin:            spinView,
 		LateFrom:        lateFrom,
 		PostLate:        postLate,
+		Missed:          missed,
 		Entry:           entry,
 		Wheel:           wheel,
 		Week: WeekView{

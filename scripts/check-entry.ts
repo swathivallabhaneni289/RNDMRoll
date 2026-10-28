@@ -20,6 +20,7 @@ import {
   nextSpinLine,
   SETTLED_LABEL,
   LATE_LINE,
+  missedLine,
   skipBody,
   stillNeededLine,
 } from '../lib/entry/rules.ts';
@@ -264,6 +265,7 @@ const NBSP = '\u00A0';
   check('no weekday sent (empty)', nextSpinLine('2026-10-08', '2026-10-08', '') === without);
 
   check('settled label is today all day', SETTLED_LABEL === "Today's spin was", SETTLED_LABEL);
+  check('missed line', missedLine('Monday', 'Movie') === "Monday's movie wasn't posted.", missedLine('Monday', 'Movie'));
   check('late line names noon and 8 PM', LATE_LINE === `You missed noon. You can still post until 8:00${NBSP}PM, and it will show as late.`, LATE_LINE);
 }
 

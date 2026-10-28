@@ -298,6 +298,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SPIN-12 | People choose the reminder's time | P2 | Later |
 | SPIN-13 | Weighted or resizable slices | P2 | Removed October 10, 2026; dragging slice edges is a Later idea |
 | SPIN-14 | A note on the phone at 10 AM while a spin is not posted or skipped: "Your movie is waiting. Post it by noon to be on time." | P1 | Built |
+| SPIN-15 | When a day closes with its spin not posted or skipped, the next open spin says so: "Monday's movie wasn't posted." | P1 | Built |
 
 **Acceptance criteria and rules**
 
@@ -859,7 +860,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
-| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
+| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
 
 ## 18. Out of scope and future ideas
 
