@@ -1,21 +1,25 @@
 /**
  * The morning note (developer, 2026-10-28): when a spin was made and is not yet posted or skipped,
  * the phone says so two hours before a post would count as late. Today's `late_from` is noon the
- * day after the spin, so the note comes at 10 AM: "2 hours left for your movie", then "Post it by
- * noon to stay on time, and see what your friends posted." Pure: no imports, so a node script can
- * read it (scripts/check-push.ts).
+ * day after the spin, so the note comes at 10 AM: "2 hours to noon. The wheel is pacing.", then
+ * "Post your movie pick by noon to be on time. Your friends' posts open once yours is in." Pure: no
+ * imports, so a node script can read it (scripts/check-push.ts).
  */
 
 /** How long before `late_from` the note comes: 10 AM for a noon `late_from`. */
 export const POST_NOTE_LEAD_MS = 2 * 60 * 60 * 1000;
 
-/** The note's title. The category is in lower case, as on the Board ("Log your meal"). */
-export function postNoteTitle(categoryName: string): string {
-  return `2 hours left for your ${categoryName.toLowerCase()}`;
-}
+/** The note's title: the wheel, waiting on you. */
+export const POST_NOTE_TITLE = '2 hours to noon. The wheel is pacing.';
 
-/** The note's line under the title: the deadline, and what posting opens. */
-export const POST_NOTE_BODY = 'Post it by noon to stay on time, and see what your friends posted.';
+/**
+ * The note's line under the title: the deadline, and what posting opens. The category is in lower
+ * case, as on the Board ("Log your meal"), and "pick" keeps "your place" or "your game" from
+ * reading as a home or a match.
+ */
+export function postNoteBody(categoryName: string): string {
+  return `Post your ${categoryName.toLowerCase()} pick by noon to be on time. Your friends' posts open once yours is in.`;
+}
 
 /**
  * When the note comes: two hours before `late_from`, as an absolute moment, so it follows the

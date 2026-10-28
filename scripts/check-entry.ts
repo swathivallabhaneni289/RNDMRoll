@@ -265,8 +265,8 @@ const NBSP = '\u00A0';
   check('no weekday sent (empty)', nextSpinLine('2026-10-08', '2026-10-08', '') === without);
 
   check('settled label is today all day', SETTLED_LABEL === "Today's spin was", SETTLED_LABEL);
-  check('missed line', missedLine('Monday', 'Movie') === "Monday's movie got away. Make tonight's count.", missedLine('Monday', 'Movie'));
-  check('late line names noon and 8 PM', LATE_LINE === `Missed noon? You still have until 8:00${NBSP}PM. It will just show as late.`, LATE_LINE);
+  check('missed line', missedLine('Monday', 'Movie') === "Monday's movie got away. The wheel shrugs. Fresh spin, fresh pick.", missedLine('Monday', 'Movie'));
+  check('late line names noon and 8 PM', LATE_LINE === `Noon's gone, but the wheel's a softie. Post by 8:00${NBSP}PM, Late tag and all.`, LATE_LINE);
 }
 
 // ---- lib/entry files load alone --------------------------------------------------------------------

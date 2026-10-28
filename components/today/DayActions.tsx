@@ -28,8 +28,8 @@ const labelLine = {
 /**
  * What sits under the stamp row of Result and Late (03-UI-SPEC section 3.2, the developer's picture
  * `today-after-spin-02`): once a post would count as late (`postLate`, from noon the day after the
- * spin) the late line ('Missed noon? You still have until 8:00 PM. It will just show as late.'),
- * then the 'Log it' button, which pushes the entry screen, and under it the outlined button
+ * spin) the late line ("Noon's gone, but the wheel's a softie. Post by 8:00 PM, Late tag and
+ * all."), then the 'Log it' button, which pushes the entry screen, and under it the outlined button
  * 'Skip it'.
  *
  * Skip asks once with the phone's own alert (Cancel, and 'Skip it'), sends the date and
