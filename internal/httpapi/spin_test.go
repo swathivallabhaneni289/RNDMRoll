@@ -278,7 +278,8 @@ func TestSpinFullDay(t *testing.T) {
 		t.Fatalf("window: %v", win)
 	}
 	week := today["week"].(map[string]any)
-	if week["start"] != "2026-10-05" || week["goal"] != float64(4) || week["posted"] != float64(0) || week["today_index"] != float64(2) {
+	// Before 8 PM the week row is still on the spin's day before: Tuesday, index 1.
+	if week["start"] != "2026-10-05" || week["goal"] != float64(4) || week["posted"] != float64(0) || week["today_index"] != float64(1) {
 		t.Fatalf("week: %v", week)
 	}
 	days := week["days"].([]any)

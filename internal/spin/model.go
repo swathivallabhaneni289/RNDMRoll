@@ -207,9 +207,11 @@ type EntryRef struct {
 	PhotoCount  int     `json:"photo_count"`
 }
 
-// WeekView is the week of the current local date, Monday first. TodayIndex
-// is the position of the current local date in Days, so the phone does no
-// date arithmetic.
+// WeekView is the week of the spin's day, Monday first. A spin's day runs
+// from 8:00 PM to the next 8:00 PM, so before 8:00 PM it is still the evening
+// before's (DayInPlay): a Sunday spin posted on Monday morning shows in the
+// week it counts for. TodayIndex is the position of that day in Days, so the
+// phone does no date arithmetic.
 type WeekView struct {
 	Start      Date          `json:"start"`
 	Goal       int           `json:"goal"`
@@ -443,7 +445,14 @@ func BuildToday(in TodayInput) Today {
 	for _, d := range in.SkippedDates {
 		skipped[d] = true
 	}
-	weekStart := WeekStart(today)
+	// The week follows the spin's day, as the Board does: before 8:00 PM it is
+	// the evening before's, unless today's own date already has a spin (a
+	// first spin) or the person has never spun.
+	weekDay, beforeEight := DayInPlay(in.Now, loc)
+	if beforeEight && (in.Spin != nil || in.NeverSpun) {
+		weekDay = today
+	}
+	weekStart := WeekStart(weekDay)
 	days := WeekDays(weekStart)
 	dayViews := make([]WeekDayView, len(days))
 	count := 0
@@ -480,7 +489,7 @@ func BuildToday(in TodayInput) Today {
 			Goal:       in.Goal,
 			Posted:     count,
 			GoalMet:    count >= in.Goal,
-			TodayIndex: today.DaysSince(weekStart),
+			TodayIndex: weekDay.DaysSince(weekStart),
 			Days:       dayViews,
 		},
 		Bonus: BonusView{

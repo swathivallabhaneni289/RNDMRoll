@@ -875,8 +875,10 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		}
 		// Sunday's week reached its goal: the fourth day of that week.
 		wantHeld(t, e.Env, u, 1)
-		if out.Today.Week.Start != date(t, "2026-10-12") || out.Today.Week.Posted != 0 {
-			t.Fatalf("today week = %+v, want the new week with nothing counted", out.Today.Week)
+		// Until Monday's 8 PM the week row is Sunday's week, so the post shows
+		// where it counts: the fourth posted day, on Sunday.
+		if w := out.Today.Week; w.Start != date(t, "2026-10-05") || w.Posted != 4 || !w.GoalMet || w.TodayIndex != 6 || !w.Days[6].Posted {
+			t.Fatalf("today week = %+v, want Sunday's week with the post counted", w)
 		}
 		if out.Today.State != spin.StatePosted || out.Today.Spin == nil || out.Today.Spin.LocalDate != date(t, "2026-10-11") {
 			t.Fatalf("today = state %s spin %+v, want posted with Sunday's spin", out.Today.State, out.Today.Spin)
@@ -890,8 +892,9 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		if sk.Today.State != spin.StateSkipped || sk.Today.Spin == nil || sk.Today.Spin.LocalDate != date(t, "2026-10-11") {
 			t.Fatalf("skip today = state %s spin %+v", sk.Today.State, sk.Today.Spin)
 		}
-		if flags := skippedFlags(sk.Today.Week); len(flags) != 0 {
-			t.Fatalf("the new week flags %v as skipped, want none (Sunday is last week)", flags)
+		// The week row is still Sunday's week, so the skip shows on Sunday.
+		if flags := skippedFlags(sk.Today.Week); sk.Today.Week.Start != date(t, "2026-10-05") || len(flags) != 1 || flags[0] != date(t, "2026-10-11") {
+			t.Fatalf("week %v flags %v as skipped, want Sunday's week with Sunday skipped", sk.Today.Week.Start, flags)
 		}
 		row := e.spinRow(t, u2, "2026-10-11")
 		w := spin.WindowFor(date(t, "2026-10-11"), zone(t, ny))

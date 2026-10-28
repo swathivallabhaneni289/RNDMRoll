@@ -186,8 +186,10 @@ func (s *Service) todayIn(c *call) (Today, error) {
 	if err != nil {
 		return Today{}, err
 	}
-	weekStart := WeekStart(c.today)
-	weekEnd := weekStart.AddDays(daysInWeek - 1)
+	// The week row is the spin's day's week (BuildToday), which before 8:00 PM
+	// can be the week before: read from that week's start to this week's end.
+	weekStart := WeekStart(prev)
+	weekEnd := WeekStart(c.today).AddDays(daysInWeek - 1)
 	posted, err := tx.PostedDays(weekStart, weekEnd)
 	if err != nil {
 		return Today{}, err

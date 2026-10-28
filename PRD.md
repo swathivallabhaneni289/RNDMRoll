@@ -326,6 +326,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A week runs Monday to Sunday in the person's own time zone.
   - The goal is met at the fourth posted day. A person holds at most one bonus spin, and it never expires.
   - The week row shows seven days: posted, skipped, today and the rest.
+  - The week row, its "today" and the date above the heading follow the spin's day, which runs from 8 PM to the next 8 PM. Until 8 PM on Monday they are still on Sunday, so a Sunday spin posted on Monday morning shows in the week it counts for.
 - **SPIN-08.** Available only on today's result before posting or skipping, once per day. The new category is always different. It asks "Use your bonus spin?" first.
 - **SPIN-09.** The countdown shows hours, minutes and seconds from the server's time on a steady clock, and never trusts the phone's clock.
 - **SPIN-11.**
@@ -860,7 +861,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
-| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
+| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post; the week row and the date follow the spin's day too | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
 
 ## 18. Out of scope and future ideas
 

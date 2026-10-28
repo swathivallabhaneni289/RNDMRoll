@@ -577,8 +577,12 @@ export function TodayScreen() {
       <View style={{ flexGrow: 1 }}>
         {headerRow}
 
+        {/* The spin's day, which runs from 8 PM to the next 8 PM: the week row's today, so before
+            8 PM it is still the day before, as on the heading and the week row. */}
         <View style={{ marginTop: space.md, minHeight: type.label.lineHeight }}>
-          {view ? <CapsLabel>{dateLineLong(view.local_date)}</CapsLabel> : null}
+          {view ? (
+            <CapsLabel>{dateLineLong(view.week.days[view.week.today_index]?.date ?? view.local_date)}</CapsLabel>
+          ) : null}
         </View>
 
         <View style={{ marginTop: space.sm }}>

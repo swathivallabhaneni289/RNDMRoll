@@ -442,7 +442,7 @@ func TestBuildToday_NextOpenWeekdayIsTheLocalWeekdayNotTheUTCOne(t *testing.T) {
 
 func TestBuildToday_WeekSection(t *testing.T) {
 	loc := mustLoc(t, ny)
-	now := at(t, loc, "2026-10-08", 16, 0, 0) // Thursday
+	now := at(t, loc, "2026-10-08", 21, 0, 0) // Thursday evening: Thursday's spin day
 	in := baseInput(t, ny, now)
 	in.PostedDates = []Date{
 		mustDate(t, "2026-10-05"), mustDate(t, "2026-10-06"), mustDate(t, "2026-10-07"),
@@ -474,10 +474,52 @@ func TestBuildToday_WeekSection(t *testing.T) {
 	}
 
 	// Sunday is index 6, Monday index 0.
-	sun := BuildToday(baseInput(t, ny, at(t, loc, "2026-10-11", 12, 0, 0)))
-	mon := BuildToday(baseInput(t, ny, at(t, loc, "2026-10-12", 12, 0, 0)))
+	sun := BuildToday(baseInput(t, ny, at(t, loc, "2026-10-11", 21, 0, 0)))
+	mon := BuildToday(baseInput(t, ny, at(t, loc, "2026-10-12", 21, 0, 0)))
 	if sun.Week.TodayIndex != 6 || mon.Week.TodayIndex != 0 || mon.Week.Start.String() != "2026-10-12" {
 		t.Errorf("sunday index %d, monday index %d start %v", sun.Week.TodayIndex, mon.Week.TodayIndex, mon.Week.Start)
+	}
+}
+
+func TestBuildToday_WeekFollowsTheSpinsDayUntil8PM(t *testing.T) {
+	loc := mustLoc(t, ny)
+	monday := func(h, m int) time.Time { return at(t, loc, "2026-10-12", h, m, 0) }
+	sunday := mustDate(t, "2026-10-11")
+
+	cases := []struct {
+		name      string
+		now       time.Time
+		neverSpun bool
+		spinToday bool // a first spin made today before 8 PM
+		wantStart string
+		wantIndex int
+	}{
+		{"Monday morning is still Sunday's spin day", monday(10, 0), false, false, "2026-10-05", 6},
+		{"one minute before 8 PM", monday(19, 59), false, false, "2026-10-05", 6},
+		{"from 8 PM it is Monday's", monday(20, 0), false, false, "2026-10-12", 0},
+		{"someone who has never spun is on today", monday(10, 0), true, false, "2026-10-12", 0},
+		{"a first spin today puts the week on today", monday(10, 0), false, true, "2026-10-12", 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput(t, ny, c.now)
+			in.NeverSpun = c.neverSpun
+			if c.spinToday {
+				in.Spin = spinAt(t, ny, monday(9, 0), KindDaily, 0)
+			}
+			// Sunday was posted (after midnight, say) and the three days before it.
+			in.PostedDates = []Date{mustDate(t, "2026-10-08"), mustDate(t, "2026-10-09"), mustDate(t, "2026-10-10"), sunday}
+			w := BuildToday(in).Week
+			if w.Start.String() != c.wantStart || w.TodayIndex != c.wantIndex {
+				t.Fatalf("week start %s index %d, want %s and %d", w.Start, w.TodayIndex, c.wantStart, c.wantIndex)
+			}
+			if c.wantStart == "2026-10-05" && (w.Posted != 4 || !w.GoalMet || !w.Days[6].Posted) {
+				t.Errorf("Sunday's week = %+v, want 4 posted with Sunday counted", w)
+			}
+			if c.wantStart == "2026-10-12" && w.Posted != 0 {
+				t.Errorf("the new week = %+v, want nothing posted yet", w)
+			}
+		})
 	}
 }
 
