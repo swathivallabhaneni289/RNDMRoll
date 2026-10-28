@@ -153,7 +153,8 @@ function ReminderRow() {
 
 /**
  * Settings > Notifications (decision D-16): the switches, all ON until the person switches one
- * off, and under them the 8 PM reminder's switch, which is kept on the phone (`ReminderRow`). Each one saves on its own toggle (`PATCH /me/notification-settings`); the change shows at
+ * off, and under them the reminders' switch (8 PM, and 10 AM for a spin not yet posted), which is
+ * kept on the phone (`ReminderRow`). Each one saves on its own toggle (`PATCH /me/notification-settings`); the change shows at
  * once, and on a failure the switch goes back and one red line says why.
  *
  * The server side is built after Phase 3's server, so `GET` may 404 for now. Then the switches

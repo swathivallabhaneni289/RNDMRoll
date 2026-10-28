@@ -6,7 +6,7 @@ import { CapsLabel } from '@/components/today/CapsLabel';
 import { AppText } from '@/components/ui/AppText';
 import type { Today, TodayEntry } from '@/lib/api/types';
 import { REACTIONS } from '@/lib/entry/reactions';
-import { settledLabel } from '@/lib/entry/rules';
+import { SETTLED_LABEL } from '@/lib/entry/rules';
 import { starsSpoken } from '@/lib/entry/stars';
 import { ImageReveal } from '@/lib/motion/primitives';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
@@ -210,7 +210,7 @@ export function SettledBlock({ today }: { today: Today }) {
   if (today.state === 'skipped') {
     const spin = today.spin;
     if (!spin) return null;
-    return <SkippedWord label={settledLabel(spin.local_date, today.local_date)} name={spin.category.name} />;
+    return <SkippedWord label={SETTLED_LABEL} name={spin.category.name} />;
   }
   if (today.state === 'posted') {
     return <PostedRow entry={today.entry ?? null} categoryName={today.spin?.category.name ?? ''} />;

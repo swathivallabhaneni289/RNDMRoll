@@ -51,7 +51,7 @@ export function stillNeededLine(missing: readonly MissingPart[]): string {
 /**
  * The sentence under Skipped's heading. When the shown spin is today's (`spinLocalDate` equals
  * `localDate`, a plain string comparison) it names the server's weekday: "Your next spin opens
- * Friday at 8:00 PM." Otherwise (last night's spin in the late window), or when the server sent
+ * Friday at 8:00 PM." Otherwise (a spin from the date before, after midnight), or when the server sent
  * no weekday, it leaves the weekday out. The space before "PM." is a no-break space (U+00A0) so
  * "PM." never stands alone on a line.
  */
@@ -67,10 +67,17 @@ export function nextSpinLine(
   return 'Your next spin opens at 8:00\u00A0PM.';
 }
 
-/** The small label above the word in Skipped: today's spin, or last night's in the late window. */
-export function settledLabel(spinLocalDate: string, localDate: string): string {
-  return spinLocalDate === localDate ? "Today's spin was" : "Last night's spin was";
-}
+/**
+ * The small label above the word in Skipped. A spin's day runs from 8 PM to the next 8 PM, so after
+ * midnight it is still today's spin (developer, 2026-10-28).
+ */
+export const SETTLED_LABEL = "Today's spin was";
+
+/**
+ * The line once a post would count as late (Today's `post_late`, from noon the day after the spin),
+ * on the Spin page and the entry screen. The space before PM is a no-break space.
+ */
+export const LATE_LINE = 'You missed noon. You can still post until 8:00\u00A0PM, and it will show as late.';
 
 // ---- Plan 03-03: the entry page, edit and skip --------------------------------------------------
 

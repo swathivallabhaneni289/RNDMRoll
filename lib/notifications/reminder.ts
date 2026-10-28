@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
 import { listenForTaps, loadNotifications, queueScheduleChange } from '@/lib/notifications/module';
+import { postNoteBody, postNoteDate } from '@/lib/notifications/postNote';
 import { getAccessToken, useSession } from '@/lib/session/store';
 import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
@@ -11,6 +12,11 @@ import { useTodaySnapshot } from '@/lib/wheel/todayStore';
  * The 8 PM reminder (Phase 6, 06-CONTEXT.md "Reminder" and 06-FOLLOW-OVERRIDES.md section 7): a
  * LOCAL phone notification at 8:00 PM in the phone's own time, every day, saying the spin is open.
  * The server is not involved, so no Apple push key is needed.
+ *
+ * The same switch also covers the morning note (lib/notifications/postNote.ts): for a spin made and
+ * not yet posted or skipped, one note at 10 AM, two hours before a post counts as late. It is
+ * scheduled from Today's `late_from` with the evenings, so a post or a skip (which clears
+ * `late_from`) takes it away at the next rebuild.
  *
  * Where things live:
  *  - The switch value and the "asked once" mark are kept on the phone with expo-secure-store, as
@@ -43,8 +49,11 @@ export const REMINDER_ROUTE = '/(app)/today';
 /** The one scheduled notification's id: scheduling again replaces it instead of adding one. */
 export const REMINDER_ID = 'rndmroll-daily-spin-reminder';
 
-/** The switch's label on Settings > Notifications. */
-export const REMINDER_SWITCH_LABEL = 'Remind me at 8:00 PM';
+/** The morning note's id. It starts with the reminder's, so a tap opens the Spin tab and push ignores it. */
+export const POST_NOTE_ID = `${REMINDER_ID}-post`;
+
+/** The switch's label on Settings > Notifications: the 8 PM reminder and the morning note. */
+export const REMINDER_SWITCH_LABEL = 'Remind me to spin and post';
 
 /** The one line under the switch while the phone's own permission is off. */
 export const PERMISSION_OFF_MESSAGE = 'Turn on notifications for RNDMRoll in Settings.';
@@ -101,6 +110,22 @@ export function noteNextOpen(iso: string): void {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms) || ms === nextOpenMs) return;
   nextOpenMs = ms;
+  void rebuildReminder();
+}
+
+/** The spin waiting for a post, from the last Today answer: when it turns late and its category. */
+let postNote: { lateFromMs: number; category: string } | null = null;
+
+/**
+ * Today's `late_from` and the shown spin's category, from every Today answer. The schedule is
+ * rebuilt when they change, so the morning note follows a new spin, and a post or a skip (no
+ * `late_from`) takes it away.
+ */
+export function notePostNote(lateFromIso: string | null, categoryName: string | null): void {
+  const ms = lateFromIso === null ? NaN : Date.parse(lateFromIso);
+  const next = Number.isFinite(ms) && categoryName !== null ? { lateFromMs: ms, category: categoryName } : null;
+  if (next?.lateFromMs === postNote?.lateFromMs && next?.category === postNote?.category) return;
+  postNote = next;
   void rebuildReminder();
 }
 
@@ -192,6 +217,15 @@ export function rebuildReminder(): Promise<void> {
       // the signed-in pages queued just before a log out (one held behind the first-start
       // permission prompt, say) runs after that log out's cancel, and must not schedule again.
       if (getAccessToken() === null) return;
+      // The morning note, for a spin made and not yet posted or skipped.
+      const noteAt = postNote === null ? null : postNoteDate(Date.now(), postNote.lateFromMs);
+      if (postNote !== null && noteAt !== null) {
+        await api.scheduleNotificationAsync({
+          identifier: POST_NOTE_ID,
+          content: { title: REMINDER_TITLE, body: postNoteBody(postNote.category), data: { url: REMINDER_ROUTE } },
+          trigger: { type: api.SchedulableTriggerInputTypes.DATE, date: noteAt },
+        });
+      }
       if (nextOpenMs === null) {
         // Not known yet: every evening, until the first Today answer narrows it.
         await api.scheduleNotificationAsync({
@@ -264,12 +298,21 @@ export function useReminderSetup(): void {
   const { user } = useSession();
   const snapshot = useTodaySnapshot(user?.id ?? null);
   const nextOpenAt = snapshot.today?.next_open_at ?? null;
+  const lateFrom = snapshot.today?.late_from ?? null;
+  const waitingCategory = snapshot.today?.spin?.category.name ?? null;
 
   // Every Today answer: the reminder starts from the next opening, so an evening whose spin was
   // already made (a first spin in the morning) gets no reminder.
   useEffect(() => {
     if (nextOpenAt !== null) noteNextOpen(nextOpenAt);
   }, [nextOpenAt]);
+
+  // Every Today answer: the morning note follows the spin waiting for a post, if there is one. No
+  // Today yet (a start, or another person signing in on this phone) clears it, so a note never
+  // carries the last person's spin.
+  useEffect(() => {
+    notePostNote(lateFrom, waitingCategory);
+  }, [lateFrom, waitingCategory]);
 
   useEffect(() => {
     const api = loadNotifications();

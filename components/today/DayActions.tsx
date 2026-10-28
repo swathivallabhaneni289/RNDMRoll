@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { entryErrorMessage, skipDay } from '@/lib/api/entries';
 import type { Today } from '@/lib/api/types';
-import { skipBody } from '@/lib/entry/rules';
+import { LATE_LINE, skipBody } from '@/lib/entry/rules';
 import { FadeInUp } from '@/lib/motion/primitives';
 import { color, space, type } from '@/lib/theme/tokens';
 import { applyToday } from '@/lib/wheel/todayStore';
@@ -28,8 +28,9 @@ const labelLine = {
 /**
  * What sits under the stamp row of Result and Late (03-UI-SPEC section 3.2, the developer's picture
  * `today-after-spin-02`): once a post would count as late (`postLate`, from noon the day after the
- * spin) the line 'Posting it now would count as late.', then the 'Log it' button, which pushes the
- * entry screen, and under it the outlined button 'Skip it'.
+ * spin) the late line ('You missed noon. You can still post until 8:00 PM, and it will show as
+ * late.'), then the 'Log it' button, which pushes the entry screen, and under it the outlined button
+ * 'Skip it'.
  *
  * Skip asks once with the phone's own alert (Cancel, and 'Skip it'), sends the date and
  * spin number of the spin that is on screen, and puts the answer's Today into the store; Today
@@ -47,7 +48,6 @@ const labelLine = {
 export function DayActions({
   day,
   userId,
-  lastNight,
   postLate,
   followsLink,
   disabled,
@@ -56,8 +56,6 @@ export function DayActions({
   /** The Today that is on screen: its spin, week and goal are what the skip names and says. */
   day: Today;
   userId: string | null;
-  /** The state is Late (past midnight): last night's spin, so the skip asks 'Skip this spin?'. */
-  lastNight: boolean;
   /** A post made now counts as late (the server's `post_late`, from noon): the late line shows. */
   postLate: boolean;
   /** The bonus link or a message sits between the stamp row and these actions. */
@@ -107,7 +105,7 @@ export function DayActions({
   function askSkip() {
     if (inert || busyRef.current || spin === null) return;
     Alert.alert(
-      lastNight ? 'Skip this spin?' : "Skip today's spin?",
+      "Skip today's spin?",
       skipBody(spin.local_date, day.week.start, day.week.posted, day.week.goal),
       [
         { text: 'Cancel', style: 'cancel' },
@@ -121,7 +119,7 @@ export function DayActions({
     <Step animate={animate}>
       {postLate ? (
         <View style={{ marginTop: space.md }}>
-          <Text style={{ ...labelLine, color: color.muted }}>Posting it now would count as late.</Text>
+          <Text style={{ ...labelLine, color: color.muted }}>{LATE_LINE}</Text>
         </View>
       ) : null}
 

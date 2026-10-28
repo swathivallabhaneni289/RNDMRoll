@@ -32,20 +32,17 @@ function Step({ animate, delay, children }: { animate: boolean; delay: number; c
 export function ResultBlock({
   name,
   spunLocalTime,
-  lastNight = false,
   canUseBonus,
   onUseBonus,
   animate = false,
 }: {
   name: string;
   spunLocalTime: string;
-  /** The "Last night's spin." heading is showing (the state is Late, after midnight). */
-  lastNight?: boolean;
   canUseBonus: boolean;
   onUseBonus: () => void;
   animate?: boolean;
 }) {
-  const spoken = `${lastNight ? "Last night's spin" : "Today's spin"}: ${name}.`;
+  const spoken = `Today's spin: ${name}.`;
   return (
     <View>
       <Step animate={animate} delay={0}>

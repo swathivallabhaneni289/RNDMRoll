@@ -190,7 +190,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 ### Journey 4: late, and the weekly goal
 
-1. They spin at 11 PM but don't post until 2 PM the next day. The page says "Last night's spin." and "Posting it now would count as late." Posting before noon would still have been on time.
+1. They spin at 11 PM and get Movie, but don't post that night. At 10 AM the phone says "Your movie is waiting. Post it by noon to be on time." They post at 2 PM: the page still says "Today's spin." and adds "You missed noon. You can still post until 8:00 PM, and it will show as late." Posting before noon would still have been on time.
 2. The post counts for the day and opens the Board. Their card shows "Late".
 3. It's their fourth posted day this week, so they earn a bonus spin. The week section says "You have a bonus spin.", and the notifications list says "You hit your goal this week. One bonus spin added."
 4. A few days later, "Use bonus spin" turns an unwanted word into a different one.
@@ -297,6 +297,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SPIN-11 | A reminder on the phone at 8 PM: "Your spin is open." | P1 | Built |
 | SPIN-12 | People choose the reminder's time | P2 | Later |
 | SPIN-13 | Weighted or resizable slices | P2 | Removed October 10, 2026; dragging slice edges is a Later idea |
+| SPIN-14 | A note on the phone at 10 AM while a spin is not posted or skipped: "Your movie is waiting. Post it by noon to be on time." | P1 | Built |
 
 **Acceptance criteria and rules**
 
@@ -329,6 +330,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SPIN-11.**
   - The phone asks for permission once, at the first signed-in start, and the switch is in Settings.
   - Reminders are scheduled up to 30 evenings ahead, skipping an evening whose spin was already made.
+- **SPIN-14.** The note comes two hours before a post would count as late, only while the spin is not posted or skipped, and follows the same switch as the 8 PM reminder. A post or a skip before then cancels it.
 
 ### 8.4 The daily post
 
@@ -429,7 +431,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **BRD-02 while locked.**
   - The page shows "Locked", how many people you follow posted, up to four first names, and one action: "Log your meal" (the day's category, in lower case), "Spin first", or the time the next spin opens.
   - Nothing else of those posts reaches the phone.
-- **BRD-02 the day in play.** The most recent 8 PM that has passed, so before 8 PM it is last night. A person who has never spun, or who posted a first spin today, is on today.
+- **BRD-02 the day in play.** The most recent 8 PM that has passed. It lasts until the next 8 PM, so the Board calls it "Today" the whole time, also after midnight. A person who has never spun, or who posted a first spin today, is on today.
 - **BRD-03.** "You skipped today. Posts from people you follow open after your next post." with Go to Spin.
 - **BRD-04.** "See your friends' spins", "Follow people you know. Their posts show here on the days you post too." and Find people.
 - **BRD-05.** The author, the photos edge to edge, the stars, the emoji, the note with the posted time, comments oldest first with replies under them, and Report in the three dots.
@@ -475,7 +477,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Items from the last 30 days, at most 50.
   - A dot on the bell while anything is unread. Opening the page marks all as seen.
 - **NOT-02.** The first row of the list shows only a dot when a request waits, never a count or a name.
-- **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me at 8:00 PM" is saved on the phone. Follow notifications can't be turned off.
+- **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications can't be turned off.
 - **NOT-04.** A push token is tied to the login it came from and stops working when that login ends. Pushes never go to yourself or across a block.
 
 ### 8.10 Safety and moderation
@@ -857,6 +859,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 21 | A portfolio release first | Show the work now; real accounts and keys later | Not public yet |
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
+| Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
 
 ## 18. Out of scope and future ideas
 

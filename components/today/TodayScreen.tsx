@@ -70,7 +70,7 @@ function headingFor(state: TodayState | null, firstSpin: boolean): string {
     case 'result':
       return "Today's spin.";
     case 'late':
-      return "Last night's spin.";
+      return "Today's spin.";
     case 'posted':
       return 'Posted.';
     case 'skipped':
@@ -454,14 +454,13 @@ export function TodayScreen() {
 
   /**
    * Result and Late (picture 02): the word, its stamp row, then the day's actions (the late line
-   * and 'Log it'). Late (`lastNight`, past midnight) names last night's spin; the late line follows
-   * the server's `post_late` (`postLate`, from noon), not the state. `live` is false for the copy
-   * that fades out over a change: no link, no handlers, nothing animating.
+   * and 'Log it'). Both read as today's spin, since a spin's day runs from 8 PM to the next 8 PM;
+   * the late line follows the server's `post_late` (`postLate`, from noon), not the state. `live` is
+   * false for the copy that fades out over a change: no link, no handlers, nothing animating.
    */
   function dayComposition(day: Today, live: boolean): ReactNode {
     const spun = day.spin;
     if (!spun) return null;
-    const lastNight = day.state === 'late';
     const postLate = day.post_late === true;
     const bonusLinkShown = live && Boolean(day.bonus.can_use) && !busy;
     const bonusFailed = live && failureKind !== null && spinFailure?.action === 'bonus';
@@ -470,7 +469,6 @@ export function TodayScreen() {
         <ResultBlock
           name={spun.category.name}
           spunLocalTime={spun.spun_local_time}
-          lastNight={lastNight}
           canUseBonus={bonusLinkShown}
           onUseBonus={live ? openBonusSheet : () => {}}
           animate={live && animateResult}
@@ -487,7 +485,6 @@ export function TodayScreen() {
         <DayActions
           day={day}
           userId={userId}
-          lastNight={lastNight}
           postLate={postLate}
           followsLink={bonusLinkShown || bonusFailed}
           disabled={!live || busy}

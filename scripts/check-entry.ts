@@ -18,7 +18,8 @@ import {
   isEntryId,
   missingParts,
   nextSpinLine,
-  settledLabel,
+  SETTLED_LABEL,
+  LATE_LINE,
   skipBody,
   stillNeededLine,
 } from '../lib/entry/rules.ts';
@@ -256,14 +257,14 @@ const NBSP = '\u00A0';
   check('the character before PM is U+00A0', withDay.charCodeAt(withDay.indexOf('PM.') - 1) === 0xa0);
   check('the dot in dateDot is U+00B7', dateDot('2026-10-08').charCodeAt(4) === 0xb7);
   const without = nextSpinLine('2026-10-07', '2026-10-08', 'Friday');
-  check('next spin line for last night', without === `Your next spin opens at 8:00${NBSP}PM.`, without);
-  check('last night line has the no-break space', without.includes(`8:00${NBSP}PM.`) && !without.includes('8:00 PM.'));
+  check('next spin line after midnight', without === `Your next spin opens at 8:00${NBSP}PM.`, without);
+  check('after-midnight line has the no-break space', without.includes(`8:00${NBSP}PM.`) && !without.includes('8:00 PM.'));
   check('no weekday sent (null)', nextSpinLine('2026-10-08', '2026-10-08', null) === without);
   check('no weekday sent (undefined)', nextSpinLine('2026-10-08', '2026-10-08', undefined) === without);
   check('no weekday sent (empty)', nextSpinLine('2026-10-08', '2026-10-08', '') === without);
 
-  check('settled label today', settledLabel('2026-10-08', '2026-10-08') === "Today's spin was", settledLabel('2026-10-08', '2026-10-08'));
-  check('settled label last night', settledLabel('2026-10-07', '2026-10-08') === "Last night's spin was");
+  check('settled label is today all day', SETTLED_LABEL === "Today's spin was", SETTLED_LABEL);
+  check('late line names noon and 8 PM', LATE_LINE === `You missed noon. You can still post until 8:00${NBSP}PM, and it will show as late.`, LATE_LINE);
 }
 
 // ---- lib/entry files load alone --------------------------------------------------------------------

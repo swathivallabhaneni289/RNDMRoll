@@ -8,7 +8,7 @@ import { STATUS_MESSAGES, StatusMessage } from '@/components/today/StatusMessage
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import type { BoardDay, Card } from '@/lib/api/board';
-import { overline } from '@/lib/board/text';
+import { OVERLINE } from '@/lib/board/text';
 import { color, radius, space } from '@/lib/theme/tokens';
 import { dateLine } from '@/lib/wheel/format';
 import { useOpenPerson } from '@/lib/people/openPerson';
@@ -106,7 +106,7 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
           None before you follow anyone: there is no day to show yet. */}
       {board?.state === 'no_follows' ? null : (
         <Text accessibilityRole="header" style={{ ...capsText, color: color.muted, minHeight: capsText.lineHeight, marginTop: space.md }}>
-          {board ? overline(board.day_label) : ''}
+          {board ? OVERLINE : ''}
         </Text>
       )}
     </View>
@@ -153,11 +153,11 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
     const listHeader =
       board.state === 'locked' && board.locked ? (
         <View style={{ paddingHorizontal: space.lg, marginBottom: board.days.length > 0 ? space.md : 0 }}>
-          <LockedBlock locked={board.locked} dayLabel={board.day_label} columnWidth={columnWidth} onLog={onLog} onSpin={onSpin} />
+          <LockedBlock locked={board.locked} columnWidth={columnWidth} onLog={onLog} onSpin={onSpin} />
         </View>
       ) : board.state === 'skipped' ? (
         <View style={{ paddingHorizontal: space.lg, marginBottom: space.md }}>
-          <SkippedBlock dayLabel={board.day_label} onGoToSpin={onSpin} />
+          <SkippedBlock onGoToSpin={onSpin} />
         </View>
       ) : null;
 

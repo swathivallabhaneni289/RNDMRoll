@@ -4,16 +4,15 @@
  * The phone works nothing out: every count, label and date comes from the server.
  */
 
-export type DayLabel = 'today' | 'last_night';
-
-/** The small capitals above the heading 'Board'. */
-export function overline(dayLabel: DayLabel): string {
-  return dayLabel === 'last_night' ? 'Last night' : 'Today';
-}
+/**
+ * The small capitals above the heading 'Board'. The day in play runs from 8 PM to the next 8 PM, so
+ * it is always today (developer, 2026-10-28), also after midnight.
+ */
+export const OVERLINE = 'Today';
 
 /** "3 people you follow posted today." / "1 person you follow posted today." / none yet. */
-export function postedLine(count: number, dayLabel: DayLabel): string {
-  const when = dayLabel === 'last_night' ? 'last night' : 'today';
+export function postedLine(count: number): string {
+  const when = 'today';
   if (count <= 0) return 'No one you follow has posted yet.';
   if (count === 1) return `1 person you follow posted ${when}.`;
   return `${count} people you follow posted ${when}.`;
@@ -35,15 +34,12 @@ export function lockedButton(action: 'log' | 'spin' | 'wait', category: string |
  */
 export function lockedFootnote(action: 'log' | 'spin' | 'wait', postLate: boolean): string | null {
   if (action === 'wait') return 'Your next spin opens at 8:00 PM.';
-  if (action === 'log' && postLate) return 'Posting it now would count as late.';
+  if (action === 'log' && postLate) return 'You missed noon. You can still post until 8:00 PM, and it will show as late.';
   return null;
 }
 
 /** After a skip: the one rule for everyone (a skip does not open the day). */
-export function skippedLine(dayLabel: DayLabel): string {
-  const when = dayLabel === 'last_night' ? 'last night' : 'today';
-  return `You skipped ${when}. Posts from people you follow open after your next post.`;
-}
+export const SKIPPED_LINE = 'You skipped today. Posts from people you follow open after your next post.';
 
 /** The empty Board before following anyone: a heading and one line on how the Board works. */
 export const NO_FOLLOWS_TITLE = "See your friends' spins";

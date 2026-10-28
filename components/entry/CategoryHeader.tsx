@@ -1,6 +1,7 @@
 import { Pressable, View } from 'react-native';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { AppText } from '@/components/ui/AppText';
+import { LATE_LINE } from '@/lib/entry/rules';
 import { dateDot } from '@/lib/wheel/format';
 import { minTouchTarget, space } from '@/lib/theme/tokens';
 
@@ -11,8 +12,6 @@ type CategoryHeaderProps = {
   localDate: string;
   /** The category as written on that day. */
   categoryName: string;
-  /** New only: the spin is last night's (Today's state Late, past midnight), so the label says so. */
-  lastNight?: boolean;
   /** New only: a post made now counts as late (Today's `post_late`, from noon), so the late line shows. */
   postLate?: boolean;
   onCancel: () => void;
@@ -28,12 +27,11 @@ export function CategoryHeader({
   variant = 'new',
   localDate,
   categoryName,
-  lastNight = false,
   postLate = false,
   onCancel,
 }: CategoryHeaderProps) {
   const edit = variant === 'edit';
-  const spinLabel = lastNight ? "Last night's spin" : "Today's spin";
+  const spinLabel = "Today's spin";
   const date = dateDot(localDate);
 
   return (
@@ -76,7 +74,7 @@ export function CategoryHeader({
       {postLate && !edit ? (
         <View style={{ marginTop: space.xs }}>
           <AppText role="label" tone="muted">
-            Posting it now would count as late.
+            {LATE_LINE}
           </AppText>
         </View>
       ) : null}

@@ -4,8 +4,8 @@ import { NameChip, capsText } from '@/components/board/PostCard';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextButton } from '@/components/ui/TextButton';
-import type { BoardLocked, DayLabel } from '@/lib/api/board';
-import { LOCKED_BODY, NO_FOLLOWS_LINE, NO_FOLLOWS_TITLE, lockedButton, lockedFootnote, postedLine, skippedLine } from '@/lib/board/text';
+import type { BoardLocked } from '@/lib/api/board';
+import { LOCKED_BODY, NO_FOLLOWS_LINE, NO_FOLLOWS_TITLE, SKIPPED_LINE, lockedButton, lockedFootnote, postedLine } from '@/lib/board/text';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 
 const TILE_ASPECT = 7 / 8;
@@ -43,13 +43,11 @@ function TileRow({ names, width }: { names: string[]; width: number }) {
  */
 export function LockedBlock({
   locked,
-  dayLabel,
   columnWidth,
   onLog,
   onSpin,
 }: {
   locked: BoardLocked;
-  dayLabel: DayLabel;
   columnWidth: number;
   onLog: () => void;
   onSpin: () => void;
@@ -60,7 +58,7 @@ export function LockedBlock({
   const tileHeight = Math.round(columnWidth / TILE_ASPECT);
   const button = lockedButton(locked.action, locked.category);
   const footnote = lockedFootnote(locked.action, locked.post_late);
-  const heading = postedLine(locked.posted_count, dayLabel);
+  const heading = postedLine(locked.posted_count);
 
   const card = (
     <View
@@ -124,7 +122,7 @@ export function LockedBlock({
 }
 
 /** Skipped (05-UI-SPEC 3.7): the one sentence and 'Go to Spin'. No grid for the day in play. */
-export function SkippedBlock({ dayLabel, onGoToSpin }: { dayLabel: DayLabel; onGoToSpin: () => void }) {
+export function SkippedBlock({ onGoToSpin }: { onGoToSpin: () => void }) {
   return (
     <View style={{ paddingTop: space.lg, alignItems: 'center' }}>
       <View style={{ alignSelf: 'stretch' }}>
@@ -138,7 +136,7 @@ export function SkippedBlock({ dayLabel, onGoToSpin }: { dayLabel: DayLabel; onG
             textAlign: 'center',
           }}
         >
-          {skippedLine(dayLabel)}
+          {SKIPPED_LINE}
         </Text>
       </View>
       <View style={{ marginTop: space.md }}>

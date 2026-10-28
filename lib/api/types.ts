@@ -142,8 +142,9 @@ export type ApiErrorCode =
 /**
  * `waiting`, `open`, `result` and `late` are what Phase 2 sends. `posted` and `skipped` are
  * Phase 3's; the type is kept open to them so Phase 3 adds states without editing this file.
- * `late` means it is past midnight and last night's spin is still unsettled. Whether a post made
- * now counts as late is `Today.post_late`, not this state.
+ * `late` means it is past midnight and the spin made before it is still unsettled. The page still
+ * calls it today's spin (a spin's day runs from 8 PM to the next 8 PM), and whether a post made now
+ * counts as late is `Today.post_late`, not this state.
  */
 export type TodayState = 'waiting' | 'open' | 'result' | 'late' | 'posted' | 'skipped';
 
