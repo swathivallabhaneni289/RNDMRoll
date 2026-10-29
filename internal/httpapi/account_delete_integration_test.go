@@ -713,12 +713,12 @@ func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
 	}
 }
 
-// The admin page shows that a person asked for their account to be deleted
-// and does not list them with the disabled accounts: they did it themselves,
-// and logging back in keeps the account. An admin who asks is no admin from
-// that moment: the admin session ends at its next page and the admin page's
-// log in refuses the right password, until a log in to the app keeps the
-// account.
+// The admin page shows that a reported person asked for their account to be
+// deleted and does not list them with the disabled accounts: they did it
+// themselves, and logging back in keeps the account. An admin who asks is no
+// admin from that moment: the admin session ends at its next page and the
+// admin page's log in refuses the right password, until a log in to the app
+// keeps the account.
 func TestDeleteAccountIntegration_AdminPage(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
@@ -727,6 +727,11 @@ func TestDeleteAccountIntegration_AdminPage(t *testing.T) {
 	boss := adminFirst(w, pool, integrationOptions{clock: clk, adminEmails: []string{bossEmail}}, "dx_boss")
 	b := w.person("dx_bob", "Bob Brown")
 	d := w.person("dx_dan", "Dan Dorn")
+	// Both are reported, so the admin may open them.
+	r := w.person("dx_rae", "Rae Reporter")
+	for _, p := range []feedPerson{b, d} {
+		w.ok(r, http.MethodPost, "/v1/people/"+p.id+"/report", map[string]any{"reason": "spam"})
+	}
 	cookie := adminLogin(t, w, bossEmail, adminTestPassword)
 	if cookie == "" {
 		t.Fatal("the admin could not log in")

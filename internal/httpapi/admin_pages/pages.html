@@ -41,7 +41,7 @@
 
 {{define "person"}}{{template "head" .}}{{template "top" .}}
 {{with .Person}}<h2>@{{.Username}}</h2>
-<p>{{.Name}}<br><span class="muted email">{{.Email}}</span><br><span class="muted">Joined <span class="when">{{when .CreatedAt}}</span></span></p>
+<p>{{.Name}}<br><span class="muted">Joined <span class="when">{{when .CreatedAt}}</span></span></p>
 {{if .Bio}}<div class="quote">{{.Bio}}</div>{{end}}
 {{if .DisabledAt}}<p><strong>Disabled</strong> <span class="muted when">{{when .DisabledAt}}</span></p>{{end}}
 {{if .DeletionRequestedAt}}<p><strong>Deletion requested</strong> <span class="muted when">{{when .DeletionRequestedAt}}</span></p>{{end}}{{end}}

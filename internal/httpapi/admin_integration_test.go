@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
@@ -23,7 +24,13 @@ const adminTestPassword = "Correct-horse-battery-staple1"
 // "ad_boss@example.com", and that account.
 func newAdminWorld(t *testing.T) (*feedWorld, feedPerson) {
 	t.Helper()
-	pool := requireIntegrationPool(t)
+	return newAdminWorldOn(t, requireIntegrationPool(t))
+}
+
+// newAdminWorldOn is newAdminWorld on pool, for a test that also changes the
+// database itself.
+func newAdminWorldOn(t *testing.T, pool *pgxpool.Pool) (*feedWorld, feedPerson) {
+	t.Helper()
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
 	w := &feedWorld{t: t, clk: clk}
 	boss := adminFirst(w, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}}, "ad_boss")
@@ -239,6 +246,114 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	rec = adminDo(t, w, http.MethodPost, "/admin/logout", cookie, url.Values{"csrf": {csrfOf(t, page)}}, "")
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("logout: %d", rec.Code)
+	}
+}
+
+// The admin page opens only people someone reported (them, a post or a
+// comment, open or closed) and disabled accounts, and shows no email address.
+// Anyone else's page is the list, with nothing about them, and a disable or
+// an enable sent for them anyway changes nothing.
+func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	w, _ := newAdminWorldOn(t, pool)
+	a := w.person("ad_alice", "Alice Ames")
+	quiet := w.person("ad_quiet", "Quinn Quiet")
+	reported := w.person("ad_rep", "Remy Reported")
+	w.ok(a, http.MethodPost, "/v1/people/"+reported.id+"/report", map[string]any{"reason": "spam"})
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	if cookie == "" {
+		t.Fatal("the admin could not log in")
+	}
+	list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
+	if strings.Contains(list, "example.com") {
+		t.Fatalf("the list shows an email address: %s", list)
+	}
+	csrf := csrfOf(t, list)
+	sentToList := func(name string, rec *httptest.ResponseRecorder, want string) {
+		t.Helper()
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != want || strings.Contains(rec.Body.String(), "ad_quiet") {
+			t.Fatalf("%s: %d %q, want the list at %q: %s", name, rec.Code, rec.Header().Get("Location"), want, rec.Body.String())
+		}
+	}
+
+	// Nobody reported ad_quiet: their page is the list, a made-up notice is
+	// dropped on the way, and a disable or an enable never reaches them.
+	sentToList("an unreported person", adminDo(t, w, http.MethodGet, "/admin/people/"+quiet.id, cookie, nil, ""), "/admin")
+	sentToList("a made-up notice", adminDo(t, w, http.MethodGet, "/admin/people/"+quiet.id+"?n=%3Cb%3E", cookie, nil, ""), "/admin")
+	sentToList("no such account", adminDo(t, w, http.MethodGet, "/admin/people/"+uuid.NewString(), cookie, nil, ""), "/admin")
+	for _, action := range []string{"disable", "enable"} {
+		sentToList(action+" an unreported person",
+			adminDo(t, w, http.MethodPost, "/admin/people/"+quiet.id+"/"+action, cookie, url.Values{"csrf": {csrf}}, ""), "/admin")
+	}
+	w.ok(quiet, http.MethodGet, "/v1/me", nil)
+
+	// ad_rep was reported: their page opens without an email address, and
+	// still opens once the report is dismissed.
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+reported.id, cookie, nil, "")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "@ad_rep") || !strings.Contains(page.Body.String(), "Remy Reported") {
+		t.Fatalf("a reported person: %d %s", page.Code, page.Body.String())
+	}
+	if strings.Contains(page.Body.String(), "example.com") {
+		t.Fatalf("the person page shows an email address: %s", page.Body.String())
+	}
+	rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie,
+		url.Values{"csrf": {csrf}, "kind": {"person"}, "id": {a.id}, "person": {reported.id}}, "")
+	if rec.Header().Get("Location") != "/admin/people/"+reported.id+"?n=dismissed" {
+		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if after := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String(); !strings.Contains(after, "Report dismissed.") || !strings.Contains(after, "Dismissed") {
+		t.Fatalf("after the dismissal: %s", after)
+	}
+
+	// A report about a post or a comment opens its owner's page too. The
+	// reporter's own page stays closed.
+	poster := w.person("ad_poster", "Pia Poster")
+	commenter := w.person("ad_commenter", "Cy Commenter")
+	w.followAccepted(a, poster)
+	w.followAccepted(commenter, a)
+	const day = "2026-10-08"
+	posterEntry := w.post(poster, day)
+	aEntry := w.post(a, day)
+	w.post(commenter, day)
+	w.ok(a, http.MethodPost, "/v1/posts/"+posterEntry+"/report", map[string]any{"reason": "spam"})
+	comment := w.call(commenter, http.MethodPost, "/v1/posts/"+aEntry+"/comments", map[string]any{"text": "rude"}, http.StatusCreated)["comment"].(map[string]any)["id"].(string)
+	w.ok(a, http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "harassment"})
+	for _, p := range []feedPerson{poster, commenter} {
+		if page := adminDo(t, w, http.MethodGet, "/admin/people/"+p.id, cookie, nil, ""); page.Code != http.StatusOK {
+			t.Fatalf("%s, reported through a post or a comment: %d", p.name, page.Code)
+		}
+	}
+	sentToList("the reporter", adminDo(t, w, http.MethodGet, "/admin/people/"+a.id, cookie, nil, ""), "/admin")
+
+	// A disabled account opens with no report left about it (its only
+	// reporter deleted their account), so the disabled list can enable it.
+	// Once enabled, its page is the list, which still says so.
+	gone := w.person("ad_gone", "Gale Gone")
+	w.ok(a, http.MethodPost, "/v1/people/"+gone.id+"/report", map[string]any{"reason": "harassment"})
+	rec = adminDo(t, w, http.MethodPost, "/admin/people/"+gone.id+"/disable", cookie, url.Values{"csrf": {csrf}}, "")
+	if rec.Header().Get("Location") != "/admin/people/"+gone.id+"?n=disabled" {
+		t.Fatalf("disable a reported person: %q", rec.Header().Get("Location"))
+	}
+	if _, err := pool.Exec(context.Background(), `delete from user_reports where reported_id = $1`, gone.id); err != nil {
+		t.Fatal(err)
+	}
+	if list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String(); !strings.Contains(list, `href="/admin/people/`+gone.id+`"`) {
+		t.Fatalf("the disabled list lacks them: %s", list)
+	}
+	if page := adminDo(t, w, http.MethodGet, "/admin/people/"+gone.id, cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Enable account") {
+		t.Fatalf("a disabled account no report names: %d %s", page.Code, page.Body.String())
+	}
+	rec = adminDo(t, w, http.MethodPost, "/admin/people/"+gone.id+"/enable", cookie, url.Values{"csrf": {csrf}}, "")
+	if rec.Header().Get("Location") != "/admin/people/"+gone.id+"?n=enabled" {
+		t.Fatalf("enable: %q", rec.Header().Get("Location"))
+	}
+	sentToList("an enabled account no report names", adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, ""), "/admin?n=enabled")
+	if list := adminDo(t, w, http.MethodGet, "/admin?n=enabled", cookie, nil, "").Body.String(); !strings.Contains(list, "Account enabled again.") {
+		t.Fatalf("the list lacks the notice: %s", list)
+	}
+	if login := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "ad_gone@example.com", "password": adminTestPassword}); login.Code != http.StatusOK {
+		t.Fatalf("log in once enabled: %d", login.Code)
 	}
 }
 

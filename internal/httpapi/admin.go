@@ -22,6 +22,11 @@
 //     cross-site Origin is refused.
 //   - Pages are html/template (every user-written text is escaped), with a
 //     strict Content-Security-Policy and no framing.
+//   - It opens only people someone reported and disabled accounts, and never
+//     shows an email address (AdminRepo.Person, developer, 2026-10-29:
+//     privacy first). Anyone else's page goes back to the list, and disabling
+//     or enabling them is refused the same way. A report names its reporter
+//     by username only.
 package httpapi
 
 import (
@@ -487,7 +492,7 @@ func (h *AdminHandler) person(c *gin.Context) {
 	ctx := c.Request.Context()
 	p, err := h.repo.Person(ctx, id)
 	if errors.Is(err, admin.ErrNotFound) {
-		c.Redirect(http.StatusSeeOther, "/admin")
+		toList(c)
 		return
 	}
 	if err != nil {
@@ -511,6 +516,33 @@ func (h *AdminHandler) fail(c *gin.Context, err error) {
 // back returns to the person's page with one of the fixed notices.
 func back(c *gin.Context, person uuid.UUID, notice string) {
 	c.Redirect(http.StatusSeeOther, "/admin/people/"+person.String()+"?n="+notice)
+}
+
+// toList answers a person's page the admin may not open (nobody reported
+// them and they are not disabled, or there is no such account) with the
+// list, saying nothing about them. It keeps a fixed notice, so enabling an
+// account no report names still says so.
+func toList(c *gin.Context) {
+	to := "/admin"
+	if n := c.Query("n"); adminNotices[n] != "" {
+		to += "?n=" + n
+	}
+	c.Redirect(http.StatusSeeOther, to)
+}
+
+// mayOpen reports whether the admin may act on the person: the same rule as
+// their page (AdminRepo.Person). When not, it has answered already.
+func (h *AdminHandler) mayOpen(c *gin.Context, person uuid.UUID) bool {
+	_, err := h.repo.Person(c.Request.Context(), person)
+	if errors.Is(err, admin.ErrNotFound) {
+		toList(c)
+		return false
+	}
+	if err != nil {
+		back(c, person, "failed")
+		return false
+	}
+	return true
 }
 
 // --- actions ---
@@ -604,6 +636,9 @@ func (h *AdminHandler) disable(c *gin.Context) {
 		back(c, id, "self")
 		return
 	}
+	if !h.mayOpen(c, id) {
+		return
+	}
 	ctx := c.Request.Context()
 	now := time.Now().UTC()
 	// Logged out everywhere: SetDisabled revokes every refresh token in the
@@ -623,6 +658,9 @@ func (h *AdminHandler) enable(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.Redirect(http.StatusSeeOther, "/admin")
+		return
+	}
+	if !h.mayOpen(c, id) {
 		return
 	}
 	if err := h.repo.SetDisabled(c.Request.Context(), id, nil); err != nil {

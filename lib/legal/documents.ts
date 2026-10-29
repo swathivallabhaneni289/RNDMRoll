@@ -25,6 +25,9 @@ export const CONTACT_EMAIL = '';
 
 const EFFECTIVE = 'October 25, 2026';
 
+/** The Privacy Policy's own date: it changed after the Terms (what admins see, 2026-10-29). */
+const PRIVACY_EFFECTIVE = 'October 29, 2026';
+
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
 }
@@ -161,7 +164,7 @@ export const TERMS: LegalDocument = {
 
 export const PRIVACY: LegalDocument = {
   title: 'Privacy Policy',
-  effective: EFFECTIVE,
+  effective: PRIVACY_EFFECTIVE,
   intro: [
     'This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").',
     "In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and photo links aren't locked.",
@@ -232,10 +235,10 @@ export const PRIVACY: LegalDocument = {
           'Your posts show the time you posted, in your own time zone, and say Late when you posted late.',
           'Archived posts are hidden from everyone else in the app.',
           "If you block someone, neither of you can see the other's profile, posts or comments. They stay in your Blocked accounts list so you can unblock them.",
-          "Admins, who review reports, can see reports, the reported posts and comments, and an account's name, username, email address, bio and join date.",
+          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, bio and join date, and whether it is disabled or its owner asked to delete it. They can open only accounts that someone reported or that are disabled.",
           'We, who run RNDMRoll\'s server, can reach everything stored on it. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.',
         ),
-        paragraph('Other users never see your email address or your birthday. Admins see your email address, but not your birthday.'),
+        paragraph('Other users and admins never see your email address or your birthday.'),
       ],
     },
     {

@@ -425,6 +425,8 @@ func TestPushIntegration_AdminDisableEndsPushes(t *testing.T) {
 	const tok = "ExponentPushToken[disabledBob]"
 	w.saveToken(s.AccessToken, tok)
 	w.wantPushedTo("saved", id, tok)
+	// Someone reports them, so the admin may act on the account.
+	w.ok(w.person("pd_rae", "Rae Reporter"), http.MethodPost, "/v1/people/"+id+"/report", map[string]any{"reason": "spam"})
 
 	cookie := adminLogin(t, w.feedWorld, "pd_boss@example.com", adminTestPassword)
 	page := adminDo(t, w.feedWorld, http.MethodGet, "/admin/people/"+id, cookie, nil, "").Body.String()

@@ -41,12 +41,12 @@ type Summary struct {
 	LatestAt time.Time
 }
 
-// Person is the reported person as the admin sees them.
+// Person is the reported or disabled person as the admin sees them. It has
+// no email address: the page never shows one.
 type Person struct {
 	ID         uuid.UUID
 	Username   string
 	Name       string
-	Email      string
 	Bio        string
 	CreatedAt  time.Time
 	DisabledAt *time.Time
@@ -80,6 +80,9 @@ type Report struct {
 type Repository interface {
 	Summaries(ctx context.Context) ([]Summary, error)
 	DisabledPeople(ctx context.Context) ([]Summary, error)
+	// Person is a person someone reported (about them, a post or a comment,
+	// open or closed) or a disabled account; anyone else is ErrNotFound, so
+	// the page opens no one else.
 	Person(ctx context.Context, id uuid.UUID) (Person, error)
 	Reports(ctx context.Context, person uuid.UUID) ([]Report, error)
 	// Resolve closes one open report about person. False when there was none.
