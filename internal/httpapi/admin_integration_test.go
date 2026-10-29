@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -339,5 +340,88 @@ func TestAdminIntegration_LogInSharesTheAppsPerAccountLimit(t *testing.T) {
 	assertInvalidCredentials(t, appLogin(page, "ad_boss", adminTestPassword))
 	if rec := appLogin("198.51.100.84:1", "ad_boss", adminTestPassword); rec.Code != http.StatusOK {
 		t.Fatalf("the app from another address: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// adminLinkFrom opens a `make admin` link from remote, and returns the answer
+// and the session cookie it set ("" for none).
+func adminLinkFrom(t *testing.T, w *feedWorld, remote, token string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/admin/link?token="+url.QueryEscape(token), nil)
+	req.RemoteAddr = remote
+	rec := httptest.NewRecorder()
+	w.engine.ServeHTTP(rec, req)
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == adminCookie && c.Value != "" {
+			if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/admin" {
+				t.Fatalf("cookie flags: %+v", c)
+			}
+			return rec, c.Value
+		}
+	}
+	return rec, ""
+}
+
+// A link from `make admin` (cmd/admin-link) opens the page with the usual
+// session for the admin it names, or for the first admin when it names none,
+// and works once. A link that has ended, is signed with another secret, or
+// names an account that is no admin lands on the log in page with the same
+// notice, and sets no cookie.
+func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	w.person("ad_linker", "Lee Linker")
+	now := frozenClock()
+	mint := func(secret []byte, email string, at time.Time) string {
+		t.Helper()
+		token, err := adminlink.New(secret, email, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	// Each try from its own address, so the per-address limit never answers.
+	n := 0
+	from := func() string {
+		n++
+		return fmt.Sprintf("198.51.100.%d:1", 100+n)
+	}
+	refused := func(name string, rec *httptest.ResponseRecorder, cookie string) {
+		t.Helper()
+		if cookie != "" || rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login?n=badlink" {
+			t.Fatalf("%s: %d %q, cookie %q", name, rec.Code, rec.Header().Get("Location"), cookie)
+		}
+	}
+
+	for _, email := range []string{"", "AD_Boss@example.com"} {
+		token := mint(integrationJWTSecret, email, now)
+		rec, cookie := adminLinkFrom(t, w, from(), token)
+		if rec.Code != http.StatusOK || cookie == "" || !strings.Contains(rec.Body.String(), `<meta http-equiv="refresh" content="0;url=/admin">`) {
+			t.Fatalf("a link for %q: %d, cookie %q, %s", email, rec.Code, cookie, rec.Body.String())
+		}
+		if page := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Open reports") {
+			t.Fatalf("the session a link for %q opened: %d", email, page.Code)
+		}
+		again, cookie := adminLinkFrom(t, w, from(), token)
+		refused("a used link", again, cookie)
+	}
+
+	for _, c := range []struct{ name, token string }{
+		{"an ended link", mint(integrationJWTSecret, "", now.Add(-adminlink.TTL))},
+		{"another secret", mint([]byte("another-secret-that-is-at-least-32-bytes"), "", now)},
+		{"not an admin", mint(integrationJWTSecret, "ad_linker@example.com", now)},
+		{"no account", mint(integrationJWTSecret, "ad_nobody@example.com", now)},
+		{"garbled", "x.y.z.w"},
+		{"no token", ""},
+	} {
+		rec, cookie := adminLinkFrom(t, w, from(), c.token)
+		refused(c.name, rec, cookie)
+	}
+
+	// The log in page names the way in, and a refused link says what to do.
+	login := adminDo(t, w, http.MethodGet, "/admin/login?n=badlink", "", nil, "").Body.String()
+	for _, want := range []string{"Run <code>make admin</code> in the RNDMRoll folder", "That link expired or was already used. Run make admin for a new one."} {
+		if !strings.Contains(login, want) {
+			t.Fatalf("the log in page lacks %q", want)
+		}
 	}
 }

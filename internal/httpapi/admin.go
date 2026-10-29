@@ -11,6 +11,9 @@
 //   - Log in counts its tries at an account with the app's log in (5 a
 //     minute per address and account), and past that answers as a wrong
 //     password does.
+//   - `make admin` (cmd/admin-link) opens the page without a password: a
+//     link signed with the cookie's own secret, so it opens nothing that
+//     secret could not (internal/adminlink). It works for two minutes, once.
 //   - The session is an HttpOnly, SameSite=Strict cookie signed for the admin
 //     page only (an app token never works here, and this cookie never works
 //     in the app). The allowlist and the disabled flag are checked again on
@@ -34,12 +37,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
@@ -77,6 +82,7 @@ var adminNotices = map[string]string{
 	"signedout":   "You're logged out.",
 	"badlogin":    "Wrong email or password, or this account is not an admin.",
 	"expired":     "Please log in again.",
+	"badlink":     "That link expired or was already used. Run make admin for a new one.",
 	"nothingopen": "That report was already closed.",
 }
 
@@ -87,15 +93,23 @@ type AdminHandler struct {
 	entries *EntryHandler
 	secret  []byte
 	admins  map[uuid.UUID]bool
-	secure  bool
-	pages   *template.Template
-	css     []byte
+	// first is the first admin found when the server started: a link that
+	// names no address opens the page for it.
+	first  uuid.UUID
+	secure bool
+	pages  *template.Template
+	css    []byte
 	// accountLimit counts log in tries per address and account. NewServer
 	// gives it the app's log in's (AuthHandler.accountLimit), so tries on
 	// either page count against one share.
 	accountLimit *middleware.Limiter
-	// clock is the time the limits count by; nil is the real clock.
+	// clock is the time the limits and the links count by; nil is the real
+	// clock.
 	clock func() time.Time
+	// usedLinks are the nonces of the links that opened the page, each kept
+	// until its link would have ended: a link works once.
+	linkMu    sync.Mutex
+	usedLinks map[string]time.Time
 }
 
 // NewAdminHandler builds the admin page. admins are the admin accounts' ids,
@@ -105,9 +119,12 @@ type AdminHandler struct {
 func NewAdminHandler(repo admin.Repository, users user.Repository, entries *EntryHandler,
 	secret []byte, admins []uuid.UUID, secure bool) *AdminHandler {
 	h := &AdminHandler{repo: repo, users: users, entries: entries, secret: secret, secure: secure,
-		admins: map[uuid.UUID]bool{}}
+		admins: map[uuid.UUID]bool{}, usedLinks: map[string]time.Time{}}
 	for _, id := range admins {
 		h.admins[id] = true
+	}
+	if len(admins) > 0 {
+		h.first = admins[0]
 	}
 	h.accountLimit = middleware.NewLimiter(loginAccountTries, time.Minute, h.now)
 	h.pages = template.Must(template.New("admin").Funcs(template.FuncMap{
@@ -203,6 +220,9 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 	g.POST("/login", middleware.RateLimit(middleware.LimitConfig{
 		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP, Clock: h.now,
 	}), h.sameOrigin, h.login)
+	g.GET("/link", middleware.RateLimit(middleware.LimitConfig{
+		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP, Clock: h.now,
+	}), h.openLink)
 
 	in := g.Group("")
 	in.Use(h.requireAdmin)
@@ -332,7 +352,9 @@ func (h *AdminHandler) sameOrigin(c *gin.Context) {
 // --- pages ---
 
 type adminPage struct {
-	Title     string
+	Title string
+	// Refresh moves the page on to /admin at once (the page a link opens).
+	Refresh   bool
 	CSRF      string
 	Notice    string
 	Summaries []admin.Summary
@@ -380,6 +402,60 @@ func (h *AdminHandler) login(c *gin.Context) {
 	}
 	h.setCookie(c, h.newSession(u.ID, time.Now()), int(adminSessionTTL.Seconds()))
 	c.Redirect(http.StatusSeeOther, "/admin")
+}
+
+// openLink answers a link from `make admin` (cmd/admin-link). A link signed
+// with the page's secret, unexpired and unused, opens the page for the admin
+// it names, or for the first admin when it names none. It is spent before the
+// account is looked up, so a link that fails once never works later, and
+// every failure is the same notice.
+//
+// The answer is a page that moves on to /admin, not a redirect: a browser
+// that counts the link's own navigation as coming from elsewhere (opened
+// from the terminal) would hold the SameSite=Strict cookie back on a
+// redirect, while the page's own move is same-site.
+func (h *AdminHandler) openLink(c *gin.Context) {
+	now := h.now()
+	l, err := adminlink.Read(h.secret, c.Query("token"), now)
+	if err != nil || !h.spendLink(l, now) {
+		h.toLogin(c, "badlink")
+		return
+	}
+	ctx := c.Request.Context()
+	var u *user.User
+	if l.Email == "" {
+		u, err = h.users.GetByID(ctx, h.first)
+	} else {
+		u, err = h.users.GetByEmailCI(ctx, l.Email)
+	}
+	if err != nil && !errors.Is(err, user.ErrNotFound) {
+		h.fail(c, err)
+		return
+	}
+	if err != nil || !h.isAdmin(u) {
+		h.toLogin(c, "badlink")
+		return
+	}
+	log.Printf("httpapi: admin page opened with a link for account %s", u.ID)
+	h.setCookie(c, h.newSession(u.ID, time.Now()), int(adminSessionTTL.Seconds()))
+	h.render(c, "opened", adminPage{Title: "Opening", Refresh: true})
+}
+
+// spendLink marks a link used, and says whether it was unused. The nonces of
+// links that have ended are dropped first.
+func (h *AdminHandler) spendLink(l adminlink.Link, now time.Time) bool {
+	h.linkMu.Lock()
+	defer h.linkMu.Unlock()
+	for nonce, end := range h.usedLinks {
+		if !now.Before(end) {
+			delete(h.usedLinks, nonce)
+		}
+	}
+	if _, used := h.usedLinks[l.Nonce]; used {
+		return false
+	}
+	h.usedLinks[l.Nonce] = l.Expires
+	return true
 }
 
 func (h *AdminHandler) logout(c *gin.Context) {

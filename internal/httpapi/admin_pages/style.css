@@ -36,6 +36,7 @@ input[type=email], input[type=password] { width: 100%; max-width: 360px; padding
 .login { max-width: 400px; margin: 64px auto; }
 .login .note { margin-top: 16px; }
 .login .actions { margin-top: 16px; }
+code { font: 14px/1.5 ui-monospace, Menlo, monospace; }
 @media (max-width: 600px) {
   table, tbody, tr, td { display: block; }
   thead { display: none; }

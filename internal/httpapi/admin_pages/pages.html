@@ -1,6 +1,7 @@
 {{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · RNDMRoll admin</title><link rel="stylesheet" href="/admin/style.css"></head>
+<title>{{.Title}} · RNDMRoll admin</title><link rel="stylesheet" href="/admin/style.css">
+{{if .Refresh}}<meta http-equiv="refresh" content="0;url=/admin">{{end}}</head>
 <body><main>{{end}}
 
 {{define "top"}}<header><h1><a class="home" href="/admin">RNDMRoll admin</a></h1>
@@ -17,7 +18,13 @@
 <label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" required>
 <div class="actions"><button class="strong">Log in</button></div>
 </form>
-<p class="muted">Same email and password as the RNDMRoll app. Forgot your password? Reset it from the app's Log in screen.</p></div>
+<p class="muted">Same email and password as the RNDMRoll app. Forgot your password? Run <code>make admin</code> in the RNDMRoll folder, or reset it in the app.</p></div>
+{{template "foot" .}}{{end}}
+
+{{define "opened"}}{{template "head" .}}
+<div class="login"><h1>RNDMRoll admin</h1>
+<p>You're in.</p>
+<div class="actions"><a class="button" href="/admin">Open the reports</a></div></div>
 {{template "foot" .}}{{end}}
 
 {{define "list"}}{{template "head" .}}{{template "top" .}}

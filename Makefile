@@ -1,10 +1,16 @@
-.PHONY: run dev test test-integration test-all-integration migrate-up migrate-down migrate-new db-create
+.PHONY: run dev admin test test-integration test-all-integration migrate-up migrate-down migrate-new db-create
 
 run:
 	go run ./cmd/api
 
 dev:
 	set -a && . ./.env && set +a && go run ./cmd/api
+
+# admin opens the admin page in the browser, logged in, without a password
+# (cmd/admin-link): a one-time link signed with JWT_SECRET from .env, for the
+# first ADMIN_EMAILS account, or for EMAIL=you@example.com.
+admin:
+	@set -a && . ./.env && set +a && go run ./cmd/admin-link $(if $(EMAIL),-email "$(EMAIL)")
 
 test:
 	go test ./...
