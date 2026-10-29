@@ -120,7 +120,7 @@ func (h *AccountHandler) changePassword(c *gin.Context) {
 		RespondFieldError(c, "current_password", reasonRequired)
 		return
 	}
-	if reason := passwordReason(req.NewPassword); reason != "" {
+	if reason := auth.PasswordReason(req.NewPassword); reason != "" {
 		RespondFieldError(c, "new_password", reason)
 		return
 	}

@@ -269,6 +269,51 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	return tx.Commit(ctx)
 }
 
+// SetPassword stores passwordHash for userID from the terminal (`make
+// password`, cmd/set-password), with no session of its own. In ONE
+// transaction, in the order of session_locks.go, it deletes a Forgot password
+// code asked for before (it could set yet another password), stores the
+// hash, ends every app session the account had (the revoke runs twice,
+// ChangePassword says why) and deletes its push tokens. Like change password,
+// it never cancels a deletion: an account an admin disabled, or whose owner
+// asked for it to be deleted, is user.ErrAccountDisabled, one that is gone is
+// user.ErrNotFound, and neither changes.
+func (r *UserRepo) SetPassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	if _, err := tx.Exec(ctx, `delete from password_resets where user_id = $1`, userID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, setHashQ, userID, passwordHash, false)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return unchangedAccount(ctx, tx, userID)
+	}
+	for range 2 {
+		if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, deletePushTokensQ, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// setHashQ stores the new hash $2 of the account $1, the first write of every
+// password change. The users_set_updated_at trigger stamps the row. A
+// disabled account keeps its password: the update finds no row. So does an
+// account whose deletion was asked for, unless $3 (restore) is true and this
+// is a reset inside the grace period.
+var setHashQ = `update users set password_hash = $2 where id = $1 and disabled_at is null
+	and (deletion_requested_at is null or ($3::boolean and ` + insideGrace("deletion_requested_at") + `))`
+
 // changePassword is ChangePassword's writes, as steps of the caller's
 // transaction tx (ChangePassword says why the revoke runs twice). Forgot
 // password runs them in the transaction that spends its code
@@ -287,12 +332,7 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 // one already in flight when the ask lands must not quietly undo it, so it
 // is refused like a disabled account.
 func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string, restore bool) (restored bool, err error) {
-	// The users_set_updated_at trigger stamps the row. A disabled account
-	// keeps its password: the update finds no row. So does an account whose
-	// deletion was asked for, unless this is a reset inside the grace period.
-	setHash := `update users set password_hash = $2 where id = $1 and disabled_at is null
-		and (deletion_requested_at is null or ($3::boolean and ` + insideGrace("deletion_requested_at") + `))`
-	tag, err := tx.Exec(ctx, setHash, userID, passwordHash, restore)
+	tag, err := tx.Exec(ctx, setHashQ, userID, passwordHash, restore)
 	if err != nil {
 		return false, err
 	}

@@ -73,3 +73,38 @@ func TestPassword_HashAccepts72ByteBoundary(t *testing.T) {
 		t.Fatalf("72-byte password should be accepted, got error: %v", err)
 	}
 }
+
+// PasswordReason is the one new-password rule: 8 to 72 characters, counted
+// as characters, with a capital letter, a number and a symbol. Its reasons
+// are the ones the API answers with.
+func TestPasswordReason_TheRule(t *testing.T) {
+	for p, want := range map[string]string{
+		"":                              "required",
+		"Ab1!":                          "too_short",
+		"Abcde1!":                       "too_short",
+		"Abcdef1!":                      "",
+		strings.Repeat("a", 69) + "A1!": "",
+		strings.Repeat("a", 70) + "A1!": "too_long",
+		"abcdefg1!":                     "too_weak",
+		"Abcdefgh!":                     "too_weak",
+		"Abcdefgh1":                     "too_weak",
+		"Ünïcödé1€":                     "",
+		strings.Repeat("é", 69) + "A1!": "",
+	} {
+		if got := PasswordReason(p); got != want {
+			t.Errorf("PasswordReason(%q) = %q, want %q", p, got, want)
+		}
+	}
+}
+
+// The rule counts characters and bcrypt's ceiling counts bytes, so a
+// password of 72 characters the rule accepts can still be too long to hash.
+func TestPasswordReason_CharactersButHashPasswordBytes(t *testing.T) {
+	p := strings.Repeat("é", 69) + "A1!"
+	if reason := PasswordReason(p); reason != "" {
+		t.Fatalf("PasswordReason = %q, want it accepted", reason)
+	}
+	if _, err := HashPassword(p); !errors.Is(err, ErrPasswordTooLong) {
+		t.Fatalf("HashPassword = %v, want ErrPasswordTooLong", err)
+	}
+}

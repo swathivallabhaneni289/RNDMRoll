@@ -6,6 +6,8 @@ package auth
 
 import (
 	"errors"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -23,6 +25,46 @@ const MaxPasswordBytes = 72
 // ErrPasswordTooLong is returned by HashPassword when plain exceeds
 // bcrypt's 72-byte ceiling.
 var ErrPasswordTooLong = errors.New("auth: password exceeds 72 bytes")
+
+// The length of a new password, in characters. HashPassword then holds
+// bcrypt's ceiling, which counts bytes.
+const (
+	minPasswordLength = 8
+	maxPasswordLength = 72
+)
+
+// PasswordReason checks a new password: required, 8 to 72 characters, with at
+// least one capital letter, one number and one symbol. It returns "" when the
+// password is fine, else the reason the API answers with: "required",
+// "too_short", "too_long" or "too_weak". Sign-up, change password, Forgot
+// password and `make password` (cmd/set-password) follow this one rule; log
+// in never checks it, so older, simpler passwords still work.
+func PasswordReason(p string) string {
+	n := utf8.RuneCountInString(p)
+	switch {
+	case p == "":
+		return "required"
+	case n < minPasswordLength:
+		return "too_short"
+	case n > maxPasswordLength:
+		return "too_long"
+	}
+	var upper, digit, symbol bool
+	for _, r := range p {
+		switch {
+		case unicode.IsUpper(r):
+			upper = true
+		case unicode.IsDigit(r):
+			digit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			symbol = true
+		}
+	}
+	if !upper || !digit || !symbol {
+		return "too_weak"
+	}
+	return ""
+}
 
 // HashPassword returns a bcrypt hash of plain at bcrypt.DefaultCost. It
 // rejects input over 72 bytes before ever calling bcrypt, since bcrypt

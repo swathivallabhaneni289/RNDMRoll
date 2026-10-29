@@ -1,4 +1,4 @@
-.PHONY: run dev admin test test-integration test-all-integration migrate-up migrate-down migrate-new db-create
+.PHONY: run dev admin password test test-integration test-all-integration migrate-up migrate-down migrate-new db-create
 
 run:
 	go run ./cmd/api
@@ -11,6 +11,14 @@ dev:
 # first ADMIN_EMAILS account, or for EMAIL=you@example.com.
 admin:
 	@set -a && . ./.env && set +a && go run ./cmd/admin-link $(if $(EMAIL),-email "$(EMAIL)")
+
+# password sets a new password for an account from the terminal
+# (cmd/set-password), like Django's changepassword: it asks for the email or
+# username (or ACCOUNT=you@example.com), then the new password twice without
+# showing it, and ends every app session of the account. It reads
+# DATABASE_URL from .env, and runs only in a terminal.
+password:
+	@set -a && . ./.env && set +a && go run ./cmd/set-password $(if $(ACCOUNT),-account "$(ACCOUNT)")
 
 test:
 	go test ./...

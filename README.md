@@ -133,6 +133,7 @@ Optional:
 - **Admin page.** Set `ADMIN_EMAILS` to your account's email before starting the server, then open `http://localhost:8080/admin`.
   The admin account must exist before the server starts: sign up with that email while it is not in `ADMIN_EMAILS` (sign-up refuses a listed address), then add it and restart the server.
   Log in with that account's app email and password, or run `make admin` to open the page already logged in. It makes a one-time link that works for two minutes, signed with `JWT_SECRET`, the same secret that signs the page's cookie.
+- **Forgot a password.** Run `make password` in a terminal. It asks for the account's email or username, then the new password twice without showing it, checks it with the app's password rule and ends every app session of that account.
 - **Phone notifications.** These are off until Apple and Expo credentials are added. The steps are in [`docs/PUSH-SETUP.md`](./docs/PUSH-SETUP.md).
 
 Tests:

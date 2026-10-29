@@ -185,11 +185,9 @@ var (
 
 // Field limits shared by sign-up and PATCH /me.
 const (
-	maxEmailLength    = 254
-	minPasswordLength = 8
-	maxPasswordLength = 72
-	maxNameLength     = 50
-	maxBioLength      = 160
+	maxEmailLength = 254
+	maxNameLength  = 50
+	maxBioLength   = 160
 )
 
 // SignupRequest is the signup request body. It carries no binding tags on
@@ -225,37 +223,6 @@ func (r *LoginRequest) typed() string {
 		return r.Login
 	}
 	return r.Email
-}
-
-// passwordReason checks a new password: required, 8 to 72 characters, with at
-// least one capital letter, one number and one symbol. It returns "" when the
-// password is fine. Sign-up and change password follow this one rule; log in
-// never checks it, so older, simpler passwords still work.
-func passwordReason(p string) string {
-	n := utf8.RuneCountInString(p)
-	switch {
-	case p == "":
-		return reasonRequired
-	case n < minPasswordLength:
-		return reasonTooShort
-	case n > maxPasswordLength:
-		return reasonTooLong
-	}
-	var upper, digit, symbol bool
-	for _, r := range p {
-		switch {
-		case unicode.IsUpper(r):
-			upper = true
-		case unicode.IsDigit(r):
-			digit = true
-		case unicode.IsPunct(r) || unicode.IsSymbol(r):
-			symbol = true
-		}
-	}
-	if !upper || !digit || !symbol {
-		return reasonTooWeak
-	}
-	return ""
 }
 
 // validEmail accepts a plain address of at most 254 characters: it must parse
@@ -371,7 +338,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		RespondFieldError(c, "email", reasonInvalid)
 		return
 	}
-	if reason := passwordReason(req.Password); reason != "" {
+	if reason := auth.PasswordReason(req.Password); reason != "" {
 		RespondFieldError(c, "password", reason)
 		return
 	}

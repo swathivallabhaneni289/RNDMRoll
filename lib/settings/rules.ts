@@ -4,8 +4,8 @@
  *
  * The numbers repeat rules that live in other places, and all of them must change together:
  *   - the username pattern: the server (internal/user) and components/profile/ProfileForm.tsx;
- *   - a password of 8 characters up to 72 BYTES (bcrypt's limit), with a capital letter, a number and a symbol: the server's passwordReason
- *     (internal/httpapi) and ProfileForm.tsx;
+ *   - a password of 8 characters up to 72 BYTES (bcrypt's limit), with a capital letter, a number and a symbol: the server's
+ *     auth.PasswordReason (internal/auth) and ProfileForm.tsx;
  *   - a bio of 160 characters: the server's profile check and ProfileForm.tsx.
  * The words are the strings of 02.1-UI-SPEC section 10, verbatim.
  */
@@ -63,7 +63,7 @@ export type PasswordCheck = { label: string; met: boolean };
 
 /**
  * The four things a new password needs, in the order the checklist shows them. The server's
- * passwordReason (internal/httpapi/auth.go) holds the same rule: 8 characters, a capital letter,
+ * auth.PasswordReason (internal/auth/password.go) holds the same rule: 8 characters, a capital letter,
  * a number and a symbol (any punctuation or symbol character).
  */
 export function passwordChecks(value: string): PasswordCheck[] {

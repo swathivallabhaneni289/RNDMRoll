@@ -345,7 +345,7 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		RespondFieldError(c, "code", reasonInvalid)
 		return
 	}
-	if reason := passwordReason(req.NewPassword); reason != "" {
+	if reason := auth.PasswordReason(req.NewPassword); reason != "" {
 		RespondFieldError(c, "new_password", reason)
 		return
 	}
