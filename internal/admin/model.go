@@ -44,10 +44,12 @@ type Summary struct {
 // Person is the reported or disabled person as the admin sees them. It has
 // no email address: the page never shows one.
 type Person struct {
-	ID         uuid.UUID
-	Username   string
-	Name       string
-	Bio        string
+	ID       uuid.UUID
+	Username string
+	Name     string
+	Bio      string
+	// PhotoURL is the profile photo's link, "" for none.
+	PhotoURL   string
 	CreatedAt  time.Time
 	DisabledAt *time.Time
 	// DeletionRequestedAt is when the person asked, in the app, for the
@@ -67,13 +69,19 @@ type Report struct {
 	CreatedAt  time.Time
 	ResolvedAt *time.Time
 	Resolution string
-	// A post report: the post (nil once it is gone) and its title then.
-	EntryID  *uuid.UUID
-	Title    string
-	PhotoKey string
-	// A comment report: the comment (nil once it is gone) and its text then.
+	// A post report: the post (nil once it is gone) and its title then. The
+	// rest is the post as it is now, and empty once it is gone: its day
+	// (YYYY-MM-DD), its text ("" for none) and every photo's key, in order.
+	EntryID   *uuid.UUID
+	Title     string
+	LocalDate string
+	Note      string
+	PhotoKeys []string
+	// A comment report: the comment (nil once it is gone), its text then,
+	// and its photo's key ("" for none).
 	CommentID *uuid.UUID
 	Body      string
+	PhotoKey  string
 }
 
 // Repository is the admin page's storage.

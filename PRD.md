@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a local server. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | October 29, 2026 |
+| **Last updated** | October 30, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -517,6 +517,10 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ADM-01 who is an admin.** Admins are the accounts listed in the server's settings when it starts. Their email can't be used to sign up.
 - **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
+- **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
+  - The person: name, username, profile photo, bio and join date.
+  - A post report: the whole post as it is now, with its date, its text and every photo in order. Each photo opens full size in a new tab. The title is the one it had when it was reported. A post that is gone shows only that title and says so.
+  - A comment report: the comment's text from when it was reported, and its photo.
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment) and disabled accounts. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
   - The page never shows an email address or a birthday.
@@ -560,7 +564,7 @@ These rules decide what counts. The server owns all of them.
 | Week streak | Weeks in a row that met the goal, ending this week or last |
 | Spins figure | Days spun; a bonus spin doesn't add one |
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who posted a first spin today or has never spun |
-| Who sees a post | The author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, and they posted for that date themselves. On the admin page, an admin also sees a reported post's title and cover photo. |
+| Who sees a post | The author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
 | Deleted account | Hidden from everyone at once, like a disabled account, and logged out. Deleted for good 30 days later; logging in or resetting the password before then cancels it. One 30-day rule, on the database clock, decides both. |
 | Time labels | Written by the server ("8:41 PM", "Mon", "Oct 3"). The app never works out a time from the phone's clock, except the 8 PM reminder and the birthday check, which the server checks again. |

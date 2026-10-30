@@ -19,12 +19,18 @@ tr:last-child td { border-bottom: none; }
 td.who a { font-weight: 600; }
 td.who a, td.who span, td.reasons span { display: block; }
 .narrow { display: none; }
+.person { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.person p { margin: 0; }
+.avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; flex: none; }
 .report { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }
 .report.closed { opacity: 0.7; }
 .report p { margin: 0; }
 .report .what { font-weight: 600; }
 .quote { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--line); white-space: pre-wrap; word-break: break-word; }
+.quote .title { font-weight: 600; }
 .thumb { width: 96px; height: 120px; object-fit: cover; border-radius: 4px; display: block; margin: 8px 0; }
+.photos { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.photos .thumb { margin: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 form.inline { display: inline; }
 button, a.button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; }

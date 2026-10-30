@@ -25,8 +25,8 @@ export const CONTACT_EMAIL = '';
 
 const EFFECTIVE = 'October 25, 2026';
 
-/** The Privacy Policy's own date: it changed after the Terms (what admins see, 2026-10-29). */
-const PRIVACY_EFFECTIVE = 'October 29, 2026';
+/** The Privacy Policy's own date: it changed after the Terms (what admins see, 2026-10-29 and 2026-10-30). */
+const PRIVACY_EFFECTIVE = 'October 30, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
@@ -235,7 +235,7 @@ export const PRIVACY: LegalDocument = {
           'Your posts show the time you posted, in your own time zone, and say Late when you posted late.',
           'Archived posts are hidden from everyone else in the app.',
           "If you block someone, neither of you can see the other's profile, posts or comments. They stay in your Blocked accounts list so you can unblock them.",
-          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, bio and join date, and whether it is disabled or its owner asked to delete it. They can open only accounts that someone reported or that are disabled.",
+          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. They can open only accounts that someone reported or that are disabled.",
           'We, who run RNDMRoll\'s server, can reach everything stored on it. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.',
         ),
         paragraph('Other users and admins never see your email address or your birthday.'),

@@ -357,6 +357,146 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	}
 }
 
+// adminPost spins and posts p's entry for date at 8:30 PM, as entryRequest
+// writes it with one photo per key in order, and returns its id.
+func adminPost(w *feedWorld, p feedPerson, date string, keys ...string) string {
+	w.t.Helper()
+	w.at(date, 20, 30)
+	spun := w.ok(p, http.MethodPost, "/v1/spin", map[string]any{"for_date": date})
+	body := entryRequest(date, int(dig(w.t, spun, "today", "spin", "seq").(float64)), keys...)
+	return entryObject(w.t, w.call(p, http.MethodPost, "/v1/entries", body, http.StatusCreated)["entry"])["id"].(string)
+}
+
+// adminReportOf returns the one report on an admin person page that holds
+// mark: from its opening tag to the next report's (or the page's end).
+func adminReportOf(t *testing.T, page, mark string) string {
+	t.Helper()
+	var found []string
+	for _, part := range strings.Split(page, `<div class="report`)[1:] {
+		if strings.Contains(part, mark) {
+			found = append(found, part)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d reports hold %q, want 1: %s", len(found), mark, page)
+	}
+	return found[0]
+}
+
+// A post report shows the whole post as it is now, so the admin can check it
+// before acting: the title it had when it was reported, its day, its text
+// (escaped, and edited since) and every photo in order, each opening the
+// photo itself in a new tab. Nothing of the owner's other posts.
+func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	a := w.person("ad_alice", "Alice Ames")
+	b := w.person("ad_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	const day = "2026-10-08"
+	w.post(a, day)
+	// Three photos whose keys sort in another order than their places.
+	photos := []string{
+		"entries/" + b.id + "/ffffffffffffffff.jpg",
+		"entries/" + b.id + "/0000000000000000.png",
+		"entries/" + b.id + "/8888888888888888.webp",
+	}
+	bEntry := adminPost(w, b, day, photos...)
+	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "nudity"})
+	// Since then B edited the post, and posted the next day.
+	w.ok(b, http.MethodPatch, "/v1/entries/"+bEntry, map[string]any{"title": "Dune, again", "comment": "<b>Three</b> photos\nand a note"})
+	other := "entries/" + b.id + "/1111111111111111.jpg"
+	adminPost(w, b, "2026-10-09", other)
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("the page: %d %s", page.Code, page.Body.String())
+	}
+	report := adminReportOf(t, page.Body.String(), "Nudity or sexual content")
+	for _, want := range []string{
+		`<span class="title">Dune</span>`,
+		"&lt;b&gt;Three&lt;/b&gt; photos\nand a note",
+		`Posted for <span class="when">Oct 8, 2026</span>`,
+	} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("the report lacks %q: %s", want, report)
+		}
+	}
+	for _, bad := range []string{"<b>Three", "Dune, again", "Slow and worth it."} {
+		if strings.Contains(report, bad) {
+			t.Fatalf("the report has %q: %s", bad, report)
+		}
+	}
+	last := -1
+	for i, key := range photos {
+		link := fakeEntryPhotoPublicBase + key
+		at := strings.Index(report, `<a href="`+link+`" target="_blank" rel="noopener"><img class="thumb" src="`+link+`"`)
+		if at <= last {
+			t.Fatalf("photo %d (%s) is missing or out of order: %s", i+1, key, report)
+		}
+		last = at
+	}
+	if n := strings.Count(report, `<img class="thumb"`); n != len(photos) || strings.Contains(report, other) {
+		t.Fatalf("the report shows %d photos, want only the post's %d: %s", n, len(photos), report)
+	}
+}
+
+// A reported post that is gone (its owner deleted it) keeps the title it had
+// when it was reported and says it is gone, with no day, text or photo, not
+// even one of the owner's other posts.
+func TestAdminIntegration_AGonePostShowsNoPhoto(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	a := w.person("ad_alice", "Alice Ames")
+	g := w.person("ad_gone", "Gale Gone")
+	w.followAccepted(a, g)
+	const day = "2026-10-08"
+	w.post(a, day)
+	gone := w.post(g, day)
+	w.ok(a, http.MethodPost, "/v1/posts/"+gone+"/report", map[string]any{"reason": "spam"})
+	w.ok(g, http.MethodPost, "/v1/entries/"+gone+"/delete", map[string]any{})
+	w.post(g, "2026-10-09")
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+g.id, cookie, nil, "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("the page: %d %s", page.Code, page.Body.String())
+	}
+	report := adminReportOf(t, page.Body.String(), "The post is gone.")
+	if !strings.Contains(report, `<span class="title">Dune</span>`) {
+		t.Fatalf("the report lacks the title: %s", report)
+	}
+	for _, bad := range []string{"<img", fakeEntryPhotoPublicBase, "Posted for", "Slow and worth it."} {
+		if strings.Contains(report, bad) {
+			t.Fatalf("the gone post's report has %q: %s", bad, report)
+		}
+	}
+}
+
+// The person page shows the profile photo when there is one, and works the
+// same without it.
+func TestAdminIntegration_ThePersonPageShowsTheProfilePhoto(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	a := w.person("ad_alice", "Alice Ames")
+	pictured := w.person("ad_pictured", "Pat Pictured")
+	plain := w.person("ad_plain", "Nat Plain")
+	photo := testAvatarBaseURL + "/avatars/" + pictured.id + "/x.jpg"
+	w.ok(pictured, http.MethodPatch, "/v1/me", map[string]any{"avatar_url": photo})
+	for _, p := range []feedPerson{pictured, plain} {
+		w.ok(a, http.MethodPost, "/v1/people/"+p.id+"/report", map[string]any{"reason": "impersonation"})
+	}
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+pictured.id, cookie, nil, "")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<img class="avatar" src="`+photo+`"`) {
+		t.Fatalf("a person with a profile photo: %d %s", page.Code, page.Body.String())
+	}
+	page = adminDo(t, w, http.MethodGet, "/admin/people/"+plain.id, cookie, nil, "")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Nat Plain") ||
+		strings.Contains(page.Body.String(), `class="avatar"`) {
+		t.Fatalf("a person without one: %d %s", page.Code, page.Body.String())
+	}
+}
+
 // adminLoginFrom signs in to the admin page from remote and returns where it
 // sent the browser and the session cookie ("" when refused).
 func adminLoginFrom(t *testing.T, w *feedWorld, remote, email, password string) (location, cookie string) {

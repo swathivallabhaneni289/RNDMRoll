@@ -145,6 +145,15 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			}
 			return ""
 		},
+		// day writes a post's day (YYYY-MM-DD). It is a calendar date, so no
+		// time zone moves it, unlike when.
+		"day": func(date string) string {
+			d, err := time.Parse("2006-01-02", date)
+			if err != nil {
+				return date
+			}
+			return d.Format("Jan 2, 2006")
+		},
 		"reason": func(r string) string {
 			if w, ok := adminReasonWords[r]; ok {
 				return w
