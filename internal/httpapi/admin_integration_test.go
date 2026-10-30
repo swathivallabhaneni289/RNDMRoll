@@ -384,9 +384,10 @@ func adminReportOf(t *testing.T, page, mark string) string {
 }
 
 // A post report shows the whole post as it is now, so the admin can check it
-// before acting: the title it had when it was reported, its day, its text
-// (escaped, and edited since) and every photo in order, each opening the
-// photo itself in a new tab. Nothing of the owner's other posts.
+// before acting: its title, its day, its text (escaped, and edited since) and
+// every photo in order, each opening the photo itself in a new tab. The title
+// was edited since the report, so the one it had then shows too, and both
+// are labelled. Nothing of the owner's other posts.
 func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	w, _ := newAdminWorld(t)
 	a := w.person("ad_alice", "Alice Ames")
@@ -414,7 +415,8 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	}
 	report := adminReportOf(t, page.Body.String(), "Nudity or sexual content")
 	for _, want := range []string{
-		`<span class="title">Dune</span>`,
+		`<span class="muted">Title now:</span> <span class="title">Dune, again</span>`,
+		`<span class="muted">Title when reported:</span> Dune</p>`,
 		"&lt;b&gt;Three&lt;/b&gt; photos\nand a note",
 		`Posted for <span class="when">Oct 8, 2026</span>`,
 	} {
@@ -422,7 +424,7 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 			t.Fatalf("the report lacks %q: %s", want, report)
 		}
 	}
-	for _, bad := range []string{"<b>Three", "Dune, again", "Slow and worth it."} {
+	for _, bad := range []string{"<b>Three", "Slow and worth it."} {
 		if strings.Contains(report, bad) {
 			t.Fatalf("the report has %q: %s", bad, report)
 		}
@@ -438,6 +440,59 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	}
 	if n := strings.Count(report, `<img class="thumb"`); n != len(photos) || strings.Contains(report, other) {
 		t.Fatalf("the report shows %d photos, want only the post's %d: %s", n, len(photos), report)
+	}
+}
+
+// A second report of a post by the same person, after its title changed,
+// saves the new title with the new reason: the one report shows that title
+// once, with no label.
+func TestAdminIntegration_AReportAgainSavesTheNewTitle(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	a := w.person("ad_alice", "Alice Ames")
+	b := w.person("ad_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	const day = "2026-10-08"
+	w.post(a, day)
+	bEntry := w.post(b, day)
+	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
+	w.ok(b, http.MethodPatch, "/v1/entries/"+bEntry, map[string]any{"title": "Dune, again"})
+	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "harassment"})
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "")
+	if page.Code != http.StatusOK || strings.Count(page.Body.String(), `<div class="report`) != 1 {
+		t.Fatalf("the page, want one report: %d %s", page.Code, page.Body.String())
+	}
+	report := adminReportOf(t, page.Body.String(), "Bullying or harassment")
+	if !strings.Contains(report, `<div class="quote"><span class="title">Dune, again</span>`) ||
+		strings.Contains(report, "Title now") || strings.Contains(report, "Title when reported") {
+		t.Fatalf("the report, want the title then once and no label: %s", report)
+	}
+}
+
+// A comment report shows the comment's photo, so the admin can check it
+// before acting.
+func TestAdminIntegration_ACommentReportShowsItsPhoto(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	a := w.person("ad_alice", "Alice Ames")
+	b := w.person("ad_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	w.followAccepted(b, a)
+	const day = "2026-10-08"
+	aEntry := w.post(a, day)
+	w.post(b, day)
+	key := "entries/" + b.id + "/abcdefabcdefabcd.jpg"
+	c := w.call(b, http.MethodPost, "/v1/posts/"+aEntry+"/comments",
+		map[string]any{"text": "look", "photo_key": key}, http.StatusCreated)["comment"].(map[string]any)["id"].(string)
+	w.ok(a, http.MethodPost, "/v1/comments/"+c+"/report", map[string]any{"reason": "harassment"})
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	page := adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("the page: %d %s", page.Code, page.Body.String())
+	}
+	report := adminReportOf(t, page.Body.String(), "Bullying or harassment")
+	if !strings.Contains(report, `<img class="thumb" src="`+fakeEntryPhotoPublicBase+key+`"`) {
+		t.Fatalf("the comment report lacks its photo: %s", report)
 	}
 }
 

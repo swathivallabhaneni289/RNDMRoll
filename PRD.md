@@ -498,7 +498,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SAFE-01 reasons.** Spam; Nudity or sexual content; Bullying or harassment; Hate speech; Violence or threats; Pretending to be someone else; Something else.
 - **SAFE-01 after a report.**
   - The reporter sees "Thanks for letting us know. They won't be told."
-  - One report per reporter and item; a repeat replaces the reason.
+  - One report per reporter and item; a repeat replaces the reason, and a post's saved title.
   - You can't report your own post or comment.
   - Limit: 10 reports a minute per person.
 
@@ -519,7 +519,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
   - The person: name, username, profile photo, bio and join date.
-  - A post report: the whole post as it is now, with its date, its text and every photo in order. Each photo opens full size in a new tab. The title is the one it had when it was reported. A post that is gone shows only that title and says so.
+  - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone shows only the title it had when it was reported, and says so.
   - A comment report: the comment's text from when it was reported, and its photo.
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment) and disabled accounts. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.

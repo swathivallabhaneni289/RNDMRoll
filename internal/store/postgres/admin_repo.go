@@ -98,20 +98,20 @@ func (r *AdminRepo) Person(ctx context.Context, id uuid.UUID) (admin.Person, err
 
 // Reports implements admin.Repository: every report about the person, open
 // ones first, newest first within each. A post report carries the post as it
-// is now (its day, its text and every photo, in order), so the admin sees
-// what was reported in full; a post that is gone has none of them.
+// is now (its title, its day, its text and every photo, in order), so the
+// admin sees what was reported in full; a post that is gone has none of them.
 func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Report, error) {
 	rows, err := r.pool.Query(ctx, `
 		select * from (
 			select 'person' as kind, ur.reporter_id as id, coalesce(rp.username, '') as reporter, ur.reason,
 			       ur.created_at, ur.resolved_at, coalesce(ur.resolution, '') as resolution,
-			       null::uuid as entry_id, '' as title, '' as local_date, '' as note, array[]::text[] as photo_keys,
-			       null::uuid as comment_id, '' as body, '' as photo_key
+			       null::uuid as entry_id, '' as title, '' as title_now, '' as local_date, '' as note,
+			       array[]::text[] as photo_keys, null::uuid as comment_id, '' as body, '' as photo_key
 			from user_reports ur join users rp on rp.id = ur.reporter_id
 			where ur.reported_id = $1
 			union all
 			select 'post', pr.id, coalesce(rp.username, ''), pr.reason, pr.created_at, pr.resolved_at,
-			       coalesce(pr.resolution, ''), pr.entry_id, pr.title,
+			       coalesce(pr.resolution, ''), pr.entry_id, pr.title, coalesce(e.title, ''),
 			       coalesce(e.local_date::text, ''), coalesce(e.comment, ''),
 			       coalesce((select array_agg(ph.storage_key order by ph.position) from entry_photos ph
 			                 where ph.entry_id = pr.entry_id), array[]::text[]),
@@ -121,7 +121,7 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 			where pr.owner_id = $1
 			union all
 			select 'comment', cr.id, coalesce(rp.username, ''), cr.reason, cr.created_at, cr.resolved_at,
-			       coalesce(cr.resolution, ''), null::uuid, '', '', '', array[]::text[],
+			       coalesce(cr.resolution, ''), null::uuid, '', '', '', '', array[]::text[],
 			       cr.comment_id, cr.body,
 			       coalesce((select pc.photo_key from post_comments pc where pc.id = cr.comment_id), '')
 			from comment_reports cr join users rp on rp.id = cr.reporter_id
@@ -137,7 +137,7 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 	for rows.Next() {
 		var rep admin.Report
 		if err := rows.Scan(&rep.Kind, &rep.ID, &rep.Reporter, &rep.Reason, &rep.CreatedAt, &rep.ResolvedAt,
-			&rep.Resolution, &rep.EntryID, &rep.Title, &rep.LocalDate, &rep.Note, &rep.PhotoKeys,
+			&rep.Resolution, &rep.EntryID, &rep.Title, &rep.TitleNow, &rep.LocalDate, &rep.Note, &rep.PhotoKeys,
 			&rep.CommentID, &rep.Body, &rep.PhotoKey); err != nil {
 			return nil, err
 		}

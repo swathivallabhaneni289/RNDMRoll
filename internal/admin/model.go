@@ -70,10 +70,12 @@ type Report struct {
 	ResolvedAt *time.Time
 	Resolution string
 	// A post report: the post (nil once it is gone) and its title then. The
-	// rest is the post as it is now, and empty once it is gone: its day
-	// (YYYY-MM-DD), its text ("" for none) and every photo's key, in order.
+	// rest is the post as it is now, and empty once it is gone: its title,
+	// its day (YYYY-MM-DD), its text ("" for none) and every photo's key, in
+	// order.
 	EntryID   *uuid.UUID
 	Title     string
+	TitleNow  string
 	LocalDate string
 	Note      string
 	PhotoKeys []string
