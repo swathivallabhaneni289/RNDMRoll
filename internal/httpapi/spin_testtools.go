@@ -4,7 +4,8 @@
 //
 // They exist only when the server was started with APP_ENV=test,
 // SPIN_TEST_TOOLS=1, a non-empty SPIN_TEST_USER_EMAILS and a _dev or _test
-// database (config.Load refuses to start otherwise), and NewServer registers
+// database, or the one SPIN_TEST_DATABASE names (config.Load refuses to start
+// otherwise), and NewServer registers
 // them only when a handler is passed. Each route checks again: the handler
 // must be enabled, and the caller's email must be on the list (404
 // otherwise, so the route looks absent). A real account never goes on the

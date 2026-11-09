@@ -38,6 +38,7 @@ func setRequiredEnv(t *testing.T) {
 		"APP_ENV":               "",
 		"SPIN_TEST_TOOLS":       "",
 		"SPIN_TEST_USER_EMAILS": "",
+		"SPIN_TEST_DATABASE":    "",
 	}
 	for k, v := range vars {
 		t.Setenv(k, v)
@@ -298,6 +299,64 @@ func TestLoad_TestToolsNeedAListAndADevOrTestDatabase(t *testing.T) {
 	t.Setenv("SPIN_TEST_USER_EMAILS", "a@example.com")
 	if _, err := Load(); err != nil {
 		t.Fatalf("key=value DATABASE_URL naming a _dev database: %v", err)
+	}
+}
+
+func TestLoad_TestToolsLoadOnTheDatabaseSpinTestDatabaseNames(t *testing.T) {
+	// A hosted database whose name cannot be changed, such as Supabase's
+	// postgres, is allowed when SPIN_TEST_DATABASE names it exactly.
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("SPIN_TEST_TOOLS", "1")
+	t.Setenv("SPIN_TEST_USER_EMAILS", "a@example.com")
+	t.Setenv("DATABASE_URL", "postgres://postgres.ref@pooler.example.com:5432/postgres?sslmode=require")
+	t.Setenv("SPIN_TEST_DATABASE", "postgres")
+	if cfg, err := Load(); err != nil || !cfg.SpinTestTools {
+		t.Fatalf("Load() with SPIN_TEST_DATABASE naming the database: cfg on = %v, err = %v", cfg != nil && cfg.SpinTestTools, err)
+	}
+
+	cases := map[string]struct {
+		databaseURL string
+		marked      string
+	}{
+		"another database":      {"postgres://pooler.example.com:5432/rndmroll_prod?sslmode=require", "postgres"},
+		"name only starts so":   {"postgres://pooler.example.com:5432/postgres_prod?sslmode=require", "postgres"},
+		"dbname parameter wins": {"postgres://pooler.example.com:5432/postgres?dbname=rndmroll_prod", "postgres"},
+		"case differs":          {"postgres://pooler.example.com:5432/Postgres?sslmode=require", "postgres"},
+		"space in the mark":     {"postgres://pooler.example.com:5432/postgres?sslmode=require", " postgres"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv("APP_ENV", "test")
+			t.Setenv("SPIN_TEST_TOOLS", "1")
+			t.Setenv("SPIN_TEST_USER_EMAILS", "a@example.com")
+			t.Setenv("DATABASE_URL", c.databaseURL)
+			t.Setenv("SPIN_TEST_DATABASE", c.marked)
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load(): want an error, got nil")
+			}
+			if !strings.Contains(err.Error(), "SPIN_TEST_DATABASE") {
+				t.Errorf("error = %q, want it to name SPIN_TEST_DATABASE", err.Error())
+			}
+		})
+	}
+
+	// The mark lifts only the name rule: test mode and the list are still
+	// needed.
+	setRequiredEnv(t)
+	t.Setenv("SPIN_TEST_TOOLS", "1")
+	t.Setenv("SPIN_TEST_USER_EMAILS", "a@example.com")
+	t.Setenv("DATABASE_URL", "postgres://pooler.example.com:5432/postgres?sslmode=require")
+	t.Setenv("SPIN_TEST_DATABASE", "postgres")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "APP_ENV=test") {
+		t.Fatalf("Load() with the mark but APP_ENV unset: got %v, want the tools message naming APP_ENV=test", err)
+	}
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("SPIN_TEST_USER_EMAILS", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SPIN_TEST_USER_EMAILS") {
+		t.Fatalf("Load() with the mark but no list: got %v, want an error naming SPIN_TEST_USER_EMAILS", err)
 	}
 }
 

@@ -45,7 +45,8 @@ type Config struct {
 	AppEnv string
 	// SpinTestTools turns on the test-only clock and pretend-day routes. It
 	// loads only with AppEnv "test", a non-empty SpinTestUserEmails and a
-	// database whose name ends in _dev or _test.
+	// database whose name ends in _dev or _test, or is exactly the name in
+	// SPIN_TEST_DATABASE.
 	SpinTestTools bool
 	// SpinTestUserEmails lists the throwaway accounts the test routes answer
 	// to, lower-cased. A real account never goes here.
@@ -160,9 +161,13 @@ func Load() (*Config, error) {
 		if len(spinTestEmails) == 0 {
 			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs SPIN_TEST_USER_EMAILS to list the throwaway accounts the test tools may use")
 		}
+		// SPIN_TEST_DATABASE marks one database as a test database on
+		// purpose, for a hosted database whose name cannot be changed, such
+		// as Supabase's postgres. Only an exact match counts.
+		marked := os.Getenv("SPIN_TEST_DATABASE")
 		name, ok := databaseName(databaseURL)
-		if !ok || (!strings.HasSuffix(name, "_dev") && !strings.HasSuffix(name, "_test")) {
-			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs DATABASE_URL to name a database ending in _dev or _test")
+		if !ok || (!strings.HasSuffix(name, "_dev") && !strings.HasSuffix(name, "_test") && (marked == "" || name != marked)) {
+			return nil, fmt.Errorf("config: SPIN_TEST_TOOLS=1 needs DATABASE_URL to name a database ending in _dev or _test, or the one SPIN_TEST_DATABASE names")
 		}
 	}
 
