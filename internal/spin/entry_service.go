@@ -248,9 +248,11 @@ func (s *Service) GetEntry(ctx context.Context, userID, id string) (Entry, error
 // checked before the lock. Inside the lock the entry is read (ErrEntryNotFound
 // for an unknown, foreign or deleted one) and, when the patch carries photos,
 // every id must be one of this entry's own photos (the id is checked in Go
-// and never reaches storage unchecked), every new key must be unused, and the
-// ids and keys must not repeat; any failure is a photos problem, invalid, and
-// nothing is written.
+// and never reaches storage unchecked); a key one of this entry's photos
+// already holds keeps that photo, so the same edit sent again after its
+// answer was lost changes nothing more; every other key must be unused; and
+// no photo may be named twice, by id or by key. Any failure is a photos
+// problem, invalid, and nothing is written.
 //
 // Only a real change writes: when the merged values and the final photo list
 // equal what is stored (an empty patch, or one that repeats the stored
@@ -329,8 +331,10 @@ func (s *Service) editEntryIn(c *call, id string, patch EntryPatch, contentTypes
 	photosChanged := false
 	if patch.Photos != nil {
 		own := make(map[string]EntryPhoto, len(entry.Photos))
+		ownByKey := make(map[string]EntryPhoto, len(entry.Photos))
 		for _, p := range entry.Photos {
 			own[p.ID] = p
+			ownByKey[p.Key] = p
 		}
 		refs := *patch.Photos
 		slots = make([]PhotoSlot, len(refs))
@@ -351,9 +355,23 @@ func (s *Service) editEntryIn(c *call, id string, patch EntryPatch, contentTypes
 				slots[i] = PhotoSlot{ID: pid, Key: kept.Key, ContentType: kept.ContentType, Source: kept.Source, SizeBytes: copyInt(kept.SizeBytes)}
 				continue
 			}
-			slots[i] = PhotoSlot{Key: ref.Key, ContentType: contentTypes[next], Source: ref.Source, SizeBytes: copyInt(ref.SizeBytes)}
-			newKeys = append(newKeys, ref.Key)
+			// contentTypes holds one type for every keyed item, in order.
+			contentType := contentTypes[next]
 			next++
+			if kept, found := ownByKey[ref.Key]; found {
+				// A key this entry already holds keeps that photo: an edit
+				// whose answer was lost after it was saved comes again with
+				// the new upload's key, and must not fail against itself.
+				// The same photo named twice, by id and by key, is refused.
+				if seen[kept.ID] {
+					return EditOutcome{}, problem(fieldPhotos, ProblemInvalid)
+				}
+				seen[kept.ID] = true
+				slots[i] = PhotoSlot{ID: kept.ID, Key: kept.Key, ContentType: kept.ContentType, Source: kept.Source, SizeBytes: copyInt(kept.SizeBytes)}
+				continue
+			}
+			slots[i] = PhotoSlot{Key: ref.Key, ContentType: contentType, Source: ref.Source, SizeBytes: copyInt(ref.SizeBytes)}
+			newKeys = append(newKeys, ref.Key)
 		}
 		used, err := tx.PhotoKeysInUse(newKeys)
 		if err != nil {

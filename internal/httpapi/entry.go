@@ -100,7 +100,8 @@ type CreateEntryRequest struct {
 // UpdateEntryRequest is the PATCH /entries/:id body. A missing (or null) field
 // is unchanged; an empty reaction or comment clears it. Photos, when present,
 // is the whole ordered list the entry should end with: {"id"} keeps a photo,
-// {"photo_key", "photo_source"} adds one, and a photo left out is removed.
+// {"photo_key", "photo_source"} adds one (a key the entry already holds keeps
+// that photo), and a photo left out is removed.
 type UpdateEntryRequest struct {
 	Title    *string         `json:"title"`
 	Stars    *int            `json:"stars"`

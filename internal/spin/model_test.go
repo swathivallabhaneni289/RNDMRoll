@@ -1220,3 +1220,104 @@ func TestBuildToday_AfterAnEarlyFirstSpinTheNextOpeningIsTomorrow(t *testing.T) 
 		t.Fatalf("next_open_at %v %s, want %v Thursday", time.Time(got.NextOpenAt), got.NextOpenWeekday, want)
 	}
 }
+
+func TestBuildToday_NextOpenIsTheEndOfAGapThatEndsThisEvening(t *testing.T) {
+	loc := mustLoc(t, ny)
+	eight := at(t, loc, "2026-10-07", 20, 0, 0)
+	// A zone change: the last daily spin was 10h10m before 8 PM, so the gap
+	// keeps the wheel shut until 9:50 PM, and the wheel opens then.
+	gapSpin := eight.Add(-10*time.Hour - 10*time.Minute)
+	gapEnd := gapSpin.Add(MinSpinGap)
+	for name, now := range map[string]time.Time{
+		"before 8 PM":            at(t, loc, "2026-10-07", 15, 0, 0),
+		"after 8 PM, in the gap": at(t, loc, "2026-10-07", 20, 30, 0),
+	} {
+		t.Run(name, func(t *testing.T) {
+			in := baseInput(t, ny, now)
+			in.LastDailySpunAt = &gapSpin
+			got := BuildToday(in)
+			if got.State != StateWaiting {
+				t.Fatalf("state = %s, want waiting", got.State)
+			}
+			if !time.Time(got.NextOpenAt).Equal(gapEnd) || got.NextOpenWeekday != "Wednesday" {
+				t.Errorf("next_open_at %v %s, want %v Wednesday", time.Time(got.NextOpenAt), got.NextOpenWeekday, gapEnd)
+			}
+			// It is the moment the state turns open.
+			in.Now = gapEnd
+			if open := BuildToday(in); open.State != StateOpen {
+				t.Errorf("at next_open_at the state is %s, want open", open.State)
+			}
+		})
+	}
+
+	// A gap that ends at midnight or later opens nothing that evening: the
+	// opening is the next evening's 8 PM.
+	pastMidnight := eight.Add(-7 * time.Hour)
+	in := baseInput(t, ny, at(t, loc, "2026-10-07", 20, 30, 0))
+	in.LastDailySpunAt = &pastMidnight
+	if got, want := time.Time(BuildToday(in).NextOpenAt), at(t, loc, "2026-10-08", 20, 0, 0); !got.Equal(want) {
+		t.Errorf("gap ending at 1 AM: next_open_at %v, want %v", got, want)
+	}
+
+	// The date already has its spin (a first spin at 10 AM, its gap ending
+	// at 10 PM): that evening is passed over all the same.
+	first := at(t, loc, "2026-10-07", 10, 0, 0)
+	spun := baseInput(t, ny, at(t, loc, "2026-10-07", 15, 0, 0))
+	spun.Spin = spinAt(t, ny, first, KindDaily, 0)
+	spun.LastDailySpunAt = &first
+	if got, want := time.Time(BuildToday(spun).NextOpenAt), at(t, loc, "2026-10-08", 20, 0, 0); !got.Equal(want) {
+		t.Errorf("date already spun: next_open_at %v, want %v", got, want)
+	}
+}
+
+func TestOpenedTonight_OnlyOnAnEveningTheWheelOpens(t *testing.T) {
+	loc := mustLoc(t, ny)
+	tokyo := mustLoc(t, "Asia/Tokyo")
+	eight := at(t, loc, "2026-10-07", 20, 0, 0)
+	ptr := func(v time.Time) *time.Time { return &v }
+
+	first := at(t, loc, "2026-10-07", 15, 0, 0)
+	evening := at(t, loc, "2026-10-07", 20, 30, 0)
+	lastNight := at(t, loc, "2026-10-06", 20, 30, 0)
+	// A zone change: the last daily spin was 10h10m before 8 PM, so the gap
+	// keeps the wheel shut until 9:50 PM.
+	gapSpin := eight.Add(-10*time.Hour - 10*time.Minute)
+	gapEnd := gapSpin.Add(MinSpinGap)
+	afterGap := gapEnd.Add(time.Minute)
+	// Made at 9 PM in Tokyo on the same date, which is 8 AM in New York.
+	east := at(t, tokyo, "2026-10-07", 21, 0, 0)
+
+	for _, c := range []struct {
+		name   string
+		now    time.Time
+		daily  *Spin
+		last   *time.Time
+		wantAt time.Time // zero for not opened
+	}{
+		{"never spun, one second before 8 PM", eight.Add(-time.Second), nil, nil, time.Time{}},
+		{"never spun, 8 PM", eight, nil, nil, eight},
+		{"never spun, 8:30 PM", evening, nil, nil, eight},
+		{"never spun, midnight is the next date, not yet open", at(t, loc, "2026-10-08", 0, 0, 0), nil, nil, time.Time{}},
+		{"a first spin at 3 PM, 8:30 PM", evening, spinAt(t, ny, first, KindDaily, 0), ptr(first), time.Time{}},
+		{"a first spin at 3 PM, 11:59 PM", at(t, loc, "2026-10-07", 23, 59, 0), spinAt(t, ny, first, KindDaily, 0), ptr(first), time.Time{}},
+		{"a spin at 8:30 PM, 8:35 PM", evening.Add(5 * time.Minute), spinAt(t, ny, evening, KindDaily, 0), ptr(evening), eight},
+		{"a spin at exactly 8 PM", eight.Add(time.Minute), spinAt(t, ny, eight, KindDaily, 0), ptr(eight), eight},
+		{"a spin made further east on this date before a move west", evening, spinAt(t, "Asia/Tokyo", east, KindDaily, 0), ptr(east), time.Time{}},
+		{"no spin today, last night's spin, 8 PM", eight, nil, ptr(lastNight), eight},
+		{"no spin today, the last spin 7 hours before 8 PM", evening, nil, ptr(eight.Add(-7 * time.Hour)), time.Time{}},
+		{"the gap, 8 PM", eight, nil, ptr(gapSpin), time.Time{}},
+		{"the gap, one second before it ends", gapEnd.Add(-time.Second), nil, ptr(gapSpin), time.Time{}},
+		{"the gap, as it ends", gapEnd, nil, ptr(gapSpin), gapEnd},
+		{"the gap, 11:59 PM", at(t, loc, "2026-10-07", 23, 59, 0), nil, ptr(gapSpin), gapEnd},
+		// The spin after the gap is now the latest: the gap can no longer be
+		// read, so the item says 8 PM.
+		{"a spin after the gap", afterGap.Add(time.Minute), spinAt(t, ny, afterGap, KindDaily, 0), ptr(afterGap), eight},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := openedTonight(c.now, loc, c.daily, c.last)
+			if ok != !c.wantAt.IsZero() || !got.Equal(c.wantAt) {
+				t.Fatalf("openedTonight = %v, %v; want %v, %v", got, ok, c.wantAt, !c.wantAt.IsZero())
+			}
+		})
+	}
+}

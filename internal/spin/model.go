@@ -322,6 +322,57 @@ func gapAllowsSpin(now time.Time, lastDailySpunAt *time.Time) bool {
 	return lastDailySpunAt == nil || now.Sub(*lastDailySpunAt) >= MinSpinGap
 }
 
+// openingIn returns when the wheel opens in win, for a date with no daily
+// spin yet: 8:00 PM, or the end of the 12-hour gap after the last daily spin
+// when that is later (a zone change). ok is false when the gap ends at
+// midnight or later, so the date opens nothing. Today's next_open_at and the
+// bell's "Your spin is open." both read it here.
+func openingIn(win Window, lastDailySpunAt *time.Time) (at time.Time, ok bool) {
+	at = win.OpensAt
+	if lastDailySpunAt != nil {
+		if end := lastDailySpunAt.Add(MinSpinGap); end.After(at) {
+			at = end
+		}
+	}
+	return at, at.Before(win.ClosesAt)
+}
+
+// openedTonight returns when the wheel opened tonight, the moment the bell
+// says "Your spin is open.". ok is false outside 8:00 PM to midnight of now's
+// local date, before the opening, and on a date that opens nothing.
+// dailyToday is that date's daily spin, or nil; lastDailySpunAt is when the
+// latest daily spin was made, on any date, or nil.
+//
+//   - The date has its daily spin: the wheel opened at 8:00 PM when that spin
+//     was made at or after it. A spin made before it (a first spin, or one
+//     made further east before a move west) is already the date's spin, so
+//     8:00 PM offers no second one (Spin returns it with Already).
+//   - No daily spin yet: the wheel opens at 8:00 PM, or at the end of the
+//     12-hour gap after the last daily spin when that is later (a zone
+//     change), the same moment Today turns open. A gap that ends at midnight
+//     or later opens nothing that date.
+//
+// Once the date's spin is made, at is 8:00 PM even after a gap that held the
+// wheel shut until later: the latest daily spin is then that spin, so the
+// gap can no longer be read.
+func openedTonight(now time.Time, loc *time.Location, dailyToday *Spin, lastDailySpunAt *time.Time) (at time.Time, ok bool) {
+	win := WindowFor(LocalDate(now, loc), loc)
+	if now.Before(win.OpensAt) || !now.Before(win.ClosesAt) {
+		return time.Time{}, false
+	}
+	if dailyToday != nil {
+		if dailyToday.SpunAt.Before(win.OpensAt) {
+			return time.Time{}, false
+		}
+		return win.OpensAt, true
+	}
+	opens, ok := openingIn(win, lastDailySpunAt)
+	if !ok || now.Before(opens) {
+		return time.Time{}, false
+	}
+	return opens, true
+}
+
 // stateOfResult is the state of a shown spin: posted and skipped show as
 // themselves and an open spin is a result.
 func stateOfResult(r SpinResult) TodayState {
@@ -370,8 +421,10 @@ func postedOrSkipped(s *Spin) bool {
 // and the late flag the post stores always agree.
 //
 // next_open_at is the first opening strictly after now and at or after the
-// last daily spin plus 12 hours. When the local date already has a spin (a
-// first spin made before 8:00 PM), that date's own opening is passed over.
+// last daily spin plus 12 hours. When the gap ends tonight after 8:00 PM (a
+// zone change), the opening is the end of the gap, the moment the state turns
+// open. When the local date already has a spin (a first spin made before
+// 8:00 PM), that date's own opening is passed over.
 func BuildToday(in TodayInput) Today {
 	loc := in.Loc
 	today := LocalDate(in.Now, loc)
@@ -427,6 +480,9 @@ func BuildToday(in TodayInput) Today {
 		if earliest := in.LastDailySpunAt.Add(MinSpinGap); next.Before(earliest) {
 			next = NextOpen(earliest.Add(-time.Nanosecond), loc)
 		}
+	}
+	if opens, ok := openingIn(win, in.LastDailySpunAt); ok && opens.After(in.Now) && opens.Before(next) {
+		next = opens
 	}
 	if in.Spin != nil && next.Before(win.ClosesAt) {
 		// Today was already spun (a first spin before 8:00 PM): the next

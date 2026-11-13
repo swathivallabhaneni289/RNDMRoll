@@ -1,7 +1,8 @@
 // Package notifications builds the bell's list from data that already exists
-// (comments, replies, follows, requests, the spin window, goal weeks). No
-// notification is stored and no job runs; the only state is one seen time
-// per person. The notification settings filter the list and the unread flag.
+// (comments, replies, follows, requests, the spin window and the person's
+// spins, goal weeks). No notification is stored and no job runs; the only
+// state is one seen time per person. The notification settings filter the
+// list and the unread flag.
 // Reactions on posts make no items (developer, 2026-10-18: reactions were
 // removed from the app; the stored "reactions" switch no longer changes the
 // list).
@@ -10,6 +11,7 @@ package notifications
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -111,9 +113,11 @@ type Repository interface {
 	MarkSeen(ctx context.Context, viewer uuid.UUID, at time.Time) error
 }
 
-// Clock is the viewer's now and zone (spin.Service).
+// Clock is the viewer's now and zone, and whether and when the wheel opened
+// for them tonight (spin.Service).
 type Clock interface {
 	ViewerClock(ctx context.Context, userID string) (time.Time, *time.Location, error)
+	SpinOpenedTonight(ctx context.Context, userID string) (at time.Time, ok bool, err error)
 }
 
 // Service builds the list.
@@ -212,10 +216,17 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 	}
 
 	if settings.Milestones {
-		today := spin.LocalDate(now, loc)
-		win := spin.WindowFor(today, loc)
-		if !now.Before(win.OpensAt) && now.Before(win.ClosesAt) {
-			items = append(items, Item{ID: "spin_open:" + today.String(), Kind: KindSpinOpen, At: win.OpensAt.UTC()})
+		// "Your spin is open." only on an evening the wheel really opened, so
+		// a first spin made earlier that day (the day's spin) adds no item
+		// and no dot. The id is the date of the opening itself, not of this
+		// list's now: the two are read apart and can fall either side of
+		// midnight.
+		at, opened, err := s.clk.SpinOpenedTonight(ctx, viewer.String())
+		if err != nil {
+			return List{}, err
+		}
+		if opened {
+			items = append(items, Item{ID: "spin_open:" + spin.LocalDate(at, loc).String(), Kind: KindSpinOpen, At: at.UTC()})
 		}
 		bonuses, err := s.repo.Bonuses(ctx, viewer, since)
 		if err != nil {
@@ -254,9 +265,14 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 	return out, nil
 }
 
-// Unread is the bell's dot: the same answer as the list's flag.
+// Unread is the bell's dot: the same answer as the list's flag. A person
+// with no stored zone yet (a new account in the moment before the app sends
+// it) has no list to read, so the dot is off rather than an error.
 func (s *Service) Unread(ctx context.Context, viewer uuid.UUID) (bool, error) {
 	l, err := s.List(ctx, viewer)
+	if errors.Is(err, spin.ErrZoneMissing) {
+		return false, nil
+	}
 	return l.Unread, err
 }
 

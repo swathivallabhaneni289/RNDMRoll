@@ -50,10 +50,10 @@ type BoardFacts struct {
 }
 
 // BoardFacts reads the viewer's Board facts. Before 8:00 PM the Board's day
-// is the evening before, unless the viewer already posted for today's own
-// date (a first spin), then it is today. A person with no readable stored
-// zone gets ErrZoneMissing. A first call makes the state row, as
-// Today does.
+// is the evening before, unless today's own date already has a spin (a first
+// spin, posted or not) or a posted day, or the viewer has never spun: then it
+// is today. A person with no readable stored zone gets ErrZoneMissing. A
+// first call makes the state row, as Today does.
 func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, error) {
 	var out BoardFacts
 	err := s.run(ctx, userID, true, func(c *call) error {
@@ -62,14 +62,23 @@ func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, er
 			return err
 		}
 		day, late := DayInPlay(c.now, c.loc)
-		// A first spin (made before 8:00 PM, developer 2026-10-19) posts for
-		// today's own date: once that day is posted, the Board is already on
-		// today, so the new person sees their post and their friends' at once.
-		// A person who has never spun is on today as well: their first spin
-		// is for today's date, so the Board never says "last night" to them.
+		// A first spin (made before 8:00 PM, developer 2026-10-19) is for
+		// today's own date: once it is made, posted or not, the Board is on
+		// today, as the Spin page's week row is (BuildToday). So the new
+		// person sees their post and their friends' at once, is never shown
+		// last night's posts that no post of theirs could open, and a skip
+		// shows as skipped. Before 8:00 PM only a first spin, or one made
+		// further east before a move west, is on today's date. A pretend
+		// posted day for today (the test tools) counts too. A person who has
+		// never spun is on today as well: their first spin is for today's
+		// date, so the Board never says "last night" to them.
 		if late {
 			own := LocalDate(c.now, c.loc)
 			early, err := c.tx.PostedDay(own)
+			if err != nil {
+				return err
+			}
+			spun, err := c.tx.LatestSpinOfDate(own)
 			if err != nil {
 				return err
 			}
@@ -77,7 +86,7 @@ func (s *Service) BoardFacts(ctx context.Context, userID string) (BoardFacts, er
 			if err != nil {
 				return err
 			}
-			if early != nil || !anySpin {
+			if early != nil || spun != nil || !anySpin {
 				day, late = own, false
 			}
 		}
@@ -123,4 +132,30 @@ func (s *Service) ViewerClock(ctx context.Context, userID string) (time.Time, *t
 		return time.Time{}, nil, err
 	}
 	return s.clock.NowFor(userID), loc, nil
+}
+
+// SpinOpenedTonight says whether the wheel opened tonight for the viewer and
+// when (openedTonight), for the bell's "Your spin is open.": never on an
+// evening whose spin was already made before 8:00 PM, and from the end of
+// the 12-hour gap when a zone change holds the wheel shut past 8:00 PM. It
+// reads the date's daily spin and the last daily spin under the viewer's
+// lock with one now. A person with no readable stored zone gets
+// ErrZoneMissing. A first call makes the state row, as Today does.
+func (s *Service) SpinOpenedTonight(ctx context.Context, userID string) (at time.Time, ok bool, err error) {
+	err = s.run(ctx, userID, true, func(c *call) error {
+		daily, err := c.tx.DailySpinOfDate(c.today)
+		if err != nil {
+			return err
+		}
+		last, err := c.tx.LastDailySpunAt()
+		if err != nil {
+			return err
+		}
+		at, ok = openedTonight(c.now, c.loc, daily, last)
+		return nil
+	})
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return at, ok, nil
 }

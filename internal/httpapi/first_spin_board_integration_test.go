@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -55,4 +56,43 @@ func TestBoardIntegration_AFirstSpinPostedInTheMorningOpensTodaysBoard(t *testin
 	if got := w.board(c, ""); got["day_label"] != "last_night" {
 		t.Fatalf("a person with an earlier spin: %v", got)
 	}
+}
+
+func TestBoardIntegration_AFirstSpinNotPostedIsOnToday(t *testing.T) {
+	w := newFeedWorld(t)
+	b := w.person("fu_bob", "Bob Brown")
+	// B posts the evening before: last night's post.
+	bEntry := w.post(b, "2026-10-07")
+	a := w.person("fu_alice", "Alice Ames")
+	d := w.person("fu_dana", "Dana Dean")
+	w.followAccepted(a, b)
+	w.followAccepted(d, b)
+	const day = "2026-10-08"
+
+	// A, new, makes a first spin at 3 PM and does not post. The spin is
+	// today's, so the Board is on today, where nobody A follows has posted:
+	// B's post from last night is not offered, since no post of A's could
+	// open it.
+	w.at(day, 15, 0)
+	w.ok(a, http.MethodPost, "/v1/spin", map[string]any{"for_date": day})
+	got := w.board(a, "")
+	if got["state"] != "locked" || got["day_label"] != "today" || dig(t, got, "locked", "posted_count") != float64(0) ||
+		len(dig(t, got, "locked", "names").([]any)) != 0 || dig(t, got, "locked", "action") != "log" ||
+		dig(t, got, "locked", "post_late") != false {
+		t.Fatalf("an unposted first spin: %v", got)
+	}
+
+	// A skips it: the Board says so, for today.
+	w.ok(a, http.MethodPost, "/v1/spin/skip", map[string]any{"for_date": day, "spin_seq": 0})
+	if got := w.board(a, ""); got["state"] != "skipped" || got["day_label"] != "today" || got["locked"] != nil {
+		t.Fatalf("a skipped first spin: %v", got)
+	}
+
+	// D, new, posts a first spin: today, with D's own card only.
+	dEntry := w.postAt(d, day, 15, 30)
+	got = w.board(d, "")
+	if got["state"] != "unlocked" || got["day_label"] != "today" || strings.Join(cardIDs(t, got), ",") != dEntry {
+		t.Fatalf("a posted first spin: %v", got)
+	}
+	w.call(d, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
 }

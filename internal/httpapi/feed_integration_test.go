@@ -669,10 +669,11 @@ func TestBoardIntegration_TheLockedCardIsLateFromNoon(t *testing.T) {
 	const day, next = "2026-10-08", "2026-10-09"
 
 	// C, new, makes a first spin at 1 PM and does not post: the Board is on
-	// last night and offers to log it, and a post now is on time.
+	// today, the spin's own date, and offers to log it, and a post now is on
+	// time.
 	w.at(day, 13, 0)
 	w.ok(c, http.MethodPost, "/v1/spin", map[string]any{"for_date": day})
-	if got := w.board(c, ""); got["state"] != "locked" || got["day_label"] != "last_night" ||
+	if got := w.board(c, ""); got["state"] != "locked" || got["day_label"] != "today" ||
 		dig(t, got, "locked", "action") != "log" || dig(t, got, "locked", "post_late") != false {
 		t.Fatalf("an unposted first spin: %v", got)
 	}
@@ -876,6 +877,55 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	items := w.notes(b)["items"].([]any)
 	if dig(t, items[0], "text") != "Again" || dig(t, items[0], "unread") != true || dig(t, items[1], "unread") != false {
 		t.Fatalf("unread only after seen: %v", items)
+	}
+}
+
+// The bell says "Your spin is open." only on an evening the wheel opens: a
+// first spin made earlier that day is the day's spin, so that evening has no
+// item and no dot.
+func TestNotificationIntegration_NoSpinOpenOnTheEveningOfAFirstSpin(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("ns_alice", "Alice Ames")
+	const day, next = "2026-10-08", "2026-10-09"
+
+	// A, new, posts a first spin at 3 PM and opens the bell.
+	w.postAt(a, day, 15, 0)
+	w.ok(a, http.MethodPost, "/v1/notifications/seen", map[string]any{})
+
+	w.at(day, 20, 30)
+	if k := kinds(t, w.notes(a)); has(k, "spin_open") {
+		t.Fatalf("the evening of a first spin: %v", k)
+	}
+	if got := w.ok(a, http.MethodGet, "/v1/notifications/summary", nil); got["unread"] != false {
+		t.Fatalf("the dot on the evening of a first spin: %v", got)
+	}
+
+	// The next evening the wheel opens at 8 PM, and the dot comes back.
+	w.at(next, 20, 5)
+	list := w.notes(a)
+	if so := itemOf(t, list, "spin_open"); so["at_label"] != "8:00 PM" || so["unread"] != true || list["unread"] != true {
+		t.Fatalf("the next evening: %v", list)
+	}
+}
+
+// A new account can ask for the dot before the app has sent its time zone:
+// there is no list to read yet, so the dot is off, not an error.
+func TestNotificationIntegration_TheDotIsOffBeforeTheZoneIsSent(t *testing.T) {
+	w := newFeedWorld(t)
+	s := integrationOnboardAccount(t, w.engine, "nz_nora@example.com", "Correct-horse-battery-staple1", "Nora Noe", "nz_nora")
+	p := feedPerson{name: "Nora Noe", token: s.AccessToken}
+	if got := w.ok(p, http.MethodGet, "/v1/notifications/summary", nil); got["unread"] != false || len(got) != 1 {
+		t.Fatalf("summary with no zone: %v", got)
+	}
+	// The list itself still asks for the zone.
+	if got := w.call(p, http.MethodGet, "/v1/notifications", nil, http.StatusBadRequest); got["field"] != "time_zone" {
+		t.Fatalf("list with no zone: %v", got)
+	}
+	// Once the zone is sent the dot follows the list: at 8 PM the wheel opens.
+	w.ok(p, http.MethodPost, "/v1/time-zone", map[string]any{"time_zone": feedZone})
+	w.at("2026-10-08", 20, 5)
+	if got := w.ok(p, http.MethodGet, "/v1/notifications/summary", nil); got["unread"] != true {
+		t.Fatalf("summary once the zone is sent: %v", got)
 	}
 }
 

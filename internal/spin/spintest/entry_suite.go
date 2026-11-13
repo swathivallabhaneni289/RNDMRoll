@@ -1272,7 +1272,8 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 			{"a photo of another entry", append(keepRefs(own[0]), spin.PhotoRef{ID: second.Entry.Photos[0].ID})},
 			{"a photo of another person", append(keepRefs(own[0]), spin.PhotoRef{ID: foreign.Entry.Photos[0].ID})},
 			{"a key held by another entry", append(keepRefs(own[0]), spin.PhotoRef{Key: second.Entry.Photos[0].Key, Source: spin.PhotoSourceLibrary})},
-			{"a key held by this entry as a new key", append(keepRefs(own[0]), spin.PhotoRef{Key: ownKeys[1], Source: spin.PhotoSourceLibrary})},
+			{"a photo named by its id and then its key", append(keepRefs(own[0]), spin.PhotoRef{Key: ownKeys[0], Source: spin.PhotoSourceLibrary})},
+			{"a photo named by its key and then its id", []spin.PhotoRef{{Key: ownKeys[0], Source: spin.PhotoSourceLibrary}, {ID: own[0]}}},
 			{"an id that is not an id", []spin.PhotoRef{{ID: "not-a-uuid"}}},
 			{"an id twice", keepRefs(own[0], own[0])},
 			{"an id and its upper-case spelling", keepRefs(own[0], strings.ToUpper(own[0]))},
@@ -1294,6 +1295,66 @@ func RunEntrySuite(t *testing.T, newEnv func(t *testing.T) *EntryEnv) {
 		wantPhotos(t, "photos", got.Photos, ownKeys)
 		wantPhotos(t, "the other entry's photos", e.photoRows(t, u, second.Entry.ID), keysOfPhotos(second.Entry.Photos))
 		wantPhotos(t, "the other person's photos", e.photoRows(t, other, foreign.Entry.ID), keysOfPhotos(foreign.Entry.Photos))
+	})
+
+	run("an edit sent again after its answer was lost changes nothing more", func(t *testing.T, e *EntryEnv) {
+		u := e.ready(t, ny)
+		e.openDay(t, u, "2026-10-07")
+		in := e.input(u, 1)
+		out := e.post(t, u, "2026-10-07", 0, in)
+		id, a := out.Entry.ID, in.Photos[0].Key
+		e.Clock.Advance(time.Minute)
+
+		// The phone adds a photo and changes the title. The edit is saved but
+		// the answer is lost, so the phone sends the same body again: the new
+		// upload's key is now one of this entry's own photos.
+		n := e.key(u)
+		add := []spin.PhotoRef{{ID: out.Entry.Photos[0].ID}, {Key: n, Source: spin.PhotoSourceLibrary, SizeBytes: num(2048)}}
+		patch := spin.EntryPatch{Title: str("Dune, again"), Photos: &add}
+		first := e.edit(t, u, id, patch)
+		wantPhotos(t, "after the first send", first.Entry.Photos, []string{a, n})
+		e.Clock.Advance(time.Minute)
+		again := e.edit(t, u, id, patch)
+		wantPhotos(t, "after the second send", again.Entry.Photos, []string{a, n})
+		if fmt.Sprint(idsOf(again.Entry.Photos)) != fmt.Sprint(idsOf(first.Entry.Photos)) {
+			t.Errorf("photo ids changed: %v -> %v", idsOf(first.Entry.Photos), idsOf(again.Entry.Photos))
+		}
+		if again.Entry.Title != "Dune, again" || len(again.Dropped) != 0 {
+			t.Errorf("second send: title %q dropped %v, want the edit as saved and nothing dropped", again.Entry.Title, again.Dropped)
+		}
+		wantInstant(t, "updated_at after the second send", again.Entry.UpdatedAt, first.Entry.UpdatedAt)
+		if added := again.Entry.Photos[1]; added.Source != spin.PhotoSourceLibrary || added.SizeBytes == nil || *added.SizeBytes != 2048 {
+			t.Errorf("the added photo after the second send = %+v", added)
+		}
+
+		// A replace sent twice drops the old photo once.
+		r := e.key(u)
+		replace := []spin.PhotoRef{{Key: r, Source: spin.PhotoSourceCamera}, {ID: first.Entry.Photos[1].ID}}
+		res := e.edit(t, u, id, spin.EntryPatch{Photos: &replace})
+		wantPhotos(t, "after a replace", res.Entry.Photos, []string{r, n})
+		wantSameKeys(t, "dropped by the replace", res.Dropped, []string{a})
+		e.Clock.Advance(time.Minute)
+		res2 := e.edit(t, u, id, spin.EntryPatch{Photos: &replace})
+		wantPhotos(t, "after the replace sent again", res2.Entry.Photos, []string{r, n})
+		if len(res2.Dropped) != 0 {
+			t.Errorf("the replace sent again dropped %v, want nothing", res2.Dropped)
+		}
+		wantInstant(t, "updated_at after the replace sent again", res2.Entry.UpdatedAt, res.Entry.UpdatedAt)
+
+		// A photo named by its key moves like any kept photo: same row, new place.
+		ids := idsOf(res2.Entry.Photos)
+		reorder := []spin.PhotoRef{{ID: ids[1]}, {Key: r, Source: spin.PhotoSourceCamera}}
+		res3 := e.edit(t, u, id, spin.EntryPatch{Photos: &reorder})
+		wantPhotos(t, "after a reorder by key", res3.Entry.Photos, []string{n, r})
+		if got := idsOf(res3.Entry.Photos); got[0] != ids[1] || got[1] != ids[0] || len(res3.Dropped) != 0 {
+			t.Errorf("reorder by key: ids %v dropped %v, want %v swapped and nothing dropped", got, res3.Dropped, ids)
+		}
+		if !res3.Entry.UpdatedAt.After(res2.Entry.UpdatedAt) {
+			t.Errorf("updated_at after a reorder = %v, want after %v", res3.Entry.UpdatedAt, res2.Entry.UpdatedAt)
+		}
+		if used := e.keysUsed(t, u, []string{a, n, r}); len(used) != 2 || used[a] {
+			t.Errorf("keys held = %v, want n and r only", used)
+		}
 	})
 
 	run("an edit works after the day has closed", func(t *testing.T, e *EntryEnv) {
