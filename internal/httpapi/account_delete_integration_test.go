@@ -45,7 +45,7 @@ const (
 )
 
 // deleteWorld is a feed world (one Fixed clock, everyone in New York) whose
-// server also mounts the phone's push token route and the two Forgot
+// server also mounts the phone's push token route and the three Forgot
 // password routes (their codes go to box, with no answer floor). It keeps
 // the pool: some checks only the database can answer, and only SQL can move
 // an ask back in time.
@@ -174,6 +174,13 @@ func (w *deleteWorld) askForgot(email string) {
 	if rec.Code != http.StatusOK {
 		w.t.Fatalf("forgot password for %s: %d %s, want 200", email, rec.Code, rec.Body.String())
 	}
+}
+
+// verifyCode sends a Forgot password code to verify.
+func (w *deleteWorld) verifyCode(email, code string) *httptest.ResponseRecorder {
+	w.t.Helper()
+	return integrationDo(w.t, w.engine, http.MethodPost, "/v1/auth/password/verify", "",
+		map[string]any{"email": email, "code": code})
 }
 
 // resetPassword sends a Forgot password reset.
@@ -852,10 +859,10 @@ func TestDeleteAccountIntegration_LogInInsideGraceRestores(t *testing.T) {
 }
 
 // Inside the grace period a Forgot password reset keeps the account too: the
-// code is still sent, and the reset changes the password and cancels the
-// deletion in one transaction and says so once with "restored": true. The
-// new password logs in, the old one does not, and a later reset is an
-// ordinary one with no restored key.
+// code is still sent, verify passes it and cancels nothing, and the reset
+// changes the password and cancels the deletion in one transaction and says
+// so once with "restored": true. The new password logs in, the old one does
+// not, and a later reset is an ordinary one with no restored key.
 func TestDeleteAccountIntegration_ResetInsideGraceRestores(t *testing.T) {
 	w := newDeleteWorld(t)
 	b, _ := w.account("dr_bob", "Bob Brown")
@@ -868,7 +875,15 @@ func TestDeleteAccountIntegration_ResetInsideGraceRestores(t *testing.T) {
 	if n, sent := w.countFor(deleteResetCodesQ, b.id), w.box.count(); n != 1 || sent != 1 {
 		t.Fatalf("forgot password inside the grace period: %d codes stored and %d emails, want 1 and 1", n, sent)
 	}
-	rec := w.resetPassword(email, w.box.lastCode(t, email), fresh)
+	// Verify checks the code and cancels nothing: only the reset's change does.
+	code := w.box.lastCode(t, email)
+	if rec := w.verifyCode(email, code); rec.Code != http.StatusOK {
+		t.Fatalf("verify inside the grace period: %d %s, want 200", rec.Code, rec.Body.String())
+	}
+	if w.requestedAt(b.id) == nil {
+		t.Fatal("verify cancelled the deletion")
+	}
+	rec := w.resetPassword(email, code, fresh)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reset inside the grace period: %d %s, want 200", rec.Code, rec.Body.String())
 	}
@@ -909,7 +924,7 @@ func TestDeleteAccountIntegration_ResetInsideGraceRestores(t *testing.T) {
 // password stores and sends no code, a reset gets the wrong-code answer an
 // email with no account gets, the old tokens stay refused, and the cancel
 // itself refuses. A code sent inside the grace period stops working once it
-// is over.
+// is over, at verify as at reset.
 func TestDeleteAccountIntegration_NoRestorePastGrace(t *testing.T) {
 	w := newDeleteWorld(t)
 	ctx := context.Background()
@@ -967,6 +982,11 @@ func TestDeleteAccountIntegration_NoRestorePastGrace(t *testing.T) {
 	w.askForgot(danEmail)
 	code := w.box.lastCode(t, danEmail)
 	w.backdateAsk(d.id, deletionPastGrace)
+	got, miss = w.verifyCode(danEmail, code), w.verifyCode(nobody, code)
+	if got.Code != http.StatusBadRequest || decodeBody(t, got)["reason"] != reasonWrongCode || got.Body.String() != miss.Body.String() {
+		t.Fatalf("verify with a code from inside the grace period, once it is over: %d %s, want the wrong-code answer: %d %s",
+			got.Code, got.Body.String(), miss.Code, miss.Body.String())
+	}
 	got, miss = w.resetPassword(danEmail, code, fresh), w.resetPassword(nobody, code, fresh)
 	if got.Code != http.StatusBadRequest || got.Body.String() != miss.Body.String() {
 		t.Fatalf("a reset with a code from inside the grace period, once it is over: %d %s, want the wrong-code answer: %d %s",

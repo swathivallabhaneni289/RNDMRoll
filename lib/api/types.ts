@@ -87,11 +87,12 @@ export interface ApiErrorBody {
   field?: string;
   /**
    * Set on a 400 wheel_invalid: a fixed word for what is wrong with the list. Also on the 400 of
-   * POST /auth/password/reset with field "code": "wrong_code" (a wrong, expired or used-up code, or
-   * an email with no account or a disabled one: the same answer for each), "replaced" (the code the
-   * newest code replaced; no try is counted), "used" (the right code, but another request used it
-   * first; no try is counted) or "invalid" (not 6 digits). And on the 400 of POST /me/delete with
-   * field "password": "incorrect" (a wrong password) or "required".
+   * POST /auth/password/verify and POST /auth/password/reset with field "code": "wrong_code" (a
+   * wrong, expired or used-up code, a code a reset already spent, or an email with no account or a
+   * disabled one: the same answer for each), "replaced" (the code the newest code replaced; no try
+   * is counted), "used" (reset only: the right code, but another request used it first; no try is
+   * counted) or "invalid" (not 6 digits). And on the 400 of POST /me/delete with field "password":
+   * "incorrect" (a wrong password) or "required".
    */
   reason?: string;
   /** Set on a 400 wheel_invalid: which row of the sent list is wrong, counted from 0. */

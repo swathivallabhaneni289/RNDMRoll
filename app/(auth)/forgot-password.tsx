@@ -29,11 +29,17 @@ const WRONG_CODE =
 const REPLACED = 'That code was replaced by a newer one. Use the newest code in your email.';
 const USED = 'That code was already used. If your password changed, log in with the new one.';
 const SHORT_CODE = 'Enter the 6-digit code from the email.';
+/** The code step's line under its heading when no notice is set (a sent code's notice takes its place). */
+const CODE_HINT = 'Enter the 6-digit code from the email.';
+/** The password step's lines under its heading: green, then muted. */
+const CODE_VERIFIED = 'Code verified.';
+const CHOOSE_PASSWORD = 'Choose a new password.';
 /** No answer, or the server failed: the password may have changed all the same. */
 const MAYBE_CHANGED = 'Something went wrong. If your password did change, log in with the new one.';
 /**
- * A code answered as wrong or used after a reset whose answer was lost: that reset may have changed
- * the password and spent the code, so the plain line about the code could be wrong.
+ * A code answered as wrong or used, by the check or by a reset, after a reset whose answer was
+ * lost: that reset may have changed the password and spent the code, so the plain line about the
+ * code could be wrong.
  */
 const MAYBE_CHANGED_AFTER = 'If your password did change, log in with the new one.';
 /** The new password is set, but this phone could not keep the new session. */
@@ -47,6 +53,15 @@ function codeLine(reason: string | undefined): string {
   return WRONG_CODE;
 }
 
+/**
+ * True when a field "code" answer, of the check or of a reset, says MAYBE_CHANGED_AFTER instead of
+ * its line: after a reset whose answer was lost, every reason but replaced and invalid. One rule for
+ * both requests, so they never disagree.
+ */
+function maybeSpentByLostReset(reason: string | undefined, afterLostAnswer: boolean): boolean {
+  return afterLostAnswer && reason !== 'replaced' && reason !== 'invalid';
+}
+
 /** Too many requests: by the HTTP status too, as a 429 without the usual body has no code. */
 function tooMany(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 429 || err.code === 'rate_limited');
@@ -58,18 +73,23 @@ function answerLost(err: unknown): boolean {
 }
 
 /**
- * Forgot password (developer, 2026-10-21), opened from Log in. Two steps on one page: your email,
- * then the 6-digit code from the email and a new password (the same rules as sign-up, with the
- * checklist). The new password signs you in at once and ends every other session. The server
- * answers the same for any email, so the page never says whether an account exists. A code that
- * worked is never sent again: if this phone then cannot keep the new session, the page says the
- * password is set and offers Log in instead. A reset within 30 days of Delete account keeps the
- * account, and says so once it has signed in.
+ * Forgot password (developer, 2026-10-21), opened from Log in. Three steps on one page, as the new
+ * password comes only after the code is checked (developer, 2026-11-13): your email, then the
+ * 6-digit code from the email, which the server checks without using it up, then a new password
+ * (the same rules as sign-up, with the checklist). Set new password sends the checked code again,
+ * and the server checks it once more before it spends it: if it expired, was replaced or was used
+ * in between, the page goes back to the code step, which has Send a new code, and keeps the typed
+ * password (after a lost answer, maybeChangedRef says which line it shows). The new password signs
+ * you in at once and ends every other session. The server answers the same for any email, so the
+ * page never says whether an account exists. A code that set the password is never sent again: if
+ * this phone then cannot keep the new session, the page says the password is set and offers Log in
+ * instead. A reset within 30 days of Delete account keeps the account, and says so once it has
+ * signed in.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { signIn } = useSession();
-  const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
+  const [step, setStep] = useState<'email' | 'code' | 'password' | 'done'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -79,15 +99,16 @@ export default function ForgotPasswordScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Set as soon as the server takes the code, before anything else is awaited: from then on the
-  // spent code is never sent again, whatever happens next.
+  // Set as soon as a reset's answer says the code set the password, before anything else is
+  // awaited: from then on the spent code is never sent again, not even to be checked, whatever
+  // happens next.
   const spentRef = useRef(false);
   // True from a tap until its request is answered, set before anything is awaited: a second tap
-  // (on either button) before the page has drawn busy sends nothing.
+  // (on any button) before the page has drawn busy sends nothing.
   const sendingRef = useRef(false);
   // A reset whose answer was lost (no connection, or the server failed): it may have changed the
-  // password. Until a new code is sent, a later answer that the code is wrong or used says so
-  // again instead of the plain line about the code.
+  // password. Until a new code is sent, a later answer, of the check or of a reset, that the code
+  // is wrong or used says so again instead of the plain line about the code.
   const maybeChangedRef = useRef(false);
 
   function goBack() {
@@ -129,14 +150,48 @@ export default function ForgotPasswordScreen() {
     }
   }
 
-  async function reset() {
+  async function verifyCode() {
     if (spentRef.current || sendingRef.current) return;
     const digits = code.replace(/\D/g, '');
     const nextCodeError = digits.length === 6 ? undefined : SHORT_CODE;
-    const nextPasswordError = passwordProblem(password) || undefined;
     setCodeError(nextCodeError);
+    if (nextCodeError) return;
+    sendingRef.current = true;
+    setFormError(null);
+    setBusy(true);
+    try {
+      // The server checks the code the way a reset does (a wrong one costs a try) but never spends
+      // it, so the same code then sets the password.
+      await api.post('/auth/password/verify', { email: email.trim(), code: digits }, { auth: false });
+      // The digits it checked, not what the box holds now: the box can change while the check runs,
+      // and the password step sends this code again.
+      setCode(digits);
+      setStep('password');
+    } catch (err) {
+      if (err instanceof ApiError && err.field === 'code') {
+        if (maybeSpentByLostReset(err.reason, maybeChangedRef.current)) {
+          // Wrong after a lost answer: that reset may have spent the code and changed the password.
+          setFormError(MAYBE_CHANGED_AFTER);
+        } else {
+          setCodeError(codeLine(err.reason));
+        }
+      } else {
+        // The check changes nothing, so no other answer can mean the password changed.
+        setFormError(failure(err));
+      }
+    } finally {
+      sendingRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    if (spentRef.current || sendingRef.current) return;
+    // The code was checked on the code step and cannot change on this one, so only the password is
+    // checked here. The server checks the code again before it spends it.
+    const nextPasswordError = passwordProblem(password) || undefined;
     setPasswordError(nextPasswordError);
-    if (nextCodeError || nextPasswordError) return;
+    if (nextPasswordError) return;
     sendingRef.current = true;
     setFormError(null);
     setBusy(true);
@@ -144,22 +199,22 @@ export default function ForgotPasswordScreen() {
     try {
       result = await api.post<AuthResult>(
         '/auth/password/reset',
-        { email: email.trim(), code: digits, new_password: password },
+        { email: email.trim(), code, new_password: password },
         { auth: false }
       );
     } catch (err) {
-      const reason = err instanceof ApiError && err.field === 'code' ? err.reason : undefined;
-      if (
-        err instanceof ApiError &&
-        err.field === 'code' &&
-        maybeChangedRef.current &&
-        reason !== 'replaced' &&
-        reason !== 'invalid'
-      ) {
-        // Wrong or used after a lost answer: that reset may have changed the password.
-        setFormError(MAYBE_CHANGED_AFTER);
-      } else if (err instanceof ApiError && err.field === 'code') {
-        setCodeError(codeLine(reason));
+      if (err instanceof ApiError && err.field === 'code') {
+        if (maybeSpentByLostReset(err.reason, maybeChangedRef.current)) {
+          // Wrong or used after a lost answer: that reset may have changed the password. This line
+          // takes the place of the code's, so the Code box gets none.
+          setFormError(MAYBE_CHANGED_AFTER);
+        } else {
+          setCodeError(codeLine(err.reason));
+        }
+        // Either way the checked code expired, was replaced or was used since: back to the code
+        // step, which has Send a new code and no "Code verified." line. The typed password stays,
+        // so a code checked again needs no retyping.
+        setStep('code');
       } else if (err instanceof ApiError && err.field === 'new_password') {
         setPasswordError(err.userMessage);
       } else if (tooMany(err)) {
@@ -205,18 +260,32 @@ export default function ForgotPasswordScreen() {
 
         <View style={{ marginTop: space.xl }}>
           <AppText role="heading" accessibilityRole="header">
-            {step === 'email' ? 'Forgot password' : 'Set a new password'}
+            {step === 'email' ? 'Forgot password' : step === 'code' ? 'Enter the code' : 'Set a new password'}
           </AppText>
         </View>
-        {step === 'done' ? null : (
+        {step === 'email' || step === 'code' ? (
           <View style={{ marginTop: space.sm }}>
             <AppText role="body" tone="muted">
               {step === 'email'
                 ? "Enter your account's email to ask for a code to set a new password."
-                : notice ?? 'Enter the code from the email and a new password.'}
+                : notice ?? CODE_HINT}
             </AppText>
           </View>
-        )}
+        ) : null}
+        {step === 'password' ? (
+          <>
+            <View style={{ marginTop: space.sm }}>
+              <AppText role="body" tone="success">
+                {CODE_VERIFIED}
+              </AppText>
+            </View>
+            <View style={{ marginTop: space.xs }}>
+              <AppText role="body" tone="muted">
+                {CHOOSE_PASSWORD}
+              </AppText>
+            </View>
+          </>
+        ) : null}
 
         {step === 'email' ? (
           <View style={{ marginTop: space.lg }}>
@@ -233,35 +302,38 @@ export default function ForgotPasswordScreen() {
             />
           </View>
         ) : null}
+        {/* Each box keeps its own slot and key: it mounts on its own step, so autoFocus (read only
+            on mount) moves the keyboard to it, also on the way back to the code. */}
         {step === 'code' ? (
-          <>
-            <View style={{ marginTop: space.lg }}>
-              <TextField
-                label="Code"
-                value={code}
-                onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, 6))}
-                error={codeError}
-                keyboardType="number-pad"
-                autoComplete="one-time-code"
-                textContentType="oneTimeCode"
-                maxLength={6}
-                autoFocus
-              />
-            </View>
-            <View style={{ marginTop: space.md }}>
-              <TextField
-                label="New password"
-                value={password}
-                onChangeText={setPassword}
-                error={passwordError}
-                secureTextEntry
-                maxLength={72}
-                autoComplete="new-password"
-                textContentType="newPassword"
-              />
-              <PasswordChecklist value={password} />
-            </View>
-          </>
+          <View key="code" style={{ marginTop: space.lg }}>
+            <TextField
+              label="Code"
+              value={code}
+              onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, 6))}
+              error={codeError}
+              keyboardType="number-pad"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              maxLength={6}
+              autoFocus
+            />
+          </View>
+        ) : null}
+        {step === 'password' ? (
+          <View key="new-password" style={{ marginTop: space.lg }}>
+            <TextField
+              label="New password"
+              value={password}
+              onChangeText={setPassword}
+              error={passwordError}
+              secureTextEntry
+              maxLength={72}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              autoFocus
+            />
+            <PasswordChecklist value={password} />
+          </View>
         ) : null}
 
         {formError ? (
@@ -274,6 +346,8 @@ export default function ForgotPasswordScreen() {
           {step === 'email' ? (
             <PrimaryButton label="Send code" onPress={sendCode} loading={busy} disabled={busy} />
           ) : step === 'code' ? (
+            <PrimaryButton label="Verify code" onPress={verifyCode} loading={busy} disabled={busy} />
+          ) : step === 'password' ? (
             <PrimaryButton label="Set new password" onPress={reset} loading={busy} disabled={busy} />
           ) : (
             <PrimaryButton label="Log in" onPress={goBack} />

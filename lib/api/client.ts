@@ -72,7 +72,8 @@ export class ApiError extends Error {
   field?: string;
   /**
    * The fixed word a 400 wheel_invalid gives for what is wrong with the list. On a Forgot password
-   * reset's code (field "code"): "wrong_code", "replaced", "used" or "invalid" (lib/api/types.ts).
+   * code (field "code") at verify or reset: "wrong_code", "replaced", "used" (reset only) or
+   * "invalid" (lib/api/types.ts).
    */
   reason?: string;
   /** The row of the sent list a 400 wheel_invalid points at, counted from 0. */

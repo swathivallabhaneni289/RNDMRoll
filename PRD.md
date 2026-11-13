@@ -219,7 +219,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ACC-04 | A second page, shown once, offers an optional photo and bio | P1 | Built |
 | ACC-05 | Find your friends is shown once after sign-up | P1 | Built |
 | ACC-06 | A person logs in with an email or a username, and a password | P0 | Built |
-| ACC-07 | Forgot password sends a 6-digit code by email and sets a new password | P0 | Built; real email is Launch |
+| ACC-07 | Forgot password sends a 6-digit code by email, checks the code, and only then lets the person set a new password | P0 | Built; real email is Launch |
 | ACC-08 | Sign-up shows the Terms of Use and Privacy Policy before Continue | P0 | Built |
 | ACC-09 | The email address is verified | P1 | Launch |
 | ACC-10 | A person can delete their account in the app | P0 | Built (October 25, 2026) |
@@ -917,7 +917,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 
 | Area | Routes | Limits |
 |---|---|---|
-| Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
+| Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/verify`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot, verify and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
 | Me | `GET`, `PATCH /me`; `POST /me/avatar/upload-url`; `POST /me/password`; `POST /me/delete`; `GET`, `PATCH /me/notification-settings`; `GET`, `POST /me/blocks`; `DELETE /me/blocks/:user_id`; `GET /me/archive`; `GET /me/summary`; `POST`, `DELETE /me/push-tokens` | Profile edit 30; password 5 per person and 20 per IP; delete 5 per person; `GET /me` and the photo upload link have no limit |
 | Spin | `POST /time-zone`; `GET /today`; `POST /spin`, `/spin/bonus`, `/spin/skip`; `GET`, `PATCH /wheel` | Spin, bonus and skip 10; today 60; wheel save 20 |
 | Posts | `POST /entry-photos/upload-url`; `POST /entries`; `GET`, `PATCH /entries/:id`; `POST /entries/:id/archive`, `/unarchive`, `/delete`; `GET /diary` | Post 10; edits 20 |

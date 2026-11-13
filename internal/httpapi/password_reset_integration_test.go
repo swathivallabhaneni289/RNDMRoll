@@ -56,7 +56,7 @@ func (s *captureSender) count() int {
 	return len(s.sent)
 }
 
-// resetWorld is the two Forgot password routes over the real database, on a
+// resetWorld is the three Forgot password routes over the real database, on a
 // clock the test moves.
 type resetWorld struct {
 	t      *testing.T
@@ -102,6 +102,11 @@ func (w *resetWorld) call(path string, body any, want int) map[string]any {
 func (w *resetWorld) forgot(email string) {
 	w.t.Helper()
 	w.call("/v1/auth/password/forgot", map[string]any{"email": email}, http.StatusOK)
+}
+
+func (w *resetWorld) verify(email, code string, want int) map[string]any {
+	w.t.Helper()
+	return w.call("/v1/auth/password/verify", map[string]any{"email": email, "code": code}, want)
 }
 
 func (w *resetWorld) reset(email, code, password string, want int) map[string]any {
@@ -467,9 +472,9 @@ func TestPasswordResetIntegration_OneAddressIsLimited(t *testing.T) {
 	}
 }
 
-// The limit of 5 a minute per address and email, which both routes share,
-// counts the email the handlers use. JSON keys match in any case and the last
-// of two wins, so a decoy email first must not buy more requests.
+// The limit of 5 a minute per address and email, which the three routes
+// share, counts the email the handlers use. JSON keys match in any case and
+// the last of two wins, so a decoy email first must not buy more requests.
 func TestPasswordResetIntegration_LimitCountsTheEmailTheHandlersUse(t *testing.T) {
 	box := &captureSender{}
 	w := newResetWorld(t, box)
@@ -496,6 +501,8 @@ func TestPasswordResetIntegration_LimitCountsTheEmailTheHandlersUse(t *testing.T
 			`{"email":"decoy-5@example.com","Email":"victim@example.com"}`},
 		"a reset naming the email in capitals": {"/v1/auth/password/reset",
 			`{"EMAIL":" Victim@Example.com ","code":"123456","new_password":"Brand-new-password-2!"}`},
+		"a verify naming the email in capitals": {"/v1/auth/password/verify",
+			`{"EMAIL":" Victim@Example.com ","code":"123456"}`},
 	} {
 		if rec := send(c.path, c.body); rec.Code != http.StatusTooManyRequests {
 			t.Fatalf("%s: %d %s, want 429", name, rec.Code, rec.Body.String())
@@ -845,7 +852,7 @@ func (failingEmailLookup) GetByEmailCI(context.Context, string) (*user.User, err
 }
 
 // A lookup that fails is a server error, not a wrong code, which the app
-// would count as a try.
+// would count as a try: at verify as at reset.
 func TestPasswordReset_LookupFailureIsNotAWrongCode(t *testing.T) {
 	store := &countingResetStore{}
 	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
@@ -854,10 +861,14 @@ func TestPasswordReset_LookupFailureIsNotAWrongCode(t *testing.T) {
 	router := newTestRouter(t, TestDeps{})
 	h.Register(router.Group("/v1"))
 
-	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/password/reset",
-		map[string]any{"email": "someone@example.com", "code": "123456", "new_password": "Brand-new-password-2!"})
-	if rec.Code != http.StatusInternalServerError || decodeBody(t, rec)["error"] != string(CodeServerError) {
-		t.Fatalf("a failed lookup: %d %s, want 500 server_error", rec.Code, rec.Body.String())
+	for path, body := range map[string]map[string]any{
+		"/v1/auth/password/verify": {"email": "someone@example.com", "code": "123456"},
+		"/v1/auth/password/reset":  {"email": "someone@example.com", "code": "123456", "new_password": "Brand-new-password-2!"},
+	} {
+		rec := doJSONRequest(t, router, http.MethodPost, path, body)
+		if rec.Code != http.StatusInternalServerError || decodeBody(t, rec)["error"] != string(CodeServerError) {
+			t.Fatalf("%s, a failed lookup: %d %s, want 500 server_error", path, rec.Code, rec.Body.String())
+		}
 	}
 	if len(store.tries) != 0 {
 		t.Fatalf("a failed lookup still tried the code %d times", len(store.tries))
@@ -989,13 +1000,238 @@ func TestPasswordResetIntegration_AnAccountDisabledMeanwhileGetsTheWrongCodeAnsw
 	}
 }
 
-// Every answer of reset comes no sooner than the floor after the request came
-// in, whatever it is: a body that is not JSON, a code of the wrong shape, a
-// weak password, a wrong code for an account (a try is written), an email
-// with no account and a disabled account (nothing is written), the replaced
-// code, the used code, a limit, and the new session. The wait is asked for
-// before the first byte, once per answer; here the clock stands still, so it
-// is the whole floor every time.
+// Verify answers the right code 200 {} and spends nothing: checked again and
+// again it costs no try and stays, the old password still works, and the
+// same code then sets the new one. The email and the code are read as reset
+// reads them. A code of the wrong shape is told "invalid" and costs no try.
+// Once reset has spent the code, verify calls it wrong: it never says "used".
+func TestPasswordResetIntegration_VerifyTellsTheRightCodeAndSpendsNothing(t *testing.T) {
+	box := &captureSender{}
+	w := newResetWorld(t, box)
+	const email, old, fresh = "verify-me@example.com", "Correct-horse-battery-staple1", "Brand-new-password-2!"
+	integrationOnboardAccount(t, w.engine, email, old, "Verify Me", "verify_me")
+	w.forgot(email)
+	code := box.lastCode(t, email)
+
+	for _, c := range []string{"12345", "12345a", "1234567"} {
+		if got := w.verify(email, c, http.StatusBadRequest); got["field"] != "code" || got["reason"] != reasonInvalid {
+			t.Fatalf("verify, a code of the wrong shape %q: %v", c, got)
+		}
+	}
+	for range resetMaxAttempts + 1 {
+		if got := w.verify("  Verify-Me@Example.com ", " "+code+" ", http.StatusOK); len(got) != 0 {
+			t.Fatalf("verify, the right code: %v, want {}", got)
+		}
+	}
+	if tries, ok := w.codeTries(email); !ok || tries != 0 {
+		t.Fatalf("after verify the code has %d tries (there: %v), want 0", tries, ok)
+	}
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code != http.StatusOK {
+		t.Fatalf("the old password after verify: %d", rec.Code)
+	}
+
+	w.reset(email, code, fresh, http.StatusOK)
+	if tries, ok := w.codeTries(email); ok {
+		t.Fatalf("the spent code is still there, with %d tries", tries)
+	}
+	if got := w.verify(email, code, http.StatusBadRequest); got["field"] != "code" || got["reason"] != reasonWrongCode {
+		t.Fatalf("verify, the spent code: %v", got)
+	}
+}
+
+// A wrong code at verify costs a try exactly as at reset, and the two count
+// together: 3 wrong at verify and 2 at reset use the code up, and then even
+// the right code is refused at both. The right code costs no try at verify,
+// also on the last try.
+func TestPasswordResetIntegration_VerifyAndResetCountTheSameTries(t *testing.T) {
+	box := &captureSender{}
+	w := newResetWorld(t, box)
+	const email, old, fresh = "verify-tries@example.com", "Correct-horse-battery-staple1", "Brand-new-password-2!"
+	integrationOnboardAccount(t, w.engine, email, old, "Verify Tries", "verify_tries")
+	w.forgot(email)
+	code := box.lastCode(t, email)
+	tries := func(want int) {
+		t.Helper()
+		if got, ok := w.codeTries(email); !ok || got != want {
+			t.Fatalf("the code has %d tries (there: %v), want %d", got, ok, want)
+		}
+	}
+
+	for i := 1; i <= 3; i++ {
+		if got := w.verify(email, otherCode(code), http.StatusBadRequest); got["field"] != "code" || got["reason"] != reasonWrongCode {
+			t.Fatalf("verify, a wrong code: %v", got)
+		}
+		tries(i)
+	}
+	w.verify(email, code, http.StatusOK)
+	tries(3)
+	w.reset(email, otherCode(code), fresh, http.StatusBadRequest)
+	tries(4)
+	w.verify(email, code, http.StatusOK)
+	tries(4)
+	w.reset(email, otherCode(code), fresh, http.StatusBadRequest)
+	tries(5)
+
+	if got := w.verify(email, code, http.StatusBadRequest); got["reason"] != reasonWrongCode {
+		t.Fatalf("verify, the right code of a used-up code: %v", got)
+	}
+	if got := w.reset(email, code, fresh, http.StatusBadRequest); got["reason"] != reasonWrongCode {
+		t.Fatalf("reset, the right code of a used-up code: %v", got)
+	}
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code != http.StatusOK {
+		t.Fatalf("the old password: %d", rec.Code)
+	}
+}
+
+// The code a newer one replaced is told "replaced" at verify as at reset, and
+// costs no try; the newest code is right at verify and then sets the password.
+func TestPasswordResetIntegration_VerifyTellsTheReplacedCodeAndCountsNoTry(t *testing.T) {
+	box := &captureSender{}
+	w := newResetWorld(t, box)
+	const email, fresh = "verify-replaced@example.com", "Brand-new-password-2!"
+	integrationOnboardAccount(t, w.engine, email, "Correct-horse-battery-staple1", "Verify Replaced", "verify_replaced")
+	w.forgot(email)
+	first := box.lastCode(t, email)
+	w.now = w.now.Add(2 * time.Minute)
+	w.forgot(email)
+	second := box.lastCode(t, email)
+	distinctCodes(t, first, second)
+
+	for range resetMaxAttempts + 1 {
+		got := w.verify(email, first, http.StatusBadRequest)
+		if got["field"] != "code" || got["reason"] != reasonReplaced || got["message"] != fieldReasonText[reasonReplaced] {
+			t.Fatalf("verify, the replaced code: %v", got)
+		}
+	}
+	if tries, ok := w.codeTries(email); !ok || tries != 0 {
+		t.Fatalf("after the replaced code 6 times at verify the code has %d tries (there: %v), want 0", tries, ok)
+	}
+	w.verify(email, second, http.StatusOK)
+	w.reset(email, second, fresh, http.StatusOK)
+}
+
+// At verify a wrong code, an email with no account and a disabled account
+// (with its right code) get one answer, byte for byte the one reset gives a
+// wrong code, after the same statement: for the account, then for no one.
+// The disabled account's code is neither spent nor counted.
+func TestPasswordResetIntegration_VerifyGivesEveryOtherRefusalTheSameAnswer(t *testing.T) {
+	box := &captureSender{}
+	w := newResetWorld(t, box)
+	store := &countingResetStore{ResetStore: postgres.NewPasswordResetRepo(w.pool)}
+	w.h.store = store
+	raw := func(path string, body map[string]any) string {
+		t.Helper()
+		rec := integrationDo(t, w.routes, http.MethodPost, path, "", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s for %v: %d %s", path, body["email"], rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+	verify := func(email, code string) string {
+		t.Helper()
+		return raw("/v1/auth/password/verify", map[string]any{"email": email, "code": code})
+	}
+
+	const known, disabled = "verify-same@example.com", "verify-same-disabled@example.com"
+	integrationOnboardAccount(t, w.engine, known, "Correct-horse-battery-staple1", "Verify Same", "verify_same")
+	integrationOnboardAccount(t, w.engine, disabled, "Correct-horse-battery-staple1", "Verify Disabled", "verify_disabled")
+	w.forgot(known)
+	code := box.lastCode(t, known)
+	w.forgot(disabled)
+	disabledCode := box.lastCode(t, disabled)
+	if _, err := w.pool.Exec(context.Background(), `update users set disabled_at = now() where email = $1`, disabled); err != nil {
+		t.Fatal(err)
+	}
+	var knownID uuid.UUID
+	if err := w.pool.QueryRow(context.Background(), `select id from users where email = $1`, known).Scan(&knownID); err != nil {
+		t.Fatal(err)
+	}
+
+	want := raw("/v1/auth/password/reset", map[string]any{"email": known, "code": otherCode(code), "new_password": "Brand-new-password-2!"})
+	if !strings.Contains(want, `"reason":"wrong_code"`) || !strings.Contains(want, `"field":"code"`) {
+		t.Fatalf("reset's wrong-code answer: %s", want)
+	}
+	if got := verify(known, otherCode(code)); got != want {
+		t.Fatalf("verify, a wrong code: %s, want reset's %s", got, want)
+	}
+	if got := store.last(); got != knownID {
+		t.Fatalf("verify, a wrong code, was tried for %s, want the account", got)
+	}
+	if got := verify("nobody@example.com", code); got != want {
+		t.Fatalf("verify, an email with no account: %s, want %s", got, want)
+	}
+	if got := store.last(); got != uuid.Nil {
+		t.Fatalf("verify, an email with no account, was tried for %s, want no one", got)
+	}
+	if got := verify(disabled, disabledCode); got != want {
+		t.Fatalf("verify, a disabled account: %s, want %s", got, want)
+	}
+	if got := store.last(); got != uuid.Nil {
+		t.Fatalf("verify, a disabled account, was tried for %s, want no one", got)
+	}
+	if tries, ok := w.codeTries(disabled); !ok || tries != 0 {
+		t.Fatalf("the disabled account's code has %d tries (there: %v), want 0", tries, ok)
+	}
+}
+
+// Verify shares both limits with forgot and reset: its requests count toward
+// them as theirs do, and theirs toward its. 5 a minute per address and email,
+// and 10 per address, for the three routes together.
+func TestPasswordResetIntegration_VerifySharesTheLimits(t *testing.T) {
+	w := newResetWorld(t, &captureSender{})
+	const forgot, verify, reset = "/v1/auth/password/forgot", "/v1/auth/password/verify", "/v1/auth/password/reset"
+	send := func(remote, path, email string) int {
+		t.Helper()
+		var body string
+		switch path {
+		case forgot:
+			body = fmt.Sprintf(`{"email":%q}`, email)
+		case verify:
+			body = fmt.Sprintf(`{"email":%q,"code":"123456"}`, email)
+		default:
+			body = fmt.Sprintf(`{"email":%q,"code":"123456","new_password":"Brand-new-password-2!"}`, email)
+		}
+		rec := postRawJSON(t, w.routes, remote, path, body)
+		w.h.Wait()
+		return rec.Code
+	}
+
+	// One address and email: the three routes take turns at the 5.
+	const remote, email = "198.51.100.70:40000", "shared-limit@example.com"
+	for i, path := range []string{verify, forgot, verify, reset, verify} {
+		if got := send(remote, path, email); got == http.StatusTooManyRequests {
+			t.Fatalf("request %d (%s) for one address and email was limited, want it within the 5", i+1, path)
+		}
+	}
+	for _, path := range []string{verify, forgot, reset} {
+		if got := send(remote, path, email); got != http.StatusTooManyRequests {
+			t.Fatalf("%s after 5 for one address and email: %d, want 429", path, got)
+		}
+	}
+
+	// One address, an email each time: 10, then every route is limited.
+	const busy = "198.51.100.71:40000"
+	for i := range 10 {
+		path := []string{verify, forgot, reset}[i%3]
+		if got := send(busy, path, fmt.Sprintf("someone-%d@example.com", i)); got == http.StatusTooManyRequests {
+			t.Fatalf("request %d (%s) from one address was limited, want it within the 10", i+1, path)
+		}
+	}
+	for i, path := range []string{verify, forgot, reset} {
+		if got := send(busy, path, fmt.Sprintf("someone-else-%d@example.com", i)); got != http.StatusTooManyRequests {
+			t.Fatalf("%s after 10 from one address: %d, want 429", path, got)
+		}
+	}
+}
+
+// Every answer of verify and reset comes no sooner than the floor after the
+// request came in, whatever it is: a body that is not JSON, a code of the
+// wrong shape, a weak password, a wrong code for an account (a try is
+// written), an email with no account and a disabled account (nothing is
+// written), the replaced code, the right code at verify, the used code, a
+// limit, and the new session. The wait is asked for before the first byte,
+// once per answer; here the clock stands still, so it is the whole floor
+// every time.
 func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	box := &captureSender{}
 	w := newResetWorld(t, box)
@@ -1016,10 +1252,11 @@ func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	code := box.lastCode(t, email)
 	distinctCodes(t, first, code)
 
-	send := func(what string, body string, wantStatus int, wantReason string) {
+	const resetPath, verifyPath = "/v1/auth/password/reset", "/v1/auth/password/verify"
+	sendTo := func(path, what, body string, wantStatus int, wantReason string) {
 		t.Helper()
 		waits = nil
-		rec := postRawJSON(t, w.routes, integrationRemote(), "/v1/auth/password/reset", body)
+		rec := postRawJSON(t, w.routes, integrationRemote(), path, body)
 		w.h.Wait()
 		if rec.Code != wantStatus {
 			t.Fatalf("%s: %d %s, want %d", what, rec.Code, rec.Body.String(), wantStatus)
@@ -1031,8 +1268,19 @@ func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 			t.Fatalf("%s: waits %v, want the answer to wait the floor %v", what, waits, resetAnswerFloor)
 		}
 	}
+	send := func(what string, body string, wantStatus int, wantReason string) {
+		t.Helper()
+		sendTo(resetPath, what, body, wantStatus, wantReason)
+	}
+	verify := func(what string, body string, wantStatus int, wantReason string) {
+		t.Helper()
+		sendTo(verifyPath, "verify, "+what, body, wantStatus, wantReason)
+	}
 	body := func(email, code, password string) string {
 		return fmt.Sprintf(`{"email":%q,"code":%q,"new_password":%q}`, email, code, password)
+	}
+	verifyBody := func(email, code string) string {
+		return fmt.Sprintf(`{"email":%q,"code":%q}`, email, code)
 	}
 	send("not JSON", `nope`, http.StatusBadRequest, "")
 	send("a code of the wrong shape", body(email, "12345", fresh), http.StatusBadRequest, reasonInvalid)
@@ -1041,21 +1289,34 @@ func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	send("an email with no account", body("nobody@example.com", code, fresh), http.StatusBadRequest, reasonWrongCode)
 	send("a disabled account", body(disabled, code, fresh), http.StatusBadRequest, reasonWrongCode)
 	send("the replaced code", body(email, first, fresh), http.StatusBadRequest, reasonReplaced)
+	// Verify, before the code is spent below: its right code spends nothing.
+	verify("not JSON", `nope`, http.StatusBadRequest, "")
+	verify("a code of the wrong shape", verifyBody(email, "12345"), http.StatusBadRequest, reasonInvalid)
+	verify("a wrong code", verifyBody(email, otherCode(code)), http.StatusBadRequest, reasonWrongCode)
+	verify("an email with no account", verifyBody("nobody@example.com", code), http.StatusBadRequest, reasonWrongCode)
+	verify("a disabled account", verifyBody(disabled, code), http.StatusBadRequest, reasonWrongCode)
+	verify("the replaced code", verifyBody(email, first), http.StatusBadRequest, reasonReplaced)
+	verify("the right code", verifyBody(email, code), http.StatusOK, "")
 	w.hook(func() { w.reset(email, code, "Other-new-password-4!", http.StatusOK) })
 	send("the used code", body(email, code, fresh), http.StatusBadRequest, reasonUsed)
 	w.forgot(email) // the last code was spent, so a new one comes at once
 	send("the new session", body(email, box.lastCode(t, email), fresh), http.StatusOK, "")
-	// The per-address and email limit: five a minute.
-	remote := "198.51.100.90:1"
-	for i := range 6 {
-		waits = nil
-		rec := postRawJSON(t, w.routes, remote, "/v1/auth/password/reset", body("limited@example.com", "123456", fresh))
-		want := http.StatusBadRequest
-		if i == 5 {
-			want = http.StatusTooManyRequests
-		}
-		if rec.Code != want || len(waits) != 1 || waits[0] != resetAnswerFloor {
-			t.Fatalf("limit try %d: %d, waits %v", i+1, rec.Code, waits)
+	// The per-address and email limit: five a minute, at reset and at verify,
+	// each from its own address (the two share the count).
+	for _, l := range []struct{ path, remote, body string }{
+		{resetPath, "198.51.100.90:1", body("limited@example.com", "123456", fresh)},
+		{verifyPath, "198.51.100.91:1", verifyBody("limited@example.com", "123456")},
+	} {
+		for i := range 6 {
+			waits = nil
+			rec := postRawJSON(t, w.routes, l.remote, l.path, l.body)
+			want := http.StatusBadRequest
+			if i == 5 {
+				want = http.StatusTooManyRequests
+			}
+			if rec.Code != want || len(waits) != 1 || waits[0] != resetAnswerFloor {
+				t.Fatalf("%s limit try %d: %d, waits %v", l.path, i+1, rec.Code, waits)
+			}
 		}
 	}
 }
@@ -1136,9 +1397,9 @@ func (wrongCodeStore) Try(context.Context, uuid.UUID, []byte, time.Time, int) (b
 }
 
 // A code that is not exactly six ASCII digits is told invalid and is never
-// checked against the store, so it costs no try. Six bytes are not enough:
-// each code below is six bytes long. A code with spaces around it is still
-// checked.
+// checked against the store, so it costs no try, at verify as at reset. Six
+// bytes are not enough: each code below is six bytes long. A code with
+// spaces around it is still checked.
 func TestPasswordReset_ACodeOfTheWrongShapeCostsNoTry(t *testing.T) {
 	store := &countingResetStore{ResetStore: wrongCodeStore{}}
 	h := NewPasswordResetHandler(newFakeUserRepo(), auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
@@ -1147,25 +1408,39 @@ func TestPasswordReset_ACodeOfTheWrongShapeCostsNoTry(t *testing.T) {
 	h.floor = 0
 	router := newTestRouter(t, TestDeps{})
 	h.Register(router.Group("/v1"))
-	send := func(n int, code string) map[string]any {
-		t.Helper()
-		body := fmt.Sprintf(`{"email":"someone@example.com","code":%q,"new_password":"Brand-new-password-2!"}`, code)
-		rec := postRawJSON(t, router, fmt.Sprintf("198.51.100.%d:1", n), "/v1/auth/password/reset", body)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("code %q: %d %s, want 400", code, rec.Code, rec.Body.String())
+	// Each route sends from its own addresses: the two share their limits.
+	for _, route := range []struct {
+		path  string
+		first int // the last number of the route's first address, less one
+		body  func(code string) string
+	}{
+		{"/v1/auth/password/reset", 0, func(code string) string {
+			return fmt.Sprintf(`{"email":"someone@example.com","code":%q,"new_password":"Brand-new-password-2!"}`, code)
+		}},
+		{"/v1/auth/password/verify", 100, func(code string) string {
+			return fmt.Sprintf(`{"email":"someone@example.com","code":%q}`, code)
+		}},
+	} {
+		before := len(store.tries)
+		send := func(n int, code string) map[string]any {
+			t.Helper()
+			rec := postRawJSON(t, router, fmt.Sprintf("198.51.100.%d:1", route.first+n), route.path, route.body(code))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("%s, code %q: %d %s, want 400", route.path, code, rec.Code, rec.Body.String())
+			}
+			return decodeBody(t, rec)
 		}
-		return decodeBody(t, rec)
-	}
-	for i, code := range []string{"abcdef", "12345a", "1234é", "١٢٣", "１２", "+12345", "12 456", "12345", "1234567", ""} {
-		got := send(i+1, code)
-		if got["field"] != "code" || got["reason"] != reasonInvalid {
-			t.Fatalf("code %q: %v, want field code, reason %s", code, got, reasonInvalid)
+		for i, code := range []string{"abcdef", "12345a", "1234é", "١٢٣", "１２", "+12345", "12 456", "12345", "1234567", ""} {
+			got := send(i+1, code)
+			if got["field"] != "code" || got["reason"] != reasonInvalid {
+				t.Fatalf("%s, code %q: %v, want field code, reason %s", route.path, code, got, reasonInvalid)
+			}
 		}
-	}
-	if len(store.tries) != 0 {
-		t.Fatalf("codes of the wrong shape were tried %d times, want none", len(store.tries))
-	}
-	if got := send(50, " 123456 "); got["reason"] != reasonWrongCode || len(store.tries) != 1 {
-		t.Fatalf("a padded code: %v, %d tries; want it checked once, as a wrong code", got, len(store.tries))
+		if n := len(store.tries) - before; n != 0 {
+			t.Fatalf("%s: codes of the wrong shape were tried %d times, want none", route.path, n)
+		}
+		if got := send(50, " 123456 "); got["reason"] != reasonWrongCode || len(store.tries)-before != 1 {
+			t.Fatalf("%s, a padded code: %v, %d tries; want it checked once, as a wrong code", route.path, got, len(store.tries)-before)
+		}
 	}
 }
