@@ -681,6 +681,56 @@ func TestLogin_ByUsernameIgnoresCase(t *testing.T) {
 	assertLoggedInAs(t, rec, "try5@example.com")
 }
 
+// The app writes every username as "@name", so a person may type theirs that
+// way, in either field.
+func TestLogin_ByUsernameTypedWithItsAt(t *testing.T) {
+	for name, req := range map[string]LoginRequest{
+		"login field":       {Login: "@try_five"},
+		"older email field": {Email: "@Try_FIVE"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			router, _, deps := newAuthTestHandler(t)
+			seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")
+
+			req.Password = "Correct-horse-battery1"
+			assertLoggedInAs(t, doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", req), "try5@example.com")
+		})
+	}
+}
+
+// Only one @ before a plain word goes, so "@" alone and every other @ still
+// get the address check, and "@name" and "name" share one limit key.
+func TestLoginRequest_TypedDropsOnlyAUsernamesAt(t *testing.T) {
+	for typed, want := range map[string]string{
+		"@try_five": "try_five",
+		"@Try_FIVE": "Try_FIVE",
+		"try_five":  "try_five",
+		"@":         "@",
+		"@@x":       "@@x",
+		"@nope.com": "@nope.com",
+		"@a@b.com":  "@a@b.com",
+		"@na me":    "@na me",
+		" @sam":     " @sam",
+		"a@b.com":   "a@b.com",
+		"":          "",
+	} {
+		if got := (&LoginRequest{Login: typed}).typed(); got != want {
+			t.Errorf("Login %q: typed() = %q, want %q", typed, got, want)
+		}
+		if got := (&LoginRequest{Email: typed}).typed(); got != want {
+			t.Errorf("Email %q: typed() = %q, want %q", typed, got, want)
+		}
+	}
+}
+
+func TestLogin_AnAtAloneStillGetsTheAddressCheck(t *testing.T) {
+	router, _, _ := newAuthTestHandler(t)
+
+	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{Login: "@", Password: "Correct-horse-battery1"})
+
+	assertFieldError(t, rec, "login")
+}
+
 func TestLogin_LoginFieldTakesAnEmailToo(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
 	seedLoginAccount(t, deps, "try5@example.com", "try_five", "Correct-horse-battery1")

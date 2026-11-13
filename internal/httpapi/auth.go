@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -26,7 +27,7 @@ import (
 
 // dummyPasswordHash is a real bcrypt hash compared against on a
 // missing-account login attempt, so that path performs the same bcrypt
-// work a real wrong-password attempt would -- RESEARCH.md's Security
+// work a real wrong-password attempt would -- 01-RESEARCH.md's Security
 // Domain requires unknown-account and wrong-password to be indistinguishable,
 // including by timing, not just by response body.
 var dummyPasswordHash = mustHashDummyPassword()
@@ -196,7 +197,7 @@ const (
 // SignupRequest is the signup request body. It carries no binding tags on
 // purpose: Signup validates each field by hand, in a fixed order, so every
 // rejection names its field (RespondFieldError). The password ceiling of 72
-// is bcrypt's hard byte limit (RESEARCH.md Pitfall 1).
+// is bcrypt's hard byte limit (01-RESEARCH.md Pitfall 1).
 type SignupRequest struct {
 	Email    string  `json:"email"`
 	Password string  `json:"password"`
@@ -219,14 +220,24 @@ type LoginRequest struct {
 }
 
 // typed is what the person typed on the Log in page: Login, or the older Email
-// when Login is empty. Log in and its limit both read it here, so the limit
-// always counts the account Log in checks.
+// when Login is empty. The app writes every username as "@name", so one
+// leading @ before a word of letters, digits and _ is dropped
+// (lib/auth/loginName.ts does the same); any other @ keeps it an email
+// address. Log in and its limit both read it here, so the limit always counts
+// the account Log in checks, however the name was typed.
 func (r *LoginRequest) typed() string {
-	if r.Login != "" {
-		return r.Login
+	login := r.Login
+	if login == "" {
+		login = r.Email
 	}
-	return r.Email
+	if atUsername.MatchString(login) {
+		return login[1:]
+	}
+	return login
 }
+
+// atUsername is a username typed the way the app shows it: "@name".
+var atUsername = regexp.MustCompile(`^@[A-Za-z0-9_]+$`)
 
 // validEmail accepts a plain address of at most 254 characters: it must parse
 // as a single bare address (no display name, no spaces) and have a dot in the
@@ -460,7 +471,7 @@ func hashSignupPassword(c *gin.Context, field, plain string) (string, bool) {
 // password that is checked. Unknown-account and wrong-password
 // attempts are indistinguishable: both run a bcrypt comparison (against a fixed
 // dummy hash for the unknown-account case) and both return the identical
-// user.ErrInvalidCredentials body, per RESEARCH.md's Security Domain
+// user.ErrInvalidCredentials body, per 01-RESEARCH.md's Security Domain
 // enumeration-resistance requirement. That includes a username nobody holds and
 // text that could never be a username: neither is a format error.
 //
