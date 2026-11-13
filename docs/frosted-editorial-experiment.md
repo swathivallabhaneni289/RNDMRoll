@@ -1,5 +1,7 @@
 # Frosted Material + Editorial UI Experiment (2026-09-30)
 
+> **History.** A design experiment that was dropped on 2026-10-10. It is not the current design: the app uses plain light cards with no glass or blur, and PRD.md section 11 has the design rules today.
+
 **Update 2026-10-01:** the developer decided the Phase 5 friend feed should be Instagram-style posts as frosted glass cards over a soft blurred background (feed only), per a reference screenshot. See `docs/design-brief-2026-10-01-feed.md` and the PROJECT.md Key Decisions table. Everything else in this document is still an experiment.
 
 Status: **experiment, undecided (the feed look is now decided, see the update above).** Nothing here is adopted. The code is isolated in `lab/`, development builds only, and does not touch the roll screen, onboarding, authentication or any product logic.

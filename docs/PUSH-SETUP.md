@@ -42,10 +42,7 @@ The code is all in place, but it is switched off. Until you do the steps below, 
    - `PUSH_DRIVER=expo` (the default is `off`, which sends nothing)
    - `EXPO_ACCESS_TOKEN=...` only if you turn on "Enhanced Security for Push Notifications" in the Expo project's settings. Make the token at expo.dev, Account settings, Access tokens.
 
-6. **Run the new database steps.** Run them the same way as the others (`migrate ... up`), which runs all three in order:
-   - `0015_push_tokens` adds the table `push_tokens`.
-   - `0016_password_reset_previous_code` lets Forgot password say a code was replaced by a newer one.
-   - `0017_push_token_sessions` ties each push token to the session (the refresh token) of the phone that sent it.
+6. **Nothing new for the database.** Push tokens came with migrations `0015_push_tokens` (the table `push_tokens`) and `0017_push_token_sessions` (each token tied to the session, the refresh token, of the phone that sent it). A database brought up with `make migrate-up` already has them, since it runs every migration up to the latest.
 
 7. **Rebuild the app** on a real iPhone (`eas build` or a new dev client build). The project id has to be in the build. A push token cannot be made on the Simulator.
 

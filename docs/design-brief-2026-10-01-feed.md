@@ -1,10 +1,12 @@
 # Design brief, 2026-10-01: the friend feed as frosted glass (feed only)
 
+> **History.** Dropped on 2026-10-10. It is not the current design: the Board uses plain light cards with no glass or blur, and PRD.md section 11 has the design rules today.
+
 Status: **decided by the developer for the Phase 5 friend feed.** Every other screen keeps the light editorial system unless the developer says otherwise. For the feed this replaces the "restrained glass laid over the photo" experiment in `docs/frosted-editorial-experiment.md`, whose overlay was retired on 2026-09-30 because it read as unclear.
 
 ## What the developer said (verbatim, voice dictated, 2026-10-01)
 
-> '/Users/swathivallabhaneni/Downloads/IMG_1142.jpg' and uh, do you see this image you see how play uh, the glass theme is looking right now that's how I want my feed to look like whenever a user gets uh, to spin the wheel and gets a topic and they post it uh, this is where uh, the other users will be able to see the whole thing it's basically Instagram how we can see uh, posts when a user uploads them that's exactly how I wanted it to be
+> [screenshot IMG_1142.jpg] and uh, do you see this image you see how play uh, the glass theme is looking right now that's how I want my feed to look like whenever a user gets uh, to spin the wheel and gets a topic and they post it uh, this is where uh, the other users will be able to see the whole thing it's basically Instagram how we can see uh, posts when a user uploads them that's exactly how I wanted it to be
 
 ## The reference
 

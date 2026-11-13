@@ -1,5 +1,7 @@
 # [Name TBD] — daily dice-roll taste log
 
+> **History.** The first concept notes, from before the research and the build. It is not the current design: the dice became a spin wheel and much else changed, and PRD.md is the current record.
+
 Combines three researched, real precedents (2026-09-10/11 session) rather than cloning any single one: BeReal's daily-ritual/prompt hook, Letterboxd's structured rating-and-log mechanic, and a dice-roll randomizer for variety and replay.
 
 ## What it is

@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 13, 2026 |
+| **Last updated** | November 14, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -57,7 +57,7 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
-| Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 6 app check scripts, strict TypeScript |
+| Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 8 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
@@ -227,7 +227,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 **Acceptance criteria and rules**
 
-- **ACC-02 email.** One plain address of at most 254 characters, in plain ASCII at sign-up. Unique, ignoring capitals. A taken email shows "That email is already in use." The server holds that answer for at least 300 ms.
+- **ACC-02 email.** One plain address of at most 254 characters, in plain ASCII at sign-up. Unique, ignoring capitals. A taken email shows "That email is already in use." The server holds that answer for at least 300 ms. The one exception is a retry: when an earlier try got no answer or a server failure, and the email and password are the same, the app logs in to that account instead. The photo-and-bio page follows only when it is the account that try made.
 - **ACC-02 password.** 8 to 72 characters, with a capital letter, a number and a symbol. A four-line checklist turns green as each rule is met. Typed once; there is no confirm box.
 - **ACC-02 name and username.**
   - Name: 1 to 50 characters.
@@ -238,6 +238,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ACC-04.** The bio is at most 160 characters. Skip for now discards anything typed.
 - **ACC-05.** The page offers Invite friends, Suggested for you and search, and Done goes to the Spin page.
 - **ACC-06.**
+  - A username can be typed as the app shows it, with one leading @ ("@name").
   - A wrong password and an unknown account get the same answer: "That email, username or password isn't right."
   - A disabled account hears "This account has been disabled." only after the right password.
   - Limits: 20 a minute per IP address, 5 per address and typed name, and 5 per address and account.
@@ -317,6 +318,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The wheel starts as Meal, Movie, Song, Book, Place and Game.
   - It holds 2 to 12 categories, with names of 1 to 24 characters, unique ignoring capitals.
   - Changes apply from the next spin. Removed categories stay in past spins.
+  - Edit wheel is on the Spin page before the day's spin and once the day is posted or skipped. It is not shown while a spin waits for its post.
   - Leaving with unsaved changes asks "Leave without saving?"
 - **SPIN-05 the question.** Skip it asks once: "You are at {n} of 4 this week. A skipped day doesn't count toward it, and it isn't a miss. You can't post for this day afterwards."
 - **SPIN-05 the effect.** A skip has no limit and no cost. The week row shows a dash, and the Board stays locked for that day. "Skipped." stays on the page until the next spin at 8 PM.
@@ -408,7 +410,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SOC-04.** The share sheet sends "Join me on RNDMRoll, one spin a day. Follow me here:" with a link. The link's web page has an "Open in RNDMRoll" button that opens the sender's profile in the app.
 - **SOC-05.** Suggestions draw on people your follows follow, people who follow you, and the newest accounts, with people who follow you first.
 - **SOC-06.**
-  - A block removes follows both ways and hides each person from the other in search, the Board, posts, comments and notifications. The blocker still sees them in Blocked accounts and on their page, with Unblock.
+  - A block removes follows both ways and hides each person from the other in search, the Board, posts, comments and notifications. The blocker still sees them in Blocked accounts and on their page, with Unblock, unless that account is disabled or being deleted.
   - The blocked person isn't told. Unblock restores nothing.
   - Blocked accounts are listed in Settings.
 - **SOC-07.** Removes the person's posts from your Board only. Silent, no follow needed.
@@ -434,7 +436,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **BRD-02 while locked.**
   - The page shows "Locked", how many people you follow posted, up to four first names, and one action: "Log your meal" (the day's category, in lower case), "Spin first", or the time the next spin opens.
   - Nothing else of those posts reaches the phone.
-- **BRD-02 the day in play.** The most recent 8 PM that has passed. It lasts until the next 8 PM, so the Board calls it "Today" the whole time, also after midnight. A person who has never spun, or who posted a first spin today, is on today.
+- **BRD-02 the day in play.** The most recent 8 PM that has passed. It lasts until the next 8 PM, so the Board calls it "Today" the whole time, also after midnight. A person who has never spun, or who made a first spin today (posted or not), is on today.
 - **BRD-03.** "You skipped today. Posts from people you follow open after your next post." with Go to Spin.
 - **BRD-04.** "See your friends' spins", "Follow people you know. Their posts show here on the days you post too." and Find people.
 - **BRD-05.** The author, the photos edge to edge, the stars, the emoji, the note with the posted time, comments oldest first with replies under them, and Report in the three dots.
@@ -473,7 +475,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 - **NOT-01 what it lists.**
   - Comments on your posts, replies to your comments, new followers and accepted requests.
-  - "Your spin is open." from 8 PM to midnight.
+  - "Your spin is open." from 8 PM to midnight, on evenings the wheel opens. It is not shown after a first spin made earlier that day, and after a time zone change it comes when the 12-hour gap ends.
   - "You hit your goal this week. One bonus spin added."
 - **NOT-01 how it shows.**
   - Sections: Today, This week and Earlier.
@@ -515,7 +517,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 **Acceptance criteria and rules**
 
 - **ADM-01 who is an admin.** Admins are the accounts listed in the server's settings when it starts. Their email can't be used to sign up.
-- **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours.
+- **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours, or until their password changes.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
   - The person: name, username, profile photo, bio and join date.
@@ -563,7 +565,7 @@ These rules decide what counts. The server owns all of them.
 | Bonus spin | Earned when a week reaches the goal and no bonus is held; a week that reaches it while one is held earns none. At most one held; never expires; only on today's result, once per day; always a different category. |
 | Week streak | Weeks in a row that met the goal, ending this week or last |
 | Spins figure | Days spun; a bonus spin doesn't add one |
-| Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who posted a first spin today or has never spun |
+| Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who made a first spin today or has never spun |
 | Who sees a post | The author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
 | Deleted account | Hidden from everyone at once, like a disabled account, and logged out. Deleted for good 30 days later; logging in or resetting the password before then cancels it. One 30-day rule, on the database clock, decides both. |
@@ -595,7 +597,7 @@ These rules decide what counts. The server owns all of them.
 
 ### Reliability
 
-- Every API request has a 10-second limit on the phone; photo uploads to storage have no limit set. Spin, post and skip requests are safe to retry.
+- Every API request has a 10-second limit on the phone; photo uploads to storage have no limit set. Spin, post, post edit and skip requests are safe to retry, and so is a comment with a photo.
 - Only a definite "no" from the server logs a person out. A lost connection never does.
 - Each person's spin work waits at most 5 seconds for its lock, then answers "try again".
 - Emails and pushes are sent in the background and never fail the request that caused them.
@@ -612,7 +614,7 @@ These rules decide what counts. The server owns all of them.
 - VoiceOver labels and hints on the app's controls. The wheel announces "Your spin is {word}." Posted and Skipped are announced when they change.
 - Reduce Motion: no spin, no sliding sheets, no photo reveals, and a still background.
 - Larger Text is honoured. The shared text style stops at 1.3 times, so page headers don't break. A few labels, such as the Board's day headings, have no cap yet.
-- Most touch targets are at least 44 points. A few are smaller: Log in instead, Sign up instead, View all comments, a comment's name and photo, and the Terms and Privacy words on sign-up.
+- Most touch targets are at least 44 points. A few are smaller: View all comments, a comment's name and photo, and the Terms and Privacy words on sign-up.
 - Text contrast: ink 17.3:1 and muted grey 5.8:1 on the page colour.
 - **Launch:** walk Reduce Motion and VoiceOver on a device (not yet walked).
 
@@ -628,7 +630,7 @@ These rules decide what counts. The server owns all of them.
 ### Quality
 
 - More than 500 Go test functions; more than 100 of them run against a real PostgreSQL database.
-- 6 check scripts: five for app logic and one for the legal text.
+- 8 check scripts: seven for app logic and one for the legal text.
 - Strict TypeScript.
 - **Later:** continuous integration on every push (none yet).
 
@@ -656,7 +658,7 @@ These rules decide what counts. The server owns all of them.
 - Say "spin", never "roll".
 - No em dashes.
 - Plain, short sentences.
-- No underlined text used as a button; actions are buttons, icons or ink words. Exceptions today: the underlined links in section 16, issue 9, and the grey "Skip for now" on the second sign-up page.
+- No underlined text used as a button; actions are buttons, icons or ink words. Exception today: the grey "Skip for now" on the second sign-up page.
 - No counts that can grow large under posts.
 - No fake reviews or counters.
 - No vague hero lines.
@@ -804,12 +806,12 @@ Some were found while writing this document; others were already in the planning
 6. **Search words appear in server logs.**
 7. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
 8. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
-9. **Some underlined text links remain**, against the design rule: "Log in instead", "Sign up instead", "Edit wheel", "Use bonus spin" and "View entry".
-10. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
-11. **A closed report about a person stays closed** when the same reporter reports them again, so the admin page never shows it. Post and comment reports open again.
-12. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
-13. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
-14. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
+9. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
+10. **A closed report about a person stays closed** when the same reporter reports them again, so the admin page never shows it. Post and comment reports open again.
+11. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
+12. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
+13. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
+14. **After a big time zone change, the countdown's line can say the wrong time.** When a move puts 8 PM less than 12 hours after the last spin, the wheel opens when the 12 hours end, such as 9:50 PM. The countdown counts to that moment and the wheel opens on time, but the line under it still reads "Opens at 8:00 PM."
 
 ### Open questions
 
@@ -862,7 +864,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 16 | Every account private, every follow a request | Small trusted circles, safer for younger users | Slower to find people |
 | Oct 16 | The wheel stays on the page at rest | The wheel should always be visible | None recorded |
 | Oct 18 | Reactions on friends' posts removed | They repeated what comments do | The unused route and table remain |
-| Oct 18 | No underlined text used as a button | Underlined text reads as unfinished | Some old links still to restyle |
+| Oct 18 | No underlined text used as a button | Underlined text reads as unfinished | None; the last old links were restyled Nov 13 |
 | Oct 18 | An admin page to review reports and disable accounts | None recorded | None recorded |
 | Oct 19 | A new person's first spin opens at once | A newcomer sees the loop on day one | No second spin at 8 PM that day |
 | Oct 19 | Find your friends, invite links and suggestions | It should work like sending an invite link | None recorded |

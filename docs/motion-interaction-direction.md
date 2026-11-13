@@ -1,5 +1,7 @@
 # RNDMRoll Motion & Interaction Direction
 
+> **History.** An early design input from 2026-09-29, kept as it was written. Its section status notes below are from that day: most of the screens it describes were built later, some differently. PRD.md has what the app does today.
+
 > Produced 2026-09-29 via an external AI agent, briefed with the project context document
 > generated in this session. Reviewed and partially implemented same day (see status notes per
 > section). Kept verbatim below as the reference; do not silently edit it: if a later phase's

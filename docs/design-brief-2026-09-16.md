@@ -1,5 +1,7 @@
 # Design Brief — 2026-09-16 (Editorial Direction)
 
+> **History.** An early design brief, kept as written. The app's light, black and white look grew from it, but it is not the current design: PRD.md section 11 has the design rules today.
+
 Verbatim design brief supplied by the user on 2026-09-16, kept as source material for UI-SPEC work across phases. This is reference material, not a locked contract — individual phases still go through their own `/gsd-ui-phase` research + checker loop, and must reconcile this brief against PROJECT.md's standing constraints (see "Reconciliation notes" below) rather than adopt it verbatim.
 
 ## Reconciliation notes (resolved 2026-09-16)

@@ -1,5 +1,7 @@
 # Design Brief — 2026-09-17 (Onboarding Redesign)
 
+> **History.** An early onboarding brief, kept as written. It is not the current design: the pitch pages gave way to one Welcome page on 2026-10-04, and PRD.md section 11 has the design rules today.
+
 Verbatim design brief supplied by the user on 2026-09-17, scoped explicitly to the onboarding flow only ("Redesign ONLY the onboarding flow for RNDMRoll"). Kept as source material for UI-SPEC revision 9. Reference material, not a locked contract as-is — reconciled against standing project decisions below.
 
 ## Reconciliation notes (resolved 2026-09-17)
