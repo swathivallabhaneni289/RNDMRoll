@@ -1,10 +1,15 @@
 /**
  * Photo limits and the upload memory of the entry form (UI spec 7, plan 03-02 Task 1 and
- * binding decision 6). Pure: no React, no imports.
+ * binding decision 6), and how an edit tells its photos apart (private photos, 2026-11-09).
+ * Pure: no React, no imports.
  */
 
-/** The largest photo, 50 MiB: the same ceiling as profile photos. */
-export const PHOTO_MAX_BYTES = 50 * 1024 * 1024;
+/**
+ * The largest photo, 50,000,000 bytes: the same ceiling as profile photos. Storage's free plan takes
+ * files up to 50 MB and may count a MB as 1,000,000 bytes, so a bigger photo is refused here, with
+ * this page's own message, and never by storage.
+ */
+export const PHOTO_MAX_BYTES = 50_000_000;
 
 /** The types the server's upload ticket accepts. */
 export const PHOTO_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
@@ -22,7 +27,7 @@ export type PhotoProblem = 'type' | 'size';
 /**
  * Why a picked file is refused before any upload, or null when it may be used. A missing type
  * counts as `image/jpeg` (the profile page sends `mimeType ?? 'image/jpeg'` the same way); the
- * type is checked first, then the size (over 50 MiB is `size`).
+ * type is checked first, then the size (over 50 MB is `size`).
  */
 export function photoProblem(mimeType: string | null | undefined, size: number): PhotoProblem | null {
   const type = mimeType ?? 'image/jpeg';
@@ -34,6 +39,18 @@ export function photoProblem(mimeType: string | null | undefined, size: number):
 /** The line shown under the photo strip for a refused file. */
 export function photoMessage(p: PhotoProblem): string {
   return p === 'type' ? 'Use a JPG, PNG or WebP photo.' : 'That photo is over 50 MB. Choose a smaller one.';
+}
+
+/**
+ * True when the photos of an entry being edited differ from the entry's own: another count or
+ * order, or a new pick (it has no id yet). Photos are told apart by id, never by link: the server
+ * signs a new link for the same photo every half hour, so a fresh link alone is no change and a
+ * save sends no photo list for it. Both lists are in order, the cover first.
+ */
+export function photoListChanged(now: readonly { id?: string }[], before: readonly { id?: string }[]): boolean {
+  return (
+    now.length !== before.length || now.some((photo, index) => photo.id === undefined || photo.id !== before[index].id)
+  );
 }
 
 /**

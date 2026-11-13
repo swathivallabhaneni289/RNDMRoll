@@ -21,6 +21,7 @@ import {
   type Follows,
   type Person,
 } from '@/lib/api/social';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
@@ -196,18 +197,22 @@ export function PeopleScreen({ from, show = 'followers' }: { from: Place; show?:
   const busyRef = useRef(false);
   const followsRef = useRef<Follows | null>(null);
 
+  // Read again on a return from the background once the lists are 20 minutes old (photo links run out).
+  const { markLoaded } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     try {
       const next = await getFollows();
       followsRef.current = next;
       setFollows(next);
+      markLoaded();
       setStatus('ready');
     } catch (err) {
       if (followsRef.current !== null) return;
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
-  }, []);
+  }, [markLoaded]);
 
   useFocusEffect(
     useCallback(() => {

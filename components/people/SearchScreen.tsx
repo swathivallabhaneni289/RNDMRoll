@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonRow } from '@/components/people/PeopleScreen';
@@ -13,6 +13,7 @@ import { getSuggestions } from '@/lib/api/person';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ApiError, inviteLink } from '@/lib/api/client';
 import { firstName, follow, searchPeople, unfollow, type Person, type SearchHit } from '@/lib/api/social';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -51,8 +52,21 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const [menu, setMenu] = useState<Person | null>(null);
   const seqRef = useRef(0);
   const busyRef = useRef(false);
+  // A new number reads the page again, the suggestions and the search in the box: on a return from
+  // the background, or back on this page, once the suggestions are 20 minutes old (their photo
+  // links stop working within an hour). A later search is never older than them.
+  const [round, setRound] = useState(0);
+  const { markLoaded, stale } = useForegroundReload(() => setRound((n) => n + 1));
 
-  // Ask again a moment after the last key; only the newest answer is used.
+  // Back on this page (from a person's page, say): this page reads nothing on focus of its own, and
+  // a return from the background while it was out of focus read nothing either.
+  useFocusEffect(
+    useCallback(() => {
+      if (stale()) setRound((n) => n + 1);
+    }, [stale]),
+  );
+
+  // Ask again a moment after the last key, and in a new round; only the newest answer is used.
   useEffect(() => {
     const value = query.trim().replace(/^@/, '');
     if (value === '') {
@@ -77,22 +91,25 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [query]);
+  }, [query, round]);
 
-  // The suggestions, read once when the page opens; a failure leaves the list off.
+  // The suggestions, read when the page opens and in each new round; a first failure leaves the
+  // list off, a later one keeps it.
   useEffect(() => {
     let alive = true;
     getSuggestions()
       .then((next) => {
-        if (alive) setSuggestions(next);
+        if (!alive) return;
+        setSuggestions(next);
+        markLoaded();
       })
       .catch(() => {
-        if (alive) setSuggestions([]);
+        if (alive) setSuggestions((current) => current ?? []);
       });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [round, markLoaded]);
 
   function goBack() {
     if (router.canGoBack()) router.back();

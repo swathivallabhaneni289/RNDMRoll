@@ -7,6 +7,7 @@ import type { PickedPhoto } from '@/components/entry/useEntryDraft';
 import { AppText } from '@/components/ui/AppText';
 import { PhotoPlaceholder } from '@/components/ui/PhotoPlaceholder';
 import type { PhotoSource } from '@/lib/api/entries';
+import { photoSource } from '@/lib/api/photoSource';
 import { fileSize } from '@/lib/api/profile';
 import { canAddPhoto, photoMessage, photoProblem } from '@/lib/entry/photo';
 import { ImageReveal, PressScale } from '@/lib/motion/primitives';
@@ -69,7 +70,8 @@ function Pill({ label, hint, onPress, reduce }: { label: string; hint: string; o
  * no photo it holds the stand-in glyph, 'Add a photo' and the Camera and Library pills; with photos
  * a strip of 56dp thumbnails sits under it (the cover framed, a remove mark on each) and, below ten
  * photos, a plus tile that opens the Add a photo sheet. It keeps no upload state: it checks a pick
- * (type, then size) and hands the accepted photo up.
+ * (type, then size) and hands the accepted photo up. An entry's own photo is keyed by its id, a
+ * pick by its file.
  */
 export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: PhotoFieldProps) {
   const reduce = useReduceMotion();
@@ -166,7 +168,7 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
 
   const coverImage = cover ? (
     <Image
-      source={{ uri: cover.uri }}
+      source={photoSource(cover.uri)}
       style={{ width: '100%', height: '100%' }}
       contentFit="cover"
       accessibilityElementsHidden
@@ -180,7 +182,7 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
           reduce ? (
             coverImage
           ) : (
-            <ImageReveal key={cover.uri} style={{ flex: 1 }}>
+            <ImageReveal key={cover.id ?? cover.uri} style={{ flex: 1 }}>
               {coverImage}
             </ImageReveal>
           )
@@ -214,9 +216,9 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
           contentContainerStyle={{ gap: space.xs }}
         >
           {photos.map((photo, index) => (
-            <View key={photo.uri} style={{ width: THUMB, height: THUMB, backgroundColor: color.secondary }}>
+            <View key={photo.id ?? photo.uri} style={{ width: THUMB, height: THUMB, backgroundColor: color.secondary }}>
               <Image
-                source={{ uri: photo.uri }}
+                source={photoSource(photo.uri)}
                 style={{ width: THUMB, height: THUMB }}
                 contentFit="cover"
                 accessible

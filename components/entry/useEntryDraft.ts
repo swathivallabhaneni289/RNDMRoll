@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Entry, PhotoSource } from '@/lib/api/entries';
-import { createUploadMemory, canAddPhoto, type UploadMemory } from '@/lib/entry/photo';
+import { createUploadMemory, canAddPhoto, photoListChanged, type UploadMemory } from '@/lib/entry/photo';
 import type { ReactionName } from '@/lib/entry/reactions';
 import { missingParts, type MissingPart } from '@/lib/entry/rules';
 import { STARS_MAX } from '@/lib/entry/stars';
 
 /**
- * One photo of the draft, in order; the first is the cover. A picked file has a local `uri`. In edit
- * mode an existing photo is the entry's own photo: its `uri` is the photo's `url`, `mimeType` is
- * null and `source` is the entry's `photo_source` (use `existingPhotoId` to tell it from a pick).
+ * One photo of the draft, in order; the first is the cover. A picked file has a local `uri` and no
+ * `id`. In edit mode an existing photo is the entry's own photo: `id` is its server id and `uri` the
+ * link it came with, only for showing it (the server signs a new link for the same photo every half
+ * hour, so photos are told apart by `id`); `mimeType` is null and `source` is the entry's
+ * `photo_source`.
  */
-export type PickedPhoto = { uri: string; mimeType: string | null; source: PhotoSource };
+export type PickedPhoto = { uri: string; mimeType: string | null; source: PhotoSource; id?: string };
 
 type Values = {
   photos: PickedPhoto[];
@@ -18,24 +20,19 @@ type Values = {
   stars: number;
   reaction: ReactionName | null;
   comment: string;
-  /** Existing photo url to photo id (edit mode only). */
-  ids: Record<string, string>;
 };
 
-const EMPTY: Values = { photos: [], title: '', stars: 0, reaction: null, comment: '', ids: {} };
+const EMPTY: Values = { photos: [], title: '', stars: 0, reaction: null, comment: '' };
 
 function valuesFrom(entry: Entry | null | undefined): Values {
   if (!entry) return EMPTY;
   const ordered = [...entry.photos].sort((a, b) => a.position - b.position);
-  const ids: Record<string, string> = {};
-  for (const photo of ordered) ids[photo.url] = photo.id;
   return {
-    photos: ordered.map((photo) => ({ uri: photo.url, mimeType: null, source: entry.photo_source })),
+    photos: ordered.map((photo) => ({ uri: photo.url, mimeType: null, source: entry.photo_source, id: photo.id })),
     title: entry.title,
     stars: entry.stars,
     reaction: entry.reaction,
     comment: entry.comment ?? '',
-    ids,
   };
 }
 
@@ -68,8 +65,6 @@ export type EntryDraft = {
   isUnsaved: () => boolean;
   /** The one upload memory: `ensure(uri, upload)` uploads a picked file once, a retry reuses its key. */
   memory: UploadMemory;
-  /** The server id of an existing photo (edit mode), or null for a newly picked file. */
-  existingPhotoId: (uri: string) => string | null;
 };
 
 /**
@@ -143,10 +138,8 @@ export function useEntryDraft(initial?: Entry | null): EntryDraft {
     setSaved(true);
   }, []);
 
-  const photosChanged =
-    photos.length !== baseline.photos.length || photos.some((item, index) => item.uri !== baseline.photos[index].uri);
   const dirty =
-    photosChanged ||
+    photoListChanged(photos, baseline.photos) ||
     title.trim() !== baseline.title.trim() ||
     stars !== baseline.stars ||
     reaction !== baseline.reaction ||
@@ -154,7 +147,6 @@ export function useEntryDraft(initial?: Entry | null): EntryDraft {
   dirtyRef.current = dirty;
 
   const isUnsaved = useCallback(() => dirtyRef.current && !savedRef.current, []);
-  const existingPhotoId = useCallback((uri: string) => baseline.ids[uri] ?? null, [baseline]);
 
   return {
     photos,
@@ -176,6 +168,5 @@ export function useEntryDraft(initial?: Entry | null): EntryDraft {
     unsaved: dirty && !saved,
     isUnsaved,
     memory,
-    existingPhotoId,
   };
 }

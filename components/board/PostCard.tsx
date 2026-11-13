@@ -6,6 +6,7 @@ import { StarDisplay } from '@/components/entry/StarDisplay';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { AppText } from '@/components/ui/AppText';
 import type { Card } from '@/lib/api/board';
+import { photoSource } from '@/lib/api/photoSource';
 import { firstName, type Person } from '@/lib/api/social';
 import { cardSpoken, starsFigure } from '@/lib/board/text';
 import { PressScale } from '@/lib/motion/primitives';
@@ -71,14 +72,21 @@ export function PostCard({
   width,
   onPress,
   onOpenPerson,
+  onPhotoError,
 }: {
   card: Card;
   width: number;
   onPress: () => void;
   /** A tap on the name chip opens the author's profile. */
   onOpenPerson?: (userId: string) => void;
+  /** The photo would not load (its link may have run out): the Board reads again, quietly. */
+  onPhotoError?: () => void;
 }) {
-  const [failed, setFailed] = useState(false);
+  // The card whose photo would not load: the glyph shows in its place until the Board's first page
+  // answers again. Every answer brings new cards, so the photo is then tried once more, with a new
+  // link or the same one (a link stays the same for up to half an hour). A later page leaves the
+  // cards already shown as they are.
+  const [failedCard, setFailedCard] = useState<Card | null>(null);
   const name = card.mine ? 'You' : firstName(card.author);
   const height = Math.round(width / PHOTO_ASPECT);
 
@@ -97,13 +105,16 @@ export function PostCard({
       style={{ width }}
     >
       <View style={{ width, height, backgroundColor: color.secondary }}>
-        {card.photo_url !== '' && !failed ? (
+        {card.photo_url !== '' && card !== failedCard ? (
           <Image
-            source={{ uri: card.photo_url }}
+            source={photoSource(card.photo_url)}
             style={{ width, height }}
             contentFit="cover"
             transition={0}
-            onError={() => setFailed(true)}
+            onError={() => {
+              setFailedCard(card);
+              onPhotoError?.();
+            }}
           />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

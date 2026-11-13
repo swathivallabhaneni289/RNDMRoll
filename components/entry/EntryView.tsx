@@ -14,6 +14,8 @@ import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { AppText } from '@/components/ui/AppText';
 import { ApiError } from '@/lib/api/client';
 import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
+import { photoSource } from '@/lib/api/photoSource';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
@@ -51,22 +53,28 @@ function PhotoFallback() {
  * radius, one page per photo with the system's own paging. With more than one a plain counter sits
  * at the bottom right and the gallery is one adjustable element for VoiceOver. Nothing fades.
  * Exported for the post page of someone else's post (Phase 5), which uses the same gallery.
+ * `onPhotoError` runs when a photo will not load (its link may have run out): the page reads again.
  */
 export function Gallery({
   photos,
   title,
   aspect = 1,
+  onPhotoError,
 }: {
   photos: EntryPhoto[];
   title: string;
   reduceMotion?: boolean;
   aspect?: number;
+  onPhotoError?: () => void;
 }) {
   const { width } = useWindowDimensions();
   const height = Math.round(width / aspect);
   const scrollRef = useRef<ScrollView>(null);
   const [page, setPage] = useState(0);
-  const [failed, setFailed] = useState<Record<string, boolean>>({});
+  // The photo that would not load, by photo id: the fallback shows until the page answers again.
+  // Every answer brings new photos, so it is then tried once more, with a new link or the same one
+  // (a link stays the same for up to half an hour).
+  const [failed, setFailed] = useState<Record<string, EntryPhoto>>({});
   const count = photos.length;
   const current = Math.min(page, Math.max(count - 1, 0));
   const label = count > 1 ? `Photo ${current + 1} of ${count} for ${title}` : `Photo for ${title}`;
@@ -100,14 +108,17 @@ export function Gallery({
         }}
       >
         {photos.map((photo, index) => {
-          const image = failed[photo.id] ? (
+          const image = failed[photo.id] === photo ? (
             <PhotoFallback />
           ) : (
             <Image
-              source={{ uri: photo.url }}
+              source={photoSource(photo.url)}
               style={{ width: '100%', height: '100%' }}
               contentFit="cover"
-              onError={() => setFailed((now) => ({ ...now, [photo.id]: true }))}
+              onError={() => {
+                setFailed((now) => ({ ...now, [photo.id]: photo }));
+                onPhotoError?.();
+              }}
             />
           );
           return (
@@ -142,7 +153,15 @@ export function Gallery({
  * words and Delete on a long press. Read from GET /posts/{entry_id}; until that answers, or if it
  * cannot, nothing is drawn here and the rest of the page is unchanged.
  */
-function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null }) {
+function OwnPostExtras({
+  social,
+  myId,
+  onPhotoError,
+}: {
+  social: PostLoad;
+  myId: string | null;
+  onPhotoError: () => void;
+}) {
   const post = social.post;
   if (social.status !== 'ready' || post === null) return null;
   const comments = post.comments ?? [];
@@ -154,6 +173,7 @@ function OwnPostExtras({ social, myId }: { social: PostLoad; myId: string | null
         myId={myId}
         onDelete={social.remove}
         onReply={post.can_comment ? social.startReply : undefined}
+        onPhotoError={onPhotoError}
       />
     </View>
   );
@@ -184,6 +204,15 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
   const userId = user?.id ?? null;
   const load = useEntry(id);
   const social = usePost(id);
+  // A photo that will not load (its link may have run out) reads the entry and its comments again,
+  // once either read is 20 minutes old.
+  const onPhotoError = usePhotoReload(
+    () => {
+      load.reload();
+      social.reload();
+    },
+    () => load.stale() || social.stale(),
+  );
 
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);
@@ -355,13 +384,19 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
       {ready ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Gallery photos={entry.photos} title={entry.title} reduceMotion={reduceMotion} aspect={POST_PHOTO_ASPECT} />
+            <Gallery
+              photos={entry.photos}
+              title={entry.title}
+              reduceMotion={reduceMotion}
+              aspect={POST_PHOTO_ASPECT}
+              onPhotoError={onPhotoError}
+            />
             <ActionRow
               entry={entry}
               onComment={social.status === 'ready' && social.post?.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
             />
             <CaptionText entry={entry} />
-            <OwnPostExtras social={social} myId={userId} />
+            <OwnPostExtras social={social} myId={userId} onPhotoError={onPhotoError} />
           </ScrollView>
 
           {deleteMessage !== null ? (

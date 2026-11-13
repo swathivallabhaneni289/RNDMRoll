@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { getBoard, type Board, type BoardDay } from '@/lib/api/board';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useSession } from '@/lib/session/store';
 
 /** Five days a page (05-UI-SPEC 3.5); the server's default too. */
@@ -19,6 +20,10 @@ export type BoardLoad = {
   moreFailed: boolean;
   retry: () => void;
   refresh: () => void;
+  /** Reads the first page again quietly, as on focus (a photo that would not load). */
+  reload: () => void;
+  /** True once the first page on screen is over 20 minutes old (its photo links may run out). */
+  stale: () => boolean;
   loadMore: () => void;
 };
 
@@ -46,7 +51,9 @@ function mergeDays(current: BoardDay[], next: BoardDay[]): BoardDay[] {
  * Loads the Board (05-UI-SPEC 3.5). The first page loads when the tab comes into focus and again
  * each time it does, quietly: what is on screen stays while it runs and when it fails. The next
  * page is asked with the server's `next_before`, one at a time. Answers that arrive after a newer
- * first page began are dropped. What belongs to another account is never shown.
+ * first page began are dropped. What belongs to another account is never shown. The first page is
+ * also read again on a return from the background once it is 20 minutes old (useForegroundReload:
+ * its photo links stop working within an hour).
  */
 export function useBoard(): BoardLoad {
   const { user } = useSession();
@@ -76,6 +83,8 @@ export function useBoard(): BoardLoad {
     setHeld(next);
   }, []);
 
+  const { markLoaded, stale } = useForegroundReload(() => void loadFirst('quiet'));
+
   const loadFirst = useCallback(
     async (mode: 'quiet' | 'pull' | 'retry') => {
       if (userId === null) return;
@@ -88,6 +97,7 @@ export function useBoard(): BoardLoad {
         const board = await getBoard({ limit: PAGE_DAYS });
         if (!mountedRef.current || mine !== seqRef.current) return;
         put({ ownerId: userId, board });
+        markLoaded();
         setMoreFailed(false);
         setStatus('ready');
       } catch (err) {
@@ -100,7 +110,7 @@ export function useBoard(): BoardLoad {
         if (mountedRef.current && mode === 'pull') setRefreshing(false);
       }
     },
-    [userId, put]
+    [userId, put, markLoaded]
   );
 
   const loadMore = useCallback(async () => {
@@ -155,6 +165,8 @@ export function useBoard(): BoardLoad {
     moreFailed,
     retry: () => void loadFirst('retry'),
     refresh: () => void loadFirst('pull'),
+    reload: () => void loadFirst('quiet'),
+    stale,
     loadMore: () => void loadMore(),
   };
 }

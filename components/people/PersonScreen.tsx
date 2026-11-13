@@ -29,6 +29,8 @@ import {
   type PersonPage,
 } from '@/lib/api/person';
 import { firstName, follow, removeFollower, unfollow } from '@/lib/api/social';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { personPeoplePathIn, postPathIn } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
@@ -62,6 +64,9 @@ export function PersonScreen({ id }: { id: string }) {
   const loadedRef = useRef(false);
   const pagingRef = useRef(false);
 
+  // Read again on a return from the background once the page is 20 minutes old (photo links run out).
+  const { markLoaded, stale } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     try {
       const next = await getPerson(id);
@@ -71,13 +76,18 @@ export function PersonScreen({ id }: { id: string }) {
       }
       setPage(next);
       loadedRef.current = true;
+      markLoaded();
       setStatus('ready');
     } catch (err) {
       if (loadedRef.current) return;
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
-  }, [id]);
+  }, [id, markLoaded]);
+
+  // A grid picture that will not load (its link may have run out) reads the page again, quietly,
+  // once the page is 20 minutes old.
+  const onPhotoError = usePhotoReload(() => void load(), stale);
 
   useFocusEffect(
     useCallback(() => {
@@ -90,15 +100,23 @@ export function PersonScreen({ id }: { id: string }) {
     else router.replace('/(app)/board');
   }
 
-  /** The next page of the grid, when the bottom comes within one screen of view. */
+  /**
+   * The next page of the grid, when the bottom comes within one screen of view. It is added only
+   * while the list still ends where it was asked from: a read of the first page that answered
+   * meanwhile (a focus, an action, a picture that would not load) put the list back to one page,
+   * and this page would leave a gap after it. The next scroll asks again.
+   */
   async function loadMore() {
     if (pagingRef.current || page === null || page.posts === null || page.next_cursor === null) return;
     pagingRef.current = true;
+    const cursor = page.next_cursor;
     try {
-      const more = await getPerson(id, page.next_cursor);
+      const more = await getPerson(id, cursor);
       if (more !== null && more.posts !== null) {
         setPage((now) =>
-          now === null ? now : { ...now, posts: [...(now.posts ?? []), ...(more.posts ?? [])], next_cursor: more.next_cursor },
+          now === null || now.next_cursor !== cursor
+            ? now
+            : { ...now, posts: [...(now.posts ?? []), ...(more.posts ?? [])], next_cursor: more.next_cursor },
         );
       }
     } catch {
@@ -383,6 +401,7 @@ export function PersonScreen({ id }: { id: string }) {
                 width={width}
                 onOpen={openPost}
                 emptyText="Their posts show here on days you post too."
+                onPhotoError={onPhotoError}
               />
             </View>
           )}

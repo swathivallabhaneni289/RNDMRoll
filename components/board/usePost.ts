@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { addComment, deleteComment, getPost, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { isEntryId } from '@/lib/entry/rules';
 
 export type PostLoad = {
@@ -9,6 +10,8 @@ export type PostLoad = {
   failure: 'network' | 'generic';
   post: Post | null;
   reload: () => void;
+  /** True once the post on screen is over 20 minutes old (its photo links may run out). */
+  stale: () => boolean;
   /**
    * Sends a comment once, or a reply to `replyTo` while one is chosen; on success a comment is
    * added at the end and a reply after the last reply of its top-level comment, and reply mode
@@ -40,9 +43,10 @@ function placeComment(list: Comment[], saved: Comment): Comment[] {
 
 /**
  * One post (GET /posts/{entry_id}) for the post page and for the extras of your own entry page.
- * Reads again on focus; what is on screen stays while a later read runs or fails. A 404 (deleted,
- * a block, never visible) or an id that is not a UUID is `gone`. A ref keeps each action to one
- * request at a time.
+ * Reads again on focus, and on a return from the background once 20 minutes old (its photo links
+ * stop working within an hour); what is on screen stays while a later read runs or fails. A 404
+ * (deleted, a block, never visible) or an id that is not a UUID is `gone`. A ref keeps each action
+ * to one request at a time.
  */
 export function usePost(id: string): PostLoad {
   const valid = isEntryId(id);
@@ -69,6 +73,8 @@ export function usePost(id: string): PostLoad {
     setPost(next);
   }, []);
 
+  const { markLoaded, stale } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     if (!valid) {
       put(null);
@@ -81,6 +87,7 @@ export function usePost(id: string): PostLoad {
       const next = await getPost(id);
       if (!mountedRef.current || seq !== seqRef.current) return;
       put(next);
+      markLoaded();
       setStatus('ready');
     } catch (err) {
       if (!mountedRef.current || seq !== seqRef.current) return;
@@ -93,7 +100,7 @@ export function usePost(id: string): PostLoad {
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
-  }, [id, valid, put]);
+  }, [id, valid, put, markLoaded]);
 
   useFocusEffect(
     useCallback(() => {
@@ -168,5 +175,5 @@ export function usePost(id: string): PostLoad {
     [put, chooseReply]
   );
 
-  return { status, failure, post, reload: () => void load(), comment, remove, replyTo, startReply, cancelReply };
+  return { status, failure, post, reload: () => void load(), stale, comment, remove, replyTo, startReply, cancelReply };
 }

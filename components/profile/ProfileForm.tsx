@@ -181,9 +181,9 @@ export function ProfileForm({
   // next Name blur.
   const suggestionFetchedRef = useRef(false);
   const usernameEditedRef = useRef(false);
-  // A photo that already uploaded is remembered by its local file, so a retry after a
-  // failed later step never uploads it twice.
-  const uploadedRef = useRef<{ uri: string; url: string } | null>(null);
+  // A photo that already uploaded is remembered by its local file, with the key it got, so a
+  // retry after a failed later step never uploads it twice.
+  const uploadedRef = useRef<{ uri: string; key: string } | null>(null);
 
   useEffect(() => {
     usernameRef.current = username;
@@ -412,14 +412,14 @@ export function ProfileForm({
     return fileSize(uri);
   }
 
-  /** Uploads the picked photo once. A repeat call for the same file returns the first URL. */
+  /** Uploads the picked photo once. A repeat call for the same file returns the first key. */
   async function ensureAvatarUploaded(): Promise<string | undefined> {
     if (!pendingAvatarUri) return undefined;
-    if (uploadedRef.current?.uri === pendingAvatarUri) return uploadedRef.current.url;
+    if (uploadedRef.current?.uri === pendingAvatarUri) return uploadedRef.current.key;
     const contentLength = await resolveContentLength(pendingAvatarUri);
-    const url = await uploadAvatar(pendingAvatarUri, pendingAvatarMimeType, contentLength);
-    uploadedRef.current = { uri: pendingAvatarUri, url };
-    return url;
+    const key = await uploadAvatar(pendingAvatarUri, pendingAvatarMimeType, contentLength);
+    uploadedRef.current = { uri: pendingAvatarUri, key };
+    return key;
   }
 
   const trimmedName = name.trim();
@@ -493,7 +493,7 @@ export function ProfileForm({
       case 'bio':
         setBioError(BIO_LONG_MESSAGE);
         return true;
-      case 'avatar_url':
+      case 'avatar_key':
         setAvatarError(new ApiError(400, 'photo_upload_failed').userMessage);
         return true;
       default:
@@ -553,9 +553,9 @@ export function ProfileForm({
   }
 
   async function submitExtras() {
-    let avatarUrl: string | undefined;
+    let avatarKey: string | undefined;
     try {
-      avatarUrl = await ensureAvatarUploaded();
+      avatarKey = await ensureAvatarUploaded();
     } catch (err) {
       // Stay on the page: nothing was saved, so the person can try the photo again or skip it.
       setAvatarError(err instanceof ApiError ? err.userMessage : GENERIC_MESSAGE);
@@ -564,7 +564,7 @@ export function ProfileForm({
 
     const patch: ProfilePatch = {};
     if (trimmedBio.length > 0) patch.bio = trimmedBio;
-    if (avatarUrl) patch.avatar_url = avatarUrl;
+    if (avatarKey) patch.avatar_key = avatarKey;
 
     if (Object.keys(patch).length > 0) {
       await updateProfile(patch);
@@ -583,13 +583,13 @@ export function ProfileForm({
     if (username !== initialUsername) patch.username = username;
     if (trimmedBio !== initialBio.trim()) patch.bio = trimmedBio;
 
-    const avatarUrl = await ensureAvatarUploaded();
-    if (avatarUrl) patch.avatar_url = avatarUrl;
+    const avatarKey = await ensureAvatarUploaded();
+    if (avatarKey) patch.avatar_key = avatarKey;
 
     await updateProfile(patch);
     await reloadUser();
     // Saved: the stored avatar is the new one now, so Save changes goes quiet again. A retry
-    // never uploads twice (uploadedRef keeps the URL).
+    // never uploads twice (uploadedRef keeps the key).
     setPendingAvatarUri(null);
     if (pushedEdit) {
       // Back to the Profile page, which shows "Saved." for 3 seconds from the notice store.

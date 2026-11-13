@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { StarDisplay } from '@/components/entry/StarDisplay';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { AppText } from '@/components/ui/AppText';
+import { photoSource } from '@/lib/api/photoSource';
 import type { Today, TodayEntry } from '@/lib/api/types';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { SETTLED_LABEL } from '@/lib/entry/rules';
@@ -63,7 +64,7 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
 
   const image =
     entry.photo_url !== '' ? (
-      <Image source={{ uri: entry.photo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+      <Image source={photoSource(entry.photo_url)} style={{ width: '100%', height: '100%' }} contentFit="cover" />
     ) : null;
 
   return (

@@ -12,6 +12,7 @@ import { StatsRow } from '@/components/profile/StatsRow';
 import { useProfileSummary } from '@/components/profile/useProfileSummary';
 import type { Entry } from '@/lib/api/entries';
 import type { MeSummary } from '@/lib/api/summary';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { useSettingsNotice } from '@/lib/settings/notice';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
@@ -45,6 +46,8 @@ export type ProfileViewProps = {
   onEndReached?: () => void;
   /** Opens People on one list (Phase 5); without it the Followers and Following figures are plain. */
   onOpenPeople?: (show: 'followers' | 'following') => void;
+  /** A picture of the grid would not load (its link may have run out): the posts are read again. */
+  onPhotoError?: () => void;
 };
 
 /**
@@ -74,6 +77,7 @@ export function ProfileView({
   onOpenEntry,
   onEndReached,
   onOpenPeople,
+  onPhotoError,
 }: ProfileViewProps) {
   const shown = summary ?? EMPTY_SUMMARY;
   const { width } = useWindowDimensions();
@@ -164,7 +168,7 @@ export function ProfileView({
         </View>
         {loading ? null : (
           <View style={{ marginTop: space.lg }}>
-            <PostGrid posts={posts} width={width} onOpen={onOpenEntry} />
+            <PostGrid posts={posts} width={width} onOpen={onOpenEntry} onPhotoError={onPhotoError} />
           </View>
         )}
       </ScrollView>
@@ -189,6 +193,9 @@ export function ProfileScreen() {
   // The posts come from the diary list (skipped days left out), paged as the grid scrolls.
   const diary = useDiary(null);
   const posts = diary.rows.flatMap((row) => (row.kind === 'entry' ? [row.entry] : []));
+  // A picture that will not load (its link may have run out) reads the posts again, quietly, once
+  // they are 20 minutes old.
+  const onPhotoError = usePhotoReload(diary.reload, diary.stale);
   const notice = useSettingsNotice();
 
   return (
@@ -205,6 +212,7 @@ export function ProfileScreen() {
       onOpenEntry={(id) => router.push({ pathname: '/(app)/profile/posts', params: { start: id } })}
       onEndReached={diary.loadMore}
       onOpenPeople={(show) => router.push({ pathname: '/(app)/profile/people', params: { show } })}
+      onPhotoError={onPhotoError}
     />
   );
 }

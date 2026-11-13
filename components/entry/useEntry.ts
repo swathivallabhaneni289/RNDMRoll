@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { getEntry, type Entry } from '@/lib/api/entries';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { isEntryId } from '@/lib/entry/rules';
 
 export type EntryLoadStatus = 'loading' | 'ready' | 'offline' | 'gone';
@@ -14,13 +15,16 @@ export type EntryLoad = {
   failure: 'network' | 'generic';
   /** Reads again ('Try again'). */
   reload: () => void;
+  /** True once the entry on screen is over 20 minutes old (its photo links may run out). */
+  stale: () => boolean;
 };
 
 /**
  * Loads one entry by id (plan 03-03 Task 1b). Reports `loading`, `ready`, `offline` or `gone`, and
- * reads again whenever the screen comes back into focus, so an edit shows at once. While a later
- * read runs, or fails, the entry already on screen stays: only the first read shows 'loading', and
- * only a read with nothing on screen yet shows 'offline'.
+ * reads again whenever the screen comes back into focus, so an edit shows at once, and on a return
+ * from the background once 20 minutes old (its photo links stop working within an hour). While a
+ * later read runs, or fails, the entry already on screen stays: only the first read shows
+ * 'loading', and only a read with nothing on screen yet shows 'offline'.
  *
  * An id that is not a UUID is `gone` at once and is never sent to the server.
  */
@@ -41,6 +45,8 @@ export function useEntry(id: string): EntryLoad {
     };
   }, []);
 
+  const { markLoaded, stale } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     if (!valid) {
       entryRef.current = null;
@@ -56,6 +62,7 @@ export function useEntry(id: string): EntryLoad {
       if (!mountedRef.current || seq !== seqRef.current) return;
       entryRef.current = next;
       setEntry(next);
+      markLoaded();
       setStatus('ready');
     } catch (err) {
       if (!mountedRef.current || seq !== seqRef.current) return;
@@ -70,7 +77,7 @@ export function useEntry(id: string): EntryLoad {
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
-  }, [id, valid]);
+  }, [id, valid, markLoaded]);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,5 +85,5 @@ export function useEntry(id: string): EntryLoad {
     }, [load])
   );
 
-  return { status, entry, failure, reload: () => void load() };
+  return { status, entry, failure, reload: () => void load(), stale };
 }

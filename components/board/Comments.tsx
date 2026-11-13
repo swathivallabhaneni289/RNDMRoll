@@ -12,6 +12,7 @@ import { canHide, hideComment, isHidden, unhideComment } from '@/lib/api/comment
 import { REPORT_REASONS } from '@/lib/api/person';
 import { REPORT_THANKS, reportComment } from '@/lib/api/reports';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
+import { photoSource } from '@/lib/api/photoSource';
 import { firstName } from '@/lib/api/social';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
@@ -44,7 +45,7 @@ function PhotoViewer({ uri, onClose }: { uri: string | null; onClose: () => void
     <Modal visible={uri !== null} animationType="none" onRequestClose={onClose} supportedOrientations={['portrait']}>
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         {uri !== null ? (
-          <Image source={{ uri }} style={{ flex: 1 }} contentFit="contain" accessibilityLabel="Photo" />
+          <Image source={photoSource(uri)} style={{ flex: 1 }} contentFit="contain" accessibilityLabel="Photo" />
         ) : null}
         <Pressable
           onPress={onClose}
@@ -90,17 +91,20 @@ export function QuietNote({ text, tone = 'default' }: { text: string; tone?: 'de
  * press on the comment (developer, 2026-10-18, like Instagram), asked first with the phone's own
  * alert (no red button, no fade); deleting a comment takes its replies with it. Replies come in the
  * server's order, right after their comment, one step in with a smaller initial and no rule above.
+ * `onPhotoError` runs when a comment's photo will not load (its link may have run out).
  */
 export function CommentList({
   comments,
   myId,
   onDelete,
   onReply,
+  onPhotoError,
 }: {
   comments: Comment[];
   myId: string | null;
   onDelete: (id: string) => Promise<string | null>;
   onReply?: (comment: Comment) => void;
+  onPhotoError?: () => void;
 }) {
   const openPerson = useOpenPerson();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -282,10 +286,11 @@ export function CommentList({
                   style={{ width: '50%', aspectRatio: 1 / COMMENT_PHOTO_RATIO, marginTop: space.xs }}
                 >
                   <Image
-                    source={{ uri: comment.photo_url }}
+                    source={photoSource(comment.photo_url)}
                     style={{ width: '100%', height: '100%', borderRadius: radius.md, backgroundColor: color.secondary }}
                     contentFit="cover"
                     transition={0}
+                    onError={onPhotoError}
                   />
                 </Pressable>
               ) : null}
@@ -523,7 +528,7 @@ export function CommentBar({
         // The chosen photo, small and rounded, with a close mark, until it is posted.
         <View style={{ width: PREVIEW, height: PREVIEW, marginBottom: space.sm }}>
           <Image
-            source={{ uri: photo.uri }}
+            source={photoSource(photo.uri)}
             style={{ width: PREVIEW, height: PREVIEW, borderRadius: radius.md }}
             contentFit="cover"
             transition={0}

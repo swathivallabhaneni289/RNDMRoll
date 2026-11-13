@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
 import type { Entry } from '@/lib/api/entries';
+import { photoSource } from '@/lib/api/photoSource';
 import { color, space, type } from '@/lib/theme/tokens';
 
 /** Three tiles a row, close together (developer, 2026-10-17: bigger pictures, the thin gap is fine). */
@@ -31,6 +32,7 @@ export function PostGrid({
   width,
   onOpen,
   emptyText = 'Your posts will show here.',
+  onPhotoError,
 }: {
   posts: GridPost[];
   /** The width the grid fills (the full page width: it runs edge to edge). */
@@ -38,6 +40,8 @@ export function PostGrid({
   onOpen: (id: string) => void;
   /** The line shown when there is nothing to show. */
   emptyText?: string;
+  /** A tile's photo would not load (its link may have run out): the page reads again, quietly. */
+  onPhotoError?: () => void;
 }) {
   if (posts.length === 0) {
     return (
@@ -64,7 +68,12 @@ export function PostGrid({
           style={{ width: tile, height: tileHeight, backgroundColor: color.secondary }}
         >
           {post.photo_url !== '' ? (
-            <Image source={{ uri: post.photo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+            <Image
+              source={photoSource(post.photo_url)}
+              style={{ width: '100%', height: '100%' }}
+              contentFit="cover"
+              onError={onPhotoError}
+            />
           ) : (
             <View style={{ flex: 1, padding: space.sm, justifyContent: 'flex-end' }}>
               <Text

@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Circle, Path, Svg } from 'react-native-svg';
 import { AppText } from '@/components/ui/AppText';
+import { photoSource } from '@/lib/api/photoSource';
 import { color, elevation, radius } from '@/lib/theme/tokens';
 
 const DISC = 104;
@@ -39,7 +41,9 @@ function initialsOf(name: string) {
  * The profile avatar: a round photo, or, when there is no photo yet, the person's initials in
  * the display serif or a camera that invites adding one. By default it sits inside a thin dial
  * ring (drawn, static, ink at low opacity); `ring={false}` gives the plain circle used by the
- * profile form, and `badge` adds the small camera badge on a photo's lower right edge.
+ * profile form, and `badge` adds the small camera badge on a photo's lower right edge. A photo that
+ * will not load (its link may have run out) shows the initials, also where the empty disc is the
+ * camera: the person has a photo. A fresh link for it is tried again.
  */
 export function DialAvatar({
   name,
@@ -59,6 +63,9 @@ export function DialAvatar({
   accessibilityLabel?: string;
 }) {
   const outer = ring ? SIZE : DISC;
+  // The link that would not load; the photo shows again for any other link.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const photo = uri && uri !== failedUri ? uri : null;
   const body = (
     <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
       {ring ? (
@@ -78,11 +85,17 @@ export function DialAvatar({
           overflow: 'hidden',
         }}
       >
-        {uri ? (
-          <Image source={{ uri }} style={{ width: DISC, height: DISC }} contentFit="cover" accessibilityLabel="Profile photo" />
+        {photo ? (
+          <Image
+            source={photoSource(photo)}
+            style={{ width: DISC, height: DISC }}
+            contentFit="cover"
+            accessibilityLabel="Profile photo"
+            onError={() => setFailedUri(photo)}
+          />
         ) : (
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            {placeholder === 'camera' ? (
+            {placeholder === 'camera' && !uri ? (
               <Ionicons name="camera-outline" size={40} color={color.ink} />
             ) : (
               <AppText role="display" allowFontScaling={false}>
@@ -92,7 +105,7 @@ export function DialAvatar({
           </View>
         )}
       </View>
-      {badge && uri ? (
+      {badge && photo ? (
         <View
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"

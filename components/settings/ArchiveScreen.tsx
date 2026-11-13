@@ -7,6 +7,8 @@ import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
 import { getArchive, unarchiveEntry, entryErrorMessage, type Entry } from '@/lib/api/entries';
+import { photoSource } from '@/lib/api/photoSource';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useSession } from '@/lib/session/store';
 import { datePrefix } from '@/components/diary/diaryText';
 import { color, minTouchTarget, radius, space } from '@/lib/theme/tokens';
@@ -27,14 +29,18 @@ export function ArchiveScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
+  // Read again on a return from the background once the list is 20 minutes old (photo links run out).
+  const { markLoaded } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     try {
       setEntries(await getArchive());
       setFailed(false);
+      markLoaded();
     } catch {
       setFailed(true);
     }
-  }, []);
+  }, [markLoaded]);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,7 +118,7 @@ export function ArchiveScreen() {
                   }}
                 >
                   {entry.photo_url !== '' ? (
-                    <Image source={{ uri: entry.photo_url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                    <Image source={photoSource(entry.photo_url)} style={{ width: '100%', height: '100%' }} contentFit="cover" />
                   ) : null}
                 </View>
                 <View style={{ flex: 1, marginHorizontal: space.md }}>

@@ -8,6 +8,7 @@ import { STATUS_MESSAGES, StatusMessage } from '@/components/today/StatusMessage
 import { AppText } from '@/components/ui/AppText';
 import { TextButton } from '@/components/ui/TextButton';
 import type { BoardDay, Card } from '@/lib/api/board';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { OVERLINE } from '@/lib/board/text';
 import { color, radius, space } from '@/lib/theme/tokens';
 import { dateLine } from '@/lib/wheel/format';
@@ -71,6 +72,9 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
   const openPerson = useOpenPerson();
   const { width } = useWindowDimensions();
   const load = useBoard();
+  // A photo that will not load (its link may have run out) reads the first page again, quietly,
+  // once that page is 20 minutes old: before then no link on it has run out.
+  const onPhotoError = usePhotoReload(load.reload, load.stale);
   const board = load.board;
   const columnWidth = Math.floor((width - 2 * space.lg - space.md) / 2);
 
@@ -125,8 +129,12 @@ export function BoardScreen({ onFindPeople, onOpenCard, onLog, onSpin }: BoardSc
     const [a, b] = item.cards;
     return (
       <View style={{ paddingHorizontal: space.lg, marginBottom: space.lg, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <PostCard card={a} width={columnWidth} onPress={() => onOpenCard(a)} onOpenPerson={openPerson} />
-        {b ? <PostCard card={b} width={columnWidth} onPress={() => onOpenCard(b)} onOpenPerson={openPerson} /> : <View style={{ width: columnWidth }} />}
+        <PostCard card={a} width={columnWidth} onPress={() => onOpenCard(a)} onOpenPerson={openPerson} onPhotoError={onPhotoError} />
+        {b ? (
+          <PostCard card={b} width={columnWidth} onPress={() => onOpenCard(b)} onOpenPerson={openPerson} onPhotoError={onPhotoError} />
+        ) : (
+          <View style={{ width: columnWidth }} />
+        )}
       </View>
     );
   }

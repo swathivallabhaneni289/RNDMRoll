@@ -14,6 +14,7 @@ import { MenuSheet } from '@/components/ui/MenuSheet';
 import type { LatestComment, PostSocial } from '@/lib/api/diary';
 import type { Entry } from '@/lib/api/entries';
 import { firstName } from '@/lib/api/social';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
@@ -124,6 +125,9 @@ export function PostsFeed({ startId }: { startId: string }) {
   const diary = useDiary(null);
   const posts = diary.rows.flatMap((row) => (row.kind === 'entry' ? [{ entry: row.entry, social: row.social }] : []));
   const menu = useEntryMenu('profile', diary.reload);
+  // A photo that will not load (its link may have run out) reads the posts again, quietly, once they
+  // are 20 minutes old.
+  const onPhotoError = usePhotoReload(diary.reload, diary.stale);
 
   const scrollRef = useRef<ScrollView>(null);
   // Jump to the tapped post once, as soon as it has been laid out.
@@ -181,7 +185,7 @@ export function PostsFeed({ startId }: { startId: string }) {
             <Ionicons name="ellipsis-horizontal" size={24} color={menu.busy ? color.muted : color.ink} />
           </Pressable>
         </View>
-        <Gallery photos={entry.photos} title={entry.title} aspect={POST_PHOTO_ASPECT} />
+        <Gallery photos={entry.photos} title={entry.title} aspect={POST_PHOTO_ASPECT} onPhotoError={onPhotoError} />
         <PostDetails
           entry={entry}
           social={social}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { getDiary, type DiaryCategory, type DiaryItem } from '@/lib/api/diary';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useSession } from '@/lib/session/store';
 
 /** 20 rows a page (04-UI-SPEC 3.6); the server's own default too. */
@@ -42,6 +43,8 @@ export type DiaryState = {
   refresh: () => void;
   /** Reads the list again without the pull spinner (after an action from a row's menu). */
   reload: () => void;
+  /** True once the first page on screen is over 20 minutes old (its photo links may run out). */
+  stale: () => boolean;
   /** The end of the list came into view: the next page, once at a time. */
   loadMore: () => void;
   /** 'Try again' under the list after a failed next page. */
@@ -63,6 +66,8 @@ function failureKind(err: unknown): 'network' | 'generic' {
  *    the rows and waits for 'Try again'. Rows already shown are never doubled.
  *  - Answers that arrive after a newer request began are dropped (a chip change, a pull).
  *  - What belongs to another account is never shown.
+ *  - The first page is read again quietly on a return from the background once it is 20 minutes
+ *    old (useForegroundReload): its photo links stop working within an hour.
  */
 export function useDiary(categoryId: string | null): DiaryState {
   const { user } = useSession();
@@ -106,6 +111,8 @@ export function useDiary(categoryId: string | null): DiaryState {
     setMoreFailed(value);
   }, []);
 
+  const { markLoaded, stale } = useForegroundReload(() => void loadFirst('quiet'));
+
   const loadFirst = useCallback(
     async (mode: 'quiet' | 'pull' | 'retry') => {
       if (userId === null) return;
@@ -130,6 +137,7 @@ export function useDiary(categoryId: string | null): DiaryState {
           nextCursor: page.next_cursor,
           loaded: true,
         });
+        markLoaded();
         setMoreFailedBoth(false);
         setStatus('ready');
       } catch (err) {
@@ -144,7 +152,7 @@ export function useDiary(categoryId: string | null): DiaryState {
         if (mountedRef.current && mode === 'pull') setRefreshing(false);
       }
     },
-    [userId, categoryId, put, setMoreFailedBoth]
+    [userId, categoryId, put, setMoreFailedBoth, markLoaded]
   );
 
   const fetchMore = useCallback(
@@ -202,6 +210,7 @@ export function useDiary(categoryId: string | null): DiaryState {
     retry: () => void loadFirst('retry'),
     refresh: () => void loadFirst('pull'),
     reload: () => void loadFirst('quiet'),
+    stale,
     loadMore: () => void fetchMore(true),
     retryMore: () => void fetchMore(false),
   };

@@ -9,6 +9,7 @@ import { AppText } from '@/components/ui/AppText';
 import { ApiError } from '@/lib/api/client';
 import { getPeopleOf } from '@/lib/api/person';
 import type { Person } from '@/lib/api/social';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
@@ -25,15 +26,19 @@ export function PersonListScreen({ id, username, show }: { id: string; username:
   const [lists, setLists] = useState<Partial<Record<PeopleList, Person[] | null>>>({});
   const [failure, setFailure] = useState<'network' | 'generic' | null>(null);
 
+  // Read again on a return from the background once the lists are 20 minutes old (photo links run out).
+  const { markLoaded } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     try {
       const [followers, following] = await Promise.all([getPeopleOf(id, 'followers'), getPeopleOf(id, 'following')]);
       setLists({ followers, following });
+      markLoaded();
       setFailure(null);
     } catch (err) {
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
     }
-  }, [id]);
+  }, [id, markLoaded]);
 
   useFocusEffect(
     useCallback(() => {

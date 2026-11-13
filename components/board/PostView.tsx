@@ -16,6 +16,7 @@ import { ApiError } from '@/lib/api/client';
 import { REPORT_REASONS } from '@/lib/api/person';
 import { REPORT_THANKS, reportPost } from '@/lib/api/reports';
 import { firstName } from '@/lib/api/social';
+import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
@@ -29,6 +30,7 @@ function Details({
   onReply,
   onComment,
   onMore,
+  onPhotoError,
 }: {
   post: Post;
   myId: string | null;
@@ -37,6 +39,8 @@ function Details({
   onComment?: () => void;
   /** Opens the three dots' menu (Report); none on your own post. */
   onMore?: () => void;
+  /** A photo or a comment's photo would not load (its link may have run out). */
+  onPhotoError: () => void;
 }) {
   const card = post.card;
   const openPerson = useOpenPerson();
@@ -85,13 +89,19 @@ function Details({
         ) : null}
       </View>
 
-      <Gallery photos={post.photos} title={card.title} aspect={POST_PHOTO_ASPECT} />
+      <Gallery photos={post.photos} title={card.title} aspect={POST_PHOTO_ASPECT} onPhotoError={onPhotoError} />
       <ActionRow entry={caption} onComment={onComment} whose={card.mine ? 'your' : 'their'} />
       <CaptionText entry={caption} time={card.posted_local_time} />
 
       <View style={{ paddingHorizontal: space.lg, paddingBottom: space.xl }}>
         {comments.length > 0 ? <View style={{ marginTop: space.md, height: 1, backgroundColor: color.divider }} /> : null}
-        <CommentList comments={comments} myId={myId} onDelete={onDelete} onReply={post.can_comment ? onReply : undefined} />
+        <CommentList
+          comments={comments}
+          myId={myId}
+          onDelete={onDelete}
+          onReply={post.can_comment ? onReply : undefined}
+          onPhotoError={onPhotoError}
+        />
       </View>
     </View>
   );
@@ -112,6 +122,9 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   const router = useRouter();
   const { user } = useSession();
   const load = usePost(id);
+  // A photo that will not load (its link may have run out) reads the post again, quietly, once the
+  // post is 20 minutes old.
+  const onPhotoError = usePhotoReload(load.reload, load.stale);
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);
   // The three dots on someone else's post: Report, then the reasons.
@@ -180,6 +193,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
               onReply={load.startReply}
               onComment={post.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
               onMore={post.card.mine ? undefined : () => setMenu('more')}
+              onPhotoError={onPhotoError}
             />
           </ScrollView>
           {post.can_comment ? (

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
@@ -7,6 +8,7 @@ import { BackRow } from '@/components/settings/BackRow';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { getBlocks, unblock, type BlockedAccount } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { GENERIC_MESSAGE } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
 
@@ -77,27 +79,39 @@ function Row({
  *
  * The server side is built after Phase 3's server, so `GET /me/blocks` may 404 for now. Then the
  * list is simply empty ("You haven't blocked anyone."); there is never an error screen. A failed
- * Unblock keeps the row and shows one red line under it.
+ * Unblock keeps the row and shows one red line under it. The list is read on every focus, and on a
+ * return from the background once 20 minutes old (its photo links stop working within an hour); a
+ * later read that fails keeps the list on screen.
  */
 export function BlockedAccountsScreen() {
   // null until the first answer (or failure) settles, so the empty sentence does not flash.
   const [items, setItems] = useState<BlockedAccount[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Only the newest read is used, and an Unblock that went through drops a read begun before it:
+  // that answer still holds the account just unblocked.
+  const seqRef = useRef(0);
 
-  useEffect(() => {
-    let alive = true;
-    getBlocks()
-      .then((loaded) => {
-        if (alive) setItems(loaded);
-      })
-      .catch(() => {
-        if (alive) setItems([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const { markLoaded } = useForegroundReload(() => void load());
+
+  const load = useCallback(async () => {
+    const seq = ++seqRef.current;
+    try {
+      const next = await getBlocks();
+      if (seq !== seqRef.current) return;
+      setItems(next);
+      markLoaded();
+    } catch {
+      if (seq !== seqRef.current) return;
+      setItems((current) => current ?? []);
+    }
+  }, [markLoaded]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   async function handleUnblock(userId: string) {
     if (busyId !== null) return;
@@ -105,6 +119,7 @@ export function BlockedAccountsScreen() {
     setErrors((current) => ({ ...current, [userId]: '' }));
     try {
       await unblock(userId);
+      seqRef.current += 1;
       setItems((current) => (current ?? []).filter((account) => account.user.id !== userId));
     } catch (err) {
       setErrors((current) => ({

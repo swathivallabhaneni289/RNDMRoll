@@ -19,7 +19,9 @@ import {
   type NotificationItem,
   type NotificationSection,
 } from '@/lib/api/notifications';
+import { photoSource } from '@/lib/api/photoSource';
 import { firstName, follow, getFollows, type Person, type Relation } from '@/lib/api/social';
+import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -107,12 +109,21 @@ function RowMark({ item }: { item: NotificationItem }) {
 }
 
 /** The post's first photo, small and square, at the right of a comment or reply. */
-function Thumb({ uri }: { uri: string }) {
-  const [failed, setFailed] = useState(false);
+function Thumb({ item }: { item: NotificationItem }) {
+  // The row whose picture would not load: the plain square shows until the list answers again.
+  // Every answer brings new rows, so it is then tried once more, with a new link or the same one
+  // (a link stays the same for up to half an hour).
+  const [failedItem, setFailedItem] = useState<NotificationItem | null>(null);
   return (
     <View style={{ width: THUMB, height: THUMB, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: color.secondary }}>
-      {!failed ? (
-        <Image source={{ uri }} style={{ width: THUMB, height: THUMB }} contentFit="cover" transition={0} onError={() => setFailed(true)} />
+      {item !== failedItem ? (
+        <Image
+          source={photoSource(item.photo_url)}
+          style={{ width: THUMB, height: THUMB }}
+          contentFit="cover"
+          transition={0}
+          onError={() => setFailedItem(item)}
+        />
       ) : null}
     </View>
   );
@@ -160,6 +171,9 @@ export function NotificationsScreen() {
     }
   }, []);
 
+  // Read again on a return from the background once the list is 20 minutes old (photo links run out).
+  const { markLoaded } = useForegroundReload(() => void load());
+
   const load = useCallback(async () => {
     if (userId === null) return;
     void loadRelations();
@@ -170,6 +184,7 @@ export function NotificationsScreen() {
       const next = answer.items.map((item) => (shown.has(item.id) ? { ...item, unread: true } : item));
       itemsRef.current = next;
       setItems(next);
+      markLoaded();
       setStatus('ready');
       try {
         await markNotificationsSeen();
@@ -182,7 +197,7 @@ export function NotificationsScreen() {
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
-  }, [userId, loadRelations]);
+  }, [userId, loadRelations, markLoaded]);
 
   useFocusEffect(
     useCallback(() => {
@@ -269,7 +284,7 @@ export function NotificationsScreen() {
     if ((item.kind === 'comment' || item.kind === 'reply') && item.photo_url !== '') {
       return (
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <Thumb uri={item.photo_url} />
+          <Thumb item={item} />
         </View>
       );
     }

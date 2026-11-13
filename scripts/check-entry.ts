@@ -7,8 +7,9 @@
  * imports and tsc, which scans every .ts file in the repo, would object to it.)
  * This file holds no emoji: the reactions are checked by code point.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { STALE_AFTER_MS, isStale, photoSource } from '../lib/api/photoSource.ts';
 import { REACTIONS, isReactionName } from '../lib/entry/reactions.ts';
 import {
   COMMENT_MAX,
@@ -41,6 +42,7 @@ import {
   PHOTO_TYPES,
   canAddPhoto,
   createUploadMemory,
+  photoListChanged,
   photoMessage,
   photoProblem,
 } from '../lib/entry/photo.ts';
@@ -162,10 +164,12 @@ const NBSP = '\u00A0';
   check('canAddPhoto 9', canAddPhoto(9) === true);
   check('canAddPhoto 10', canAddPhoto(10) === false);
   check('canAddPhoto 11', canAddPhoto(11) === false);
-  check('50 MiB ceiling', PHOTO_MAX_BYTES === 52428800, `${PHOTO_MAX_BYTES}`);
+  // 50,000,000 bytes, not 50 MiB: storage's free plan may count 50 MB that way (private photos).
+  check('50 MB ceiling', PHOTO_MAX_BYTES === 50_000_000, `${PHOTO_MAX_BYTES}`);
   check('photo types', same(PHOTO_TYPES, ['image/jpeg', 'image/png', 'image/webp']));
-  check('50 MiB passes', photoProblem('image/jpeg', PHOTO_MAX_BYTES) === null);
-  check('50 MiB plus 1 is size', photoProblem('image/jpeg', PHOTO_MAX_BYTES + 1) === 'size');
+  check('50 MB passes', photoProblem('image/jpeg', PHOTO_MAX_BYTES) === null);
+  check('50 MB plus 1 is size', photoProblem('image/jpeg', PHOTO_MAX_BYTES + 1) === 'size');
+  check('50 MiB is size now', photoProblem('image/jpeg', 50 * 1024 * 1024) === 'size');
   check('gif is type', photoProblem('image/gif', 1000) === 'type');
   check('png passes', photoProblem('image/png', 1000) === null);
   check('webp passes', photoProblem('image/webp', 1000) === null);
@@ -447,6 +451,138 @@ await memoryChecks();
   check(
     'no comment on both sides is no change',
     same(changedFields({ ...was, comment: null, reaction: null }, { ...was, comment: '', reaction: null }), {})
+  );
+}
+
+// ---- private photos: a signed link's cache key, and the edit's photo list (2026-11-09) -------------
+{
+  const own = readFileSync(fileURLToPath(new URL('../lib/api/photoSource.ts', import.meta.url)), 'utf8');
+  check('lib/api/photoSource.ts has no import', !/^\s*import\s/m.test(own) && !/require\(/.test(own));
+
+  // A link as the server signs it (an S3 presigned GET): the storage path, then the signature's query.
+  const path = 'https://abcd.supabase.co/storage/v1/s3/photos/entries/0b6f1c1e-52a4-4a0e-9d0c-1f7a3e5b9c2d/7f3a9c2e4b1d6a8f.jpg';
+  const path2 = path.replace('7f3a9c2e4b1d6a8f', '0011223344556677');
+  const signed = (at: string, date: string, signature: string) =>
+    `${at}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=key%2F20261109%2Fap-southeast-1%2Fs3%2Faws4_request` +
+    `&X-Amz-Date=${date}&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=${signature}`;
+  const first = signed(path, '20261109T080000Z', 'a1b2');
+  const next = signed(path, '20261109T083000Z', 'c3d4');
+  check('a signed link loads from the whole link', photoSource(first).uri === first);
+  check('a signed link is saved under its path, the query gone', photoSource(first).cacheKey === path, photoSource(first).cacheKey);
+  check(
+    "the next half hour's link keeps the cache key",
+    next !== first && photoSource(next).cacheKey === photoSource(first).cacheKey
+  );
+  check('another photo has another cache key', photoSource(signed(path2, '20261109T080000Z', 'a1b2')).cacheKey === path2);
+  check('a link with no query is its own cache key', same(photoSource(path), { uri: path, cacheKey: path }));
+  const minio = 'http://127.0.0.1:9000/rndmroll-avatars/avatars/0b6f1c1e-52a4-4a0e-9d0c-1f7a3e5b9c2d/7f3a9c2e4b1d6a8f.jpg';
+  check('a local storage link (http) gets the same key', photoSource(signed(minio, '20261109T080000Z', 'e5f6')).cacheKey === minio);
+  check('the scheme is read in any case', photoSource('HTTPS://x.test/a.jpg?s=1').cacheKey === 'HTTPS://x.test/a.jpg');
+  check(
+    'only the query goes: the path stays as sent',
+    photoSource('https://x.test/a%2Fb/c%20d.jpg?s=1&t=2').cacheKey === 'https://x.test/a%2Fb/c%20d.jpg'
+  );
+  for (const uri of [
+    'file:///var/mobile/Containers/Data/Application/A1/Library/Caches/ImagePicker/B2.jpg',
+    'file:///tmp/photo.jpg?v=1',
+    'ph://CC95F08C-88C3-4012-9D6D-64A413D254B3/L0/001',
+  ]) {
+    const source = photoSource(uri);
+    check(`a local file loads as it is: ${uri}`, same(source, { uri }) && !('cacheKey' in source), JSON.stringify(source));
+  }
+  check(
+    'data is read again before its links can run out (20 minutes, under 60 minus 30)',
+    STALE_AFTER_MS === 20 * 60 * 1000 && STALE_AFTER_MS < (60 - 30) * 60 * 1000
+  );
+  // isStale: the one rule for the return from the background, a photo that will not load and
+  // Search coming back into focus. Nothing before the first answer, nothing up to 20 minutes.
+  const loadedAt = Date.UTC(2026, 10, 13, 8, 5);
+  check('nothing is stale before the first answer', !isStale(null, loadedAt + 60 * 60 * 1000));
+  check('an answer just in is not stale', !isStale(loadedAt, loadedAt));
+  check('an answer 19 minutes old is not stale', !isStale(loadedAt, loadedAt + 19 * 60 * 1000));
+  check('an answer exactly 20 minutes old is not stale yet', !isStale(loadedAt, loadedAt + STALE_AFTER_MS));
+  check('an answer over 20 minutes old is stale', isStale(loadedAt, loadedAt + STALE_AFTER_MS + 1));
+  check('an answer an hour old is stale', isStale(loadedAt, loadedAt + 60 * 60 * 1000));
+
+  // An entry as read when its edit opened, and read again half an hour later (the page came back
+  // into focus): the same photos, new links. The server sends them in any order with a position.
+  const read = (date: string) => [
+    { id: 'p2', url: signed(path2, date, 'b2'), position: 1 },
+    { id: 'p1', url: signed(path, date, 'a1'), position: 0 },
+  ];
+  const inOrder = (photos) => [...photos].sort((a, b) => a.position - b.position);
+  const opened = inOrder(read('20261109T080000Z'));
+  const later = inOrder(read('20261109T083000Z'));
+  // The draft as useEntryDraft seeds it: each photo's id, and the link it came with.
+  const draft = opened.map((photo) => ({ uri: photo.url, mimeType: null, source: 'library', id: photo.id }));
+  const pick = { uri: 'file:///tmp/new.jpg', mimeType: 'image/jpeg', source: 'camera' };
+  check(
+    'an edit that left the photos alone sends no photo list when only the links changed',
+    !photoListChanged(draft, later) && draft.every((photo, i) => photo.uri !== later[i].url)
+  );
+  check('the draft matches the read it was seeded from', !photoListChanged(draft, opened));
+  check('a removed photo sends the list', photoListChanged(draft.slice(1), later));
+  check('a new order sends the list', photoListChanged([draft[1], draft[0]], later));
+  check('a new pick sends the list', photoListChanged([...draft, pick], later));
+  check('a pick in place of a photo sends the list', photoListChanged([draft[0], pick], later));
+  check('a new entry with no photo is no change', !photoListChanged([], []));
+  check('a pick on a new entry is a change', photoListChanged([pick], []));
+
+  // The edit page uses it: the save compares ids (it reads no link), and the draft keeps each id.
+  const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
+  const save = source('components/entry/useUpdateEntry.ts');
+  check('the edit save compares the photos by id', /photoListChanged\(\s*draft\.photos/.test(save) && !/\.url\b/.test(save));
+  check('the edit draft keeps each photo id', /\bid:\s*photo\.id\b/.test(source('components/entry/useEntryDraft.ts')));
+
+  // Every expo-image source goes through photoSource, so none is missed: no bare `source={{` left.
+  const bare: string[] = [];
+  const walk = (rel: string) => {
+    for (const item of readdirSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), { withFileTypes: true })) {
+      const child = `${rel}/${item.name}`;
+      if (item.isDirectory()) walk(child);
+      else if (/\.tsx?$/.test(item.name) && /source=\{\{/.test(source(child))) bare.push(child);
+    }
+  };
+  walk('app');
+  walk('components');
+  check('every photo source goes through photoSource', bare.length === 0, bare.join(', '));
+
+  // The wiring around photos that will not load. These are hooks and screens, and this script has
+  // no React to run them, so the lines that matter are pinned as written.
+  const photoReload = source('lib/api/usePhotoReload.ts');
+  check(
+    'a photo that will not load reads the screen again only once its data is stale, then at most once a minute',
+    /if \(!staleRef\.current\(\)\) return;\s*const now = Date\.now\(\);\s*if \(now - lastRef\.current < RELOAD_GAP_MS\) return;/.test(photoReload)
+  );
+  const foreground = source('lib/api/useForegroundReload.ts');
+  check(
+    'the return from the background and stale use the same rule',
+    /focusedRef\.current && isStale\(loadedAtRef\.current, Date\.now\(\)\)/.test(foreground) &&
+      /stale = useCallback\(\(\) => isStale\(loadedAtRef\.current, Date\.now\(\)\)/.test(foreground)
+  );
+  check(
+    'Search reads again when it comes back into focus with stale data',
+    /useFocusEffect\(\s*useCallback\(\(\) => \{\s*if \(stale\(\)\) setRound\(\(n\) => n \+ 1\);/.test(source('components/people/SearchScreen.tsx'))
+  );
+  check(
+    "a person's next page is added only to the list it was asked for",
+    /const cursor = page\.next_cursor;[\s\S]*getPerson\(id, cursor\)[\s\S]*now === null \|\| now\.next_cursor !== cursor/.test(
+      source('components/people/PersonScreen.tsx')
+    )
+  );
+  const blocked = source('components/settings/BlockedAccountsScreen.tsx');
+  check(
+    'Blocked accounts: a read begun before an Unblock that went through is dropped',
+    /await unblock\(userId\);\s*seqRef\.current \+= 1;/.test(blocked) &&
+      (blocked.match(/if \(seq !== seqRef\.current\) return;/g) ?? []).length === 2
+  );
+  // A failed photo remembers the answer it came in, not its link: the next answer tries it again
+  // even when the link is the same (it stays the same for up to half an hour).
+  check('a Board card tries its photo again on the next answer', /card !== failedCard/.test(source('components/board/PostCard.tsx')));
+  check('the gallery tries a photo again on the next answer', /failed\[photo\.id\] === photo \?/.test(source('components/entry/EntryView.tsx')));
+  check(
+    "a notification's picture tries again on the next answer",
+    /item !== failedItem/.test(source('components/today/NotificationsScreen.tsx'))
   );
 }
 

@@ -10,6 +10,7 @@ import {
   type Entry,
   type UpdateEntryRequest,
 } from '@/lib/api/entries';
+import { photoListChanged } from '@/lib/entry/photo';
 import { changedFields } from '@/lib/entry/rules';
 import { refetchToday } from '@/lib/wheel/useToday';
 
@@ -30,7 +31,9 @@ export type UpdateEntryState = {
  * One save of edit entry (plan 03-03 Task 1d, UI spec 10). Only the fields the person changed
  * are sent. When the photos changed, the whole ordered list is sent: `{ id }` keeps a photo and
  * `{ photo_key, photo_source }` adds a new one, each new file uploaded once through the draft's
- * upload memory (a retry reuses its key). Clearing the reaction or the comment sends ''.
+ * upload memory (a retry reuses its key). Photos are compared by id, never by link: `original` is
+ * read again on focus, and its links are new every half hour. Clearing the reaction or the comment
+ * sends ''.
  *
  * A PATCH answers with the entry only, so Today is asked for again afterwards: its Posted row
  * would otherwise keep the old title, stars and cover.
@@ -98,17 +101,14 @@ export function useUpdateEntry({
       if (fields.reaction !== undefined) patch.reaction = fields.reaction as UpdateEntryRequest['reaction'];
       if (fields.comment !== undefined) patch.comment = fields.comment;
 
-      const originalUris = [...original.photos].sort((a, b) => a.position - b.position).map((photo) => photo.url);
-      const photosChanged =
-        draft.photos.length !== originalUris.length || draft.photos.some((photo, i) => photo.uri !== originalUris[i]);
+      const originalPhotos = [...original.photos].sort((a, b) => a.position - b.position);
 
-      if (photosChanged) {
+      if (photoListChanged(draft.photos, originalPhotos)) {
         const ordered: NonNullable<UpdateEntryRequest['photos']> = [];
         try {
           for (const photo of draft.photos) {
-            const existing = draft.existingPhotoId(photo.uri);
-            if (existing !== null) {
-              ordered.push({ id: existing });
+            if (photo.id !== undefined) {
+              ordered.push({ id: photo.id });
               continue;
             }
             // A new file: uploaded once; a retry reuses the key it already has.

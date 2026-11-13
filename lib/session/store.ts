@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Image } from 'expo-image';
 import { AppState } from 'react-native';
 import {
   createContext,
@@ -11,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, ApiError, isRetryable } from '@/lib/api/client';
+import { STALE_AFTER_MS } from '@/lib/api/photoSource';
 import { cancelScheduledNotifications } from '@/lib/notifications/module';
 import {
   beginSignIn,
@@ -430,6 +432,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // The person's log out running now (doSignOut). A sign in forgets it, so the new session's log
   // out never joins one from before.
   const signOutInFlightRef = useRef<Promise<void> | null>(null);
+  // When the person signed in was last read from the server (Date.now()): their own photo link in
+  // it stops working within an hour, so a return to the front reads /me again once it is old.
+  const userReadAtRef = useRef<number | null>(null);
 
   const signIn = useCallback((result: AuthResult, options?: { extras?: boolean }) => {
     authBusyRef.current += 1;
@@ -471,6 +476,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // A plain log in clears it.
         setExtrasPending(options?.extras === true);
         setUser(result.user);
+        userReadAtRef.current = Date.now();
         setStatus('authenticated');
         // The connection works: a log out left over from before goes out now.
         void drainPendingLogouts();
@@ -603,6 +609,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // the rebuild of whoever signs in next is queued after this and is never undone by it. Never
       // waited on, and it never throws.
       void cancelScheduledNotifications();
+      // So do the photos this phone saved (private photos, 2026-11-09): expo-image keeps them on
+      // disk and in memory under their storage path, and the next person to sign in here starts
+      // clean. Never waited on, and a failure is ignored.
+      void Image.clearMemoryCache().catch(() => undefined);
+      void Image.clearDiskCache().catch(() => undefined);
     } finally {
       authBusyRef.current -= 1;
     }
@@ -772,6 +783,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const freshUser = await api.get<ApiUser>('/me');
     if (signInEpoch !== epoch || isEnding(epoch) || !mountedRef.current) return;
     setUser(freshUser);
+    userReadAtRef.current = Date.now();
   }, []);
 
   useEffect(() => {
@@ -822,6 +834,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const freshUser = await api.get<ApiUser>('/me');
         if (!mountedRef.current || signedInSince() || isEnding(epoch)) return;
         setUser(freshUser);
+        userReadAtRef.current = Date.now();
         setStatus('authenticated');
         // The connection works: a log out left over from before goes out now.
         void drainPendingLogouts();
@@ -863,6 +876,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Tokens a refresh got that the keychain would not keep: written now, while it is unlocked.
         void saveUnsaved();
         if (statusRef.current === 'unauthenticated' || statusRef.current === 'offline') restore();
+        // Your own photo link (Profile, your posts list) runs out like any other: /me is read again
+        // once it is over 20 minutes old (STALE_AFTER_MS). A failure keeps the person as shown.
+        const readAt = userReadAtRef.current;
+        if (statusRef.current === 'authenticated' && readAt !== null && Date.now() - readAt > STALE_AFTER_MS) {
+          void reloadUser().catch(() => undefined);
+        }
         void drainPendingLogouts();
       }
     });
@@ -871,8 +890,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       mountedRef.current = false;
       subscription.remove();
     };
-    // restore is stable (its deps are stable callbacks), so this runs once per mount.
-  }, [restore]);
+    // restore is stable (its deps are stable callbacks), and so is reloadUser (it has none), so this
+    // runs once per mount.
+  }, [restore, reloadUser]);
 
   const value: SessionContextValue = {
     status,

@@ -71,7 +71,11 @@ export interface UsernameAvailability {
 
 export interface AvatarUploadTicket {
   upload_url: string;
-  public_url: string;
+  /**
+   * Where the photo is stored, "avatars/<user id>/<16 hex>.<ext>" (private photos, 2026-11-09).
+   * PATCH /me saves it as `avatar_key`; the user's `avatar_url` is then a signed link to it.
+   */
+  avatar_key: string;
   expires_in: number;
 }
 

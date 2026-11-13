@@ -17,7 +17,11 @@ export interface ProfilePatch {
   name?: string;
   username?: string;
   bio?: string;
-  avatar_url?: string;
+  /**
+   * The key `uploadAvatar` returns. The server keeps it only when it is the caller's own (a refusal
+   * is a 400 with the field `avatar_key`); every read then carries a signed link in `avatar_url`.
+   */
+  avatar_key?: string;
   /** The Settings switch (plan 02.1-02): 'private' is ON, 'public' is OFF. */
   account_visibility?: AccountVisibility;
 }
@@ -47,7 +51,7 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
   if (patch.name !== undefined) body.name = patch.name;
   if (patch.username !== undefined) body.username = patch.username;
   if (patch.bio !== undefined) body.bio = patch.bio;
-  if (patch.avatar_url !== undefined) body.avatar_url = patch.avatar_url;
+  if (patch.avatar_key !== undefined) body.avatar_key = patch.avatar_key;
   if (patch.account_visibility !== undefined) body.account_visibility = patch.account_visibility;
   return api.patch<ApiUser>('/me', body);
 }
@@ -58,7 +62,7 @@ export async function updateProfile(patch: ProfilePatch): Promise<ApiUser> {
  * to the returned `upload_url` with a matching Content-Type header (with the
  * phone's file uploader, not the `api` client, since this request goes straight
  * to object storage and must not carry our Authorization header), and return the
- * `public_url`. Never calls PATCH /me itself; the caller decides when to
+ * photo's `avatar_key`. Never calls PATCH /me itself; the caller decides when to
  * persist, which is what lets the edit screen batch an avatar change
  * together with a name/username/bio change into a single save.
  */
@@ -97,13 +101,13 @@ export async function uploadAvatar(
   // T-01-PRV-05's mitigation is the storage provider rejecting a
   // type/size mismatch bound into the presigned request -- that rejection
   // is only a real mitigation if this function actually checks the PUT's
-  // outcome instead of returning a public_url for an object that was
-  // never written.
+  // outcome instead of returning a key for an object that was never
+  // written.
   if (result.status < 200 || result.status >= 300) {
     // Storage refusing the bytes (4xx) is a type or size problem; anything else is a failed upload.
     const rejected = result.status >= 400 && result.status < 500;
     throw new ApiError(result.status, rejected ? 'photo_rejected' : 'photo_upload_failed');
   }
 
-  return ticket.public_url;
+  return ticket.avatar_key;
 }
