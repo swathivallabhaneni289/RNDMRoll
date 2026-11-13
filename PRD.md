@@ -4,8 +4,8 @@
 |---|---|
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
-| **Status** | Version 1 runs end to end on the iPhone Simulator against a local server. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | October 30, 2026 |
+| **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
+| **Last updated** | November 13, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -54,11 +54,11 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | | |
 |---|---|
 | Audience | Friend groups; anyone 13 and over can join |
-| Platform | iPhone app (Expo and React Native, TypeScript), Go API, PostgreSQL, S3-compatible photo storage |
+| Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
 | Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 6 app check scripts, strict TypeScript |
-| Not yet | Released. Real email, photo storage, push credentials, a domain and a legal review are on the launch checklist. |
+| Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
 
@@ -589,7 +589,8 @@ These rules decide what counts. The server owns all of them.
 - Other people in the app never see your email or birthday, and search never matches email. Admins don't either, and the admin page opens only accounts someone reported or that are disabled (ADM-03).
 - The app asks for the camera, the photo library and notifications only, and never for location or contacts.
 - Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any reset code, is printed to the server log.
-- **Launch:** signed, expiring photo links instead of public ones, and removal of photo metadata for every file type.
+- Photos are in a private bucket. The server gives a signed photo link only to someone allowed to see that photo, and each link stops working within an hour. A link already given out works until it runs out.
+- **Launch:** removal of photo metadata for every file type.
 - The Privacy Policy describes the real data practices, including today's limits.
 
 ### Reliability
@@ -598,7 +599,7 @@ These rules decide what counts. The server owns all of them.
 - Only a definite "no" from the server logs a person out. A lost connection never does.
 - Each person's spin work waits at most 5 seconds for its lock, then answers "try again".
 - Emails and pushes are sent in the background and never fail the request that caused them.
-- **Launch:** database backups, log retention and a cleanup job for unused photo files and old login records.
+- **Launch:** database backups (the Supabase free plan has none, and database backups never cover photo files), log retention and a cleanup job for unused photo files and old login records.
 
 ### Performance
 
@@ -668,8 +669,8 @@ These rules decide what counts. The server owns all of them.
 **Architecture.**
 
 - **App:** an Expo and React Native app (TypeScript, Expo Router, Reanimated).
-- **API:** a Go server (Gin, pgx) with PostgreSQL and 18 SQL migrations.
-- **Photos:** uploaded straight from the phone to S3-compatible storage through short-lived signed links.
+- **API:** a Go server (Gin, pgx) with 19 SQL migrations. It runs on my computer until it is hosted, and reaches PostgreSQL on Supabase in Singapore through the session pooler over TLS. Supabase's Data API is off, and only the server holds the database password.
+- **Photos:** kept in a private Supabase Storage bucket in Singapore. The phone uploads through 5-minute signed links and loads photos through signed links that stop working within an hour, made only for people allowed to see them.
 - **Services:** email through Resend, and phone notifications through Expo's push service and Apple. Both are built but off until the accounts exist; today emails print to the server log.
 - **Web pages:** the admin page and the invite page are plain server-rendered pages on the API.
 
@@ -688,7 +689,8 @@ Two unused tables remain: email_verification_tokens and post_reactions.
 **What is kept, and for how long.**
 
 - A deleted account is hidden at once and deleted for good 30 days later by an hourly job on the server: its photo files first, then its row, which removes every other row tied to it. The job only touches that account's own photo folders, plus the photos other people added to comments on its posts.
-- A deleted post removes its photos and comments from the database, and the server tries once to remove its photo files. Photos inside its comments stay in storage (section 16, issue 4). Its spin and posted day stay.
+- A deleted post removes its photos and comments from the database, and the server tries once to remove the photo files of the post and of its comments. A file whose removal fails stays in storage, but the server makes no new links for it (section 16, issue 4). Its spin and posted day stay.
+- Saving a new profile photo deletes the old photo's file. If that fails, the file stays (section 16, issue 4).
 - Reports outlive the reported content, with a copy of the title or comment text.
 - There is no automatic cleanup yet (see the launch checklist in section 14, and issue 4 in section 16).
 
@@ -746,10 +748,10 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 
 - [ ] A domain and HTTPS, with links that open the app directly (invite links).
 - [ ] Real email: a Resend account and a verified sender address.
-- [ ] Photo storage on a real S3-compatible bucket, with signed, expiring photo links.
+- [x] Photo storage in a private Supabase bucket in Singapore, with photo links that stop working within an hour.
 - [ ] Strip photo metadata for every file type.
 - [ ] Trust the real proxy for client IP addresses.
-- [ ] Backups, log retention, and cleanup of unused photos and old login records.
+- [ ] Backups (a paid Supabase plan, or my own encrypted copies), log retention, and cleanup of unused photos and old login records.
 - [ ] Monitoring and alerts for the server.
 - [ ] Test tools off, admin accounts set.
 
@@ -783,9 +785,9 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 | The category doesn't fit the day | High | Medium | Free skip; weekly goal of 4; "lately" counts; track skips by category and adjust the starting wheel |
 | The lock feels like a wall, not a reason | Medium | High | Show who posted (count and first names) to pull people in; late posts still open it; track Board pull |
 | Harm to younger users | Medium | High | 13 and over only; every account private; report people, posts and comments; block from a person's page, search and the follow lists; mute from a person's page; admin page; a lawyer review before launch |
-| Photo privacy: photo links are public, some files keep metadata | Medium | Medium | Disclosed in the Privacy Policy; signed links and metadata removal are on the launch checklist |
+| Photo privacy: a link already given out keeps working for a while after access ends, and some files keep metadata | Low | Medium | Private bucket and links that stop working within an hour; disclosed in the Privacy Policy; metadata removal is on the launch checklist |
 | Moderation load on one admin | Low at first | Medium | Reports grouped by person; disable in one step; alerts and automatic hiding later |
-| One developer: data loss or downtime | Medium | High | Backups and monitoring on the launch checklist; strong test suite |
+| One developer: data loss or downtime | Medium | High | Backups and monitoring on the launch checklist; strong test suite. The Supabase free plan has no backups, so lost data and deleted photos can't be restored |
 | Name clash with an existing app called "Roll: Fresh film daily" | Low | Medium | Check the name before launch (an open question in section 16) |
 
 ## 16. Known issues and open questions
@@ -796,8 +798,8 @@ Some were found while writing this document; others were already in the planning
 
 1. **A hidden reply still appears in a notification list.** The person it answers still sees its text in their list.
 2. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
-3. **Photo links are public.** The app hands a link only to people allowed to see the photo, but anyone with the link can open it.
-4. **Some photo files are never removed from storage.** This covers replaced profile photos, comment photos on a deleted post, uploads never posted, and any file whose one removal try failed.
+3. **A photo link already given out keeps working until it runs out.** After a block, a removed follower or an archive, a link a phone already has stops working within an hour, not at once.
+4. **Some photo files are never removed from storage.** This covers uploads never posted and any file whose one removal try failed. The server makes no new links for them.
 5. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
 6. **Search words appear in server logs.**
 7. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
@@ -812,7 +814,6 @@ Some were found while writing this document; others were already in the planning
 ### Open questions
 
 - Who moderates after launch, and how fast should reports be answered?
-- Which storage provider and region for photos?
 - Should people choose their reminder time?
 - Should skipped days appear on the profile? The server already returns them.
 - Should a person's first, partial week count differently for the week streak? The data to do it is already stored.
@@ -870,6 +871,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 25 | Account deletion in the app, like Instagram: hidden at once, deleted after 30 days, logging back in keeps it | Apple requires it, and the 30 days protect against a mistake | The account's data stays 30 more days |
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
 | Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post; the week row and the date follow the spin's day too; "Posted." and "Skipped." stay until the next 8 PM, the posted page points to the Board, and an evening with no spin is mentioned | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
+| Nov 8 | Database and photos on Supabase in Singapore; photos private, with links that stop working within an hour | Only people allowed to see a photo get a link, like Instagram's expiring links | No backups on the free plan; data kept outside the country of most users |
 
 ## 18. Out of scope and future ideas
 

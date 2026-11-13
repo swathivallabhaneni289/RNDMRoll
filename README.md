@@ -101,8 +101,8 @@ Each phase had a written scope, a screen-by-screen design spec, a build plan and
 | Part | Tools |
 |---|---|
 | App | TypeScript, React Native 0.86, Expo 57, Expo Router, Reanimated |
-| Server | Go 1.26, Gin, PostgreSQL through pgx, 18 SQL migrations |
-| Photos | S3-compatible storage with presigned uploads (MinIO when running locally) |
+| Server | Go 1.26, Gin, PostgreSQL on Supabase (Singapore) through pgx and the session pooler, 19 SQL migrations |
+| Photos | A private Supabase Storage bucket through its S3 API: signed uploads, and signed photo links that stop working within an hour, made only for people allowed to see the photo (a private MinIO bucket when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
 | Email and push | Resend for email, the Expo push service for phone notifications |
 
@@ -118,13 +118,14 @@ A few things that took real care:
 You need macOS with Xcode and the iOS Simulator, Node, Go 1.26, PostgreSQL, [golang-migrate](https://github.com/golang-migrate/migrate) and [MinIO](https://min.io) for photos.
 
 1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as Forgot password codes) to the server log instead of sending them.
-2. **Photo storage.** Start MinIO, create a bucket with public read access, and point the `S3_*` lines in `.env` at it (for example `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_REGION=us-east-1`, `S3_PUBLIC_BASE_URL=http://127.0.0.1:9000/<bucket>`).
+2. **Photo storage.** Start MinIO, create a private bucket (no public read access), and point the `S3_*` lines in `.env` at it (for example `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_REGION=us-east-1`). For Supabase, turn on the S3 connection in Storage settings, make a private bucket, and use the endpoint, region and access keys from that page. Keep the keys on the server only.
 3. **Database.**
    ```sh
    make db-create
    export DATABASE_URL=postgres://localhost:5432/rndmroll_dev?sslmode=disable
    make migrate-up
    ```
+   For Supabase, set `DATABASE_URL` to the session pooler address from the Connect page, with `sslmode=require`.
 4. **Server.** `make dev` starts the API on port 8080.
 5. **App.** `npm install`, then `npx expo run:ios`. This builds the app into the simulator. It needs a native build, so Expo Go won't work. The app looks for the API at `http://localhost:8080`, or at `EXPO_PUBLIC_API_BASE_URL` if that is set.
 

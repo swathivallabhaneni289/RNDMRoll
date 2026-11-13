@@ -23,10 +23,13 @@ export type LegalDocument = {
 /** Where people write to RNDMRoll: one place, so it is changed once. */
 export const CONTACT_EMAIL = '';
 
-const EFFECTIVE = 'October 25, 2026';
+const EFFECTIVE = 'November 13, 2026';
 
-/** The Privacy Policy's own date: it changed after the Terms (what admins see, 2026-10-29 and 2026-10-30). */
-const PRIVACY_EFFECTIVE = 'October 30, 2026';
+/**
+ * The Privacy Policy's own date, since it can change without the Terms (it did for what admins see,
+ * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13.
+ */
+const PRIVACY_EFFECTIVE = 'November 13, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
@@ -85,7 +88,7 @@ export const TERMS: LegalDocument = {
       heading: 'Who sees your posts',
       blocks: [
         paragraph(
-          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and photo links have one limit, explained in the Privacy Policy.',
+          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports. Photo links stop working within an hour, as the Privacy Policy explains.',
         ),
         paragraph(
           'People who are signed in can find your account by your name or username, so friends can find you and send a request. What they see before you accept is described in the Privacy Policy.',
@@ -167,7 +170,7 @@ export const PRIVACY: LegalDocument = {
   effective: PRIVACY_EFFECTIVE,
   intro: [
     'This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").',
-    "In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and photo links aren't locked.",
+    "In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and when someone loses access to a photo, a link they already have stops working within an hour, not at once.",
   ],
   sections: [
     {
@@ -229,14 +232,14 @@ export const PRIVACY: LegalDocument = {
       heading: 'Who can see what',
       blocks: [
         list(
-          'People who follow you: in the app, only people whose follow request you accepted can see your posts, the comments on them and your followers and following lists. They see a day of your posts only after posting their own for that day. Before they post, they can see that you posted that day and your first name, but not your post.',
-          'Anyone signed in: anyone with an account can find you by name or username, and you may appear in their suggestions. They can see your name, username, photo and bio, and how many posts, spins, followers and following you have, and your week streak. They cannot see your posts.',
-          'When you comment: everyone who can see the post sees your comment, with your name, username and photo.',
+          'People who follow you: in the app, only people whose follow request you accepted can see your posts, their photos, the comments on them and your followers and following lists. They see a day of your posts only after posting their own for that day. Before they post, they can see that you posted that day and your first name, but not your post.',
+          'Anyone signed in: anyone with an account can find you by name or username, and you may appear in their suggestions. They can see your name, username, profile photo and bio, and how many posts, spins, followers and following you have, and your week streak. They cannot see your posts.',
+          'When you comment: everyone who can see the post sees your comment, with your name, username and profile photo.',
           'Your posts show the time you posted, in your own time zone, and say Late when you posted late.',
-          'Archived posts are hidden from everyone else in the app.',
-          "If you block someone, neither of you can see the other's profile, posts or comments. They stay in your Blocked accounts list so you can unblock them.",
+          'Archived posts and their photos are hidden from everyone else in the app. A photo link someone already had stops working within an hour.',
+          "If you block someone, they can't find you or see your profile, posts or comments, and you don't see their posts or comments. Photo links they already had stop working within an hour. You still see their name, username and profile photo in your Blocked accounts list and on their page, so you can unblock them.",
           "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. They can open only accounts that someone reported or that are disabled.",
-          'We, who run RNDMRoll\'s server, can reach everything stored on it. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.',
+          "We run RNDMRoll's server, so we can reach everything it stores, in our database and in our photo storage at Supabase. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.",
         ),
         paragraph('Other users and admins never see your email address or your birthday.'),
       ],
@@ -245,7 +248,7 @@ export const PRIVACY: LegalDocument = {
       heading: 'Photo links',
       blocks: [
         paragraph(
-          "Photos are kept with a cloud storage company. The app gives a photo's link only to people allowed to see it, but the link itself isn't locked. Anyone who has the link can open the photo, even after the post is archived, the follower is removed or blocked, or a deleted photo's file is left in storage, as explained under How long we keep it. People who viewed a photo may also still have a copy saved on their phone.",
+          'Photos are kept in private storage at Supabase. A photo opens only through a link from our server, and the server gives links only to people allowed to see that photo. Each link stops working within an hour. When someone loses access, for example after a block, a removed follower or an archived post, the server stops giving them links at once, but a link they already have works until it runs out. Your profile photo is shown the same way to anyone signed in, except people you blocked. Someone who blocked you still sees it in their Blocked accounts list and on your page. People who viewed a photo may still have a copy on their phone, or a screenshot.',
         ),
       ],
     },
@@ -254,9 +257,8 @@ export const PRIVACY: LegalDocument = {
       blocks: [
         paragraph('A few companies help run RNDMRoll. We give them only what they need to provide their service to us:'),
         list(
-          'A hosting company runs our server and database, so it stores the information in this policy, including server logs.',
+          'Supabase keeps our database and photos in Singapore, so it stores the information in this policy. Your phone sends and loads photos directly with Supabase, so it also sees your IP address. Our server runs on a computer we control, and its logs stay there.',
           'Resend sends password reset codes by email. It receives your email address and the code.',
-          'A cloud storage company keeps photos. Your phone sends and loads photos directly with it, so it also sees your IP address.',
           "Expo and Apple deliver phone notifications when those are on. They receive your push token, your phone's device token, the words of the notification, such as a friend's first name and the start of their comment, and the ID numbers the app uses to open the right page.",
         ),
       ],
@@ -268,7 +270,7 @@ export const PRIVACY: LegalDocument = {
           "Your login is kept in your iPhone's keychain, on that phone only. Logging out removes it; deleting the app may not, so log out first. If you're offline when you log out, the app keeps it until it can end that login on our server.",
           'A few settings, such as whether the 8 PM reminder is on, are kept on your phone.',
           "The 8 PM reminder is scheduled on your phone. RNDMRoll's server isn't involved.",
-          "Photos you view or add are saved on your phone so they load faster. Logging out doesn't clear them; deleting the app does.",
+          'Photos you view are saved on your phone so they load faster, and logging out clears them. Copies of photos you add can stay on your phone until you delete the app.',
         ),
       ],
     },
@@ -285,13 +287,13 @@ export const PRIVACY: LegalDocument = {
       blocks: [
         list(
           'Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in before then.',
-          'When you delete a post, it is deleted with its photos and its comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.',
-          'Some photo files can stay in storage after what they belonged to is gone: a profile photo you replaced, photos in comments on a deleted post, photos you uploaded but never posted, and, rarely, a photo whose removal failed. We delete all of your photo files when your account is deleted.',
+          'When you delete a post, it is deleted with its photos and its comments, including photos in those comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.',
+          'Some photo files can stay in storage after what they belonged to is gone: photos you uploaded but never posted, and, rarely, a photo whose removal failed. The server makes no new links for these files, so any link to one stops working within an hour. We delete all of your photo files when your account is deleted.',
           'Archived posts stay, hidden from everyone else in the app, until you restore or delete them.',
           "Reports are kept after the reported content is removed, with a copy of the post's title or the comment's words, so we can look back at them. They're deleted when the account that made the report, or the account it's about, is deleted.",
           'A login ends 30 days after you last used the app. Records of past logins, with the details your phone sent, are kept while your account exists, to help protect it.',
           "A password reset code stops working after 30 minutes or 5 wrong tries. It's deleted once it's used, or replaced when you ask for a new one.",
-          "Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, including any search words, and are kept only as long as we need them to fix problems and keep RNDMRoll safe.",
+          "Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, including any search words, and are kept only as long as we need them to fix problems and keep RNDMRoll safe. Supabase also keeps its own logs of requests to our database and photo storage for a short time.",
           'A disabled account is kept, hidden from everyone else on RNDMRoll, in case the decision is reviewed, until its owner asks us to delete it.',
         ),
       ],
@@ -305,7 +307,7 @@ export const PRIVACY: LegalDocument = {
           'Remove a follower, unfollow, mute or block anyone.',
           "In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.",
           `Ask for a copy of your information, or ask us to correct it, by emailing ${CONTACT_EMAIL} from the address on your account. We'll answer within 30 days.`,
-          'Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in before then keeps it. Copies in server logs and backups are cleared on their normal schedule.',
+          'Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in before then keeps it. Copies in server logs are cleared on their normal schedule.',
         ),
         paragraph(
           'Depending on where you live, the law may give you more rights over your information, such as the right to complain to a data protection authority. Email us and we will help.',
@@ -324,14 +326,16 @@ export const PRIVACY: LegalDocument = {
       heading: 'Security',
       blocks: [
         paragraph(
-          'On our server, passwords, login tokens and reset codes are stored only as hashes. On your phone, your login is kept in the iPhone keychain. The token that keeps you logged in changes every time it is renewed, reset codes stop working after 30 minutes, and repeated tries are limited. No system is perfectly secure, so if you think someone got into your account, change your password and email us.',
+          'On our server, passwords, login tokens and reset codes are stored only as hashes. On your phone, your login is kept in the iPhone keychain. The token that keeps you logged in changes every time it is renewed, reset codes stop working after 30 minutes, and repeated tries are limited. Your information travels to our database and photo storage over encrypted connections, and Supabase encrypts it where it is stored. No system is perfectly secure, so if you think someone got into your account, change your password and email us.',
         ),
       ],
     },
     {
       heading: 'Where your information is kept',
       blocks: [
-        paragraph('Your information may be stored and handled in a country other than the one you live in.'),
+        paragraph(
+          'Your account, posts and photos are stored with Supabase in Singapore. Resend, Expo and Apple, listed above, may handle what they receive in other countries. So your information may be kept in a country other than the one you live in.',
+        ),
       ],
     },
     {
