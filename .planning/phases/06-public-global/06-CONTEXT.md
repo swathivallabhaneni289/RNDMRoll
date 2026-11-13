@@ -1,5 +1,7 @@
 # Phase 6: Public Accounts, Global and the 8 PM reminder - Context
 
+> **Superseded (2026-11-13).** Written before the build and kept as history; the built app differs from it in places. What Phase 6 built is in `06-BUILT-SUMMARY.md`, and PRD.md is the current record.
+
 **Gathered:** 2026-10-10 (the developer's voice note about the Board, "friends or global", public and private accounts; their notification note, "the 8 PM reminder should also go out as a phone notification")
 **Written:** 2026-10-10, on paper, against Phase 2 to Phase 5 documents. NONE of those phases is built. Every file, table and function named here from them is that PLAN's name. At build time the built code wins; each plan's start_rules say how to re-check.
 **Status:** Ready for the developer to read. NOTHING IS BUILT. PHASE 6. **There are NO pictures for this phase yet** (the Global view, the person page, the report sheets, the reminder sheet and its row on Phase 2.1's Settings page; the privacy switch itself is Phase 2.1's). Everything on screen here is a plain default built from the Phase 5 picture parts; send pictures and the UI spec is redrawn from them.

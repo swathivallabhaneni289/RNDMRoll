@@ -3,20 +3,22 @@
 **Defined:** 2026-09-15
 **Core Value:** A working daily habit loop — roll, log, diary, gated friend feed — used reliably every day by the developer and a small friend group.
 
+> **Status (2026-11-13).** PRD.md is the current record of every requirement, under newer IDs and with today's status. This file keeps the first IDs from September, and their statuses below are brought up to date.
+
 ## v1 Requirements
 
 ### Accounts & Profile
 
 - [x] **ACCT-01**: User can create an account and log in, and stays logged in across app sessions
-- [ ] **ACCT-02**: User can add friends (e.g., via invite/username) to form their friend circle
+- [x] **ACCT-02**: User can add friends (e.g., via invite/username) to form their friend circle
 - [x] **ACCT-03**: User can view their own profile
 
 ### Settings (inserted 2026-10-10, Phase 2.1)
 
-- [ ] **SET-01**: User can change their username from Settings
-- [ ] **SET-02**: User can change their password from Settings (other phones are signed out)
-- [ ] **SET-03**: User can make their account public or private (default public); the choice is stored and shown, and read by the Friends view and Global in Phases 5 and 6
-- [ ] **SET-04**: User can edit their bio in place on the profile page
+- [x] **SET-01**: User can change their username from Settings (built on the Edit page, PRD PROF-02)
+- [x] **SET-02**: User can change their password from Settings (other phones are signed out)
+- [ ] ~~**SET-03**: User can make their account public or private (default public); the choice is stored and shown, and read by the Friends view and Global in Phases 5 and 6~~ (replaced by PRD SOC-01)
+- [x] **SET-04**: User can edit their bio in place on the profile page (built on the Edit page, PRD PROF-02)
 
 ### Roll & Wheel
 
@@ -27,22 +29,22 @@
 
 ### Daily Entry
 
-- [ ] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction (one of six fixed reactions), and an optional comment (a short free-text thought), logged against the day's rolled category. The author can change or delete a post; a deleted post still counts as a posted day
-- [ ] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
-- [ ] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
-- [ ] **ENTRY-04**: User can skip a day when the spun category isn't satisfiable (e.g., wheel says "book," nothing was read that day). No entry is required that day. The skip is visible in the diary (DIARY-01), not a silent gap, and shows its effect on the week (e.g., "2 of 4 this week"). A skip is distinct from a reroll (ROLL-02, which swaps the category and still requires posting).
+- [x] **ENTRY-01**: User can log today's entry with a photo (captured live or chosen from the photo library), a title, a 1-5 star rating in half-star increments, an optional one-tap reaction (one of six fixed reactions), and an optional comment (a short free-text thought), logged against the day's rolled category. The author can change or delete a post; a deleted post still counts as a posted day
+- [x] **ENTRY-02**: User can log an entry for a title already logged before (e.g., a rewatch) without overwriting the prior entry; logging it again creates a new dated entry instead
+- [x] **ENTRY-03**: User can see today's rolled category as the required category for today's entry before submitting
+- [x] **ENTRY-04**: User can skip a day when the spun category isn't satisfiable (e.g., wheel says "book," nothing was read that day). No entry is required that day. The skip is visible in the diary (DIARY-01), not a silent gap, and shows its effect on the week (e.g., "2 of 4 this week"). A skip is distinct from a reroll (ROLL-02, which swaps the category and still requires posting). (Built as PRD SPIN-05: a skipped day shows as a dash on the week row; whether it also shows on the profile is an open question in PRD section 16.)
 
 ### Personal Diary
 
-- [ ] **DIARY-01**: User can view a running chronological log of every entry they've rated, forming a personal taste history
-- [ ] **DIARY-02**: User can view their diary filtered by category
+- [x] **DIARY-01**: User can view a running chronological log of every entry they've rated, forming a personal taste history (built as the Profile grid, PRD PROF-01)
+- [ ] ~~**DIARY-02**: User can view their diary filtered by category~~ (removed 2026-10-16, PRD PROF-05)
 
 ### Friend Feed
 
-- [ ] **FEED-01**: User can view a shared feed of what friends in their circle rolled and rated that day, gated behind having posted their own entry that day
-- [ ] **FEED-02**: User who posts a late entry (per the daily window's day-boundary rules from ROLL-01) still unlocks the feed, marked with a visible "late" badge (soft gate, not a hard block)
-- [ ] **FEED-03**: User with no friends yet (or below the gate threshold) is routed to their personal diary instead of a locked/empty feed
-- [ ] **FEED-04**: User can react to a friend's feed entry with a one-tap emoji reaction (not photo-based)
+- [x] **FEED-01**: User can view a shared feed of what friends in their circle rolled and rated that day, gated behind having posted their own entry that day
+- [x] **FEED-02**: User who posts a late entry (per the daily window's day-boundary rules from ROLL-01) still unlocks the feed, marked with a visible "late" badge (soft gate, not a hard block)
+- [x] **FEED-03**: User with no friends yet (or below the gate threshold) is routed to their personal diary instead of a locked/empty feed (changed: an empty Board offers Find people, PRD BRD-04)
+- [ ] ~~**FEED-04**: User can react to a friend's feed entry with a one-tap emoji reaction (not photo-based)~~ (removed 2026-10-18, PRD BRD-06)
 
 ## v2 Requirements
 
@@ -91,28 +93,28 @@ Deferred to future release. Tracked but not in current roadmap; sourced from REA
 | ACCT-03 | Phase 1 | Complete |
 | ROLL-01 | Phase 2 | Complete |
 | ROLL-02 | Phase 2 | Complete |
-| ROLL-03 | Phase 2 | Complete |
+| ROLL-03 | Phase 2 | Complete (equal slices since 2026-10-10, PRD SPIN-13) |
 | ROLL-04 | Phase 2 | Complete |
-| SET-01 | Phase 2.1 | Pending |
-| SET-02 | Phase 2.1 | Pending |
-| SET-03 | Phase 2.1 | Pending |
-| SET-04 | Phase 2.1 | Pending |
-| ENTRY-01 | Phase 3 | Pending |
-| ENTRY-02 | Phase 3 | Pending |
-| ENTRY-03 | Phase 3 | Pending |
-| ENTRY-04 | Phase 3 | Pending |
-| DIARY-01 | Phase 4 | Pending |
-| DIARY-02 | Phase 4 | Pending |
-| ACCT-02 | Phase 5 | Pending |
-| FEED-01 | Phase 5 | Pending |
-| FEED-02 | Phase 5 | Pending |
-| FEED-03 | Phase 5 | Pending |
-| FEED-04 | Phase 5 | Pending |
+| SET-01 | Phase 2.1 | Complete, on the Edit page (PRD PROF-02) |
+| SET-02 | Phase 2.1 | Complete (PRD SES-05) |
+| SET-03 | Phase 2.1 | Replaced by PRD SOC-01 |
+| SET-04 | Phase 2.1 | Complete, on the Edit page (PRD PROF-02) |
+| ENTRY-01 | Phase 3 | Complete (PRD POST-02 to POST-05) |
+| ENTRY-02 | Phase 3 | Complete (PRD POST-08) |
+| ENTRY-03 | Phase 3 | Complete (PRD POST-01) |
+| ENTRY-04 | Phase 3 | Complete (PRD SPIN-05); skipped days on the profile are an open question (PRD section 16) |
+| DIARY-01 | Phase 4 | Complete, as the Profile grid (PRD PROF-01) |
+| DIARY-02 | Phase 4 | Removed 2026-10-16 (PRD PROF-05) |
+| ACCT-02 | Phase 5 | Complete: one-way follows by request, invite links and suggestions (PRD SOC-01 to SOC-05) |
+| FEED-01 | Phase 5 | Complete, the Board (PRD BRD-01, BRD-02) |
+| FEED-02 | Phase 5 | Complete (PRD SPIN-06) |
+| FEED-03 | Phase 5 | Changed: an empty Board offers Find people (PRD BRD-04) |
+| FEED-04 | Phase 5 | Removed 2026-10-18 (PRD BRD-06) |
 
 **Coverage:**
 
-- v1 requirements: 17 total
-- Mapped to phases: 17
+- v1 requirements: 21 total
+- Mapped to phases: 21
 - Unmapped: 0 ✓
 
 ---

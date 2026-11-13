@@ -9,6 +9,8 @@ created: 2026-10-10
 
 # Phase 6: Validation Map (Public Accounts, Global and the 8 PM reminder)
 
+> **Superseded (2026-11-13).** Written before the build and kept as history; the built app differs from it in places. What Phase 6 built is in `06-BUILT-SUMMARY.md`, and PRD.md is the current record.
+
 > How each behaviour is proven. PHASE 6. NOTHING IS BUILT. Written on paper on 2026-10-10 against the Phase 5 CONTEXT, UI spec and plans (05-01 to 05-06), Phase 2.1 (Settings: the account setting is its column and switch) and the Phase 2 to 4 plans, not built code: package and file names for Phase 5 parts are those plans' names, and the build corrects them from the Phase 5 summaries. Go tests run only on a database whose name ends in `test` (`rndmroll_test`), with `-p 1`. There is no JS test runner (two throwaway node scripts, `scripts/check-global.ts` and `scripts/check-reminder.ts`, check the pure rules), so screen checks are device steps in `06-03-PLAN.md` Tasks 3 and 5 ('group done' or what looked wrong). There are no pictures for this phase: the strings approval in Task 5 is the design check.
 
 ## Commands

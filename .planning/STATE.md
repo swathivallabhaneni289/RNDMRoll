@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 06
 current_phase_name: public-global
 status: building
-stopped_at: Phase 6 built; review fixes and README on 2026-10-21
-last_updated: "2026-10-21T18:00:00.000Z"
-last_activity: 2026-10-21
-last_activity_desc: Forgot password, phone pushes, review fixes, README rewritten as a product case study
+stopped_at: Phase 6 built and summed up on paper; the developer's practice run is next
+last_updated: "2026-11-13T17:52:15.000Z"
+last_activity: 2026-11-13
+last_activity_desc: Phase 6 summary written, the old Phase 6 papers marked superseded, PRD.md named the current record
 progress:
   total_phases: 8
   completed_phases: 7
@@ -18,6 +18,8 @@ progress:
 ---
 
 # Project State
+
+> **CURRENT STATUS (2026-11-13).** PRD.md is the current record; the notes below are history. Phases 1 to 5 are closed, and Phase 6 is built (`phases/06-public-global/06-BUILT-SUMMARY.md`); ROADMAP.md ticks it after the developer's practice run. The database (19 migrations) and the photos (a private bucket) are on Supabase in Singapore, the server runs on the developer's Mac, and real email and phone pushes are built but off.
 
 > **CURRENT STATUS (2026-10-21).** Phases 1 to 5 are closed and walked on the simulator. Phase 6 is built: the person page, mute, report a person, a post or a comment, hide a comment, the blocked page, the admin page, photos in comments (0013), the 8 PM reminder, Forgot password with an emailed 6-digit code (0014) and phone pushes for comments, replies and follow requests (0015, off until Apple and Expo credentials exist). Every account is private and every follow is a request. Still open: GIFs (needs a GIPHY key), the deferred device checks (Reduce Motion, offline while open, first-run sign-up page). The project is now a portfolio piece: real email, photo storage, push credentials, domain and legal text are set aside; the app runs locally in test mode.
 
@@ -36,7 +38,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 06 (people pages, reports, admin, reminders): built; 01 to 05 closed
 Status: Final checks before a demo
-Last activity: 2026-10-21: Forgot password, phone pushes, review fixes, README rewritten as a product case study
+Last activity: 2026-11-13: Phase 6 summed up in 06-BUILT-SUMMARY.md; PRD.md is the current record
 
 Progress: [█████████░] 95%
 

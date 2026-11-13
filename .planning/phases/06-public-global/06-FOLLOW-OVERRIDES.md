@@ -1,5 +1,7 @@
 # Phase 6: Follow overrides (BINDING, 2026-10-16)
 
+> **Superseded (2026-11-13).** Written before the build and kept as history; the built app differs from it in places. What Phase 6 built is in `06-BUILT-SUMMARY.md`, and PRD.md is the current record.
+
 This file WINS over `06-CONTEXT.md`, every `06-0*-PLAN.md`, `06-UI-SPEC.md`, `06-VALIDATION.md`
 and `06-HAND-EDITS.md` wherever they disagree. Those papers were written on 2026-10-10 for mutual
 friends. The developer decided on 2026-10-13 that following works like Instagram (one-way), and
