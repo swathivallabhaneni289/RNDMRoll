@@ -1,8 +1,15 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
+	"sort"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 )
 
 // The page of someone you blocked stays, empty, with relation "blocked"
@@ -28,5 +35,60 @@ func TestPersonIntegration_PageOfSomeoneYouBlocked(t *testing.T) {
 	w.call(a, http.MethodDelete, "/v1/me/blocks/"+b.id, nil, http.StatusNoContent)
 	if page := w.ok(a, http.MethodGet, "/v1/people/"+b.id, nil); page["relation"] != "none" {
 		t.Fatalf("after unblock: %v", page)
+	}
+}
+
+// Blocked accounts leaves out an account that is gone for everyone (PRD,
+// Disabled account and Deleted account): one an admin disabled, and one
+// whose owner asked for it to be deleted. The block stays, so the account is
+// listed again when it comes back.
+func TestBlockIntegration_BlockedAccountsLeavesOutGoneAccounts(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
+	w := &feedWorld{t: t, engine: buildIntegrationServerWith(t, pool, integrationOptions{clock: clk}).Engine(), clk: clk}
+	a := w.person("bg_alice", "Alice Ames")
+	b := w.person("bg_bob", "Bob Brown")
+	c := w.person("bg_cara", "Cara Cole")
+	d := w.person("bg_dan", "Dan Dorn")
+	for _, p := range []feedPerson{b, c, d} {
+		w.ok(a, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": p.id})
+	}
+	listed := func() []string {
+		t.Helper()
+		ids := []string{}
+		for _, item := range w.ok(a, http.MethodGet, "/v1/me/blocks", nil)["items"].([]any) {
+			ids = append(ids, dig(t, item, "user", "id").(string))
+		}
+		sort.Strings(ids)
+		return ids
+	}
+	setDisabled := func(p feedPerson, on bool) {
+		t.Helper()
+		q := `update users set disabled_at = null where id = $1`
+		if on {
+			q = `update users set disabled_at = now() where id = $1`
+		}
+		if _, err := pool.Exec(context.Background(), q, uuid.MustParse(p.id)); err != nil {
+			t.Fatalf("disable %s (%v): %v", p.name, on, err)
+		}
+	}
+	if got, want := listed(), sortedCopy(b.id, c.id, d.id); !sameList(got, want) {
+		t.Fatalf("before: %v, want %v", got, want)
+	}
+
+	// An admin disables B; C asks for the account to be deleted (the password
+	// feedWorld.person gives every account).
+	setDisabled(b, true)
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/me/delete", c.token, map[string]any{"password": "Correct-horse-battery-staple1"}); rec.Code != http.StatusOK {
+		t.Fatalf("C asks to delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := listed(); len(got) != 1 || got[0] != d.id {
+		t.Fatalf("gone accounts listed: %v, want only %s", got, d.id)
+	}
+
+	// B comes back, still blocked.
+	setDisabled(b, false)
+	if got, want := listed(), sortedCopy(b.id, d.id); !sameList(got, want) {
+		t.Fatalf("after B came back: %v, want %v", got, want)
 	}
 }

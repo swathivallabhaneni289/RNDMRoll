@@ -2,6 +2,9 @@ package board
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +18,43 @@ const (
 	MaxPersonPosts     = 60
 )
 
+// ErrBadCursor: a person page cursor this server did not make.
+var ErrBadCursor = errors.New("board: invalid cursor")
+
+// personCursorPrefix sets a person page cursor apart from the diary's
+// ("v1:"), so neither list takes the other's.
+const personCursorPrefix = "person1:"
+
+// EncodePersonCursor is the next_cursor of a person's grid: the unpadded
+// base64url of personCursorPrefix and the date of the page's last tile. The
+// date alone places a tile, since a person has at most one entry a day
+// (entries_one_per_day), and it still places it when that entry is deleted
+// before the next page is read.
+func EncodePersonCursor(date string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(personCursorPrefix + date))
+}
+
+// DecodePersonCursor returns the date inside a cursor. Anything
+// EncodePersonCursor did not make, an empty cursor included, is
+// ErrBadCursor.
+func DecodePersonCursor(s string) (string, error) {
+	if s == "" || len(s) > 64 {
+		return "", ErrBadCursor
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return "", ErrBadCursor
+	}
+	date, ok := strings.CutPrefix(string(raw), personCursorPrefix)
+	if !ok || len(date) != 10 {
+		return "", ErrBadCursor
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", ErrBadCursor
+	}
+	return date, nil
+}
+
 // PersonPost is one tile of another person's grid.
 type PersonPost struct {
 	EntryID      uuid.UUID
@@ -27,18 +67,19 @@ type PersonPost struct {
 
 // PersonPosts is one page of owner's grid as the viewer sees it, newest
 // first: the same rule as the Board (an accepted follow, no block either
-// way, not archived, and only days the viewer posted too). after is the last
-// entry of the page before. next is set when more may follow.
-func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, after *uuid.UUID, limit int) ([]PersonPost, *uuid.UUID, error) {
-	rows, err := s.repo.PersonEntries(ctx, viewer, owner, after, limit+1)
+// way, not archived, and only days the viewer posted too). before is the
+// date of the last tile of the page before (DecodePersonCursor). next, the
+// date of this page's last tile, is set when more may follow.
+func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, before *string, limit int) ([]PersonPost, *string, error) {
+	rows, err := s.repo.PersonEntries(ctx, viewer, owner, before, limit+1)
 	if err != nil {
 		return nil, nil, err
 	}
-	var next *uuid.UUID
+	var next *string
 	if len(rows) > limit {
 		rows = rows[:limit]
-		id := rows[limit-1].ID
-		next = &id
+		last := rows[limit-1].LocalDate
+		next = &last
 	}
 	// Every listed row passed the rule in SQL.
 	f := social.Facts{Follows: true, ViewerPostedDay: true}

@@ -317,30 +317,60 @@ func (r *BoardRepo) ClearReaction(ctx context.Context, entryID, userID uuid.UUID
 	return err
 }
 
+// commentPhotoIndex is the unique index that gives a photo file to one
+// comment only (migration 0013).
+const commentPhotoIndex = "post_comments_photo_key_idx"
+
 // InsertComment implements board.Repository.
-func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, error) {
+func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, time.Time, bool, error) {
 	var id uuid.UUID
 	// A photo file already used by an entry is refused like a reused one.
 	if photoKey != nil {
 		var used bool
 		if err := r.pool.QueryRow(ctx, `select exists (select 1 from entry_photos where storage_key = $1)`, *photoKey).Scan(&used); err != nil {
-			return uuid.UUID{}, err
+			return uuid.UUID{}, time.Time{}, false, err
 		}
 		if used {
-			return uuid.UUID{}, &board.FieldProblem{Field: "photo", Reason: "invalid"}
+			return uuid.UUID{}, time.Time{}, false, &board.FieldProblem{Field: "photo", Reason: "invalid"}
 		}
 	}
 	err := r.pool.QueryRow(ctx, `
 		insert into post_comments (entry_id, user_id, body, created_at, parent_id, photo_key) values ($1, $2, $3, $4, $5, $6)
 		returning id`, entryID, userID, body, at, parentID, photoKey).Scan(&id)
 	if err != nil && isForeignKeyViolation(err) {
-		return uuid.UUID{}, board.ErrNotFound
+		return uuid.UUID{}, time.Time{}, false, board.ErrNotFound
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return uuid.UUID{}, &board.FieldProblem{Field: "photo", Reason: "invalid"}
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == commentPhotoIndex && photoKey != nil {
+		return r.commentSentAgain(ctx, entryID, userID, body, parentID, *photoKey)
 	}
-	return id, err
+	if err != nil {
+		return uuid.UUID{}, time.Time{}, false, err
+	}
+	return id, at, true, nil
+}
+
+// commentSentAgain answers an insert whose photo file is already on a
+// comment. The phone gives up on an answer after 10 seconds and keeps the
+// photo, so a retry sends the same key: when the comment holding it has the
+// same writer, post, thread and words, it is this comment, saved the first
+// time, and it comes back with made false. It is looked up after the insert
+// fails, not before, so two sends racing each other end the same way. Any
+// other comment holding the file is a reuse: FieldProblem photo invalid.
+func (r *BoardRepo) commentSentAgain(ctx context.Context, entryID, userID uuid.UUID, body string, parentID *uuid.UUID, photoKey string) (uuid.UUID, time.Time, bool, error) {
+	var id uuid.UUID
+	var at time.Time
+	err := r.pool.QueryRow(ctx, `
+		select id, created_at from post_comments
+		where photo_key = $1 and user_id = $2 and entry_id = $3 and parent_id is not distinct from $4::uuid and body = $5`,
+		photoKey, userID, entryID, parentID, body).Scan(&id, &at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.UUID{}, time.Time{}, false, &board.FieldProblem{Field: "photo", Reason: "invalid"}
+	}
+	if err != nil {
+		return uuid.UUID{}, time.Time{}, false, err
+	}
+	return id, at.UTC(), false, nil
 }
 
 // isForeignKeyViolation reports a foreign key failure (the entry or the

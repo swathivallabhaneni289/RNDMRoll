@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -67,17 +68,23 @@ func TestPersonIntegration_HeadForAnyoneGridForAFollowerOnSharedDays(t *testing.
 		t.Fatalf("tile: %v", first)
 	}
 
-	// Pages: one at a time, the cursor is the last tile.
+	// Pages: one at a time, the cursor places the last tile.
 	page = w.ok(a, http.MethodGet, "/v1/people/"+b.id+"?limit=1", nil)
-	if ids := gridIDs(t, page); len(ids) != 1 || ids[0] != b3 || page["next_cursor"] != b3 {
+	cursor, _ := page["next_cursor"].(string)
+	if ids := gridIDs(t, page); len(ids) != 1 || ids[0] != b3 || cursor == "" {
 		t.Fatalf("page 1: %v", page)
 	}
-	page = w.ok(a, http.MethodGet, "/v1/people/"+b.id+"?limit=1&cursor="+b3, nil)
+	page = w.ok(a, http.MethodGet, "/v1/people/"+b.id+"?limit=1&cursor="+url.QueryEscape(cursor), nil)
 	if ids := gridIDs(t, page); len(ids) != 1 || ids[0] != b1 || page["next_cursor"] != nil {
 		t.Fatalf("page 2: %v", page)
 	}
 	w.call(a, http.MethodGet, "/v1/people/"+b.id+"?limit=0", nil, http.StatusBadRequest)
-	w.call(a, http.MethodGet, "/v1/people/"+b.id+"?cursor=nope", nil, http.StatusBadRequest)
+	// A made-up cursor, an empty one and an entry id (the old cursor) are refused.
+	for _, bad := range []string{"nope", "", b3} {
+		if got := w.call(a, http.MethodGet, "/v1/people/"+b.id+"?cursor="+bad, nil, http.StatusBadRequest); got["field"] != "cursor" {
+			t.Fatalf("cursor %q: %v", bad, got)
+		}
+	}
 
 	// An archived post leaves the grid.
 	w.ok(b, http.MethodPost, "/v1/entries/"+b3+"/archive", map[string]any{})
@@ -98,6 +105,34 @@ func TestPersonIntegration_HeadForAnyoneGridForAFollowerOnSharedDays(t *testing.
 
 	// The fixed routes beside it still answer.
 	w.ok(a, http.MethodGet, "/v1/people/search?q=pp", nil)
+}
+
+// The next page of the grid starts from the last tile's date, not from the
+// tile itself: when that post is deleted before the next page is read, the
+// rest of the grid still comes (it used to come back empty, which ended the
+// paging).
+func TestPersonIntegration_NextPageAfterTheLastTileIsDeleted(t *testing.T) {
+	w := newFeedWorld(t)
+	a := w.person("pd_alice", "Alice Ames")
+	b := w.person("pd_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	b1 := w.post(b, "2026-10-06")
+	b2 := w.post(b, "2026-10-07")
+	b3 := w.post(b, "2026-10-08")
+	for _, day := range []string{"2026-10-06", "2026-10-07", "2026-10-08"} {
+		w.post(a, day)
+	}
+
+	page := w.ok(a, http.MethodGet, "/v1/people/"+b.id+"?limit=1", nil)
+	cursor, _ := page["next_cursor"].(string)
+	if ids := gridIDs(t, page); len(ids) != 1 || ids[0] != b3 || cursor == "" {
+		t.Fatalf("page 1: %v", page)
+	}
+	w.ok(b, http.MethodPost, "/v1/entries/"+b3+"/delete", map[string]any{})
+	page = w.ok(a, http.MethodGet, "/v1/people/"+b.id+"?limit=2&cursor="+url.QueryEscape(cursor), nil)
+	if ids := gridIDs(t, page); len(ids) != 2 || ids[0] != b2 || ids[1] != b1 || page["next_cursor"] != nil {
+		t.Fatalf("page 2 after the last tile was deleted: %v", page)
+	}
 }
 
 func TestPersonIntegration_MuteTakesPostsOffTheBoardOnly(t *testing.T) {

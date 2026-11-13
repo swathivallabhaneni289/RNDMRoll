@@ -12,7 +12,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
@@ -89,15 +88,14 @@ func (h *PersonHandler) person(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var after *uuid.UUID
+	var before *string
 	if raw, present := c.GetQuery("cursor"); present {
-		s, ok := canonicalID(raw)
-		if !ok {
+		date, err := board.DecodePersonCursor(raw)
+		if err != nil {
 			RespondFieldError(c, "cursor", reasonInvalid)
 			return
 		}
-		a := uuid.MustParse(s)
-		after = &a
+		before = &date
 	}
 	limit := board.DefaultPersonPosts
 	if raw, present := c.GetQuery("limit"); present {
@@ -144,7 +142,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 	}
 	// Only an accepted follower sees the grid; anyone else gets the head.
 	if p.Relation == social.RelationFollowing {
-		posts, next, err := h.board.PersonPosts(ctx, u.ID, id, after, limit)
+		posts, next, err := h.board.PersonPosts(ctx, u.ID, id, before, limit)
 		if err != nil {
 			respondFeedError(c, err)
 			return
@@ -162,7 +160,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		}
 		out.Posts = &views
 		if next != nil {
-			s := next.String()
+			s := board.EncodePersonCursor(*next)
 			out.NextCursor = &s
 		}
 	}

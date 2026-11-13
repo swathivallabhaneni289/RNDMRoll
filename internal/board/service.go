@@ -26,9 +26,9 @@ type Repository interface {
 	// Cards are the visible entries on those dates, newest first.
 	Cards(ctx context.Context, viewer uuid.UUID, dates []string) ([]EntryRow, error)
 	// PersonEntries are owner's entries the viewer may see (the same rule,
-	// on the viewer's posted days), newest first, after the entry `after`
-	// when set, at most limit.
-	PersonEntries(ctx context.Context, viewer, owner uuid.UUID, after *uuid.UUID, limit int) ([]EntryRow, error)
+	// on the viewer's posted days), newest first, strictly before the date
+	// `before` when set, at most limit.
+	PersonEntries(ctx context.Context, viewer, owner uuid.UUID, before *string, limit int) ([]EntryRow, error)
 	// PostCount is how many posts owner has, archived ones left out.
 	PostCount(ctx context.Context, owner uuid.UUID) (int, error)
 	// CommentCounts and MyReactions are the viewer's view of entryIDs.
@@ -51,8 +51,12 @@ type Repository interface {
 	ClearReaction(ctx context.Context, entryID, userID uuid.UUID) error
 	// InsertComment writes a comment; parentID is the top-level comment of a
 	// reply, nil for a top-level comment. ErrNotFound when the entry or the
-	// parent went away.
-	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, error)
+	// parent went away. A photo file belongs to one comment: when it is
+	// already on this writer's comment on the same post and thread with the
+	// same words, that comment was sent again after its answer was lost, and
+	// it comes back with its stored id and time and made false. Any other
+	// use of a file already taken is FieldProblem photo invalid.
+	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (id uuid.UUID, createdAt time.Time, made bool, err error)
 	// CommentByID reads a comment with its entry's owner. ErrNotFound when
 	// missing.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
@@ -360,7 +364,9 @@ func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, re
 // AddComment writes a comment, or a reply when parentID is set. Order: the
 // post must be visible, comments on, the parent (when set) a comment on this
 // post the viewer can see, then the text valid. A reply to a reply is stored
-// under that reply's top-level comment (one level).
+// under that reply's top-level comment (one level). A photo comment sent
+// again after its answer was lost gives back the comment already made
+// (Repository.InsertComment), with no second push.
 func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, text string, parentID *uuid.UUID, photoKey *string) (Comment, error) {
 	row, f, err := s.visible(ctx, viewer, entryID)
 	if err != nil {
@@ -394,18 +400,19 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 		return Comment{}, err
 	}
 	now = now.UTC()
-	id, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top, photoKey)
+	id, createdAt, made, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top, photoKey)
 	if err != nil {
 		return Comment{}, err
 	}
-	if s.notify != nil {
+	// A comment sent again was pushed when it was made.
+	if made && s.notify != nil {
 		s.notify.CommentAdded(id)
 	}
 	me, err := s.social.Person(ctx, viewer)
 	if err != nil {
 		return Comment{}, err
 	}
-	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: now, ParentID: top, PhotoKey: photoKey},
+	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: createdAt, ParentID: top, PhotoKey: photoKey},
 		viewer, row.Owner.ID, now, zone), nil
 }
 

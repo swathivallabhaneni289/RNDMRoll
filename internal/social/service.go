@@ -57,7 +57,8 @@ type Repository interface {
 	Block(ctx context.Context, blocker, blocked uuid.UUID, at time.Time) error
 	// Unblock deletes the block. Absent is fine.
 	Unblock(ctx context.Context, blocker, blocked uuid.UUID) error
-	// Blocks lists blocker's blocks, newest first.
+	// Blocks lists blocker's blocks, newest first. Accounts that are disabled
+	// or being deleted are left out, as they are everywhere else.
 	Blocks(ctx context.Context, blocker uuid.UUID) ([]Blocked, error)
 
 	// Settings reads the switches (DefaultSettings when no row).

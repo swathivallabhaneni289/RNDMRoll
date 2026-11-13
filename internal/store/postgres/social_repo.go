@@ -431,11 +431,14 @@ func (r *SocialRepo) Unblock(ctx context.Context, blocker, blocked uuid.UUID) er
 	return err
 }
 
-// Blocks implements social.Repository.
+// Blocks implements social.Repository. An account that is gone for everyone
+// (goneAccount: disabled by an admin, or being deleted) is left out, as in
+// every other list; the block stays, and the account is listed again if it
+// comes back.
 func (r *SocialRepo) Blocks(ctx context.Context, blocker uuid.UUID) ([]social.Blocked, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+personColumns+`, b.created_at from blocks b join users u on u.id = b.blocked_id
-		where b.blocker_id = $1
+		where b.blocker_id = $1 and not `+goneAccount("u")+`
 		order by b.created_at desc, u.id`, blocker)
 	if err != nil {
 		return nil, err
