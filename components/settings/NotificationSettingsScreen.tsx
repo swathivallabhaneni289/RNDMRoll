@@ -5,6 +5,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
 import { SETTINGS_ROW_MIN_HEIGHT } from '@/components/settings/SettingsRow';
+import { StatusMessage } from '@/components/today/StatusMessage';
 import {
   getNotificationSettings,
   NOTIFICATION_DEFAULTS,
@@ -38,7 +39,7 @@ type Messages = Partial<Record<NotificationSettingKey, string>>;
 
 /**
  * One switch row: the label at the left and the system switch at the right, a hairline under it,
- * and, under that, one red line when the last save failed. The whole row is one switch element: a
+ * and, under that, one line when the last save failed. The whole row is one switch element: a
  * tap anywhere on it toggles, and the system switch inside it ignores touches itself (the same
  * build as the Private account row).
  */
@@ -151,42 +152,59 @@ function ReminderRow() {
   );
 }
 
+/** Stands in for the server's switches until their values are in. */
+const LOADING_LINE = 'Loading your settings.';
+
 /**
  * Settings > Notifications (decision D-16): the switches, all ON until the person switches one
  * off, and under them the reminders' switch (8 PM, and 10 AM for a spin not yet posted), which is
  * kept on the phone (`ReminderRow`). Each one saves on its own toggle (`PATCH /me/notification-settings`); the change shows at
- * once, and on a failure the switch goes back and one red line says why.
+ * once, and on a failure the switch goes back and one line says why.
  *
- * The server side is built after Phase 3's server, so `GET` may 404 for now. Then the switches
- * simply show ON (the defaults); there is never an error screen. A toggle then fails with the red
- * line and goes back, which is the specified failure behaviour, not a bug.
+ * The server's switches show only once `GET` has answered: until then one loading line stands in
+ * their place, and a read that fails shows the plain line with Try again, never switches the
+ * server did not send (a Comments switch shown ON while it is saved OFF would promise comment
+ * notifications that never come). The reminders' switch is the phone's and is always there.
  */
 export function NotificationSettingsScreen() {
   const [values, setValues] = useState<NotificationSettings>(NOTIFICATION_DEFAULTS);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
+  const [failure, setFailure] = useState<'network' | 'generic'>('network');
   const [saving, setSaving] = useState<Flags>({});
   const [errors, setErrors] = useState<Messages>({});
-  // Keys the person has already touched: a late answer to the first load never overwrites them.
+  // Keys the person has already touched: a late answer to a read never overwrites them.
   const touched = useRef<Flags>({});
   const busy = useRef<Flags>({});
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    let alive = true;
-    getNotificationSettings()
-      .then((loaded) => {
-        if (!alive) return;
-        setValues((current) => ({
-          reactions: touched.current.reactions ? current.reactions : loaded.reactions,
-          comments: touched.current.comments ? current.comments : loaded.comments,
-          milestones: touched.current.milestones ? current.milestones : loaded.milestones,
-        }));
-      })
-      .catch(() => {
-        // Not live yet, or no connection: the switches keep showing ON.
-      });
+    mountedRef.current = true;
     return () => {
-      alive = false;
+      mountedRef.current = false;
     };
   }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const loaded = await getNotificationSettings();
+      if (!mountedRef.current) return;
+      setValues((current) => ({
+        reactions: touched.current.reactions ? current.reactions : loaded.reactions,
+        comments: touched.current.comments ? current.comments : loaded.comments,
+        milestones: touched.current.milestones ? current.milestones : loaded.milestones,
+      }));
+      setStatus('ready');
+    } catch (err) {
+      if (!mountedRef.current) return;
+      // Switches already on screen stay as they are.
+      setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
+      setStatus((now) => (now === 'ready' ? now : 'offline'));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function toggle(key: NotificationSettingKey) {
     if (busy.current[key]) return;
@@ -222,16 +240,28 @@ export function NotificationSettingsScreen() {
         </View>
 
         <View style={{ marginTop: space.lg, borderTopWidth: 1, borderTopColor: color.divider }}>
-          {ROWS.map((row) => (
-            <SwitchRow
-              key={row.key}
-              label={row.label}
-              checked={values[row.key]}
-              saving={saving[row.key] === true}
-              error={errors[row.key] ?? ''}
-              onToggle={() => void toggle(row.key)}
-            />
-          ))}
+          {status === 'ready' ? (
+            ROWS.map((row) => (
+              <SwitchRow
+                key={row.key}
+                label={row.label}
+                checked={values[row.key]}
+                saving={saving[row.key] === true}
+                error={errors[row.key] ?? ''}
+                onToggle={() => void toggle(row.key)}
+              />
+            ))
+          ) : (
+            <View style={{ paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: color.divider }}>
+              {status === 'loading' ? (
+                <AppText role="label" tone="muted">
+                  {LOADING_LINE}
+                </AppText>
+              ) : (
+                <StatusMessage kind={failure} onRetry={() => void load()} />
+              )}
+            </View>
+          )}
           <ReminderRow />
         </View>
       </View>

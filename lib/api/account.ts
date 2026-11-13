@@ -64,7 +64,7 @@ export type NotificationSettings = {
 
 export type NotificationSettingKey = keyof NotificationSettings;
 
-/** What the switches show when the server cannot answer (not live yet, or no connection). */
+/** The value of a switch the server's answer leaves out. No switch shows until the server answers. */
 export const NOTIFICATION_DEFAULTS: NotificationSettings = {
   reactions: true,
   comments: true,

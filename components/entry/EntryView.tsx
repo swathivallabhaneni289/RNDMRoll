@@ -213,6 +213,19 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
     },
     () => load.stale() || social.stale(),
   );
+  // A comment can find the entry deleted from another phone: the post read then turns gone after
+  // it was shown. The entry is read again too, so the page shows its own gone line, not an entry
+  // without its comments.
+  const socialStatus = social.status;
+  const reloadEntry = load.reload;
+  const socialShownRef = useRef(false);
+  useEffect(() => {
+    if (socialStatus === 'ready') socialShownRef.current = true;
+    else if (socialStatus === 'gone' && socialShownRef.current) {
+      socialShownRef.current = false;
+      reloadEntry();
+    }
+  }, [socialStatus, reloadEntry]);
 
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);

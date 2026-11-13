@@ -17,6 +17,7 @@ import { REPORT_REASONS } from '@/lib/api/person';
 import { REPORT_THANKS, reportPost } from '@/lib/api/reports';
 import { firstName } from '@/lib/api/social';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
+import { POST_GONE_LINE } from '@/lib/board/text';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
@@ -213,7 +214,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
           ) : (
             // One plain line; the Back row above is the only way back (developer, 2026-10-18: no second,
             // underlined 'Back to' button).
-            <AppText role="body">This post isn't here any more.</AppText>
+            <AppText role="body">{POST_GONE_LINE}</AppText>
           )}
         </View>
       )}

@@ -61,3 +61,22 @@ export function cardSpoken(a: { title: string; stars: number; category: string; 
   const late = a.late ? ' Posted late.' : '';
   return `${a.title}. ${starsFigure(a.stars)} out of 5 stars. ${a.category}. By ${a.by}.${late}`;
 }
+
+/** The post page's one line when the post is not there for the viewer, and a comment's failure line then. */
+export const POST_GONE_LINE = "This post isn't here any more.";
+
+/**
+ * The line for a failed comment, reply or delete, by the server's error code (null when the failure
+ * has none). No connection and too many tries keep the client's own words: socialErrorMessage in
+ * lib/api/board.ts gives those first. A comment answered `not_found` means the post went away for
+ * the viewer (deleted, archived, a block, or no longer followed): commenting being off is answered
+ * before it, so nothing else gives it.
+ */
+export function commentFailureLine(code: string | null, what: 'comment' | 'reply' | 'other'): string {
+  if (code === 'comments_off') return 'Commenting is off.';
+  if (code === 'not_found' && what === 'reply') return "That comment isn't here any more.";
+  if (code === 'not_found' && what === 'comment') return POST_GONE_LINE;
+  if (what === 'comment') return "Couldn't post your comment. Please try again.";
+  if (what === 'reply') return "Couldn't post your reply. Please try again.";
+  return 'Something went wrong. Please try again.';
+}

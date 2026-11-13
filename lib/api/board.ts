@@ -1,5 +1,6 @@
 import { api, ApiError } from '@/lib/api/client';
 import { readPerson, type Person } from '@/lib/api/social';
+import { commentFailureLine } from '@/lib/board/text';
 import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
 import { isEntryId } from '@/lib/entry/rules';
 
@@ -286,15 +287,11 @@ export async function deleteComment(commentId: string): Promise<void> {
   }
 }
 
-/** The line for a failed comment or reply. No red: the screens print it in ink. */
+/**
+ * The line for a failed comment or reply. No red: the screens print it in ink. No connection and
+ * too many tries say what the client says; every other line is chosen in lib/board/text.ts.
+ */
 export function socialErrorMessage(err: unknown, what: 'comment' | 'reply' | 'other'): string {
-  if (err instanceof ApiError) {
-    if (err.code === 'network_unavailable') return err.userMessage;
-    if (err.code === 'comments_off') return 'Commenting is off.';
-    if (what === 'reply' && err.code === 'not_found') return "That comment isn't here any more.";
-    if (err.code === 'rate_limited') return err.userMessage;
-  }
-  if (what === 'comment') return "Couldn't post your comment. Please try again.";
-  if (what === 'reply') return "Couldn't post your reply. Please try again.";
-  return 'Something went wrong. Please try again.';
+  if (err instanceof ApiError && (err.code === 'network_unavailable' || err.code === 'rate_limited')) return err.userMessage;
+  return commentFailureLine(err instanceof ApiError ? err.code : null, what);
 }

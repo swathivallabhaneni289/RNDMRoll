@@ -168,12 +168,31 @@ export async function getFollows(): Promise<Follows> {
   };
 }
 
-/** POST /follows/requests/{id}/accept. */
-export async function acceptRequest(requestId: string): Promise<void> {
-  await api.post<unknown>(`/follows/requests/${encodeURIComponent(requestId)}/accept`, {});
+/**
+ * POST /follows/requests/{id}/accept or /decline. 'gone' when the request is no longer there: the
+ * other person cancelled it, a block removed it, or an earlier answer went through and its reply was
+ * lost to the time limit (the server says not found for all of them alike). That is no error, and
+ * no one is told.
+ */
+export async function answerRequest(requestId: string, answer: 'accept' | 'decline'): Promise<'done' | 'gone'> {
+  try {
+    await api.post<unknown>(`/follows/requests/${encodeURIComponent(requestId)}/${answer}`, {});
+    return 'done';
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'not_found') return 'gone';
+    throw err;
+  }
 }
 
-/** POST /follows/requests/{id}/decline. Silent: the other person sees "Follow" again. */
+/** POST /follows/requests/{id}/accept. A request that is gone already is no error (answerRequest). */
+export async function acceptRequest(requestId: string): Promise<void> {
+  await answerRequest(requestId, 'accept');
+}
+
+/**
+ * POST /follows/requests/{id}/decline. Silent: the other person sees "Follow" again. A request that
+ * is gone already is no error either (answerRequest): the lists read after it show what is true.
+ */
 export async function declineRequest(requestId: string): Promise<void> {
-  await api.post<unknown>(`/follows/requests/${encodeURIComponent(requestId)}/decline`, {});
+  await answerRequest(requestId, 'decline');
 }

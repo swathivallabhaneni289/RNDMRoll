@@ -9,12 +9,12 @@ import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { ApiError } from '@/lib/api/client';
 import {
-  acceptRequest,
-  declineRequest,
+  answerRequest,
   firstName,
   follow,
   getFollows,
   type FollowRequest,
+  type Follows,
   type Person,
   type Relation,
 } from '@/lib/api/social';
@@ -32,7 +32,10 @@ type Accepted = { person: Person; relation: Relation };
  * list. Every follow is a request (developer, 2026-10-16), so this is where they are answered.
  * Each row has Accept and Decline. An accepted row stays with "Follow back" (or "Following" or
  * "Requested" when that is already true) until the person leaves; a declined row goes at once,
- * and the other person is never told. No bottom bar, so the page keeps all four safe-area edges.
+ * and the other person is never told. A request that went away while the page was open (cancelled,
+ * or a block) leaves at the first tap on either button, with no line: cancels are silent (SOC-02).
+ * One whose earlier Accept went through with its answer lost shows as accepted. A failed tap keeps
+ * the row for another try. No bottom bar, so the page keeps all four safe-area edges.
  */
 export function FollowRequestsScreen() {
   const router = useRouter();
@@ -90,27 +93,46 @@ export function FollowRequestsScreen() {
     }
   }
 
+  /** The row as accepted. What the caller already is toward this person decides the button left on it. */
+  function showAccepted(request: FollowRequest, lists: Follows | null) {
+    const relation: Relation = lists?.following.some((p) => p.id === request.person.id)
+      ? 'following'
+      : lists?.outgoing.some((r) => r.person.id === request.person.id)
+        ? 'requested'
+        : 'none';
+    setAccepted((now) => ({
+      ...now,
+      [request.request_id]: { person: request.person, relation },
+    }));
+    if (lists) setRequests(lists.incoming);
+  }
+
   function accept(request: FollowRequest) {
     void act(async () => {
-      await acceptRequest(request.request_id);
-      // What the caller already is toward this person decides the button left on the row.
+      const answer = await answerRequest(request.request_id, 'accept');
       const lists = await getFollows().catch(() => null);
-      const relation: Relation = lists?.following.some((p) => p.id === request.person.id)
-        ? 'following'
-        : lists?.outgoing.some((r) => r.person.id === request.person.id)
-          ? 'requested'
-          : 'none';
-      setAccepted((now) => ({
-        ...now,
-        [request.request_id]: { person: request.person, relation },
-      }));
-      if (lists) setRequests(lists.incoming);
+      if (answer === 'gone' && !lists?.followers.some((p) => p.id === request.person.id)) {
+        // Cancelled meanwhile, or a block: the row goes without a word. Gone while they follow you
+        // means an earlier Accept went through with its answer lost, and the row shows as accepted.
+        setRequests((now) => (lists ? lists.incoming : (now ?? []).filter((r) => r.request_id !== request.request_id)));
+        return;
+      }
+      showAccepted(request, lists);
     });
   }
 
   function decline(request: FollowRequest) {
     void act(async () => {
-      await declineRequest(request.request_id);
+      const answer = await answerRequest(request.request_id, 'decline');
+      if (answer === 'gone') {
+        // Cancelled meanwhile, or a block: the row goes as on a decline. Unless an earlier Accept
+        // went through with its answer lost: they follow you now, and the row shows as accepted.
+        const lists = await getFollows().catch(() => null);
+        if (lists?.followers.some((p) => p.id === request.person.id)) {
+          showAccepted(request, lists);
+          return;
+        }
+      }
       setRequests((now) => (now ?? []).filter((r) => r.request_id !== request.request_id));
     });
   }

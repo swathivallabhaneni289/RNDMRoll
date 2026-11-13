@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Pressable, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Circle, Path, Svg } from 'react-native-svg';
@@ -11,6 +11,8 @@ const DISC = 104;
 const RING_R = 64;
 const SIZE = RING_R * 2;
 const BADGE = 40;
+/** How long a photo that would not load waits for its one quiet second try (a short loss of connection passes). */
+const RETRY_AFTER_MS = 10 * 1000;
 
 function polar(r: number, deg: number) {
   const a = (deg * Math.PI) / 180;
@@ -43,7 +45,9 @@ function initialsOf(name: string) {
  * ring (drawn, static, ink at low opacity); `ring={false}` gives the plain circle used by the
  * profile form, and `badge` adds the small camera badge on a photo's lower right edge. A photo that
  * will not load (its link may have run out) shows the initials, also where the empty disc is the
- * camera: the person has a photo. A fresh link for it is tried again.
+ * camera: the person has a photo. A fresh link for it is tried at once. The same link (it stays the
+ * same for up to half an hour) is tried once more a short while later, and again each time the app
+ * comes back from the background; never in a loop.
  */
 export function DialAvatar({
   name,
@@ -65,7 +69,31 @@ export function DialAvatar({
   const outer = ring ? SIZE : DISC;
   // The link that would not load; the photo shows again for any other link.
   const [failedUri, setFailedUri] = useState<string | null>(null);
+  // The link that has had its one quiet second try.
+  const retriedRef = useRef<string | null>(null);
   const photo = uri && uri !== failedUri ? uri : null;
+
+  // Only while a link has failed: one timer for its second try, and a return from the background
+  // (a system sheet only makes the app inactive, as in useForegroundReload). Both stop with it.
+  useEffect(() => {
+    if (failedUri === null) return;
+    const timer =
+      retriedRef.current === failedUri
+        ? null
+        : setTimeout(() => {
+            retriedRef.current = failedUri;
+            setFailedUri(null);
+          }, RETRY_AFTER_MS);
+    let wasBackgrounded = false;
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'background') wasBackgrounded = true;
+      if (next === 'active' && wasBackgrounded) setFailedUri(null);
+    });
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [failedUri]);
   const body = (
     <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
       {ring ? (

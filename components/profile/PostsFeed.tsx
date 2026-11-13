@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,10 +11,11 @@ import { useEntryMenu } from '@/components/entry/useEntryMenu';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { MenuSheet } from '@/components/ui/MenuSheet';
-import type { LatestComment, PostSocial } from '@/lib/api/diary';
+import type { DiaryItem, LatestComment, PostSocial } from '@/lib/api/diary';
 import type { Entry } from '@/lib/api/entries';
 import { firstName } from '@/lib/api/social';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
+import { placementStep } from '@/lib/board/placement';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
@@ -116,6 +117,8 @@ export function PostDetails({
  * has a top row with your photo, your username and its three dots (Edit, Archive, commenting,
  * Delete), the photos to swipe, and PostDetails under them. The diary sends each post's counts
  * and newest comment, so the list makes no read per post. The list pages as the end comes into view.
+ * A picture from past the list's first page has its pages read first, under the loading line, so
+ * the list opens at it and never jumps later (lib/board/placement.ts).
  */
 export function PostsFeed({ startId }: { startId: string }) {
   const router = useRouter();
@@ -130,8 +133,31 @@ export function PostsFeed({ startId }: { startId: string }) {
   const onPhotoError = usePhotoReload(diary.reload, diary.stale);
 
   const scrollRef = useRef<ScrollView>(null);
-  // Jump to the tapped post once, as soon as it has been laid out.
+  // Jump to the tapped post once, as soon as it has been laid out. A drag counts as placed too.
   const [placed, setPlaced] = useState(false);
+  // The rows a next page was last asked for with, while looking for the tapped post: when the rows
+  // are still these very ones and no page is on its way, none came, and the list has ended.
+  const [askedAt, setAskedAt] = useState<DiaryItem[] | null>(null);
+  const step = placed
+    ? null
+    : placementStep({
+        startId,
+        ids: posts.map((post) => post.entry.id),
+        ready: diary.status === 'ready',
+        loadingMore: diary.loadingMore,
+        moreFailed: diary.moreFailed,
+        askedAtThese: askedAt === diary.rows,
+      });
+  const searching = step === 'load_more' || step === 'wait';
+
+  useEffect(() => {
+    if (step === 'give_up') setPlaced(true);
+    if (step !== 'load_more') return;
+    setAskedAt(diary.rows);
+    diary.loadMore();
+    // `diary.loadMore` is a new function on every render; the step and the rows decide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, diary.rows]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -229,7 +255,7 @@ export function PostsFeed({ startId }: { startId: string }) {
         </View>
       ) : null}
 
-      {diary.status === 'loading' ? (
+      {diary.status === 'loading' || (diary.status === 'ready' && searching) ? (
         <View style={{ paddingHorizontal: space.lg, marginTop: space.xl }}>
           <AppText role="label" tone="muted">
             Loading your posts.
@@ -243,6 +269,7 @@ export function PostsFeed({ startId }: { startId: string }) {
         <ScrollView
           ref={scrollRef}
           onScroll={handleScroll}
+          onScrollBeginDrag={() => setPlaced(true)}
           scrollEventThrottle={200}
           showsVerticalScrollIndicator={false}
         >

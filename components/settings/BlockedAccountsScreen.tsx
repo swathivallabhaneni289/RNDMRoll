@@ -6,6 +6,7 @@ import { Chip } from '@/components/ui/Chip';
 import { Screen } from '@/components/ui/Screen';
 import { BackRow } from '@/components/settings/BackRow';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
+import { StatusMessage } from '@/components/today/StatusMessage';
 import { getBlocks, unblock, type BlockedAccount } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
@@ -74,18 +75,20 @@ function Row({
 
 /**
  * Settings > Blocked accounts (decision D-16): the people the person has blocked, each with a
- * round photo, the name, the @username and an 'Unblock' text link. Blocking itself comes with the
- * person pages of Phases 5 and 6; here there is only the list and Unblock.
+ * round photo, the name, the @username and an outlined 'Unblock' button. Blocking itself is on the
+ * person page (its three dots); here there is only the list and Unblock.
  *
- * The server side is built after Phase 3's server, so `GET /me/blocks` may 404 for now. Then the
- * list is simply empty ("You haven't blocked anyone."); there is never an error screen. A failed
- * Unblock keeps the row and shows one red line under it. The list is read on every focus, and on a
- * return from the background once 20 minutes old (its photo links stop working within an hour); a
- * later read that fails keeps the list on screen.
+ * The list is read on every focus, and on a return from the background once 20 minutes old (its
+ * photo links stop working within an hour). A first read that fails shows the plain line with Try
+ * again, never "You haven't blocked anyone."; a later read that fails keeps the list on screen. A
+ * failed Unblock keeps the row and shows one line under it.
  */
 export function BlockedAccountsScreen() {
-  // null until the first answer (or failure) settles, so the empty sentence does not flash.
+  // null until the first answer, so the empty sentence does not flash and never stands in for a
+  // read that failed.
   const [items, setItems] = useState<BlockedAccount[] | null>(null);
+  // Why the last read failed; shown only while there is no list yet.
+  const [failure, setFailure] = useState<'network' | 'generic' | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Only the newest read is used, and an Unblock that went through drops a read begun before it:
@@ -100,10 +103,11 @@ export function BlockedAccountsScreen() {
       const next = await getBlocks();
       if (seq !== seqRef.current) return;
       setItems(next);
+      setFailure(null);
       markLoaded();
-    } catch {
+    } catch (err) {
       if (seq !== seqRef.current) return;
-      setItems((current) => current ?? []);
+      setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
     }
   }, [markLoaded]);
 
@@ -142,7 +146,13 @@ export function BlockedAccountsScreen() {
           </AppText>
         </View>
 
-        {items === null ? null : items.length === 0 ? (
+        {items === null ? (
+          failure === null ? null : (
+            <View style={{ marginTop: space.lg }}>
+              <StatusMessage kind={failure} onRetry={() => void load()} />
+            </View>
+          )
+        ) : items.length === 0 ? (
           <View accessibilityLiveRegion="polite" style={{ marginTop: space.lg }}>
             <AppText role="body" tone="muted">
               You haven't blocked anyone.

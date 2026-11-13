@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { addComment, deleteComment, getPost, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
+import { countAfterComment, placeComment } from '@/lib/board/comments';
 import { isEntryId } from '@/lib/entry/rules';
 
 export type PostLoad = {
@@ -27,19 +28,6 @@ export type PostLoad = {
   startReply: (comment: Comment) => void;
   cancelReply: () => void;
 };
-
-/** `list` with `saved` placed after the last comment of its thread (a reply), or at the end. */
-function placeComment(list: Comment[], saved: Comment): Comment[] {
-  const rest = list.filter((item) => item.id !== saved.id);
-  const top = saved.parent_id;
-  if (top === null) return [...rest, saved];
-  let at = -1;
-  rest.forEach((item, index) => {
-    if (item.id === top || item.parent_id === top) at = index;
-  });
-  if (at === -1) return [...rest, saved];
-  return [...rest.slice(0, at + 1), saved, ...rest.slice(at + 1)];
-}
 
 /**
  * One post (GET /posts/{entry_id}) for the post page and for the extras of your own entry page.
@@ -130,16 +118,18 @@ export function usePost(id: string): PostLoad {
           put({
             ...now,
             comments: placeComment(list, saved),
-            card: { ...now.card, comment_count: (now.card.comment_count ?? list.length) + 1 },
+            card: { ...now.card, comment_count: countAfterComment(list, now.card.comment_count, saved) },
           });
         }
         if (mountedRef.current && replyToRef.current === parent) chooseReply(null);
         return null;
       } catch (err) {
         if (err instanceof ApiError && err.code === 'comments_off') void load();
-        if (parent !== null && err instanceof ApiError && err.code === 'not_found') {
-          // The comment being answered went away: reply mode ends and the list is read again.
-          if (mountedRef.current && replyToRef.current === parent) chooseReply(null);
+        if (err instanceof ApiError && err.code === 'not_found') {
+          // The post went away (deleted, archived, a block, no longer followed), or for a reply maybe
+          // only the comment being answered: reply mode ends, and the post is read again, which
+          // turns a gone post into its 'not here' line instead of a Post that fails on every tap.
+          if (parent !== null && mountedRef.current && replyToRef.current === parent) chooseReply(null);
           void load();
         }
         return socialErrorMessage(err, parent !== null ? 'reply' : 'comment');
