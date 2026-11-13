@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
@@ -159,13 +161,15 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	}
 	csrf := csrfOf(t, page)
 
-	// No CSRF token, or another site's Origin: refused.
-	if rec := adminDo(t, w, http.MethodPost, "/admin/people/"+b.id+"/disable", cookie, url.Values{}, ""); rec.Code != http.StatusForbidden {
-		t.Fatalf("no csrf: %d", rec.Code)
+	// No CSRF token: nothing is done, and the list says the page was out of
+	// date. Another site's Origin: refused. B is still enabled.
+	if rec := adminDo(t, w, http.MethodPost, "/admin/people/"+b.id+"/disable", cookie, url.Values{}, ""); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin?n=stale" {
+		t.Fatalf("no csrf: %d %q, want 303 to /admin?n=stale", rec.Code, rec.Header().Get("Location"))
 	}
 	if rec := adminDo(t, w, http.MethodPost, "/admin/people/"+b.id+"/disable", cookie, url.Values{"csrf": {csrf}}, "https://evil.example"); rec.Code != http.StatusForbidden {
 		t.Fatalf("cross origin: %d", rec.Code)
 	}
+	w.ok(b, http.MethodGet, "/v1/me", nil)
 	// The admin cannot disable themselves.
 	adminDo(t, w, http.MethodPost, "/admin/people/"+boss.id+"/disable", cookie, url.Values{"csrf": {csrf}}, "")
 	w.ok(boss, http.MethodGet, "/v1/me", nil)
@@ -681,9 +685,10 @@ func adminLinkFrom(t *testing.T, w *feedWorld, remote, token string) (*httptest.
 
 // A link from `make admin` (cmd/admin-link) opens the page with the usual
 // session for the admin it names, or for the first admin when it names none,
-// and works once. A link that has ended, is signed with another secret, or
-// names an account that is no admin lands on the log in page with the same
-// notice, and sets no cookie.
+// and works once. A link that was used, has ended or is signed with another
+// secret lands on the log in page with one notice; one that names an account
+// that is no admin, or no account, with another that says what to check.
+// Neither sets a cookie.
 func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 	w, _ := newAdminWorld(t)
 	w.person("ad_linker", "Lee Linker")
@@ -702,10 +707,10 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 		n++
 		return fmt.Sprintf("198.51.100.%d:1", 100+n)
 	}
-	refused := func(name string, rec *httptest.ResponseRecorder, cookie string) {
+	refused := func(name string, rec *httptest.ResponseRecorder, cookie, notice string) {
 		t.Helper()
-		if cookie != "" || rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login?n=badlink" {
-			t.Fatalf("%s: %d %q, cookie %q", name, rec.Code, rec.Header().Get("Location"), cookie)
+		if cookie != "" || rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login?n="+notice {
+			t.Fatalf("%s: %d %q, cookie %q, want %s", name, rec.Code, rec.Header().Get("Location"), cookie, notice)
 		}
 	}
 
@@ -719,26 +724,180 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 			t.Fatalf("the session a link for %q opened: %d", email, page.Code)
 		}
 		again, cookie := adminLinkFrom(t, w, from(), token)
-		refused("a used link", again, cookie)
+		refused("a used link", again, cookie, "badlink")
 	}
 
-	for _, c := range []struct{ name, token string }{
-		{"an ended link", mint(integrationJWTSecret, "", now.Add(-adminlink.TTL))},
-		{"another secret", mint([]byte("another-secret-that-is-at-least-32-bytes"), "", now)},
-		{"not an admin", mint(integrationJWTSecret, "ad_linker@example.com", now)},
-		{"no account", mint(integrationJWTSecret, "ad_nobody@example.com", now)},
-		{"garbled", "x.y.z.w"},
-		{"no token", ""},
+	for _, c := range []struct{ name, token, notice string }{
+		{"an ended link", mint(integrationJWTSecret, "", now.Add(-adminlink.TTL)), "badlink"},
+		{"another secret", mint([]byte("another-secret-that-is-at-least-32-bytes"), "", now), "badlink"},
+		{"not an admin", mint(integrationJWTSecret, "ad_linker@example.com", now), "noadmin"},
+		{"no account", mint(integrationJWTSecret, "ad_nobody@example.com", now), "noadmin"},
+		{"garbled", "x.y.z.w", "badlink"},
+		{"no token", "", "badlink"},
 	} {
 		rec, cookie := adminLinkFrom(t, w, from(), c.token)
-		refused(c.name, rec, cookie)
+		refused(c.name, rec, cookie, c.notice)
 	}
 
 	// The log in page names the way in, and a refused link says what to do.
-	login := adminDo(t, w, http.MethodGet, "/admin/login?n=badlink", "", nil, "").Body.String()
-	for _, want := range []string{"Run <code>make admin</code> in the RNDMRoll folder", "That link expired or was already used. Run make admin for a new one."} {
-		if !strings.Contains(login, want) {
-			t.Fatalf("the log in page lacks %q", want)
+	for notice, words := range map[string]string{
+		"badlink": "That link expired or was already used. Run make admin for a new one.",
+		"noadmin": "No admin account for that link. Check ADMIN_EMAILS, make the account if needed, then restart the server.",
+	} {
+		login := adminDo(t, w, http.MethodGet, "/admin/login?n="+notice, "", nil, "").Body.String()
+		for _, want := range []string{"Run <code>make admin</code> in the RNDMRoll folder", words} {
+			if !strings.Contains(login, want) {
+				t.Fatalf("the log in page with %s lacks %q", notice, want)
+			}
 		}
 	}
+}
+
+// A new password ends the admin session, as it ends the app's other
+// sessions, whichever way it comes: Change password in the app, a Forgot
+// password reset, or `make password` (UserRepo.SetPassword). Each time the
+// old cookie goes back to log in, and the new password logs in.
+func TestAdminIntegration_ANewPasswordEndsTheAdminSession(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	w, boss := newAdminWorldOn(t, pool)
+	const email = "ad_boss@example.com"
+	// Each log in from its own address, so no limit answers.
+	n := 0
+	login := func(password string) string {
+		t.Helper()
+		n++
+		_, cookie := adminLoginFrom(t, w, fmt.Sprintf("198.51.100.%d:1", 120+n), email, password)
+		if cookie == "" {
+			t.Fatalf("the admin could not log in with %q", password)
+		}
+		if rec := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, ""); rec.Code != http.StatusOK {
+			t.Fatalf("a new session: %d", rec.Code)
+		}
+		return cookie
+	}
+	ended := func(how, cookie string) {
+		t.Helper()
+		rec := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "")
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login?n=expired" {
+			t.Fatalf("the admin session after %s: %d %q, want 303 to /admin/login?n=expired", how, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+
+	cookie := login(adminTestPassword)
+	const changed = "Changed-horse-battery-staple2"
+	w.ok(boss, http.MethodPost, "/v1/me/password", map[string]any{"current_password": adminTestPassword, "new_password": changed})
+	ended("Change password", cookie)
+
+	// Forgot password, through its own routes on the same database (as
+	// newResetWorld wires them, which would empty it first).
+	cookie = login(changed)
+	sender := &captureSender{}
+	reset := NewPasswordResetHandler(postgres.NewUserRepo(pool), auth.NewRefreshService(postgres.NewRefreshTokenRepo(pool), time.Hour),
+		postgres.NewPasswordResetRepo(pool), sender, integrationJWTSecret, 15*time.Minute)
+	reset.floor = 0
+	t.Cleanup(reset.Wait)
+	routes := gin.New()
+	reset.Register(routes.Group("/v1"))
+	resetCall := func(path string, body map[string]any) {
+		t.Helper()
+		rec := integrationDo(t, routes, http.MethodPost, path, "", body)
+		reset.Wait()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	resetCall("/v1/auth/password/forgot", map[string]any{"email": email})
+	code := sender.lastCode(t, email)
+	resetCall("/v1/auth/password/verify", map[string]any{"email": email, "code": code})
+	const resetTo = "Reset-horse-battery-staple3"
+	resetCall("/v1/auth/password/reset", map[string]any{"email": email, "code": code, "new_password": resetTo})
+	ended("a Forgot password reset", cookie)
+
+	cookie = login(resetTo)
+	const setTo = "Set-horse-battery-staple4"
+	hash, err := auth.HashPassword(setTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := postgres.NewUserRepo(pool).SetPassword(context.Background(), uuid.MustParse(boss.id), hash); err != nil {
+		t.Fatal(err)
+	}
+	ended("make password", cookie)
+	login(setTo)
+}
+
+// adminReportID is the report id an open report's forms carry.
+func adminReportID(t *testing.T, report string) string {
+	t.Helper()
+	const mark = `name="id" value="`
+	i := strings.Index(report, mark)
+	if i < 0 {
+		t.Fatalf("the report has no form: %s", report)
+	}
+	return report[i+len(mark) : i+len(mark)+36]
+}
+
+// Remove closes every report still open on the post or comment, whoever made
+// it, and leaves a report already dismissed as it was. With nothing left
+// open, the person leaves the open reports.
+func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
+	w, _ := newAdminWorld(t)
+	b := w.person("ad_bob", "Bob Brown")
+	const day = "2026-10-08"
+	bEntry := w.post(b, day)
+	comment := w.call(b, http.MethodPost, "/v1/posts/"+bEntry+"/comments", map[string]any{"text": "rude"}, http.StatusCreated)["comment"].(map[string]any)["id"].(string)
+	var reporters []feedPerson
+	for _, username := range []string{"ad_alice", "ad_cara", "ad_dana"} {
+		p := w.person(username, "Reporter "+username)
+		w.followAccepted(p, b)
+		w.post(p, day)
+		reporters = append(reporters, p)
+	}
+	for i, reason := range []string{"spam", "hate", "violence"} {
+		w.ok(reporters[i], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": reason})
+	}
+	for i, reason := range []string{"harassment", "nudity"} {
+		w.ok(reporters[i], http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": reason})
+	}
+
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	if cookie == "" {
+		t.Fatal("the admin could not log in")
+	}
+	personPage := func() string {
+		t.Helper()
+		return adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
+	}
+	act := func(action, kind, mark, notice string) {
+		t.Helper()
+		page := personPage()
+		rec := adminDo(t, w, http.MethodPost, "/admin/reports/"+action, cookie, url.Values{"csrf": {csrfOf(t, page)},
+			"kind": {kind}, "id": {adminReportID(t, adminReportOf(t, page, mark))}, "person": {b.id}}, "")
+		if rec.Header().Get("Location") != "/admin/people/"+b.id+"?n="+notice {
+			t.Fatalf("%s the report %q: %d %q, want %s", action, mark, rec.Code, rec.Header().Get("Location"), notice)
+		}
+	}
+	act("dismiss", "post", "Post · Violence or threats", "dismissed")
+	act("remove", "comment", "Comment · Bullying or harassment", "removed")
+	act("remove", "post", "Post · Hate speech", "removed")
+
+	page := personPage()
+	for mark, closed := range map[string]string{
+		"Post · Spam":                        "Removed",
+		"Post · Hate speech":                 "Removed",
+		"Post · Violence or threats":         "Dismissed",
+		"Comment · Bullying or harassment":   "Removed",
+		"Comment · Nudity or sexual content": "Removed",
+	} {
+		if report := adminReportOf(t, page, mark); !strings.Contains(report, `<p class="muted">`+closed+` · `) {
+			t.Fatalf("the report %q, want %s: %s", mark, closed, report)
+		}
+	}
+	if strings.Contains(page, "<button>Dismiss</button>") || strings.Contains(page, "Remove post") || strings.Contains(page, "Remove comment") {
+		t.Fatalf("a closed report still offers an action: %s", page)
+	}
+	if list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String(); !strings.Contains(list, "No open reports.") {
+		t.Fatalf("the list still has open reports: %s", list)
+	}
+	w.call(reporters[0], http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
 }

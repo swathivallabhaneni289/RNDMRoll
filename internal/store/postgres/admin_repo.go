@@ -168,13 +168,43 @@ func (r *AdminRepo) Resolve(ctx context.Context, kind string, id, person uuid.UU
 	return tag.RowsAffected() > 0, err
 }
 
-// ResolveTarget implements admin.Repository.
-func (r *AdminRepo) ResolveTarget(ctx context.Context, kind string, target uuid.UUID, resolution string, at time.Time) error {
-	q := `update post_reports set resolved_at = $3, resolution = $2 where entry_id = $1 and resolved_at is null`
+// OpenReportIDs implements admin.Repository.
+func (r *AdminRepo) OpenReportIDs(ctx context.Context, kind string, target uuid.UUID) ([]uuid.UUID, error) {
+	q := `select id from post_reports where entry_id = $1 and resolved_at is null`
 	if kind == admin.KindComment {
-		q = `update comment_reports set resolved_at = $3, resolution = $2 where comment_id = $1 and resolved_at is null`
+		q = `select id from comment_reports where comment_id = $1 and resolved_at is null`
+	} else if kind != admin.KindPost {
+		return nil, admin.ErrNotFound
 	}
-	_, err := r.pool.Exec(ctx, q, target, resolution, at)
+	rows, err := r.pool.Query(ctx, q, target)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// ResolveIDs implements admin.Repository. It closes by id, not by target, so
+// it still finds the reports of a post or comment that is gone.
+func (r *AdminRepo) ResolveIDs(ctx context.Context, kind string, ids []uuid.UUID, resolution string, at time.Time) error {
+	q := `update post_reports set resolved_at = $3, resolution = $2 where id = any($1::uuid[]) and resolved_at is null`
+	if kind == admin.KindComment {
+		q = `update comment_reports set resolved_at = $3, resolution = $2 where id = any($1::uuid[]) and resolved_at is null`
+	} else if kind != admin.KindPost {
+		return admin.ErrNotFound
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, q, ids, resolution, at)
 	return err
 }
 

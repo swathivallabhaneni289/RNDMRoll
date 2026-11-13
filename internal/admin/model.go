@@ -98,8 +98,13 @@ type Repository interface {
 	Reports(ctx context.Context, person uuid.UUID) ([]Report, error)
 	// Resolve closes one open report about person. False when there was none.
 	Resolve(ctx context.Context, kind string, id, person uuid.UUID, resolution string, at time.Time) (bool, error)
-	// ResolveTarget closes every open report on one post or comment.
-	ResolveTarget(ctx context.Context, kind string, target uuid.UUID, resolution string, at time.Time) error
+	// OpenReportIDs is the id of every open report on one post or comment
+	// (kind KindPost or KindComment). Remove reads them before it deletes
+	// the target: once it is gone its reports no longer point at it.
+	OpenReportIDs(ctx context.Context, kind string, target uuid.UUID) ([]uuid.UUID, error)
+	// ResolveIDs closes the reports of kind with these ids that are still
+	// open.
+	ResolveIDs(ctx context.Context, kind string, ids []uuid.UUID, resolution string, at time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error
 	// ReportTarget is the post or comment an open-or-closed report points

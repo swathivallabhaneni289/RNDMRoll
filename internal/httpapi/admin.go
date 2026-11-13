@@ -10,16 +10,20 @@
 //     ADMIN_EMAILS nothing here is mounted.
 //   - Log in counts its tries at an account with the app's log in (5 a
 //     minute per address and account), and past that answers as a wrong
-//     password does.
+//     password does. Log in and the links also allow 5 a minute per address,
+//     and past that the log in page asks to wait (perAddress).
 //   - `make admin` (cmd/admin-link) opens the page without a password: a
 //     link signed with the cookie's own secret, so it opens nothing that
 //     secret could not (internal/adminlink). It works for two minutes, once.
 //   - The session is an HttpOnly, SameSite=Strict cookie signed for the admin
 //     page only (an app token never works here, and this cookie never works
-//     in the app). The allowlist and the disabled flag are checked again on
-//     every request.
+//     in the app). It carries a mark of the account's password, so a new
+//     password (changed, reset or set with `make password`) ends it, as it
+//     ends the app's other sessions (passwordMark). The allowlist, the
+//     disabled flag and that mark are checked again on every request.
 //   - Every action is a POST carrying a CSRF token tied to the session, and a
-//     cross-site Origin is refused.
+//     cross-site Origin is refused. A token from an older session (a page
+//     left open across a new log in) does nothing and goes back to the list.
 //   - Pages are html/template (every user-written text is escaped), with a
 //     strict Content-Security-Policy and no framing.
 //   - It opens only people someone reported and disabled accounts, and never
@@ -52,6 +56,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
@@ -61,6 +66,9 @@ var adminFiles embed.FS
 const (
 	adminCookie     = "rndmroll_admin"
 	adminSessionTTL = 8 * time.Hour
+	// adminCloseTimeout bounds closing the reports of a post or comment the
+	// admin removed, which goes on after the browser has left (remove).
+	adminCloseTimeout = 10 * time.Second
 )
 
 // The reasons as the admin reads them (the same list the app shows).
@@ -88,6 +96,9 @@ var adminNotices = map[string]string{
 	"badlogin":    "Wrong email or password, or this account is not an admin.",
 	"expired":     "Please log in again.",
 	"badlink":     "That link expired or was already used. Run make admin for a new one.",
+	"noadmin":     "No admin account for that link. Check ADMIN_EMAILS, make the account if needed, then restart the server.",
+	"slowdown":    "Too many tries. Wait a minute and try again.",
+	"stale":       "That page was out of date. Try again.",
 	"nothingopen": "That report was already closed.",
 }
 
@@ -234,12 +245,8 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 		c.Data(http.StatusOK, "text/css; charset=utf-8", h.css)
 	})
 	g.GET("/login", h.loginPage)
-	g.POST("/login", middleware.RateLimit(middleware.LimitConfig{
-		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP, Clock: h.now,
-	}), h.sameOrigin, h.login)
-	g.GET("/link", middleware.RateLimit(middleware.LimitConfig{
-		Requests: 5, Window: time.Minute, KeyFunc: middleware.KeyByIP, Clock: h.now,
-	}), h.openLink)
+	g.POST("/login", h.perAddress(), h.sameOrigin, h.login)
+	g.GET("/link", h.perAddress(), h.openLink)
 
 	in := g.Group("")
 	in.Use(h.requireAdmin)
@@ -250,6 +257,21 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 	in.POST("/reports/remove", h.sameOrigin, h.checkCSRF, h.remove)
 	in.POST("/people/:id/disable", h.sameOrigin, h.checkCSRF, h.disable)
 	in.POST("/people/:id/enable", h.sameOrigin, h.checkCSRF, h.enable)
+}
+
+// perAddress allows one route 5 requests a minute per address (KeyByIP), each
+// route counting on its own. Past that it answers with the log in page asking
+// to wait, not the API's JSON refusal: this is a page in a browser. The log
+// in page itself has no limit, so that answer always shows.
+func (h *AdminHandler) perAddress() gin.HandlerFunc {
+	limit := middleware.NewLimiter(5, time.Minute, h.now)
+	return func(c *gin.Context) {
+		if !limit.Allow(middleware.KeyByIP(c)) {
+			h.toLogin(c, "slowdown")
+			return
+		}
+		c.Next()
+	}
 }
 
 // adminHeaders keeps the page from being framed, cached or loading anything
@@ -275,27 +297,47 @@ func (h *AdminHandler) sign(purpose, payload string) string {
 	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
-func (h *AdminHandler) newSession(id uuid.UUID, now time.Time) string {
-	payload := id.String() + "." + strconv.FormatInt(now.Add(adminSessionTTL).Unix(), 10)
+// passwordMark ties a session to the account's password: a short signature
+// of its hash. Every new password has a new hash (bcrypt salts each one), so
+// changing, resetting or setting the password ends every admin session, as it
+// ends the app's other sessions. Without the secret the mark says nothing
+// about the hash.
+func (h *AdminHandler) passwordMark(u *user.User) string {
+	hash := ""
+	if u.PasswordHash != nil {
+		hash = *u.PasswordHash
+	}
+	return h.sign("password", u.ID.String()+":"+hash)[:22]
+}
+
+// newSession is the cookie value of a session for the account id whose
+// password has mark: id.expiry.mark.signature.
+func (h *AdminHandler) newSession(id uuid.UUID, mark string, now time.Time) string {
+	payload := id.String() + "." + strconv.FormatInt(now.Add(adminSessionTTL).Unix(), 10) + "." + mark
 	return payload + "." + h.sign("session", payload)
 }
 
-// sessionUser reads a signed, unexpired session cookie value.
-func (h *AdminHandler) sessionUser(value string, now time.Time) (uuid.UUID, bool) {
+// sessionUser reads a signed, unexpired session cookie value: the account and
+// the password mark it was signed with. A cookie from before the mark (three
+// parts) is refused, so its admin logs in once more.
+func (h *AdminHandler) sessionUser(value string, now time.Time) (id uuid.UUID, mark string, ok bool) {
 	parts := strings.Split(value, ".")
-	if len(parts) != 3 {
-		return uuid.UUID{}, false
+	if len(parts) != 4 {
+		return uuid.UUID{}, "", false
 	}
-	payload := parts[0] + "." + parts[1]
-	if !hmac.Equal([]byte(parts[2]), []byte(h.sign("session", payload))) {
-		return uuid.UUID{}, false
+	payload := parts[0] + "." + parts[1] + "." + parts[2]
+	if !hmac.Equal([]byte(parts[3]), []byte(h.sign("session", payload))) {
+		return uuid.UUID{}, "", false
 	}
 	exp, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || now.Unix() >= exp {
-		return uuid.UUID{}, false
+		return uuid.UUID{}, "", false
 	}
-	id, err := uuid.Parse(parts[0])
-	return id, err == nil
+	id, err = uuid.Parse(parts[0])
+	if err != nil {
+		return uuid.UUID{}, "", false
+	}
+	return id, parts[2], true
 }
 
 func (h *AdminHandler) setCookie(c *gin.Context, value string, maxAge int) {
@@ -315,15 +357,24 @@ func (h *AdminHandler) isAdmin(u *user.User) bool {
 
 const adminUserKey = "admin_user"
 
+// requireAdmin lets a request through only with a session of an admin whose
+// password has not changed since it began. Only a definite no ends the
+// session: a lookup that fails for any reason but "no such account" is a
+// failure page, and the cookie stays.
 func (h *AdminHandler) requireAdmin(c *gin.Context) {
 	cookie, err := c.Cookie(adminCookie)
-	id, ok := h.sessionUser(cookie, time.Now())
+	id, mark, ok := h.sessionUser(cookie, time.Now())
 	if err != nil || !ok {
 		h.toLogin(c, "expired")
 		return
 	}
 	u, err := h.users.GetByID(c.Request.Context(), id)
-	if err != nil || !h.isAdmin(u) {
+	if err != nil && !errors.Is(err, user.ErrNotFound) {
+		h.fail(c, err)
+		c.Abort()
+		return
+	}
+	if err != nil || !h.isAdmin(u) || !hmac.Equal([]byte(mark), []byte(h.passwordMark(u))) {
 		h.setCookie(c, "", -1)
 		h.toLogin(c, "expired")
 		return
@@ -348,9 +399,14 @@ func (h *AdminHandler) csrf(c *gin.Context) string {
 	return h.sign("csrf", cookie)
 }
 
+// checkCSRF refuses an action whose form token is not this session's. Each
+// log in makes a new cookie and so a new token: a form from a page opened
+// before the latest log in, or from no admin page at all, does nothing and
+// goes back to the list, which says the page was out of date.
 func (h *AdminHandler) checkCSRF(c *gin.Context) {
 	if !hmac.Equal([]byte(c.PostForm("csrf")), []byte(h.csrf(c))) {
-		c.AbortWithStatus(http.StatusForbidden)
+		c.Redirect(http.StatusSeeOther, "/admin?n=stale")
+		c.Abort()
 		return
 	}
 	c.Next()
@@ -419,15 +475,18 @@ func (h *AdminHandler) login(c *gin.Context) {
 		h.toLogin(c, "badlogin")
 		return
 	}
-	h.setCookie(c, h.newSession(u.ID, time.Now()), int(adminSessionTTL.Seconds()))
+	h.setCookie(c, h.newSession(u.ID, h.passwordMark(u), time.Now()), int(adminSessionTTL.Seconds()))
 	c.Redirect(http.StatusSeeOther, "/admin")
 }
 
 // openLink answers a link from `make admin` (cmd/admin-link). A link signed
 // with the page's secret, unexpired and unused, opens the page for the admin
 // it names, or for the first admin when it names none. It is spent before the
-// account is looked up, so a link that fails once never works later, and
-// every failure is the same notice.
+// account is looked up, so a link that fails once never works later. A bad,
+// ended or used link is one notice. A good link for no admin (no account, one
+// that is not an admin, or no admin found when the server started) is another
+// that says what to check: it tells nothing to anyone without the secret, as
+// only a link signed with it gets that far.
 //
 // The answer is a page that moves on to /admin, not a redirect: a browser
 // that counts the link's own navigation as coming from elsewhere (opened
@@ -452,11 +511,11 @@ func (h *AdminHandler) openLink(c *gin.Context) {
 		return
 	}
 	if err != nil || !h.isAdmin(u) {
-		h.toLogin(c, "badlink")
+		h.toLogin(c, "noadmin")
 		return
 	}
 	log.Printf("httpapi: admin page opened with a link for account %s", u.ID)
-	h.setCookie(c, h.newSession(u.ID, time.Now()), int(adminSessionTTL.Seconds()))
+	h.setCookie(c, h.newSession(u.ID, h.passwordMark(u), time.Now()), int(adminSessionTTL.Seconds()))
 	h.render(c, "opened", adminPage{Title: "Opening", Refresh: true})
 }
 
@@ -591,8 +650,11 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 
 // remove takes down the reported post (through the app's own delete, so its
 // photos, the photos in its comments and the posted day are handled as when
-// its owner deletes it) or the reported comment, and closes every open report
-// on it.
+// its owner deletes it) or the reported comment, and then closes every report
+// that was open on it. Their ids are read first, since once the post or
+// comment is gone its reports no longer point at it, and they are closed only
+// once it is gone: a delete that fails closes nothing, so the page still
+// offers Remove.
 func (h *AdminHandler) remove(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -609,10 +671,8 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		back(c, person, "gone")
 		return
 	}
-	now := time.Now().UTC()
-	// Closed first: once the post or comment is gone its reports no longer
-	// point at it.
-	if err := h.repo.ResolveTarget(ctx, kind, *target, admin.Removed, now); err != nil {
+	open, err := h.repo.OpenReportIDs(ctx, kind, *target)
+	if err != nil {
 		back(c, person, "failed")
 		return
 	}
@@ -624,8 +684,22 @@ func (h *AdminHandler) remove(c *gin.Context) {
 	} else {
 		err = h.removePost(ctx, owner, *target)
 	}
+	if errors.Is(err, spin.ErrEntryNotFound) {
+		// It was deleted meanwhile (by its owner, say): this closes nothing.
+		back(c, person, "gone")
+		return
+	}
 	if err != nil {
 		log.Printf("httpapi: admin remove %s: %v", kind, err)
+		back(c, person, "failed")
+		return
+	}
+	// It is gone, so its reports are closed even when the browser has left
+	// meanwhile. Should that fail, they show it gone, to dismiss.
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), adminCloseTimeout)
+	defer cancel()
+	if err := h.repo.ResolveIDs(closeCtx, kind, open, admin.Removed, time.Now().UTC()); err != nil {
+		log.Printf("httpapi: admin remove %s, closing its reports: %v", kind, err)
 		back(c, person, "failed")
 		return
 	}
