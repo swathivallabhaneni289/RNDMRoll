@@ -24,7 +24,7 @@ type resendSender struct {
 }
 
 // NewResendSender returns a Sender backed by Resend. Resend was selected at
-// planning time (RESEARCH.md Open Question 2): it needs no AWS sandbox exit
+// planning time (01-RESEARCH.md Open Question 2): it needs no AWS sandbox exit
 // and no SDK dependency, only a single HTTPS POST.
 func NewResendSender(apiKey, fromAddress, fromName string) Sender {
 	return &resendSender{

@@ -65,7 +65,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 // mapUniqueViolation maps a Postgres unique-violation (SQLSTATE 23505) on
 // one of the users table's two unique indexes to its typed domain error.
 // This insert-time mapping is the authoritative uniqueness decision (see
-// RESEARCH.md Pitfall 4), and it returns nil for any other kind of error,
+// 01-RESEARCH.md Pitfall 4), and it returns nil for any other kind of error,
 // including no error at all.
 func mapUniqueViolation(err error) error {
 	var pgErr *pgconn.PgError

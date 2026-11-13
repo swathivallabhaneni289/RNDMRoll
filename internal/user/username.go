@@ -23,7 +23,7 @@ const (
 	// fallbackUsernameBase is returned by NormalizeUsername when the input
 	// strips down to nothing usable (e.g. a display name written entirely
 	// in a non-Latin script) -- so a suggestion is never a blank field,
-	// per RESEARCH.md's Anti-Patterns guidance.
+	// per 01-RESEARCH.md's Anti-Patterns guidance.
 	fallbackUsernameBase = "user"
 
 	// maxSuggestAttempts bounds how many random candidates SuggestUsername

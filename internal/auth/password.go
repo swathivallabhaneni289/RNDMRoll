@@ -16,7 +16,7 @@ import (
 
 // MaxPasswordBytes is bcrypt's hard algorithmic ceiling, measured in bytes
 // rather than characters -- a multi-byte UTF-8 password hits it sooner than
-// its visible length suggests. RESEARCH.md Pitfall 1: the correct response
+// its visible length suggests. 01-RESEARCH.md Pitfall 1: the correct response
 // is a clear validation error, not a pre-hash workaround such as hashing
 // with SHA-256 before bcrypt. Forgot password checks it before a code try is
 // counted.

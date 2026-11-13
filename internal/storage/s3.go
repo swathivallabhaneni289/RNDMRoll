@@ -126,10 +126,9 @@ type Config struct {
 }
 
 // presigner is the seam s3_test.go substitutes with a stub, so no test in
-// this package reaches a real S3-compatible endpoint over the network.
-// Real-bucket verification is deferred to a later phase-1 checkpoint (see
-// SUMMARY.md) since S3 credentials are not yet provisioned in this
-// environment.
+// this package reaches a real S3-compatible endpoint over the network. The
+// real bucket (a private Supabase Storage bucket, or MinIO when run
+// locally) is checked by running the app against it, not by these tests.
 type presigner interface {
 	PresignPutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }

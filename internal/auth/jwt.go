@@ -56,7 +56,7 @@ func ParseAccessToken(tokenString string, secret []byte) (uuid.UUID, error) {
 // ParseSessionAccessToken verifies tokenString's signature and claims against
 // secret. It explicitly allow-lists HS256 via jwt.WithValidMethods and
 // re-asserts the token's method is *jwt.SigningMethodHMAC inside the
-// keyfunc -- the mitigation RESEARCH.md's Security Domain names for
+// keyfunc -- the mitigation 01-RESEARCH.md's Security Domain names for
 // algorithm-confusion attacks (e.g. alg: none), rather than relying on
 // library defaults alone.
 //

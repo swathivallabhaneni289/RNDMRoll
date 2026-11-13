@@ -30,7 +30,7 @@ type Mailer interface {
 
 // Sender is the narrow transport contract a mail provider satisfies: given a
 // fully composed message, deliver it. Keeping this separate from Mailer is
-// what makes the provider swappable (RESEARCH.md Open Question 2): Service
+// what makes the provider swappable (01-RESEARCH.md Open Question 2): Service
 // owns token issuance and message composition, while a Sender only knows how
 // to hand a finished message to a transport.
 type Sender interface {

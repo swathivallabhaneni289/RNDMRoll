@@ -1,7 +1,7 @@
 // Package httpapi: username.go implements the advisory username-suggestion
 // and availability endpoints. Both need NO token (the sign-up page calls
 // them before an account exists) and are rate limited per IP to blunt use as
-// an account-enumeration oracle (RESEARCH.md Security Domain). Neither is
+// an account-enumeration oracle (01-RESEARCH.md Security Domain). Neither is
 // authoritative -- the save-time unique-constraint conflict handled in
 // profile.go's patchMe and in sign-up is what actually decides a username,
 // per PATTERNS.md's race-condition note.

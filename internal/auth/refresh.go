@@ -19,7 +19,7 @@ const refreshTokenBytes = 32
 
 // RefreshService issues, redeems, and revokes opaque refresh tokens backed
 // by a user.RefreshTokenRepository. Only a SHA-256 digest of each token is
-// ever persisted -- RESEARCH.md's Security Domain requires refresh tokens
+// ever persisted -- 01-RESEARCH.md's Security Domain requires refresh tokens
 // be stored hashed so a database disclosure does not hand over live
 // sessions.
 type RefreshService struct {
@@ -102,7 +102,7 @@ func (s *RefreshService) IssueInTransaction(ctx context.Context, persist func(ha
 // freshly rotated replacement token, revoking the presented token and
 // inserting the replacement in one transactional call to the repository's
 // Rotate. Returning a new token on every redemption is the replay-window
-// mitigation RESEARCH.md prescribes: a stolen token is useful only until
+// mitigation 01-RESEARCH.md prescribes: a stolen token is useful only until
 // the legitimate client's next refresh, at which point the thief's copy is
 // already revoked. newID is the replacement's id, the session the new access
 // token names; the session carries on under it (Rotate moves what was tied

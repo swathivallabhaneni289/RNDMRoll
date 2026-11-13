@@ -148,7 +148,7 @@ func TestJWT_ParseRejectsExpiredToken(t *testing.T) {
 // handCraftedAlgNoneToken builds a JWT by hand with alg:none and an empty
 // signature. golang-jwt will not sign a token like this for us, so the
 // header and payload segments are base64url-encoded and joined manually,
-// per RESEARCH.md's algorithm-confusion mitigation this test proves.
+// per 01-RESEARCH.md's algorithm-confusion mitigation this test proves.
 func handCraftedAlgNoneToken(t *testing.T, subject string) string {
 	t.Helper()
 
