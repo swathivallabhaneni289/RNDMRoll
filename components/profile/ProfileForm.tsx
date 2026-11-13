@@ -12,9 +12,11 @@ import { Screen } from '@/components/ui/Screen';
 import { TextButton } from '@/components/ui/TextButton';
 import { FieldSuccess, TextField } from '@/components/ui/TextField';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
-import { api, ApiError } from '@/lib/api/client';
+import { api, ApiError, isRetryable } from '@/lib/api/client';
 import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
+import { sayIfRestored } from '@/lib/auth/restored';
+import { opensExtras, shouldTryLogin, signupAnswerLost, type SignupTry } from '@/lib/auth/signupRetry';
 import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
 import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { setSettingsNotice } from '@/lib/settings/notice';
@@ -184,6 +186,10 @@ export function ProfileForm({
   // A photo that already uploaded is remembered by its local file, with the key it got, so a
   // retry after a failed later step never uploads it twice.
   const uploadedRef = useRef<{ uri: string; key: string } | null>(null);
+  // The last sign-up try that may have made an account this phone is not signed in to: its answer
+  // was lost, or the session it brought could not be kept. A later email_taken for the same email
+  // and password logs in to that account (lib/auth/signupRetry.ts). Cleared once signed in.
+  const lostSignupRef = useRef<SignupTry | null>(null);
 
   useEffect(() => {
     usernameRef.current = username;
@@ -545,11 +551,51 @@ export function ProfileForm({
       name: trimmedName,
       username,
     };
+    const thisTry: SignupTry = { email: body.email, password, username };
 
-    const result = await api.post<AuthResult>('/auth/signup', body, { auth: false });
-
+    let result: AuthResult;
     // The landing route opens on the photo-and-bio page for this one sign-in.
-    await signIn(result, { extras: true });
+    let extrasPage = true;
+    try {
+      result = await api.post<AuthResult>('/auth/signup', body, { auth: false });
+      // The account exists now: should this phone fail to keep its session, the next Continue is
+      // answered email_taken and logs in to it.
+      lostSignupRef.current = thisTry;
+    } catch (err) {
+      // No answer, a server failure, or an answer that could not be read: the server may have
+      // made the account all the same.
+      if (!(err instanceof ApiError) || signupAnswerLost(err)) {
+        lostSignupRef.current = thisTry;
+        throw err;
+      }
+      const lost = lostSignupRef.current;
+      if (lost === null || !shouldTryLogin(lost, thisTry.email, password, err)) throw err;
+      // Most likely the person's own new account. If the name or username changed between the two
+      // tries, they land in the account with the first try's details, which they can edit on Profile.
+      result = await logInToLostSignup(thisTry, err);
+      extrasPage = opensExtras(lost, result);
+    }
+
+    await signIn(result, { extras: extrasPage });
+    lostSignupRef.current = null;
+    // Only a log in can bring an account back from deletion: said once, as on the Log in page.
+    sayIfRestored(result);
+  }
+
+  // Logs in with a try's email and password. A refusal (the email is someone else's, or the
+  // password is not that account's) gives back the email_taken answer, which shows as it always
+  // has. A failure that could pass (no answer, too many tries, a server failure) shows its own
+  // message, and Continue stays on so the next tap tries again.
+  async function logInToLostSignup(attempt: SignupTry, taken: ApiError): Promise<AuthResult> {
+    try {
+      return await api.post<AuthResult>(
+        '/auth/login',
+        { login: attempt.email, password: attempt.password },
+        { auth: false }
+      );
+    } catch (err) {
+      throw isRetryable(err) ? err : taken;
+    }
   }
 
   async function submitExtras() {

@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Pressable, Text, TextProps } from 'react-native';
-import { color, type } from '@/lib/theme/tokens';
+import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
 type AppTextProps = {
   role?:
@@ -52,20 +52,26 @@ export function AppText({ role = 'body', tone = 'default', children, ...rest }: 
   );
 }
 
+/** Above and below the link's line, so its tap area is 44 points high while the line keeps its height. */
+const LINK_SLOP_Y = (minTouchTarget - type.button.lineHeight) / 2;
+
 /**
- * The underlined-Ink text link treatment reserved for "Forgot password?",
- * "Log in instead" / "Sign up instead".
+ * "Log in instead" / "Sign up instead": ink words in the button weight, never underlined (the
+ * developer's rule, 2026-10-18: underlined text reads as unfinished).
  */
 export function TextLink({ onPress, children }: { onPress?: () => void; children?: ReactNode }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button">
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      hitSlop={{ top: LINK_SLOP_Y, bottom: LINK_SLOP_Y, left: space.sm, right: space.sm }}
+    >
       <Text
         style={{
           fontSize: type.button.fontSize,
           lineHeight: type.button.lineHeight,
           fontFamily: type.button.fontFamily,
           color: color.ink,
-          textDecorationLine: 'underline',
         }}
       >
         {children}

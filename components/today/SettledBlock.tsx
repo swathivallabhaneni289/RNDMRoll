@@ -125,6 +125,7 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
             </View>
           </View>
           <View style={{ marginTop: space.sm, alignItems: 'flex-start' }}>
+            {/* Ink words in the button weight at the Body size, not underlined (developer's rule). */}
             <Pressable
               onPress={() =>
                 router.push({ pathname: '/(app)/today/entry', params: { id: entry.id, from: 'today' } })
@@ -135,11 +136,10 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
             >
               <Text
                 style={{
-                  fontFamily: type.body.fontFamily,
+                  fontFamily: type.button.fontFamily,
                   fontSize: type.body.fontSize,
                   lineHeight: type.body.lineHeight,
                   color: color.ink,
-                  textDecorationLine: 'underline',
                 }}
               >
                 View entry

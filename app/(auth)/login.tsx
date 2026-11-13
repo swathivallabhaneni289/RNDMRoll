@@ -9,6 +9,7 @@ import { TextField } from '@/components/ui/TextField';
 import { color, space } from '@/lib/theme/tokens';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
+import { loginName } from '@/lib/auth/loginName';
 import { sayIfRestored } from '@/lib/auth/restored';
 import { useSession } from '@/lib/session/store';
 
@@ -46,11 +47,12 @@ export default function LoginScreen() {
     else router.replace('/choose-method');
   }
 
-  // An @ means an email address, so it gets the address check. Anything else is taken as a
-  // username and left to the server: a username that is not there gets the same "isn't right"
-  // message as a wrong password.
+  // An @ means an email address, so it gets the address check. One leading @ on a single word is
+  // not one: it is a username typed the way the app shows it ("@name"), and loginName drops it.
+  // Anything else is taken as a username and left to the server: a username that is not there gets
+  // the same "isn't right" message as a wrong password.
   function validateLoginValue(value: string): string | undefined {
-    const typed = value.trim();
+    const typed = loginName(value);
     if (typed.length === 0) return 'Enter your email or username.';
     if (typed.includes('@') && !EMAIL_PATTERN.test(typed)) return 'Enter a valid email address.';
     return undefined;
@@ -77,10 +79,11 @@ export default function LoginScreen() {
     setFormError(null);
     setSubmitting(true);
     try {
-      // A keyboard's trailing space passes client validation but the server rejects it.
+      // Sent as loginName reads it: trimmed (a keyboard's trailing space passes client validation
+      // but the server rejects it) and without the @ of an "@name".
       const result = await api.post<AuthResult>(
         '/auth/login',
-        { login: login.trim(), password },
+        { login: loginName(login), password },
         { auth: false }
       );
       // The root guard routes a signed-in account to the app.
@@ -92,7 +95,7 @@ export default function LoginScreen() {
       // (invalid_credentials): the server refuses to tell them apart and so does this screen.
       if (err instanceof ApiError && err.code === 'validation_failed') {
         // The server's address check is stricter than this screen's: name the box, not "went wrong".
-        setLoginError(login.includes('@') ? 'Enter a valid email address.' : 'Enter your email or username.');
+        setLoginError(loginName(login).includes('@') ? 'Enter a valid email address.' : 'Enter your email or username.');
       } else {
         setFormError(err instanceof ApiError ? err.userMessage : 'Something went wrong. Please try again.');
       }

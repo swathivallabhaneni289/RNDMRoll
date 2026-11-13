@@ -76,6 +76,7 @@ export function ResultBlock({
       {canUseBonus ? (
         <View style={{ marginTop: space.md, alignItems: 'center' }}>
           <Step animate={animate} delay={LINK_DELAY_MS}>
+            {/* Ink words in the button weight, not underlined (developer's rule). */}
             <Pressable
               onPress={onUseBonus}
               accessibilityRole="button"
@@ -88,7 +89,6 @@ export function ResultBlock({
                   fontSize: type.button.fontSize,
                   lineHeight: type.button.lineHeight,
                   color: color.ink,
-                  textDecorationLine: 'underline',
                 }}
               >
                 Use bonus spin

@@ -11,6 +11,7 @@ import { Wheel } from '@/components/wheel/Wheel';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { CountdownBlock } from '@/components/today/CountdownBlock';
 import { DayActions } from '@/components/today/DayActions';
+import { editWheelLinkShown } from '@/components/today/editWheelLink';
 import { RESULT_WORD_TOP, ResultBlock } from '@/components/today/ResultBlock';
 import { SettledBlock } from '@/components/today/SettledBlock';
 import { StatusMessage, type StatusKind } from '@/components/today/StatusMessage';
@@ -171,10 +172,11 @@ function Heading({ text, reduceMotion, lines }: { text: string; reduceMotion: bo
  * Two compositions, chosen by the server's `state`:
  *  - the wheel states (loading, waiting, open, spinning, offline): the wheel, the state block
  *    (slot A a small-caps label, slot B the countdown, slot C a Label line), the Edit wheel link;
- *  - the day states (result, late, posted, skipped): no wheel at all. Result and Late show the
+ *  - the day states (result, late, posted, skipped). Result and Late draw no wheel: they show the
  *    word with the time it was spun and `DayActions` under it (Log it, and the late line once the
- *    server's `post_late` says a post now counts as late, from noon); Posted shows the entry as a
- *    row and Skipped the struck word under its sentence (`SettledBlock`).
+ *    server's `post_late` says a post now counts as late, from noon). Posted shows the entry as a
+ *    row and Skipped the struck word under its sentence (`SettledBlock`), then the wheel at rest,
+ *    the countdown and the Edit wheel link.
  * The week section is last in both. A spin that was already made when the screen arrived shows
  * the day composition at once and animates nothing; a spin made here turns the wheel, waits
  * 600ms, then fades the wheel out while the word rises in (section 5). A bonus spin brings the
@@ -340,7 +342,10 @@ export function TodayScreen() {
     </View>
   );
 
-  const editLinkShown = comp === 'wheel' && !bonusActive && today !== null && (viewState === 'waiting' || viewState === 'open');
+  // Under the wheel before the day's spin, and under the countdown once the day is posted or
+  // skipped (editWheelLinkShown says why). Ink words in the button weight at the Label size, not
+  // underlined (developer's rule).
+  const editLinkShown = editWheelLinkShown({ state: viewState, composition: comp, bonusActive, loaded: today !== null });
   const editLink = editLinkShown ? (
     <Pressable
       onPress={() => router.push('/(app)/today/edit-wheel')}
@@ -352,11 +357,10 @@ export function TodayScreen() {
     >
       <Text
         style={{
-          fontFamily: type.label.fontFamily,
+          fontFamily: type.button.fontFamily,
           fontSize: type.label.fontSize,
           lineHeight: type.label.lineHeight,
           color: busy ? color.muted : color.ink,
-          textDecorationLine: 'underline',
         }}
       >
         Edit wheel
@@ -526,10 +530,11 @@ export function TodayScreen() {
             <PrimaryButton label="See the Board" variant="outline" onPress={() => router.navigate('/(app)/board')} />
           </View>
         </View>
-        {/* Once the day is settled the page counts down to the next spin. */}
+        {/* Once the day is settled the page counts down to the next spin, whose wheel can be edited. */}
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          {editLink}
         </View>
       </View>
     ) : null;
@@ -543,6 +548,7 @@ export function TodayScreen() {
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          {editLink}
         </View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />
       </View>
