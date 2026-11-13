@@ -24,6 +24,9 @@ type PersonHandler struct {
 	social *social.Service
 	board  *board.Service
 	diary  *diary.Service
+	// photoLink signs the profile photos (Deps.PhotoLink; NewServer sets
+	// it). Nil sends none.
+	photoLink func(string) string
 }
 
 // NewPersonHandler builds a PersonHandler.
@@ -112,7 +115,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		return
 	}
 	if p.Relation == social.RelationBlocked {
-		Respond(c, http.StatusOK, personPageView{Person: newPersonView(p.Person), Relation: p.Relation})
+		Respond(c, http.StatusOK, personPageView{Person: newPersonView(p.Person, h.photoLink), Relation: p.Relation})
 		return
 	}
 	sum, err := h.diary.Summary(ctx, id.String())
@@ -126,7 +129,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		return
 	}
 	out := personPageView{
-		Person:     newPersonView(p.Person),
+		Person:     newPersonView(p.Person, h.photoLink),
 		Bio:        p.Bio,
 		Relation:   p.Relation,
 		FollowsYou: p.FollowsYou,
@@ -252,7 +255,7 @@ func (h *PersonHandler) peopleOf(c *gin.Context, followers bool) {
 		respondFeedError(c, err)
 		return
 	}
-	Respond(c, http.StatusOK, gin.H{"people": personViews(list)})
+	Respond(c, http.StatusOK, gin.H{"people": personViews(list, h.photoLink)})
 }
 
 type suggestionView struct {
@@ -275,7 +278,7 @@ func (h *PersonHandler) suggestions(c *gin.Context) {
 	}
 	out := make([]suggestionView, 0, len(list))
 	for _, sg := range list {
-		out = append(out, suggestionView{Person: newPersonView(sg.Person), Mutual: sg.Mutual, FollowsYou: sg.FollowsYou})
+		out = append(out, suggestionView{Person: newPersonView(sg.Person, h.photoLink), Mutual: sg.Mutual, FollowsYou: sg.FollowsYou})
 	}
 	Respond(c, http.StatusOK, gin.H{"people": out})
 }

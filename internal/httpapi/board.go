@@ -25,6 +25,10 @@ type BoardHandler struct {
 	// removeFiles deletes photo files once their rows are gone (a deleted
 	// comment's photo). NewServer sets it from the entry handler; nil skips.
 	removeFiles func(ctx context.Context, keys []string)
+	// photoLink signs the profile photos of the people shown
+	// (Deps.PhotoLink; NewServer sets it). Nil sends none. Post and comment
+	// photos come signed from the board service.
+	photoLink func(string) string
 }
 
 // NewBoardHandler builds a BoardHandler over the board service.
@@ -79,10 +83,10 @@ type cardView struct {
 	MyReaction      *string          `json:"my_reaction"`
 }
 
-func newCardView(c board.Card) cardView {
+func newCardView(c board.Card, link func(string) string) cardView {
 	return cardView{
 		EntryID:         c.EntryID.String(),
-		Author:          newPersonView(c.Author),
+		Author:          newPersonView(c.Author, link),
 		Mine:            c.Mine,
 		LocalDate:       c.LocalDate,
 		Category:        spin.CategoryRef{ID: c.CategoryID, Name: c.CategoryName},
@@ -116,9 +120,9 @@ type commentView struct {
 	ParentID *string `json:"parent_id"`
 }
 
-func newCommentView(c board.Comment) commentView {
+func newCommentView(c board.Comment, link func(string) string) commentView {
 	v := commentView{
-		ID: c.ID.String(), Author: newPersonView(c.Author), Text: c.Text,
+		ID: c.ID.String(), Author: newPersonView(c.Author, link), Text: c.Text,
 		At: spin.Instant(c.At), AtLabel: c.AtLabel, CanDelete: c.CanDelete,
 		CanHide: c.CanHide, Hidden: c.Hidden, PhotoURL: c.PhotoURL,
 	}
@@ -182,7 +186,7 @@ func (h *BoardHandler) board(c *gin.Context) {
 	for _, d := range b.Days {
 		cards := make([]cardView, 0, len(d.Cards))
 		for _, card := range d.Cards {
-			cards = append(cards, newCardView(card))
+			cards = append(cards, newCardView(card, h.photoLink))
 		}
 		days = append(days, dayView{LocalDate: d.LocalDate, Label: d.Label, Cards: cards})
 	}
@@ -219,7 +223,7 @@ func (h *BoardHandler) post(c *gin.Context) {
 	}
 	comments := make([]commentView, 0, len(p.Comments))
 	for _, cm := range p.Comments {
-		comments = append(comments, newCommentView(cm))
+		comments = append(comments, newCommentView(cm, h.photoLink))
 	}
 	photos := make([]entryPhotoView, 0, len(p.Photos))
 	for _, ph := range p.Photos {
@@ -229,11 +233,11 @@ func (h *BoardHandler) post(c *gin.Context) {
 	if p.Card.Mine {
 		received = make([]receivedView, 0, len(p.Received))
 		for _, r := range p.Received {
-			received = append(received, receivedView{Person: newPersonView(r.Person), Reaction: r.Reaction, At: spin.Instant(r.At)})
+			received = append(received, receivedView{Person: newPersonView(r.Person, h.photoLink), Reaction: r.Reaction, At: spin.Instant(r.At)})
 		}
 	}
 	Respond(c, http.StatusOK, gin.H{
-		"card":         newCardView(p.Card),
+		"card":         newCardView(p.Card, h.photoLink),
 		"note":         p.Note,
 		"photos":       photos,
 		"comments":     comments,
@@ -315,7 +319,7 @@ func (h *BoardHandler) comment(c *gin.Context) {
 		respondFeedError(c, err)
 		return
 	}
-	Respond(c, http.StatusCreated, gin.H{"comment": newCommentView(cm)})
+	Respond(c, http.StatusCreated, gin.H{"comment": newCommentView(cm, h.photoLink)})
 }
 
 func (h *BoardHandler) deleteComment(c *gin.Context) {

@@ -431,10 +431,12 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	}
 	last := -1
 	for i, key := range photos {
-		link := fakeEntryPhotoPublicBase + key
+		// One signed link per photo, for both the full size link and the
+		// picture.
+		link := fakePhotoLink(key)
 		at := strings.Index(report, `<a href="`+link+`" target="_blank" rel="noopener"><img class="thumb" src="`+link+`"`)
-		if at <= last {
-			t.Fatalf("photo %d (%s) is missing or out of order: %s", i+1, key, report)
+		if at <= last || strings.Count(report, key) != 2 {
+			t.Fatalf("photo %d (%s) is missing, out of order or not signed once for both: %s", i+1, key, report)
 		}
 		last = at
 	}
@@ -491,8 +493,10 @@ func TestAdminIntegration_ACommentReportShowsItsPhoto(t *testing.T) {
 		t.Fatalf("the page: %d %s", page.Code, page.Body.String())
 	}
 	report := adminReportOf(t, page.Body.String(), "Bullying or harassment")
-	if !strings.Contains(report, `<img class="thumb" src="`+fakeEntryPhotoPublicBase+key+`"`) {
-		t.Fatalf("the comment report lacks its photo: %s", report)
+	link := fakePhotoLink(key)
+	if !strings.Contains(report, `<a href="`+link+`" target="_blank" rel="noopener"><img class="thumb" src="`+link+`"`) ||
+		strings.Count(report, key) != 2 {
+		t.Fatalf("the comment report lacks its photo, signed once for both the link and the picture: %s", report)
 	}
 }
 
@@ -520,7 +524,7 @@ func TestAdminIntegration_AGonePostShowsNoPhoto(t *testing.T) {
 	if !strings.Contains(report, `<span class="title">Dune</span>`) {
 		t.Fatalf("the report lacks the title: %s", report)
 	}
-	for _, bad := range []string{"<img", fakeEntryPhotoPublicBase, "Posted for", "Slow and worth it."} {
+	for _, bad := range []string{"<img", fakePhotoLinkBase, "Posted for", "Slow and worth it."} {
 		if strings.Contains(report, bad) {
 			t.Fatalf("the gone post's report has %q: %s", bad, report)
 		}
@@ -534,16 +538,19 @@ func TestAdminIntegration_ThePersonPageShowsTheProfilePhoto(t *testing.T) {
 	a := w.person("ad_alice", "Alice Ames")
 	pictured := w.person("ad_pictured", "Pat Pictured")
 	plain := w.person("ad_plain", "Nat Plain")
-	photo := testAvatarBaseURL + "/avatars/" + pictured.id + "/x.jpg"
-	w.ok(pictured, http.MethodPatch, "/v1/me", map[string]any{"avatar_url": photo})
+	photo := "avatars/" + pictured.id + "/" + fakeAvatarKeyName
+	w.ok(pictured, http.MethodPatch, "/v1/me", map[string]any{"avatar_key": photo})
 	for _, p := range []feedPerson{pictured, plain} {
 		w.ok(a, http.MethodPost, "/v1/people/"+p.id+"/report", map[string]any{"reason": "impersonation"})
 	}
 
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
 	page := adminDo(t, w, http.MethodGet, "/admin/people/"+pictured.id, cookie, nil, "")
-	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<img class="avatar" src="`+photo+`"`) {
-		t.Fatalf("a person with a profile photo: %d %s", page.Code, page.Body.String())
+	link := fakePhotoLink(photo)
+	if page.Code != http.StatusOK ||
+		!strings.Contains(page.Body.String(), `<a href="`+link+`" target="_blank" rel="noopener"><img class="avatar" src="`+link+`"`) ||
+		strings.Count(page.Body.String(), photo) != 2 {
+		t.Fatalf("a person with a profile photo, signed once for both the link and the picture: %d %s", page.Code, page.Body.String())
 	}
 	page = adminDo(t, w, http.MethodGet, "/admin/people/"+plain.id, cookie, nil, "")
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Nat Plain") ||

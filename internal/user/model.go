@@ -22,6 +22,9 @@ const (
 // User is the domain representation of an account row. Nullable columns are
 // pointers so "not set yet" (nil) is distinguishable from "set to empty",
 // which the onboarding router depends on to decide what step comes next.
+// AvatarKey is the storage key of the profile photo (avatars/{id}/{16
+// hex}.{ext}, migration 0019), nil for none: it is never sent, the HTTP layer
+// signs a link from it.
 type User struct {
 	ID               uuid.UUID
 	Email            string
@@ -29,7 +32,7 @@ type User struct {
 	Name             *string
 	Username         *string
 	Bio              *string
-	AvatarURL        *string
+	AvatarKey        *string
 	EmailVerified    bool
 	EmailVerifiedVia *VerificationSource
 	// HasBirthday reports whether a birthday is on file. The date itself is

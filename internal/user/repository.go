@@ -8,12 +8,13 @@ import (
 )
 
 // ProfilePatch describes a partial update to a user's profile fields. A nil
-// field means "leave unchanged".
+// field means "leave unchanged". AvatarKey is a profile photo key the caller
+// checked with storage.AvatarKeyOwnedBy.
 type ProfilePatch struct {
 	Name      *string
 	Username  *string
 	Bio       *string
-	AvatarURL *string
+	AvatarKey *string
 	// AccountVisibility is VisibilityPublic or VisibilityPrivate; the caller
 	// validates it with ValidVisibility before it gets here.
 	AccountVisibility *string

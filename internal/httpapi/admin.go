@@ -180,11 +180,14 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			}
 			return "Closed"
 		},
+		// photo signs the link of a post, comment or profile photo key.
+		// The page signs each photo once, for both its link and its
+		// picture, and shows nothing when no link comes back.
 		"photo": func(key string) string {
 			if entries == nil || entries.photos == nil {
 				return ""
 			}
-			return entries.photos.PublicURL(key)
+			return entries.photos.Link(key)
 		},
 	}).ParseFS(adminFiles, "admin_pages/pages.html"))
 	h.css, _ = adminFiles.ReadFile("admin_pages/style.css")
@@ -250,7 +253,9 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 }
 
 // adminHeaders keeps the page from being framed, cached or loading anything
-// from elsewhere (photos excepted: they come from the photo store).
+// from elsewhere (photos excepted: they come from the photo store). Nothing
+// is cached and no referrer is sent, so a signed photo link stays on the
+// page, and a reload signs fresh ones.
 func adminHeaders(c *gin.Context) {
 	hdr := c.Writer.Header()
 	hdr.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: http:; style-src 'self'; "+
@@ -585,8 +590,9 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 }
 
 // remove takes down the reported post (through the app's own delete, so its
-// photos and the posted day are handled as when its owner deletes it) or the
-// reported comment, and closes every open report on it.
+// photos, the photos in its comments and the posted day are handled as when
+// its owner deletes it) or the reported comment, and closes every open report
+// on it.
 func (h *AdminHandler) remove(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {

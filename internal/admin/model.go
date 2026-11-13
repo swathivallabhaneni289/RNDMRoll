@@ -48,8 +48,9 @@ type Person struct {
 	Username string
 	Name     string
 	Bio      string
-	// PhotoURL is the profile photo's link, "" for none.
-	PhotoURL   string
+	// PhotoKey is the profile photo's storage key, "" for none. The page
+	// signs its link.
+	PhotoKey   string
 	CreatedAt  time.Time
 	DisabledAt *time.Time
 	// DeletionRequestedAt is when the person asked, in the app, for the

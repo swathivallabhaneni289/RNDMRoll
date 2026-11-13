@@ -64,12 +64,11 @@ type AccountFiles struct {
 // NewAccountFiles builds AccountFiles with the same checks and client options
 // as NewEntryPhotoStore: static credentials, the configured region (auto when
 // empty), BaseEndpoint set to the endpoint and path-style addressing.
-// Avatars and entry photos share this bucket configuration. The public base
-// URL is required too, although deleting builds no link, so a configuration
-// that the upload stores refuse is refused here as well instead of half
-// working. A missing required field is ErrIncompleteConfig.
+// Avatars and entry photos share this bucket configuration, so a
+// configuration that the upload stores refuse is refused here as well instead
+// of half working. A missing required field is ErrIncompleteConfig.
 func NewAccountFiles(cfg Config) (*AccountFiles, error) {
-	if cfg.S3Endpoint == "" || cfg.S3Bucket == "" || cfg.S3AccessKeyID == "" || cfg.S3SecretAccessKey == "" || cfg.S3PublicBaseURL == "" {
+	if cfg.S3Endpoint == "" || cfg.S3Bucket == "" || cfg.S3AccessKeyID == "" || cfg.S3SecretAccessKey == "" {
 		return nil, ErrIncompleteConfig
 	}
 	region := cfg.S3Region

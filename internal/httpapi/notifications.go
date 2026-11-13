@@ -18,9 +18,12 @@ import (
 type NotificationsHandler struct {
 	svc    *notifications.Service
 	photos storage.EntryPhotoStore
+	// photoLink signs the profile photos of the people in the list
+	// (Deps.PhotoLink; NewServer sets it). Nil sends none.
+	photoLink func(string) string
 }
 
-// NewNotificationsHandler builds a NotificationsHandler. photos builds the
+// NewNotificationsHandler builds a NotificationsHandler. photos signs the
 // links of the small post pictures.
 func NewNotificationsHandler(svc *notifications.Service, photos storage.EntryPhotoStore) *NotificationsHandler {
 	return &NotificationsHandler{svc: svc, photos: photos}
@@ -49,13 +52,16 @@ type itemView struct {
 	PhotoURL string `json:"photo_url"`
 }
 
-func newItemView(it notifications.Item, photoURL func(string) string) itemView {
+// newItemView shows one item: photoURL signs the post's picture, personLink
+// the actor's profile photo. The notification queries already left out what
+// the caller may not see.
+func newItemView(it notifications.Item, photoURL, personLink func(string) string) itemView {
 	v := itemView{
 		ID: it.ID, Kind: it.Kind, At: spin.Instant(it.At), AtLabel: it.AtLabel, Section: it.Section,
 		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text,
 	}
 	if it.Actor != nil {
-		p := newPersonView(*it.Actor)
+		p := newPersonView(*it.Actor, personLink)
 		v.Actor = &p
 	}
 	if it.EntryID != nil {
@@ -84,7 +90,7 @@ func (h *NotificationsHandler) list(c *gin.Context) {
 	}
 	items := make([]itemView, 0, len(l.Items))
 	for _, it := range l.Items {
-		items = append(items, newItemView(it, h.photos.PublicURL))
+		items = append(items, newItemView(it, h.photos.Link, h.photoLink))
 	}
 	Respond(c, http.StatusOK, gin.H{"unread": l.Unread, "items": items})
 }

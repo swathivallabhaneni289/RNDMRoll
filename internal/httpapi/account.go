@@ -36,6 +36,9 @@ type AccountHandler struct {
 	// clock is the time the limits count by; nil is the real clock. A test
 	// sets it before sending anything.
 	clock func() time.Time
+	// photoLink signs the profile photo's link in the session's user
+	// (Deps.PhotoLink; NewServer sets it). Nil sends no photo.
+	photoLink func(string) string
 }
 
 // now is the limits' clock: clock, or the real one.
@@ -186,6 +189,6 @@ func (h *AccountHandler) changePassword(c *gin.Context) {
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),
-		"user":          apiUser(u),
+		"user":          apiUser(u, h.photoLink),
 	})
 }

@@ -37,7 +37,7 @@ var (
 // the same statement, on the database's clock (account_deletion.go), so a
 // handler never compares a time itself. It is a var only because that rule
 // is built from user.DeletionGracePeriod.
-var userColumns = `id, email, password_hash, name, username, bio, avatar_url, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility, (disabled_at is not null) as disabled, ` +
+var userColumns = `id, email, password_hash, name, username, bio, avatar_key, email_verified, email_verified_via, (birthday is not null) as has_birthday, created_at, updated_at, account_visibility, (disabled_at is not null) as disabled, ` +
 	`(deletion_requested_at is not null) as deletion_requested, coalesce(` + pastGrace("deletion_requested_at") + `, false) as deletion_due`
 
 // scanUser scans a single row shaped like userColumns. The caller decides how to
@@ -48,7 +48,7 @@ func scanUser(row pgx.Row) (*user.User, error) {
 	var u user.User
 	var via *string
 	err := row.Scan(
-		&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Username, &u.Bio, &u.AvatarURL,
+		&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Username, &u.Bio, &u.AvatarKey,
 		&u.EmailVerified, &via, &u.HasBirthday, &u.CreatedAt, &u.UpdatedAt, &u.AccountVisibility, &u.Disabled,
 		&u.DeletionRequested, &u.DeletionDue,
 	)
@@ -100,6 +100,8 @@ func mapCheckViolation(err error) error {
 		return &user.FieldError{Field: "bio"}
 	case "users_account_visibility_check":
 		return &user.FieldError{Field: "account_visibility"}
+	case "users_avatar_key_shape":
+		return &user.FieldError{Field: "avatar_key"}
 	default:
 		return err
 	}
@@ -224,12 +226,12 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.Profi
 		set name = coalesce($1::text, name),
 		    username = coalesce($2::text, username),
 		    bio = coalesce($3::text, bio),
-		    avatar_url = coalesce($4::text, avatar_url),
+		    avatar_key = coalesce($4::text, avatar_key),
 		    account_visibility = coalesce($5::text, account_visibility)
 		where id = $6
 		returning ` + userColumns + `
 	`
-	row := r.pool.QueryRow(ctx, q, p.Name, p.Username, p.Bio, p.AvatarURL, p.AccountVisibility, id)
+	row := r.pool.QueryRow(ctx, q, p.Name, p.Username, p.Bio, p.AvatarKey, p.AccountVisibility, id)
 	u, err := scanUser(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

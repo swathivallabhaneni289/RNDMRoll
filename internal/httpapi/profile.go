@@ -12,8 +12,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"regexp"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -25,10 +23,6 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
-
-// maxAvatarURLLength bounds a saved avatar_url well above any real storage
-// URL.
-const maxAvatarURLLength = 2048
 
 // UpdateProfileRequest is the PATCH /me body. Every field is a pointer so a
 // nil (omitted) field means "leave unchanged" -- this is what lets each
@@ -42,11 +36,15 @@ const maxAvatarURLLength = 2048
 // AccountVisibility is "public" or "private" (exactly, lower case). It is the
 // Settings switch and rides on this route; there is no id in the body, so a
 // person can only ever change their own.
+//
+// AvatarKey is the key of a profile photo the caller uploaded with POST
+// /me/avatar/upload-url (that ticket's avatar_key). There is no remove: a
+// missing key leaves the photo as it is.
 type UpdateProfileRequest struct {
 	Name              *string `json:"name"`
 	Username          *string `json:"username"`
 	Bio               *string `json:"bio"`
-	AvatarURL         *string `json:"avatar_url"`
+	AvatarKey         *string `json:"avatar_key"`
 	Birthday          *string `json:"birthday"`
 	AccountVisibility *string `json:"account_visibility"`
 }
@@ -61,10 +59,9 @@ type AvatarUploadRequest struct {
 type ProfileHandler struct {
 	users   user.Repository
 	avatars storage.AvatarStore
-	// publicBaseURL is the storage public base URL (S3PublicBaseURL),
-	// exactly as the avatar store uses it to build a PublicURL. A saved
-	// avatar_url must start with <publicBaseURL>/avatars/<caller id>/.
-	publicBaseURL string
+	// photoLink signs the profile photo's link (Deps.PhotoLink; NewServer
+	// sets it). Nil sends no photo.
+	photoLink func(string) string
 
 	// OnBecamePublic, when set, runs after a saved PATCH /me that sets
 	// account_visibility to public: it accepts every pending follow request
@@ -73,11 +70,9 @@ type ProfileHandler struct {
 	OnBecamePublic func(ctx context.Context, userID uuid.UUID) error
 }
 
-// NewProfileHandler constructs a ProfileHandler. publicBaseURL is the
-// storage public base URL the avatar store hands out (config S3PublicBaseURL).
-func NewProfileHandler(users user.Repository, avatars storage.AvatarStore, publicBaseURL string) *ProfileHandler {
-	publicBaseURL = strings.TrimRight(publicBaseURL, "/")
-	return &ProfileHandler{users: users, avatars: avatars, publicBaseURL: publicBaseURL}
+// NewProfileHandler constructs a ProfileHandler.
+func NewProfileHandler(users user.Repository, avatars storage.AvatarStore) *ProfileHandler {
+	return &ProfileHandler{users: users, avatars: avatars}
 }
 
 // Register mounts this handler's routes on rg. The caller is responsible
@@ -102,19 +97,34 @@ func (h *ProfileHandler) Register(rg *gin.RouterGroup) {
 // literal rather than a tagged struct, so this file never declares an ID
 // struct field tag -- the response carries the caller's own identifier as
 // data, never as something a request could set. It never carries a
-// birthday.
-func profileBody(u *user.User) gin.H {
+// birthday. avatar_url is the profile photo's signed link (photoLinkOf).
+func profileBody(u *user.User, link func(string) string) gin.H {
 	return gin.H{
 		"id":                  u.ID.String(),
 		"email":               u.Email,
 		"name":                u.Name,
 		"username":            u.Username,
 		"bio":                 u.Bio,
-		"avatar_url":          u.AvatarURL,
+		"avatar_url":          photoLinkOf(u.AvatarKey, link),
 		"email_verified":      u.EmailVerified,
 		"onboarding_complete": u.OnboardingComplete(),
 		"account_visibility":  u.AccountVisibility,
 	}
+}
+
+// photoLinkOf is how every answer sends a profile photo (the caller's own and
+// other people's): the signed link of key, or nil (JSON null) when there is
+// no key, no link func, or the key cannot be signed. A bare key never leaves.
+// Who may see the person was decided before this is called.
+func photoLinkOf(key *string, link func(string) string) *string {
+	if key == nil || *key == "" || link == nil {
+		return nil
+	}
+	l := link(*key)
+	if l == "" {
+		return nil
+	}
+	return &l
 }
 
 // currentUser returns the caller's account (see callerAccount).
@@ -154,34 +164,17 @@ func (h *ProfileHandler) getMe(c *gin.Context) {
 	if !ok {
 		return
 	}
-	Respond(c, http.StatusOK, profileBody(u))
+	Respond(c, http.StatusOK, profileBody(u, h.photoLink))
 }
-
-// avatarURLAllowed reports whether url lives in the caller's own avatar
-// folder. A client may only save a URL the avatar store could have handed
-// it, never another person's picture or an external image.
-func (h *ProfileHandler) avatarURLAllowed(url string, id string) bool {
-	if len(url) > maxAvatarURLLength {
-		return false
-	}
-	prefix := h.publicBaseURL + "/avatars/" + id + "/"
-	if !strings.HasPrefix(url, prefix) {
-		return false
-	}
-	rest := url[len(prefix):]
-	return avatarFileName.MatchString(rest) && !strings.Contains(rest, "..")
-}
-
-// avatarFileName is the plain file name the avatar store generates
-// (random hex plus extension). Anything else, including percent escapes,
-// slashes, backslashes, queries and fragments, is refused.
-var avatarFileName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // patchMe applies a partial profile update. Order: bind; a birthday is
 // refused (it never changes after sign-up); each other field by hand; then
 // one UpdateProfile. A value of account_visibility that is not exactly
 // "public" or "private" is 400 validation_failed naming that field, and
-// nothing is stored.
+// nothing is stored. So is an avatar_key that is not exactly a key the avatar
+// store could have handed the caller (storage.AvatarKeyOwnedBy): never
+// another person's photo, a link or anything else. Once a new photo is saved,
+// the file of the one it replaced is removed (removeReplacedAvatar).
 func (h *ProfileHandler) patchMe(c *gin.Context) {
 	cur, ok := h.currentUser(c)
 	if !ok {
@@ -191,11 +184,12 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 	var req UpdateProfileRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		// A number, a boolean or an object where the word "public" or
-		// "private" belongs is refused by name, like any other bad value of
-		// this field. Every other bind failure stays the one generic answer.
+		// "private", or a photo key, belongs is refused by name, like any
+		// other bad value of these fields. Every other bind failure stays the
+		// one generic answer.
 		var typeErr *json.UnmarshalTypeError
-		if errors.As(err, &typeErr) && typeErr.Field == "account_visibility" {
-			RespondFieldError(c, "account_visibility", reasonInvalid)
+		if errors.As(err, &typeErr) && (typeErr.Field == "account_visibility" || typeErr.Field == "avatar_key") {
+			RespondFieldError(c, typeErr.Field, reasonInvalid)
 			return
 		}
 		RespondValidationError(c, err)
@@ -236,12 +230,12 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 		}
 		patch.Bio = req.Bio
 	}
-	if req.AvatarURL != nil {
-		if !h.avatarURLAllowed(*req.AvatarURL, cur.ID.String()) {
-			RespondFieldError(c, "avatar_url", reasonInvalid)
+	if req.AvatarKey != nil {
+		if !storage.AvatarKeyOwnedBy(*req.AvatarKey, cur.ID) {
+			RespondFieldError(c, "avatar_key", reasonInvalid)
 			return
 		}
-		patch.AvatarURL = req.AvatarURL
+		patch.AvatarKey = req.AvatarKey
 	}
 	if req.AccountVisibility != nil {
 		if !user.ValidVisibility(*req.AccountVisibility) {
@@ -249,6 +243,13 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 			return
 		}
 		patch.AccountVisibility = req.AccountVisibility
+	}
+
+	// The photo a new one replaces, read before the save: its file goes once
+	// the save is done.
+	replaced := ""
+	if cur.AvatarKey != nil {
+		replaced = *cur.AvatarKey
 	}
 
 	updated, err := h.users.UpdateProfile(c.Request.Context(), cur.ID, patch)
@@ -276,8 +277,31 @@ func (h *ProfileHandler) patchMe(c *gin.Context) {
 			log.Printf("httpapi: accept pending follow requests: %v", err)
 		}
 	}
+	if req.AvatarKey != nil {
+		h.removeReplacedAvatar(c.Request.Context(), cur.ID, replaced, updated.AvatarKey)
+	}
 
-	Respond(c, http.StatusOK, profileBody(updated))
+	Respond(c, http.StatusOK, profileBody(updated, h.photoLink))
+}
+
+// removeReplacedAvatar deletes the file of the profile photo that a saved
+// PATCH /me replaced (developer, 2026-11-09: no leftover files). It runs only
+// after the save, and only for an old key that is a profile photo key in the
+// caller's own folder (storage.AvatarKeyOwnedBy) and is not the photo now
+// saved: the same photo sent again is kept, and a stored value of any other
+// shape never reaches storage. It is best effort: a failure is logged without
+// the key, which names the caller's folder, and the request never fails
+// because of it. It has one short deadline, and a caller that hangs up does
+// not cancel it.
+func (h *ProfileHandler) removeReplacedAvatar(ctx context.Context, owner uuid.UUID, old string, saved *string) {
+	if h.avatars == nil || old == "" || saved == nil || old == *saved || !storage.AvatarKeyOwnedBy(old, owner) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fileRemovalTimeout)
+	defer cancel()
+	if err := h.avatars.DeleteAvatar(ctx, owner, old); err != nil {
+		log.Printf("httpapi: could not remove a replaced profile photo file: %s", withoutKey(err, old))
+	}
 }
 
 // respondUsernameTaken writes the 409 conflict body for a save-time
@@ -318,9 +342,11 @@ func (h *ProfileHandler) createAvatarUploadURL(c *gin.Context) {
 		return
 	}
 
+	// The key goes back through PATCH /me (avatar_key) once the upload is
+	// done. No link is sent: the photo shows from the link GET /me signs.
 	Respond(c, http.StatusOK, gin.H{
 		"upload_url": ticket.UploadURL,
-		"public_url": ticket.PublicURL,
+		"avatar_key": ticket.Key,
 		"expires_in": ticket.ExpiresIn,
 	})
 }

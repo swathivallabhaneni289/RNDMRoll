@@ -166,6 +166,9 @@ type integrationOptions struct {
 	// wants to see the tickets and file removals passes its own; nil means a
 	// fresh one that nobody holds.
 	entryPhotos *fakeEntryPhotoStore
+	// avatars is the fake profile photo store. A test that wants to see the
+	// file removals passes its own; nil means a fresh one that nobody holds.
+	avatars *fakeAvatarStore
 	// wire, when set, adds to the wiring before the server is built (the
 	// push tests hang a fake push sender on the services).
 	wire func(socialSvc *social.Service, boardSvc *board.Service, deps *Deps)
@@ -189,7 +192,11 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 
 	authHandler := NewAuthHandler(users, refreshSvc, integrationJWTSecret, 15*time.Minute)
 	authHandler.clock = frozenClock
-	profileHandler := NewProfileHandler(users, &fakeAvatarStore{}, testAvatarBaseURL)
+	avatars := opts.avatars
+	if avatars == nil {
+		avatars = &fakeAvatarStore{}
+	}
+	profileHandler := NewProfileHandler(users, avatars)
 	usernameHandler := NewUsernameHandler(users)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -214,7 +221,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	accountHandler.clock = frozenClock
 
 	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
-	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.PublicURL)
+	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.Link)
 	notificationsSvc := notifications.NewService(postgres.NewNotificationsRepo(pool), socialSvc, spinSvc)
 
 	deps := Deps{
@@ -236,6 +243,9 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		// AccountDeleter, and log in cancels a deletion through it.
 		DeleteAccount: NewDeleteAccountHandler(users, users),
 	}
+	// As cmd/api does: profile photos are signed by the photo store, so every
+	// avatar a test sees is a fake signed link (?sig=test).
+	deps.PhotoLink = entryPhotos.Link
 	if len(opts.adminEmails) > 0 {
 		// As cmd/api does: the admins are the accounts the addresses have
 		// now, so a test signs its admin up (newAdminEngine) before this.
@@ -618,19 +628,24 @@ func TestCrossAccountIsolation(t *testing.T) {
 		t.Fatalf("B's id in the response equals A's id -- the wrong row was returned or updated")
 	}
 
-	// B may not save A's avatar folder or an external image either.
+	// B may not save A's photo key or an outside link either, and nothing is
+	// stored for either.
 	idA, _ := accountAID.(string)
 	stolen := integrationDo(t, engine, http.MethodPatch, "/v1/me", sessionB.AccessToken, map[string]any{
-		"avatar_url": testAvatarBaseURL + "/avatars/" + idA + "/x.png",
+		"avatar_key": "avatars/" + idA + "/0123456789abcdef.png",
 	})
-	if stolen.Code != http.StatusBadRequest || decodeBody(t, stolen)["field"] != "avatar_url" {
-		t.Fatalf("A's avatar folder: expected 400 avatar_url, got %d: %s", stolen.Code, stolen.Body.String())
+	if stolen.Code != http.StatusBadRequest || decodeBody(t, stolen)["field"] != "avatar_key" {
+		t.Fatalf("A's avatar key: expected 400 avatar_key, got %d: %s", stolen.Code, stolen.Body.String())
 	}
 	external := integrationDo(t, engine, http.MethodPatch, "/v1/me", sessionB.AccessToken, map[string]any{
-		"avatar_url": "https://evil.example.org/x.png",
+		"avatar_key": "https://evil.example.org/x.png",
 	})
-	if external.Code != http.StatusBadRequest || decodeBody(t, external)["field"] != "avatar_url" {
-		t.Fatalf("external avatar: expected 400 avatar_url, got %d: %s", external.Code, external.Body.String())
+	if external.Code != http.StatusBadRequest || decodeBody(t, external)["field"] != "avatar_key" {
+		t.Fatalf("outside link: expected 400 avatar_key, got %d: %s", external.Code, external.Body.String())
+	}
+	var keys int
+	if err := pool.QueryRow(context.Background(), `select count(*) from users where avatar_key is not null`).Scan(&keys); err != nil || keys != 0 {
+		t.Fatalf("refused avatar keys stored %d rows (err %v)", keys, err)
 	}
 }
 
@@ -832,13 +847,13 @@ func TestIntegrationLegacyAccountWithNullBirthdayCanStillEdit(t *testing.T) {
 	}
 	token, _ := decodeBody(t, login)["access_token"].(string)
 
-	own := testAvatarBaseURL + "/avatars/" + id.String() + "/legacy.png"
-	rec := integrationDo(t, engine, http.MethodPatch, "/v1/me", token, map[string]any{"name": "Legacy Renamed", "bio": "edited", "avatar_url": own})
+	own := "avatars/" + id.String() + "/0123456789abcdef.png"
+	rec := integrationDo(t, engine, http.MethodPatch, "/v1/me", token, map[string]any{"name": "Legacy Renamed", "bio": "edited", "avatar_key": own})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("legacy edit: %d %s", rec.Code, rec.Body.String())
 	}
 	body := decodeBody(t, rec)
-	if body["name"] != "Legacy Renamed" || body["bio"] != "edited" || body["avatar_url"] != own || body["onboarding_complete"] != true {
+	if body["name"] != "Legacy Renamed" || body["bio"] != "edited" || body["avatar_url"] != fakePhotoLink(own) || body["onboarding_complete"] != true {
 		t.Fatalf("unexpected body %v", body)
 	}
 	rec = integrationDo(t, engine, http.MethodPatch, "/v1/me", token, map[string]any{"birthday": validBirthday})

@@ -66,6 +66,9 @@ type AuthHandler struct {
 	// sleep to see the waits.
 	floor time.Duration
 	sleep func(d time.Duration)
+	// photoLink signs the profile photo's link in the session's user
+	// (Deps.PhotoLink; NewServer sets it). Nil sends no photo.
+	photoLink func(string) string
 }
 
 // emailTakenFloor is how long after it came in sign-up answers 409
@@ -631,7 +634,7 @@ func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int, res
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),
-		"user":          apiUser(u),
+		"user":          apiUser(u, h.photoLink),
 	}
 	if restored {
 		body["restored"] = true
@@ -640,14 +643,15 @@ func (h *AuthHandler) issueSession(c *gin.Context, u *user.User, status int, res
 }
 
 // apiUser maps the domain user to lib/api/types.ts's ApiUser shape.
-func apiUser(u *user.User) gin.H {
+// avatar_url is the profile photo's signed link (photoLinkOf).
+func apiUser(u *user.User, link func(string) string) gin.H {
 	return gin.H{
 		"id":                  u.ID,
 		"email":               u.Email,
 		"name":                u.Name,
 		"username":            u.Username,
 		"bio":                 u.Bio,
-		"avatar_url":          u.AvatarURL,
+		"avatar_url":          photoLinkOf(u.AvatarKey, link),
 		"email_verified":      u.EmailVerified,
 		"onboarding_complete": u.OnboardingComplete(),
 		"account_visibility":  u.AccountVisibility,

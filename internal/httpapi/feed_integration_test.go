@@ -62,14 +62,47 @@ func (w *feedWorld) call(p feedPerson, method, path string, body any, want int) 
 	if rec.Body.Len() == 0 {
 		return nil
 	}
+	answer := decodeBody(w.t, rec)
 	if isFeedPath(path) {
-		for _, bad := range []string{`"email"`, `"birthday"`, `"bio"`, `"password_hash"`, `"photo_key"`, `"avatar_url"`, `"storage_key"`} {
+		for _, bad := range []string{`"email"`, `"birthday"`, `"bio"`, `"password_hash"`, `"photo_key"`, `"avatar_url"`, `"avatar_key"`, `"storage_key"`} {
 			if strings.Contains(rec.Body.String(), bad) {
 				w.t.Fatalf("%s %s carries %s: %s", method, path, bad, rec.Body.String())
 			}
 		}
+		wantSignedPhotoLinks(w.t, method+" "+path, answer)
 	}
-	return decodeBody(w.t, rec)
+	return answer
+}
+
+// wantSignedPhotoLinks fails the test for a photo link anywhere in v (a
+// photo_url, or the url of a post's photo) that is not null, empty or a link
+// the fake store signed, and for any other text, under any name, that holds a
+// storage key outside such a link: never a bare key, never an unsigned link.
+func wantSignedPhotoLinks(t *testing.T, label string, v any) {
+	t.Helper()
+	signed := func(s string) bool {
+		return strings.HasPrefix(s, fakePhotoLinkBase) && strings.HasSuffix(s, fakePhotoLinkQuery)
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		for k, child := range x {
+			if k == "photo_url" || k == "url" {
+				s, isString := child.(string)
+				if child != nil && !(isString && (s == "" || signed(s))) {
+					t.Fatalf("%s: %s %v is not a signed photo link", label, k, child)
+				}
+			}
+			wantSignedPhotoLinks(t, label, child)
+		}
+	case []any:
+		for _, child := range x {
+			wantSignedPhotoLinks(t, label, child)
+		}
+	case string:
+		if (strings.Contains(x, "entries/") || strings.Contains(x, "avatars/")) && !signed(x) {
+			t.Fatalf("%s: %q holds a storage key outside a signed link", label, x)
+		}
+	}
 }
 
 // isFeedPath reports a Phase 5 route, whose bodies describe other people.
@@ -496,6 +529,9 @@ func TestBoardIntegration_TheGate(t *testing.T) {
 	loner := w.person("bg_lone", "Lone Wolf")
 	w.followAccepted(a, b)
 	w.followAccepted(c, b)
+	// B has a profile photo: every card and post shows its signed link.
+	bPhoto := "avatars/" + b.id + "/" + fakeAvatarKeyName
+	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"avatar_key": bPhoto})
 
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
@@ -559,8 +595,11 @@ func TestBoardIntegration_TheGate(t *testing.T) {
 	photos := post["photos"].([]any)
 	ph := photos[0].(map[string]any)
 	if len(ph) != 3 || ph["id"] == "" || ph["position"] != float64(0) || ph["url"] != dig(t, post, "card", "photo_url") ||
-		!strings.HasPrefix(ph["url"].(string), fakeEntryPhotoPublicBase) {
+		!strings.HasPrefix(ph["url"].(string), fakePhotoLinkBase+"entries/"+b.id+"/") {
 		t.Fatalf("post photos: %v", photos)
+	}
+	if author := dig(t, post, "card", "author", "photo_url"); author != fakePhotoLink(bPhoto) {
+		t.Fatalf("the author's photo on the post: %v, want %s", author, fakePhotoLink(bPhoto))
 	}
 	if own := w.ok(a, http.MethodGet, "/v1/posts/"+aEntry, nil); own["can_react"] != false || own["received"] == nil {
 		t.Fatalf("own post: %v", own)
@@ -908,4 +947,73 @@ func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
 	if s := social(); s["comment_count"] != float64(1) || strings.Join(texts(s), ",") != "First" {
 		t.Fatalf("after a block: %v", s)
 	}
+}
+
+// Every answer that shows a person who has a profile photo sends its signed
+// link, not null: the follows lists and requests, the bell's actor, lookup,
+// search, the newest comment's writer on your posts list, the Blocked
+// accounts list, and the user a password change or a Forgot password reset
+// answers with. wantSignedPhotoLinks lets null through, so this is what
+// fails when a handler is not given the link.
+func TestIntegration_EveryPersonCarriesTheSignedProfilePhoto(t *testing.T) {
+	w := newDeleteWorld(t)
+	a, _ := w.account("pp_alice", "Alice Ames")
+	b, _ := w.account("pp_bob", "Bob Brown")
+	c, _ := w.account("pp_cara", "Cara Cole")
+	for _, p := range []feedPerson{a, b, c} {
+		w.ok(p, http.MethodPatch, "/v1/me", map[string]any{"avatar_key": fakeAvatarKey(p.id)})
+	}
+	wantPhoto := func(label string, got any, p feedPerson) {
+		t.Helper()
+		if want := fakePhotoLink(fakeAvatarKey(p.id)); got != want {
+			t.Fatalf("%s: photo %v, want %s", label, got, want)
+		}
+	}
+
+	// B asks to follow A: the request on both sides, and A's bell.
+	w.follow(b, a)
+	incoming := w.lists(a)["incoming"].([]any)
+	wantPhoto("A's incoming request", dig(t, incoming[0], "person", "photo_url"), b)
+	wantPhoto("B's outgoing request", dig(t, w.lists(b)["outgoing"].([]any)[0], "person", "photo_url"), a)
+	wantPhoto("A's follow request item", dig(t, itemOf(t, w.notes(a), "follow_request"), "actor", "photo_url"), b)
+
+	// A accepts: the followers and following lists, lookup and search.
+	w.ok(a, http.MethodPost, "/v1/follows/requests/"+dig(t, incoming[0], "request_id").(string)+"/accept", map[string]any{})
+	wantPhoto("A's followers", dig(t, w.lists(a)["followers"].([]any)[0], "photo_url"), b)
+	wantPhoto("B's following", dig(t, w.lists(b)["following"].([]any)[0], "photo_url"), a)
+	wantPhoto("lookup", dig(t, w.lookup(a, "pp_bob", http.StatusOK), "person", "photo_url"), b)
+	hits := w.ok(a, http.MethodGet, "/v1/people/search?q=pp_bob", nil)["people"].([]any)
+	wantPhoto("search", dig(t, hits[0], "person", "photo_url"), b)
+
+	// Both post and B comments on A's post: A's posts list shows the writer.
+	const day = "2026-10-08"
+	aEntry := w.post(a, day)
+	w.post(b, day)
+	w.call(b, http.MethodPost, "/v1/posts/"+aEntry+"/comments", map[string]any{"text": "Nice"}, http.StatusCreated)
+	row := w.ok(a, http.MethodGet, "/v1/diary", nil)["items"].([]any)[0]
+	if dig(t, row, "entry", "id") != aEntry {
+		t.Fatalf("first row: %v", row)
+	}
+	latest := dig(t, row, "social", "latest_comments").([]any)
+	wantPhoto("the newest comment's writer", dig(t, latest[0], "author", "photo_url"), b)
+
+	// A blocks C: the Blocked accounts list.
+	w.ok(a, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": c.id})
+	wantPhoto("A's Blocked accounts list", dig(t, w.ok(a, http.MethodGet, "/v1/me/blocks", nil)["items"].([]any)[0], "user", "photo_url"), c)
+
+	// Last, since each ends the sessions: A changes the password, then B
+	// resets it with Forgot password.
+	changed := integrationDo(t, w.engine, http.MethodPost, "/v1/me/password", a.token,
+		map[string]any{"current_password": deleteTestPassword, "new_password": "Brand-new-password-2!"})
+	if changed.Code != http.StatusOK {
+		t.Fatalf("change password: %d %s", changed.Code, changed.Body.String())
+	}
+	wantPhoto("the user of a password change", dig(t, decodeBody(t, changed), "user", "avatar_url"), a)
+	const bEmail = "pp_bob@example.com"
+	w.askForgot(bEmail)
+	reset := w.resetPassword(bEmail, w.box.lastCode(t, bEmail), "Brand-new-password-2!")
+	if reset.Code != http.StatusOK {
+		t.Fatalf("Forgot password reset: %d %s", reset.Code, reset.Body.String())
+	}
+	wantPhoto("the user of a Forgot password reset", dig(t, decodeBody(t, reset), "user", "avatar_url"), b)
 }

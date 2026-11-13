@@ -68,6 +68,16 @@ type Deps struct {
 	// ("rndmroll" when empty).
 	DeepLinkScheme string
 
+	// PhotoLink signs the link of a stored profile photo key
+	// (storage.EntryPhotoStore.Link: one bucket holds every photo, so it
+	// signs post photos too). NewServer hands it to the profile, log in,
+	// change password, Forgot password, follows, the Board, the person page
+	// and the bell; nil sends their profile photos as null. The diary's
+	// comment writers and the admin page are not given it: they sign
+	// profile photos with the entry photo store's Link, the function cmd/api
+	// sets PhotoLink to. Who may see whom is decided first, as before.
+	PhotoLink func(string) string
+
 	Users     user.Repository
 	JWTSecret []byte
 	Logger    *slog.Logger
@@ -111,7 +121,10 @@ type Server struct {
 //     SpinTestTools). The entry routes (photo ticket, post, read, edit,
 //     delete, skip) are mounted on this group when Deps carries an
 //     EntryHandler, and then the spin handler is given that handler's photo
-//     links so Today's entry summary has a link and never a key.
+//     links so Today's entry summary has a link and never a key. The
+//     handlers named at Deps.PhotoLink are given it the same way. The diary
+//     and the admin page sign profile photos with the entry photo store
+//     instead. Either way a profile photo never leaves as a bare key.
 func NewServer(deps Deps) *Server {
 	engine := gin.New()
 	// A nil list is valid and never errors; handle the error anyway.
@@ -135,6 +148,14 @@ func NewServer(deps Deps) *Server {
 	if deps.DeleteAccount != nil {
 		deps.Auth.deletions = deps.DeleteAccount.deletions
 	}
+	deps.Auth.photoLink = deps.PhotoLink
+	deps.Profile.photoLink = deps.PhotoLink
+	if deps.Account != nil {
+		deps.Account.photoLink = deps.PhotoLink
+	}
+	if deps.PasswordReset != nil {
+		deps.PasswordReset.photoLink = deps.PhotoLink
+	}
 
 	v1 := engine.Group("/v1")
 	v1.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
@@ -157,7 +178,7 @@ func NewServer(deps Deps) *Server {
 	}
 	if deps.Spin != nil {
 		if deps.Entry != nil && deps.Entry.photos != nil {
-			deps.Spin.PhotoURL = deps.Entry.photos.PublicURL
+			deps.Spin.PhotoURL = deps.Entry.photos.Link
 		}
 		deps.Spin.Register(authed)
 	}
@@ -171,20 +192,25 @@ func NewServer(deps Deps) *Server {
 		deps.Diary.Register(authed)
 	}
 	if deps.Follow != nil {
+		deps.Follow.photoLink = deps.PhotoLink
 		deps.Follow.Register(authed)
 	}
 	if deps.Board != nil {
 		if deps.Entry != nil {
 			deps.Board.removeFiles = deps.Entry.removeFiles
 		}
+		deps.Board.photoLink = deps.PhotoLink
 		deps.Board.Register(authed)
 	}
 	// The person page reads follows, the Board rule and the Profile numbers,
 	// so it is mounted when all three are.
 	if deps.Follow != nil && deps.Board != nil && deps.Diary != nil {
-		NewPersonHandler(deps.Follow.svc, deps.Board.svc, deps.Diary.svc).Register(authed)
+		person := NewPersonHandler(deps.Follow.svc, deps.Board.svc, deps.Diary.svc)
+		person.photoLink = deps.PhotoLink
+		person.Register(authed)
 	}
 	if deps.Notifications != nil {
+		deps.Notifications.photoLink = deps.PhotoLink
 		deps.Notifications.Register(authed)
 	}
 	if deps.PushTokens != nil {

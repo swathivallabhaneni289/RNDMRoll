@@ -78,18 +78,19 @@ func (r *AdminRepo) DisabledPeople(ctx context.Context) ([]admin.Summary, error)
 // Person implements admin.Repository: a person with a report about them, a
 // post or a comment (open or closed), or a disabled account. Anyone else is
 // admin.ErrNotFound, like an account that is not there, and the email is not
-// read at all. The profile photo is avatar_url, already a whole link.
+// read at all. The profile photo is its storage key (avatar_key); the page
+// signs the link.
 func (r *AdminRepo) Person(ctx context.Context, id uuid.UUID) (admin.Person, error) {
 	var p admin.Person
 	err := r.pool.QueryRow(ctx, `
-		select u.id, coalesce(u.username, ''), coalesce(u.name, ''), coalesce(u.bio, ''), coalesce(u.avatar_url, ''),
+		select u.id, coalesce(u.username, ''), coalesce(u.name, ''), coalesce(u.bio, ''), coalesce(u.avatar_key, ''),
 		       u.created_at, u.disabled_at, u.deletion_requested_at
 		from users u
 		where u.id = $1 and (u.disabled_at is not null
 		       or exists (select 1 from user_reports where reported_id = u.id)
 		       or exists (select 1 from post_reports where owner_id = u.id)
 		       or exists (select 1 from comment_reports where owner_id = u.id))`, id).Scan(
-		&p.ID, &p.Username, &p.Name, &p.Bio, &p.PhotoURL, &p.CreatedAt, &p.DisabledAt, &p.DeletionRequestedAt)
+		&p.ID, &p.Username, &p.Name, &p.Bio, &p.PhotoKey, &p.CreatedAt, &p.DisabledAt, &p.DeletionRequestedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.Person{}, admin.ErrNotFound
 	}

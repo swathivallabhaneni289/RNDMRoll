@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -27,9 +28,23 @@ import (
 
 // --- the fake photo store ---
 
-// fakeEntryPhotoPublicBase is the link prefix the fake store builds links
-// with, the same host the avatar fake and the test servers use.
-const fakeEntryPhotoPublicBase = "https://cdn.example.test/"
+// fakePhotoLinkBase starts every link the fake store signs and
+// fakePhotoLinkQuery ends it, standing in for a real signature, so a test can
+// tell a signed link from a bare key or an unsigned link.
+const (
+	fakePhotoLinkBase  = "https://cdn.example.test/"
+	fakePhotoLinkQuery = "?sig=test"
+)
+
+// fakePhotoLink is the link the fake store signs for key (an entry, comment
+// or profile photo key): fakePhotoLinkBase, the key and fakePhotoLinkQuery.
+// Like the real Link it gives "" for no key.
+func fakePhotoLink(key string) string {
+	if key == "" {
+		return ""
+	}
+	return fakePhotoLinkBase + key + fakePhotoLinkQuery
+}
 
 // fakeEntryExtensions is the real store's type map: exact content types only.
 var fakeEntryExtensions = map[string]string{
@@ -50,9 +65,9 @@ type fakeEntryTicket struct {
 // real store's rules (the three image types and the length bound, with the same
 // sentinel errors) and hands out keys shaped exactly like real ones,
 // entries/<user id>/<16 lowercase hex>.<ext>, a new random one for every
-// ticket. PublicURL is fakeEntryPhotoPublicBase plus the key. Every
-// DeleteEntryPhoto call is recorded in order, and failDeletesWith makes them
-// return an error. It is safe for concurrent use.
+// ticket. Link is fakePhotoLink. Every DeleteEntryPhoto call is recorded in
+// order, and failDeletesWith makes them return an error. It is safe for
+// concurrent use.
 type fakeEntryPhotoStore struct {
 	mu        sync.Mutex
 	issued    []fakeEntryTicket
@@ -92,8 +107,8 @@ func (f *fakeEntryPhotoStore) PresignEntryPhotoUpload(ctx context.Context, userI
 	}, nil
 }
 
-func (f *fakeEntryPhotoStore) PublicURL(key string) string {
-	return fakeEntryPhotoPublicBase + key
+func (f *fakeEntryPhotoStore) Link(key string) string {
+	return fakePhotoLink(key)
 }
 
 func (f *fakeEntryPhotoStore) DeleteEntryPhoto(ctx context.Context, key string) error {
@@ -254,7 +269,7 @@ func TestEntryFullDayThroughTheRoutes(t *testing.T) {
 	if created["already"] != false {
 		t.Fatalf("already = %v, want false", created["already"])
 	}
-	link := store.PublicURL(key)
+	link := store.Link(key)
 	entry := entryObject(t, created["entry"])
 	if got := entrySortedKeys(entry); !slices.Equal(got, entryKeysWant) {
 		t.Fatalf("entry members = %v, want %v", got, entryKeysWant)
@@ -372,7 +387,7 @@ func TestEntryPatchThroughTheRoute(t *testing.T) {
 	entry := entryObject(t, decodeBody(t, rec)["entry"])
 	id := entry["id"].(string)
 	photos := entry["photos"].([]any)
-	if len(photos) != 2 || dig(t, photos[1], "url") != store.PublicURL(second) {
+	if len(photos) != 2 || dig(t, photos[1], "url") != store.Link(second) {
 		t.Fatalf("created photos: %v", photos)
 	}
 	secondID := dig(t, photos[1], "id").(string)
@@ -397,18 +412,18 @@ func TestEntryPatchThroughTheRoute(t *testing.T) {
 		t.Fatalf("patched fields: %v", patched)
 	}
 	list := patched["photos"].([]any)
-	if len(list) != 2 || dig(t, list[0], "id") != secondID || dig(t, list[0], "url") != store.PublicURL(second) ||
-		dig(t, list[1], "url") != store.PublicURL(third) || dig(t, list[1], "position") != float64(1) {
+	if len(list) != 2 || dig(t, list[0], "id") != secondID || dig(t, list[0], "url") != store.Link(second) ||
+		dig(t, list[1], "url") != store.Link(third) || dig(t, list[1], "position") != float64(1) {
 		t.Fatalf("patched photos: %v", list)
 	}
-	if patched["photo_url"] != store.PublicURL(second) {
+	if patched["photo_url"] != store.Link(second) {
 		t.Fatalf("photo_url = %v, want the new first photo's link", patched["photo_url"])
 	}
 	if got := store.deletes(); !slices.Equal(got, []string{first}) {
 		t.Fatalf("removed files = %v, want only [%s]", got, first)
 	}
 	sum := entryObject(t, r.today(a)["entry"])
-	if sum["photo_url"] != store.PublicURL(second) || sum["photo_count"] != float64(2) || sum["title"] != "Dune: Part Two" {
+	if sum["photo_url"] != store.Link(second) || sum["photo_count"] != float64(2) || sum["title"] != "Dune: Part Two" {
 		t.Fatalf("Today after the edit: %v", sum)
 	}
 
@@ -421,8 +436,13 @@ func TestEntryPatchThroughTheRoute(t *testing.T) {
 		t.Fatalf("an empty PATCH removed files: %v", got)
 	}
 
-	// A store that fails to remove a file does not fail the request.
-	store.failDeletesWith(errors.New("storage is down"))
+	// A store that fails to remove a file does not fail the request. The log
+	// line leaves the key out, even where the store's error repeats it.
+	logs := &syncBuffer{}
+	previous := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	store.failDeletesWith(errors.New(`Delete "https://cdn.example.test/photos/` + third + `?x-id=DeleteObject": storage is down`))
 	rec = r.call(http.MethodPatch, "/v1/entries/"+id, a.token, map[string]any{
 		"photos": []any{map[string]any{"id": secondID}},
 	})
@@ -431,6 +451,10 @@ func TestEntryPatchThroughTheRoute(t *testing.T) {
 	}
 	if got := store.deletes(); !slices.Equal(got, []string{first, third}) {
 		t.Fatalf("removed files = %v, want [%s %s]", got, first, third)
+	}
+	if line := logs.String(); !strings.Contains(line, "could not remove a photo file") || !strings.Contains(line, "storage is down") ||
+		strings.Contains(line, third) || strings.Contains(line, a.id.String()) {
+		t.Fatalf("the log line for the failed removal: %q", line)
 	}
 	if n := len(entryObject(t, decodeBody(t, rec)["entry"])["photos"].([]any)); n != 1 {
 		t.Fatalf("photos after the last edit: %d, want 1", n)
@@ -501,7 +525,7 @@ func TestEntryTicketRouteIssuesAKeyInTheCallersFolder(t *testing.T) {
 	}
 	atLimit := r.call(http.MethodPost, "/v1/entry-photos/upload-url", a.token, map[string]any{"content_type": "image/jpeg", "content_length": storage.MaxEntryPhotoBytes})
 	if atLimit.Code != http.StatusOK {
-		t.Fatalf("exactly 50 MiB: %d %s", atLimit.Code, atLimit.Body.String())
+		t.Fatalf("exactly 50 MB: %d %s", atLimit.Code, atLimit.Body.String())
 	}
 }
 
@@ -611,11 +635,11 @@ func TestEntryIntegration_PostReadAndSkipOverPostgres(t *testing.T) {
 	created := decodeBody(t, rec)
 	entry := entryObject(t, created["entry"])
 	id := entry["id"].(string)
-	if entry["photo_url"] != store.PublicURL(keys[0]) || len(entry["photos"].([]any)) != 2 {
+	if entry["photo_url"] != store.Link(keys[0]) || len(entry["photos"].([]any)) != 2 {
 		t.Fatalf("created entry: %v", entry)
 	}
 	today := entryObject(t, decodeBody(t, do(http.MethodGet, "/v1/today", a.AccessToken, nil)))
-	if sum := entryObject(t, today["entry"]); today["state"] != "posted" || sum["photo_url"] != store.PublicURL(keys[0]) || sum["photo_count"] != float64(2) {
+	if sum := entryObject(t, today["entry"]); today["state"] != "posted" || sum["photo_url"] != store.Link(keys[0]) || sum["photo_count"] != float64(2) {
 		t.Fatalf("today: %v", today)
 	}
 	rec = do(http.MethodGet, "/v1/entries/"+id, a.AccessToken, nil)
@@ -769,7 +793,7 @@ func photoLinks(t *testing.T, entry map[string]any) []string {
 func (f *fakeEntryPhotoStore) linksOf(keys ...string) []string {
 	links := make([]string, len(keys))
 	for i, k := range keys {
-		links[i] = f.PublicURL(k)
+		links[i] = f.Link(k)
 	}
 	return links
 }
@@ -778,7 +802,7 @@ func (f *fakeEntryPhotoStore) linksOf(keys ...string) []string {
 func keysOfLinks(links []string) []string {
 	keys := make([]string, len(links))
 	for i, l := range links {
-		keys[i] = strings.TrimPrefix(l, fakeEntryPhotoPublicBase)
+		keys[i] = strings.TrimSuffix(strings.TrimPrefix(l, fakePhotoLinkBase), fakePhotoLinkQuery)
 	}
 	return keys
 }
@@ -878,7 +902,7 @@ func wantEntrySummary(t *testing.T, label string, today map[string]any, want ent
 		sum["photo_count"] != want.count || sum["photo_url"] != want.cover {
 		t.Fatalf("%s: summary = %v, want %+v", label, sum, want)
 	}
-	if !strings.HasPrefix(want.cover, fakeEntryPhotoPublicBase+"entries/") {
+	if !strings.HasPrefix(want.cover, fakePhotoLinkBase+"entries/") || !strings.HasSuffix(want.cover, fakePhotoLinkQuery) {
 		t.Fatalf("%s: the expected cover %q is not a link", label, want.cover)
 	}
 }
@@ -1057,7 +1081,7 @@ func TestEntryTicketAcceptsTheThreeImageTypesInTheCallersFolder(t *testing.T) {
 func TestEntryTicketRefusesOtherTypesAndBadLengths(t *testing.T) {
 	r := newSpinRig(t, rigOptions{})
 	p := r.person("entry-lengths@example.com", "entry_lengths")
-	const mib50 = 50 << 20
+	const max = storage.MaxEntryPhotoBytes
 	ask := func(contentType string, length int64) *httptest.ResponseRecorder {
 		return r.call(http.MethodPost, "/v1/entry-photos/upload-url", p.token, map[string]any{"content_type": contentType, "content_length": length})
 	}
@@ -1072,14 +1096,14 @@ func TestEntryTicketRefusesOtherTypesAndBadLengths(t *testing.T) {
 		{"a type with parameters", "image/jpeg; charset=x", 1000, "content_type", "invalid"},
 		{"zero length", "image/jpeg", 0, "content_length", "required"},
 		{"negative length", "image/jpeg", -1, "content_length", "required"},
-		{"50 MiB plus one", "image/jpeg", mib50 + 1, "content_length", "too_long"},
+		{"50 MB plus one", "image/jpeg", max + 1, "content_length", "too_long"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			wantProblem(t, ask(c.contentType, c.length), c.field, c.reason)
 		})
 	}
-	// One byte and exactly 50 MiB are fine.
-	for _, length := range []int64{1, mib50} {
+	// One byte and exactly 50 MB are fine.
+	for _, length := range []int64{1, max} {
 		if rec := ask("image/webp", length); rec.Code != http.StatusOK {
 			t.Fatalf("length %d: %d %s", length, rec.Code, rec.Body.String())
 		}
@@ -1236,7 +1260,7 @@ func TestEntryCreateRefusesABadPhotoList(t *testing.T) {
 			return item(newPhotoItem(folderOf(own) + "/0123456789abcdef.gif"))
 		}), "photos", "invalid"},
 		{"a link instead of a key", photosOf(func(own func() string) []any {
-			return item(newPhotoItem(store.PublicURL(own())))
+			return item(newPhotoItem(store.Link(own())))
 		}), "photos", "invalid"},
 		{"the same key twice", photosOf(func(own func() string) []any {
 			k := own()
@@ -1318,5 +1342,18 @@ func TestEntryCreateAcceptsTenPhotosAndEveryLimitAtItsEdge(t *testing.T) {
 	wantProblem(t, rec, "photos", "too_many")
 	if got := r.entryOf(a, entry["id"].(string)); !reflect.DeepEqual(got, entry) {
 		t.Fatalf("a refused edit changed the entry: %v", got)
+	}
+}
+
+// withoutKey cuts the key out of a failed removal's text wherever it is, and
+// leaves the text as it is for no key.
+func TestWithoutKeyCutsTheKeyOut(t *testing.T) {
+	key := "entries/" + uuid.NewString() + "/0123456789abcdef.jpg"
+	err := fmt.Errorf("delete %s: request to /photos/%s failed", key, key)
+	if got, want := withoutKey(err, key), "delete [key]: request to /photos/[key] failed"; got != want {
+		t.Fatalf("withoutKey = %q, want %q", got, want)
+	}
+	if got := withoutKey(errors.New("storage is down"), ""); got != "storage is down" {
+		t.Fatalf("withoutKey with no key = %q", got)
 	}
 }

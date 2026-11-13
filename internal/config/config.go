@@ -39,7 +39,6 @@ type Config struct {
 	S3Bucket          string
 	S3AccessKeyID     string
 	S3SecretAccessKey string
-	S3PublicBaseURL   string
 
 	// AppEnv is "production" (the default), "development" or "test".
 	AppEnv string
@@ -105,6 +104,9 @@ func Load() (*Config, error) {
 	s3Endpoint := os.Getenv("S3_ENDPOINT")
 	requireVar("S3_ENDPOINT", s3Endpoint)
 
+	// The region is signed into every upload ticket and photo link, so it
+	// must be the storage provider's real one (on Supabase, the region on its
+	// S3 settings page, for example ap-southeast-1).
 	s3Region := withDefault(os.Getenv("S3_REGION"), "auto")
 
 	s3Bucket := os.Getenv("S3_BUCKET")
@@ -115,9 +117,6 @@ func Load() (*Config, error) {
 
 	s3SecretAccessKey := os.Getenv("S3_SECRET_ACCESS_KEY")
 	requireVar("S3_SECRET_ACCESS_KEY", s3SecretAccessKey)
-
-	s3PublicBaseURL := os.Getenv("S3_PUBLIC_BASE_URL")
-	requireVar("S3_PUBLIC_BASE_URL", s3PublicBaseURL)
 
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("config: missing required environment variables: %s", strings.Join(missing, ", "))
@@ -199,7 +198,6 @@ func Load() (*Config, error) {
 		S3Bucket:          s3Bucket,
 		S3AccessKeyID:     s3AccessKeyID,
 		S3SecretAccessKey: s3SecretAccessKey,
-		S3PublicBaseURL:   s3PublicBaseURL,
 
 		AppEnv:             appEnv,
 		SpinTestTools:      spinTestTools,

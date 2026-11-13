@@ -518,7 +518,6 @@ func TestNewAccountFiles_MissingConfigFieldReturnsError(t *testing.T) {
 		S3Bucket:          "photos",
 		S3AccessKeyID:     "key",
 		S3SecretAccessKey: "secret",
-		S3PublicBaseURL:   "https://cdn.example.test",
 	}
 	if _, err := NewAccountFiles(Config{}); err != ErrIncompleteConfig {
 		t.Fatalf("empty config: error = %v, want ErrIncompleteConfig", err)
@@ -528,7 +527,6 @@ func TestNewAccountFiles_MissingConfigFieldReturnsError(t *testing.T) {
 		"bucket":     func(c *Config) { c.S3Bucket = "" },
 		"access key": func(c *Config) { c.S3AccessKeyID = "" },
 		"secret":     func(c *Config) { c.S3SecretAccessKey = "" },
-		"public url": func(c *Config) { c.S3PublicBaseURL = "" },
 	} {
 		cfg := full
 		mutate(&cfg)

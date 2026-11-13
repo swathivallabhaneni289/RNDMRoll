@@ -252,9 +252,12 @@ type Tx interface {
 
 	// DeleteEntry removes this person's entry and, with it, its photo rows. It
 	// reads the entry's storage keys first and returns ALL of them in position
-	// order. ErrEntryNotFound when no such entry belongs to this person. It
-	// leaves the posted day, the spin and its result, and the goal weeks as
-	// they are.
+	// order. Postgres also deletes the comments and replies on the entry (by
+	// cascade) and returns their photo keys after the entry's own, oldest
+	// first: only a key in its writer's own folder that no photo row names.
+	// MemRepo has no comments. ErrEntryNotFound when no such entry belongs to
+	// this person. It leaves the posted day, the spin and its result, and the
+	// goal weeks as they are.
 	DeleteEntry(id string) (removedKeys []string, err error)
 
 	// SetEntryArchived archives (true) or unarchives (false) this person's

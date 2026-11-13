@@ -102,7 +102,7 @@ func TestEntryIntegration_FullDayThenResetOverPostgres(t *testing.T) {
 	entry := entryObject(t, created["entry"])
 	id := entry["id"].(string)
 	if created["already"] != false || entry["late"] != false || entry["local_date"] != day ||
-		!slices.Equal(photoLinks(t, entry), store.linksOf(keys...)) || entry["photo_url"] != store.PublicURL(keys[0]) {
+		!slices.Equal(photoLinks(t, entry), store.linksOf(keys...)) || entry["photo_url"] != store.Link(keys[0]) {
 		t.Fatalf("created: %v", created)
 	}
 	wantCounts("after the post", 1, 2, 1, 1)
@@ -114,7 +114,7 @@ func TestEntryIntegration_FullDayThenResetOverPostgres(t *testing.T) {
 		t.Fatalf("the posted day's source = %q (err %v), want post", source, err)
 	}
 	wantEntrySummary(t, "GET /v1/today after the post", do(http.MethodGet, "/v1/today", nil, http.StatusOK),
-		entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 2, cover: store.PublicURL(keys[0])})
+		entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 2, cover: store.Link(keys[0])})
 
 	// Read it back: the same entry.
 	if got := do(http.MethodGet, "/v1/entries/"+id, nil, http.StatusOK); !reflect.DeepEqual(entryObject(t, got["entry"]), entry) {
@@ -156,7 +156,7 @@ func TestEntryIntegration_FullDayThenResetOverPostgres(t *testing.T) {
 	}
 	wantCounts("after the edit", 1, 1, 1, 1)
 	wantEntrySummary(t, "GET /v1/today after the edit", do(http.MethodGet, "/v1/today", nil, http.StatusOK),
-		entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 1, cover: store.PublicURL(keys[0])})
+		entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 1, cover: store.Link(keys[0])})
 
 	// A skip after the post is refused and changes nothing.
 	refused := do(http.MethodPost, "/v1/spin/skip", map[string]any{"for_date": day, "spin_seq": seq}, http.StatusConflict)

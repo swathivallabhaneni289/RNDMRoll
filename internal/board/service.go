@@ -323,6 +323,10 @@ func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time
 	}
 }
 
+// commentPhotoURL signs a comment's photo whatever the comment, so a caller
+// must run visible() on the post first and pass only comments the viewer may
+// read (visibleComments: no block either way, hidden ones only for their
+// writer and the post's owner). It never checks that itself.
 func (s *Service) commentPhotoURL(key *string) string {
 	if key == nil || *key == "" || s.photoURL == nil {
 		return ""

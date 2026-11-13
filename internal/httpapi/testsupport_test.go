@@ -262,8 +262,8 @@ func (f *fakeUserRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p user.P
 	if p.Bio != nil {
 		u.Bio = p.Bio
 	}
-	if p.AvatarURL != nil {
-		u.AvatarURL = p.AvatarURL
+	if p.AvatarKey != nil {
+		u.AvatarKey = p.AvatarKey
 	}
 	if p.AccountVisibility != nil {
 		u.AccountVisibility = *p.AccountVisibility

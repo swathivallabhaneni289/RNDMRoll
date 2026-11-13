@@ -18,6 +18,9 @@ import (
 // FollowHandler serves the follow, block and notification settings routes.
 type FollowHandler struct {
 	svc *social.Service
+	// photoLink signs the people's profile photos (Deps.PhotoLink; NewServer
+	// sets it). Nil sends none.
+	photoLink func(string) string
 }
 
 // NewFollowHandler builds a FollowHandler over the social service.
@@ -62,18 +65,18 @@ type requestView struct {
 	At        spin.Instant `json:"at"`
 }
 
-func requestViews(list []social.Request) []requestView {
+func requestViews(list []social.Request, link func(string) string) []requestView {
 	out := make([]requestView, 0, len(list))
 	for _, r := range list {
-		out = append(out, requestView{RequestID: r.ID.String(), Person: newPersonView(r.Person), At: spin.Instant(r.At)})
+		out = append(out, requestView{RequestID: r.ID.String(), Person: newPersonView(r.Person, link), At: spin.Instant(r.At)})
 	}
 	return out
 }
 
-func personViews(list []social.Person) []personView {
+func personViews(list []social.Person, link func(string) string) []personView {
 	out := make([]personView, 0, len(list))
 	for _, p := range list {
-		out = append(out, newPersonView(p))
+		out = append(out, newPersonView(p, link))
 	}
 	return out
 }
@@ -120,7 +123,7 @@ func (h *FollowHandler) lookup(c *gin.Context) {
 		return
 	}
 	Respond(c, http.StatusOK, gin.H{
-		"person":      newPersonView(res.Person),
+		"person":      newPersonView(res.Person, h.photoLink),
 		"relation":    string(res.Relation),
 		"follows_you": res.FollowsYou,
 		"private":     res.Private,
@@ -142,7 +145,7 @@ func (h *FollowHandler) search(c *gin.Context) {
 	people := make([]gin.H, 0, len(hits))
 	for _, hit := range hits {
 		people = append(people, gin.H{
-			"person":      newPersonView(hit.Person),
+			"person":      newPersonView(hit.Person, h.photoLink),
 			"relation":    string(hit.Relation),
 			"follows_you": hit.FollowsYou,
 		})
@@ -161,10 +164,10 @@ func (h *FollowHandler) lists(c *gin.Context) {
 		return
 	}
 	Respond(c, http.StatusOK, gin.H{
-		"followers": personViews(l.Followers),
-		"following": personViews(l.Following),
-		"incoming":  requestViews(l.Incoming),
-		"outgoing":  requestViews(l.Outgoing),
+		"followers": personViews(l.Followers, h.photoLink),
+		"following": personViews(l.Following, h.photoLink),
+		"incoming":  requestViews(l.Incoming, h.photoLink),
+		"outgoing":  requestViews(l.Outgoing, h.photoLink),
 	})
 }
 
@@ -264,7 +267,7 @@ func (h *FollowHandler) blocks(c *gin.Context) {
 	}
 	items := make([]blockedView, 0, len(list))
 	for _, b := range list {
-		items = append(items, blockedView{User: newPersonView(b.Person), BlockedAt: spin.Instant(b.At)})
+		items = append(items, blockedView{User: newPersonView(b.Person, h.photoLink), BlockedAt: spin.Instant(b.At)})
 	}
 	Respond(c, http.StatusOK, gin.H{"items": items})
 }

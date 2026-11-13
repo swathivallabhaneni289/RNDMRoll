@@ -14,8 +14,8 @@ import (
 )
 
 // SocialRepo is social.Repository over the pool. A person is read as id,
-// name, username and avatar link only, and only for a finished account (a
-// name and a username).
+// name, username and profile photo key only, and only for a finished account
+// (a name and a username).
 type SocialRepo struct {
 	pool *pgxpool.Pool
 }
@@ -29,7 +29,7 @@ var _ social.Repository = (*SocialRepo)(nil)
 
 // personColumns are the only user columns this repository reads, with the
 // table alias u.
-const personColumns = `u.id, coalesce(u.name, ''), coalesce(u.username, ''), u.avatar_url`
+const personColumns = `u.id, coalesce(u.name, ''), coalesce(u.username, ''), u.avatar_key`
 
 // blockedEither is a where fragment true when $a and $b have a block either
 // way, or either of them is disabled by an admin (migration 0012) or asked
@@ -44,7 +44,7 @@ func blockedEither(a, b string) string {
 
 func scanPerson(row interface{ Scan(...any) error }, extra ...any) (social.Person, error) {
 	var p social.Person
-	dest := append([]any{&p.ID, &p.Name, &p.Username, &p.PhotoURL}, extra...)
+	dest := append([]any{&p.ID, &p.Name, &p.Username, &p.PhotoKey}, extra...)
 	err := row.Scan(dest...)
 	return p, err
 }

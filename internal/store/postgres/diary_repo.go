@@ -347,9 +347,9 @@ func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []stri
 	}
 
 	rows, err = r.pool.Query(ctx, `
-		select entry_id, author_id, name, username, avatar_url, body from (
+		select entry_id, author_id, name, username, avatar_key, body from (
 		  select c.entry_id, u.id as author_id, coalesce(u.name, '') as name, coalesce(u.username, '') as username,
-		    u.avatar_url,
+		    u.avatar_key,
 		    -- A comment that is only a photo reads "sent a photo" (migration 0013).
 		    case when btrim(c.body) = '' then 'sent a photo' else c.body end as body,
 		    c.created_at, c.id,
@@ -365,7 +365,7 @@ func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []stri
 	for rows.Next() {
 		var id, author uuid.UUID
 		var latest diary.LatestComment
-		if err := rows.Scan(&id, &author, &latest.Name, &latest.Username, &latest.PhotoURL, &latest.Text); err != nil {
+		if err := rows.Scan(&id, &author, &latest.Name, &latest.Username, &latest.PhotoKey, &latest.Text); err != nil {
 			return nil, err
 		}
 		latest.AuthorID = author.String()

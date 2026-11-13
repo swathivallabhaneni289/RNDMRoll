@@ -112,7 +112,7 @@ func RespondError(c *gin.Context, err error) {
 
 // RespondFieldError writes a 400 validation_failed response that names the
 // request field that failed. field is one of email, password, birthday,
-// name, username, bio, avatar_url, account_visibility, current_password,
+// name, username, bio, avatar_key, account_visibility, current_password,
 // new_password or code; reason is one of the fixed reason constants above,
 // and is sent as "reason" (the app's ApiError.reason) so a screen can tell
 // two refusals of one field apart. The message is fixed text.

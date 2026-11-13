@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -14,10 +15,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// MaxEntryPhotoBytes caps one entry photo at 50 MiB, the same ceiling as the
-// avatar. The limit is per photo and one ticket is made per photo. Like the
-// avatar's, the bound is signed into the upload request itself.
-const MaxEntryPhotoBytes = 50 * 1024 * 1024
+// MaxEntryPhotoBytes caps one entry photo at 50 MB (50,000,000 bytes), the
+// same ceiling as the avatar: Supabase's free plan takes no file over 50 MB,
+// so a bigger photo gets the app's own message and never a storage error. The
+// limit is per photo and one ticket is made per photo. Like the avatar's, the
+// bound is signed into the upload request itself.
+const MaxEntryPhotoBytes = 50_000_000
 
 var (
 	// ErrEntryPhotoType is returned for a content type that is not exactly
@@ -50,19 +53,20 @@ const (
 
 // EntryPhotoTicket is what a client receives to upload one entry photo
 // straight to storage: a presigned PUT URL, and the key the file will have.
-// The key is sent back when the entry is saved. It carries no public link:
-// the server builds links from stored keys when it reads.
+// The key is sent back when the entry is saved. It carries no link: the
+// server signs links from stored keys when it reads (Link).
 type EntryPhotoTicket struct {
 	UploadURL string
 	Key       string
 	ExpiresIn int
 }
 
-// EntryPhotoStore issues upload tickets for entry photos, builds the public
-// link of a stored key and removes a file.
+// EntryPhotoStore issues upload tickets for entry photos, signs the photo
+// link of a stored key (an entry, comment or profile photo: links.go) and
+// removes a file.
 type EntryPhotoStore interface {
 	PresignEntryPhotoUpload(ctx context.Context, userID uuid.UUID, contentType string, contentLength int64) (*EntryPhotoTicket, error)
-	PublicURL(key string) string
+	Link(key string) string
 	DeleteEntryPhoto(ctx context.Context, key string) error
 }
 
@@ -77,18 +81,32 @@ var _ objectDeleter = (*s3.Client)(nil)
 var _ presigner = (*s3.PresignClient)(nil)
 
 type s3EntryPhotoStore struct {
-	presigner     presigner
-	deleter       objectDeleter
-	bucket        string
-	publicBaseURL string
+	// presigner signs the upload tickets and links signs the photo links:
+	// two presign clients, so rounding a link's signing time never touches
+	// an upload.
+	presigner presigner
+	links     getPresigner
+	deleter   objectDeleter
+	bucket    string
 }
 
 // NewEntryPhotoStore builds an EntryPhotoStore with the same client options
 // as NewAvatarStore: static credentials, the configured region (auto when
-// empty), BaseEndpoint set to the endpoint and path-style addressing. A
-// missing required field is ErrIncompleteConfig.
+// empty), BaseEndpoint set to the endpoint and path-style addressing. Photo
+// links are signed on the real clock. A missing required field is
+// ErrIncompleteConfig.
 func NewEntryPhotoStore(cfg Config) (EntryPhotoStore, error) {
-	if cfg.S3Endpoint == "" || cfg.S3Bucket == "" || cfg.S3AccessKeyID == "" || cfg.S3SecretAccessKey == "" || cfg.S3PublicBaseURL == "" {
+	s, err := newEntryPhotoStore(cfg, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// newEntryPhotoStore is NewEntryPhotoStore with the clock the photo links are
+// signed by, so a test can pin it.
+func newEntryPhotoStore(cfg Config, now func() time.Time) (*s3EntryPhotoStore, error) {
+	if cfg.S3Endpoint == "" || cfg.S3Bucket == "" || cfg.S3AccessKeyID == "" || cfg.S3SecretAccessKey == "" {
 		return nil, ErrIncompleteConfig
 	}
 	region := cfg.S3Region
@@ -104,10 +122,10 @@ func NewEntryPhotoStore(cfg Config) (EntryPhotoStore, error) {
 	})
 
 	return &s3EntryPhotoStore{
-		presigner:     s3.NewPresignClient(client),
-		deleter:       client,
-		bucket:        cfg.S3Bucket,
-		publicBaseURL: cfg.S3PublicBaseURL,
+		presigner: s3.NewPresignClient(client),
+		links:     newLinkClient(client, now),
+		deleter:   client,
+		bucket:    cfg.S3Bucket,
 	}, nil
 }
 
@@ -144,12 +162,6 @@ func (s *s3EntryPhotoStore) PresignEntryPhotoUpload(ctx context.Context, userID 
 		Key:       key,
 		ExpiresIn: int(presignExpiry.Seconds()),
 	}, nil
-}
-
-// PublicURL joins the public base (trailing slashes trimmed) and the key with
-// one slash.
-func (s *s3EntryPhotoStore) PublicURL(key string) string {
-	return strings.TrimRight(s.publicBaseURL, "/") + "/" + strings.TrimLeft(key, "/")
 }
 
 // DeleteEntryPhoto removes one file. It calls storage once, and only for a

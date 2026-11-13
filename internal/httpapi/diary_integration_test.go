@@ -95,7 +95,7 @@ func TestDiaryIntegration_HistoryOverPostgres(t *testing.T) {
 		if got := dig(t, recent[i], "local_date"); got != want {
 			t.Fatalf("recent[%d] = %v, want %s", i, got, want)
 		}
-		if url, _ := dig(t, recent[i], "photo_url").(string); !strings.HasPrefix(url, store.PublicURL("")) || url == "" {
+		if url, _ := dig(t, recent[i], "photo_url").(string); !strings.HasPrefix(url, fakePhotoLinkBase+"entries/") || !strings.HasSuffix(url, fakePhotoLinkQuery) {
 			t.Fatalf("recent[%d] photo_url %q", i, url)
 		}
 	}

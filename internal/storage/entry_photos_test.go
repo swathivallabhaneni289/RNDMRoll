@@ -46,10 +46,9 @@ func (d *stubDeleter) DeleteObject(ctx context.Context, params *s3.DeleteObjectI
 
 func newTestEntryStore(p presigner, d objectDeleter) *s3EntryPhotoStore {
 	return &s3EntryPhotoStore{
-		presigner:     p,
-		deleter:       d,
-		bucket:        "rndmroll-photos-test",
-		publicBaseURL: "https://cdn.example.test",
+		presigner: p,
+		deleter:   d,
+		bucket:    "rndmroll-photos-test",
 	}
 }
 
@@ -107,11 +106,12 @@ func TestEntryPhotoStore_LengthBounds(t *testing.T) {
 		{"zero", 0, false},
 		{"negative", -1, false},
 		{"one byte", 1, true},
-		{"50 MiB", 50 * 1024 * 1024, true},
-		{"50 MiB plus one", 50*1024*1024 + 1, false},
+		{"50 MB", 50_000_000, true},
+		{"50 MB plus one", 50_000_001, false},
+		{"50 MiB", 50 * 1024 * 1024, false},
 	}
-	if MaxEntryPhotoBytes != 50*1024*1024 {
-		t.Fatalf("MaxEntryPhotoBytes = %d", MaxEntryPhotoBytes)
+	if MaxEntryPhotoBytes != 50_000_000 {
+		t.Fatalf("MaxEntryPhotoBytes = %d, want 50,000,000 (Supabase's free plan takes no file over 50 MB)", MaxEntryPhotoBytes)
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -221,17 +221,6 @@ func TestEntryPhotoKeyOwnedBy(t *testing.T) {
 	}
 }
 
-func TestEntryPhotoStore_PublicURL(t *testing.T) {
-	key := "entries/3f0c2a52-7d4e-4c4b-9c1d-6a1f2b3c4d5e/0123456789abcdef.jpg"
-	for _, base := range []string{"https://cdn.example.test", "https://cdn.example.test/", "https://cdn.example.test//"} {
-		store := newTestEntryStore(&stubPresigner{}, &stubDeleter{})
-		store.publicBaseURL = base
-		if got, want := store.PublicURL(key), "https://cdn.example.test/"+key; got != want {
-			t.Errorf("base %q: PublicURL = %q, want %q", base, got, want)
-		}
-	}
-}
-
 func TestEntryPhotoStore_DeleteCallsStorageOnceForAValidKey(t *testing.T) {
 	d := &stubDeleter{}
 	store := newTestEntryStore(&stubPresigner{}, d)
@@ -291,7 +280,6 @@ func TestNewEntryPhotoStore_MissingConfigFieldReturnsError(t *testing.T) {
 		S3Bucket:          "photos",
 		S3AccessKeyID:     "key",
 		S3SecretAccessKey: "secret",
-		S3PublicBaseURL:   "https://cdn.example.test",
 	}
 	if _, err := NewEntryPhotoStore(Config{}); err != ErrIncompleteConfig {
 		t.Fatalf("empty config: error = %v, want ErrIncompleteConfig", err)
@@ -301,7 +289,6 @@ func TestNewEntryPhotoStore_MissingConfigFieldReturnsError(t *testing.T) {
 		"bucket":     func(c *Config) { c.S3Bucket = "" },
 		"access key": func(c *Config) { c.S3AccessKeyID = "" },
 		"secret":     func(c *Config) { c.S3SecretAccessKey = "" },
-		"public url": func(c *Config) { c.S3PublicBaseURL = "" },
 	} {
 		cfg := full
 		mutate(&cfg)
@@ -310,7 +297,9 @@ func TestNewEntryPhotoStore_MissingConfigFieldReturnsError(t *testing.T) {
 		}
 	}
 	// A complete configuration builds a store with no network call, and an
-	// empty region is accepted.
+	// empty region is accepted. Its links are signed, on the endpoint, in the
+	// bucket.
+	key := "entries/" + uuid.NewString() + "/0123456789abcdef.jpg"
 	for _, region := range []string{"auto", ""} {
 		cfg := full
 		cfg.S3Region = region
@@ -318,8 +307,35 @@ func TestNewEntryPhotoStore_MissingConfigFieldReturnsError(t *testing.T) {
 		if err != nil || store == nil {
 			t.Fatalf("region %q: %v", region, err)
 		}
-		if got := store.PublicURL("entries/x/y.jpg"); got != "https://cdn.example.test/entries/x/y.jpg" {
-			t.Errorf("PublicURL = %q", got)
+		link := store.Link(key)
+		if !strings.HasPrefix(link, "https://s3.example.test/photos/"+key+"?") || !strings.Contains(link, "X-Amz-Signature=") {
+			t.Errorf("region %q: Link = %q, want a signed link to the key in the bucket", region, link)
 		}
+		if got := store.Link("entries/x/y.jpg"); got != "" {
+			t.Errorf("region %q: Link of a key of the wrong shape = %q, want none", region, got)
+		}
+	}
+}
+
+// An upload ticket is never signed by the link client: its signing time is
+// the current time, not one rounded down to the half hour, and it works for
+// five minutes, not an hour. The link clock is pinned far in the past, so a
+// ticket signed on it could not pass for a fresh one.
+func TestEntryPhotoStore_TheUploadTicketIsNeverRounded(t *testing.T) {
+	linkClock := time.Date(2001, 1, 1, 10, 17, 0, 0, time.UTC)
+	store, err := newEntryPhotoStore(testLinkConfig, func() time.Time { return linkClock })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := store.PresignEntryPhotoUpload(context.Background(), uuid.New(), "image/jpeg", 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFreshUpload(t, ticket.UploadURL)
+
+	// The link from the same store is on the pinned clock, rounded down.
+	q := linkQuery(t, store.Link(ticket.Key))
+	if q.Get("X-Amz-Date") != "20010101T100000Z" || q.Get("X-Amz-Expires") != "3600" {
+		t.Fatalf("the link's date %q and expiry %q, want 20010101T100000Z and 3600", q.Get("X-Amz-Date"), q.Get("X-Amz-Expires"))
 	}
 }

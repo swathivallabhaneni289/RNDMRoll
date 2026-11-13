@@ -158,7 +158,8 @@ func TestPersonIntegration_BioForAnyoneWhoCanOpenThePage(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("pb_alice", "Alice Ames")
 	b := w.person("pb_bob", "Bob Brown")
-	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"bio": "Spins on Sundays."})
+	bPhoto := "avatars/" + b.id + "/" + fakeAvatarKeyName
+	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"bio": "Spins on Sundays.", "avatar_key": bPhoto})
 
 	// The page is read directly: the feed guard forbids "bio", and this is
 	// the one route that sends it, to a stranger too, like Instagram.
@@ -170,10 +171,15 @@ func TestPersonIntegration_BioForAnyoneWhoCanOpenThePage(t *testing.T) {
 	if page["bio"] != "Spins on Sundays." || page["posts"] != nil {
 		t.Fatalf("stranger sees the bio and no grid: %v", page)
 	}
-	for _, bad := range []string{`"email"`, `"birthday"`, `"password_hash"`, `"avatar_url"`, `"storage_key"`} {
+	for _, bad := range []string{`"email"`, `"birthday"`, `"password_hash"`, `"avatar_url"`, `"avatar_key"`, `"storage_key"`} {
 		if strings.Contains(rec.Body.String(), bad) {
 			t.Fatalf("page carries %s: %s", bad, rec.Body.String())
 		}
+	}
+	// The profile photo is its signed link, never the key.
+	wantSignedPhotoLinks(t, "the page", page)
+	if got := dig(t, page, "person", "photo_url"); got != fakePhotoLink(bPhoto) || strings.Count(rec.Body.String(), bPhoto) != 1 {
+		t.Fatalf("the page's photo: %v, want %s", got, fakePhotoLink(bPhoto))
 	}
 	// No bio: the key is left out.
 	if got := w.ok(b, http.MethodGet, "/v1/people/"+a.id, nil); got["bio"] != nil {

@@ -40,7 +40,7 @@ const boardEntrySelect = `
 
 func scanBoardEntry(row interface{ Scan(...any) error }) (board.EntryRow, error) {
 	var e board.EntryRow
-	err := row.Scan(&e.ID, &e.Owner.ID, &e.Owner.Name, &e.Owner.Username, &e.Owner.PhotoURL,
+	err := row.Scan(&e.ID, &e.Owner.ID, &e.Owner.Name, &e.Owner.Username, &e.Owner.PhotoKey,
 		&e.LocalDate, &e.CategoryID, &e.CategoryName, &e.TZName,
 		&e.Title, &e.Stars, &e.Reaction, &e.Note, &e.Late, &e.CreatedAt, &e.Archived, &e.CommentsOff)
 	e.CreatedAt = e.CreatedAt.UTC()
@@ -271,7 +271,7 @@ func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]
 
 func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) {
 	var c board.CommentRow
-	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoURL,
+	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoKey,
 		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden, &c.PhotoKey)
 	c.CreatedAt = c.CreatedAt.UTC()
 	return c, err
@@ -291,7 +291,7 @@ func (r *BoardRepo) Received(ctx context.Context, owner, entryID uuid.UUID) ([]b
 	out := []board.Received{}
 	for rows.Next() {
 		var rc board.Received
-		if err := rows.Scan(&rc.Person.ID, &rc.Person.Name, &rc.Person.Username, &rc.Person.PhotoURL, &rc.Reaction, &rc.At); err != nil {
+		if err := rows.Scan(&rc.Person.ID, &rc.Person.Name, &rc.Person.Username, &rc.Person.PhotoKey, &rc.Reaction, &rc.At); err != nil {
 			return nil, err
 		}
 		rc.At = rc.At.UTC()

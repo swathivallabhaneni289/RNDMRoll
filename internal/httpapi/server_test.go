@@ -25,10 +25,6 @@ import (
 // built by newFullTestServer to accept it.
 var testServerJWTSecret = []byte("test-secret-at-least-32-bytes!!")
 
-// testAvatarBaseURL is the storage public base URL the test servers use; it
-// matches the PublicURL prefix fakeAvatarStore hands out.
-const testAvatarBaseURL = "https://cdn.example.test"
-
 // panicIfTouchedUserRepo embeds a nil user.Repository: any method call
 // reaches the nil interface and panics. Used to prove a route never
 // touches the database, rather than merely asserting a status code that
@@ -96,7 +92,7 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 
 	authHandler := NewAuthHandler(usersRepo, refreshSvc, testServerJWTSecret, 15*time.Minute)
 	authHandler.clock = frozenClock
-	profileHandler := NewProfileHandler(usersRepo, &fakeAvatarStore{}, testAvatarBaseURL)
+	profileHandler := NewProfileHandler(usersRepo, &fakeAvatarStore{})
 	usernameHandler := NewUsernameHandler(usersRepo)
 
 	logger := opts.logger
@@ -128,6 +124,8 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		JWTSecret: testServerJWTSecret,
 		Logger:    logger,
 	}
+	// As cmd/api does: profile photos are signed by the photo store.
+	deps.PhotoLink = entryPhotos.Link
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
 	}

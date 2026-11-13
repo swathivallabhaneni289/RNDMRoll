@@ -18,11 +18,13 @@ import (
 var ErrNotFound = errors.New("social: not found")
 
 // Person is how another account is shown: nothing else ever leaves.
+// PhotoKey is the storage key of the profile photo, nil for none; it never
+// leaves either, the HTTP layer sends a signed link in its place.
 type Person struct {
 	ID       uuid.UUID
 	Name     string
 	Username string
-	PhotoURL *string
+	PhotoKey *string
 }
 
 // Relation is the caller toward another person.

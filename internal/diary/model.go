@@ -52,12 +52,13 @@ type PostSocial struct {
 }
 
 // LatestComment is one of the newest comments on a post and who wrote it.
-// PhotoURL is the writer's profile photo link, nil when they have none.
+// PhotoKey is the storage key of the writer's profile photo, nil when they
+// have none; the HTTP layer signs its link.
 type LatestComment struct {
 	AuthorID string
 	Name     string
 	Username string
-	PhotoURL *string
+	PhotoKey *string
 	Text     string
 }
 

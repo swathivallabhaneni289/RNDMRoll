@@ -22,7 +22,8 @@ type DiaryHandler struct {
 	photos storage.EntryPhotoStore
 }
 
-// NewDiaryHandler constructs a DiaryHandler. photos builds the links.
+// NewDiaryHandler constructs a DiaryHandler. photos signs the links, of the
+// posts' photos and of the comment writers' profile photos.
 func NewDiaryHandler(svc *diary.Service, photos storage.EntryPhotoStore) *DiaryHandler {
 	return &DiaryHandler{svc: svc, photos: photos}
 }
@@ -62,7 +63,10 @@ type latestAuthorView struct {
 	PhotoURL *string `json:"photo_url"`
 }
 
-func newPostSocialView(s *diary.PostSocial) *postSocialView {
+// newPostSocialView shows the comments on one of the caller's own posts; link
+// signs the writers' profile photos. The reader already left out what the
+// caller may not see.
+func newPostSocialView(s *diary.PostSocial, link func(string) string) *postSocialView {
 	v := &postSocialView{LatestComments: []latestCommentView{}}
 	if s == nil {
 		return v
@@ -70,7 +74,7 @@ func newPostSocialView(s *diary.PostSocial) *postSocialView {
 	v.CommentCount = s.Comments
 	for _, c := range s.Latest {
 		v.LatestComments = append(v.LatestComments, latestCommentView{
-			Author: latestAuthorView{ID: c.AuthorID, Name: c.Name, Username: c.Username, PhotoURL: c.PhotoURL},
+			Author: latestAuthorView{ID: c.AuthorID, Name: c.Name, Username: c.Username, PhotoURL: photoLinkOf(c.PhotoKey, link)},
 			Text:   c.Text,
 		})
 	}
@@ -124,8 +128,8 @@ func (h *DiaryHandler) page(c *gin.Context) {
 	for _, r := range page.Rows {
 		switch r.Kind {
 		case diary.KindEntry:
-			v := newEntryView(*r.Entry, h.photos.PublicURL)
-			items = append(items, diaryRowView{Kind: "entry", Entry: &v, Social: newPostSocialView(r.Social)})
+			v := newEntryView(*r.Entry, h.photos.Link)
+			items = append(items, diaryRowView{Kind: "entry", Entry: &v, Social: newPostSocialView(r.Social, h.photos.Link)})
 		default:
 			cat := r.Category
 			items = append(items, diaryRowView{Kind: "skipped", LocalDate: r.LocalDate, Category: &cat})
@@ -158,7 +162,7 @@ func (h *DiaryHandler) summary(c *gin.Context) {
 	}
 	recent := make([]entryView, 0, len(s.Recent))
 	for _, e := range s.Recent {
-		recent = append(recent, newEntryView(e, h.photos.PublicURL))
+		recent = append(recent, newEntryView(e, h.photos.Link))
 	}
 	Respond(c, http.StatusOK, gin.H{
 		"spins":       s.Spins,

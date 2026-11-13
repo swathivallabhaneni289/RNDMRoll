@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -67,14 +66,13 @@ func main() {
 	refreshSvc := auth.NewRefreshService(refreshTokens, cfg.RefreshTokenTTL)
 
 	// The avatar store and the entry photo store share one set of storage
-	// settings and the same trimmed public base.
+	// settings: one private bucket, which the server alone signs links to.
 	storageConfig := storage.Config{
 		S3Endpoint:        cfg.S3Endpoint,
 		S3Region:          cfg.S3Region,
 		S3Bucket:          cfg.S3Bucket,
 		S3AccessKeyID:     cfg.S3AccessKeyID,
 		S3SecretAccessKey: cfg.S3SecretAccessKey,
-		S3PublicBaseURL:   strings.TrimRight(cfg.S3PublicBaseURL, "/"),
 	}
 	avatarStore, err := storage.NewAvatarStore(storageConfig)
 	if err != nil {
@@ -95,7 +93,7 @@ func main() {
 	}
 
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
-	profileHandler := httpapi.NewProfileHandler(users, avatarStore, strings.TrimRight(cfg.S3PublicBaseURL, "/"))
+	profileHandler := httpapi.NewProfileHandler(users, avatarStore)
 	usernameHandler := httpapi.NewUsernameHandler(users)
 	// The Postgres user repository is also the PasswordChanger: the password
 	// and the sessions change in one transaction.
@@ -121,9 +119,9 @@ func main() {
 	entryHandler := httpapi.NewEntryHandler(spinService, entryPhotos)
 
 	// Follows, the Board and the bell run on the same clock as the spin
-	// service. Photo links on the Board are built only for visible posts.
+	// service. Photo links on the Board are signed only for visible posts.
 	socialService := social.NewService(postgres.NewSocialRepo(pool), spinClock)
-	boardService := board.NewService(postgres.NewBoardRepo(pool), socialService, spinService, spinClock, entryPhotos.PublicURL)
+	boardService := board.NewService(postgres.NewBoardRepo(pool), socialService, spinService, spinClock, entryPhotos.Link)
 	notificationsService := notifications.NewService(postgres.NewNotificationsRepo(pool), socialService, spinService)
 
 	// The diary and the Profile summary only read, through the pool, on the
@@ -148,6 +146,10 @@ func main() {
 		// delete account marks the account, and log in inside the grace
 		// period cancels it.
 		DeleteAccount: httpapi.NewDeleteAccountHandler(users, users),
+
+		// Every profile photo is signed with the photo store's links, the
+		// way post photos are.
+		PhotoLink: entryPhotos.Link,
 
 		Users:     users,
 		JWTSecret: cfg.JWTSecret,

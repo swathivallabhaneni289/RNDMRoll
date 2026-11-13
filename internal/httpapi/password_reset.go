@@ -114,6 +114,9 @@ type PasswordResetHandler struct {
 	floor time.Duration
 	sleep func(d time.Duration)
 	wg    sync.WaitGroup
+	// photoLink signs the profile photo's link in the session's user
+	// (Deps.PhotoLink; NewServer sets it). Nil sends no photo.
+	photoLink func(string) string
 }
 
 // NewPasswordResetHandler builds the handler. sender delivers the code email;
@@ -423,7 +426,7 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"expires_in":    int(h.accessTTL.Seconds()),
-		"user":          apiUser(u),
+		"user":          apiUser(u, h.photoLink),
 	}
 	// Inside the grace period of a deletion its owner asked for, the reset
 	// kept the account, as log in does, and says so once.

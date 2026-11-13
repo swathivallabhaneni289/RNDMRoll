@@ -22,7 +22,8 @@ type EditOutcome struct {
 }
 
 // DeleteOutcome is the answer to DeleteEntry: the storage keys of every photo
-// the entry had, and Today as of the same instant.
+// the entry had, then those of the photos in the comments that went with it
+// (Repository.DeleteEntry), and Today as of the same instant.
 type DeleteOutcome struct {
 	Dropped []string
 	Today   Today
@@ -407,10 +408,11 @@ func sameText(a, b *string) bool {
 }
 
 // DeleteEntry removes one of the person's entries and its photo rows and
-// returns every one of its photo keys, so the caller can remove the files, and
-// Today. It removes nothing else: the posted day and the spin's result stay,
-// so the day cannot be posted again and a deleted post still counts. An id that
-// is not a canonical UUID, that has no entry, or that is someone else's is
+// returns every one of its photo keys, and those of the photos in the comments
+// that go with it, so the caller can remove the files, and Today. It removes
+// nothing else: the posted day and the spin's result stay, so the day cannot
+// be posted again and a deleted post still counts. An id that is not a
+// canonical UUID, that has no entry, or that is someone else's is
 // ErrEntryNotFound, and so is a second delete.
 func (s *Service) DeleteEntry(ctx context.Context, userID, id string) (DeleteOutcome, error) {
 	cid, ok := canonicalUUID(id)

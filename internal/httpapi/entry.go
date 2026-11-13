@@ -23,6 +23,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -34,8 +35,18 @@ import (
 )
 
 // fileRemovalTimeout bounds the whole batch of file removals made after an
-// edit or a delete has been saved.
+// edit, a delete or a new profile photo has been saved.
 const fileRemovalTimeout = 3 * time.Second
+
+// withoutKey is the text of a failed file removal as a log line may show it:
+// the key is cut out wherever it appears (a request that failed names its
+// link), since a key names its owner's folder.
+func withoutKey(err error, key string) string {
+	if key == "" {
+		return err.Error()
+	}
+	return strings.ReplaceAll(err.Error(), key, "[key]")
+}
 
 // EntryHandler serves POST /entry-photos/upload-url, POST /entries,
 // GET and PATCH /entries/:id, POST /entries/:id/delete and POST /spin/skip.
@@ -312,7 +323,7 @@ type entryView struct {
 }
 
 // newEntryView builds the phone's view of an entry. Links come from photoURL
-// (the photo store's PublicURL); photos are listed in position order.
+// (the photo store's Link); photos are listed in position order.
 func newEntryView(e spin.Entry, photoURL func(string) string) entryView {
 	photos := slices.Clone(e.Photos)
 	slices.SortStableFunc(photos, func(a, b spin.EntryPhoto) int {
@@ -357,10 +368,11 @@ func linkToday(t *spin.Today, photoURL func(string) string) {
 }
 
 // removeFiles asks the store to remove the files of photos an edit or a delete
-// dropped, once the change is saved. It is best effort: a failure is logged
-// and the rest still run, and the request never fails because of it. The whole
-// batch shares one short deadline, and a caller that hangs up does not cancel
-// it.
+// dropped, once the change is saved: an entry's own photos, and on a delete
+// the photos of the comments that went with it. It is best effort: a failure
+// is logged without the key and the rest still run, and the request never
+// fails because of it. The whole batch shares one short deadline, and a
+// caller that hangs up does not cancel it.
 func (h *EntryHandler) removeFiles(ctx context.Context, keys []string) {
 	if len(keys) == 0 {
 		return
@@ -369,7 +381,7 @@ func (h *EntryHandler) removeFiles(ctx context.Context, keys []string) {
 	defer cancel()
 	for _, key := range keys {
 		if err := h.photos.DeleteEntryPhoto(ctx, key); err != nil {
-			log.Printf("httpapi: could not remove entry photo file %s: %v", key, err)
+			log.Printf("httpapi: could not remove a photo file: %s", withoutKey(err, key))
 		}
 	}
 }
@@ -460,14 +472,14 @@ func (h *EntryHandler) create(c *gin.Context) {
 		respondEntryError(c, err)
 		return
 	}
-	linkToday(&out.Today, h.photos.PublicURL)
+	linkToday(&out.Today, h.photos.Link)
 	status := http.StatusCreated
 	if out.Already {
 		status = http.StatusOK
 	}
 	Respond(c, status, gin.H{
 		"already": out.Already,
-		"entry":   newEntryView(out.Entry, h.photos.PublicURL),
+		"entry":   newEntryView(out.Entry, h.photos.Link),
 		"today":   out.Today,
 	})
 }
@@ -487,7 +499,7 @@ func (h *EntryHandler) get(c *gin.Context) {
 		respondEntryError(c, err)
 		return
 	}
-	Respond(c, http.StatusOK, gin.H{"entry": newEntryView(e, h.photos.PublicURL)})
+	Respond(c, http.StatusOK, gin.H{"entry": newEntryView(e, h.photos.Link)})
 }
 
 // patch answers PATCH /entries/:id with {"entry"}. An empty body changes
@@ -527,11 +539,12 @@ func (h *EntryHandler) patch(c *gin.Context) {
 		return
 	}
 	h.removeFiles(c.Request.Context(), out.Dropped)
-	Respond(c, http.StatusOK, gin.H{"entry": newEntryView(out.Entry, h.photos.PublicURL)})
+	Respond(c, http.StatusOK, gin.H{"entry": newEntryView(out.Entry, h.photos.Link)})
 }
 
 // deleteEntry answers POST /entries/:id/delete with {"today"}. After a saved
-// delete the files of all its photos are removed.
+// delete the files of all its photos are removed, and those of the photos in
+// the comments and replies that went with it.
 func (h *EntryHandler) deleteEntry(c *gin.Context) {
 	u, ok := finishedUser(c)
 	if !ok {
@@ -552,7 +565,7 @@ func (h *EntryHandler) deleteEntry(c *gin.Context) {
 		return
 	}
 	h.removeFiles(c.Request.Context(), out.Dropped)
-	linkToday(&out.Today, h.photos.PublicURL)
+	linkToday(&out.Today, h.photos.Link)
 	Respond(c, http.StatusOK, gin.H{"today": out.Today})
 }
 
@@ -592,9 +605,9 @@ func (h *EntryHandler) setArchived(c *gin.Context, archived bool) {
 		respondEntryError(c, err)
 		return
 	}
-	linkToday(&out.Today, h.photos.PublicURL)
+	linkToday(&out.Today, h.photos.Link)
 	Respond(c, http.StatusOK, gin.H{
-		"entry": newEntryView(out.Entry, h.photos.PublicURL),
+		"entry": newEntryView(out.Entry, h.photos.Link),
 		"today": out.Today,
 	})
 }
@@ -613,7 +626,7 @@ func (h *EntryHandler) archiveList(c *gin.Context) {
 	}
 	views := make([]entryView, len(list))
 	for i, e := range list {
-		views[i] = newEntryView(e, h.photos.PublicURL)
+		views[i] = newEntryView(e, h.photos.Link)
 	}
 	Respond(c, http.StatusOK, gin.H{"entries": views})
 }
@@ -643,6 +656,6 @@ func (h *EntryHandler) skip(c *gin.Context) {
 		respondEntryError(c, err)
 		return
 	}
-	linkToday(&out.Today, h.photos.PublicURL)
+	linkToday(&out.Today, h.photos.Link)
 	Respond(c, http.StatusOK, gin.H{"already": out.Already, "today": out.Today})
 }

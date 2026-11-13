@@ -135,7 +135,7 @@ func TestEntryFullDayWithAFixedClock(t *testing.T) {
 	if got := photoLinks(t, reordered); !slices.Equal(got, store.linksOf(fourth, keys[2], keys[1], keys[0])) {
 		t.Fatalf("after reordering: %v", got)
 	}
-	if got := photoIDs(t, reordered); !slices.Equal(got, reversed) || reordered["photo_url"] != store.PublicURL(fourth) || reordered["photo_source"] != "library" {
+	if got := photoIDs(t, reordered); !slices.Equal(got, reversed) || reordered["photo_url"] != store.Link(fourth) || reordered["photo_source"] != "library" {
 		t.Fatalf("a reorder must keep the ids and move the cover (and its source): %v", reordered)
 	}
 	if got := store.deletes(); len(got) != 0 {
@@ -264,7 +264,7 @@ func TestEntryLateWindowPostAndSkipCountForLastNight(t *testing.T) {
 		if today["state"] != "posted" || today["local_date"] != next || dig(t, today, "spin", "id") != lastNight[0] || dig(t, today, "bonus", "can_use") != false {
 			t.Fatalf("%s: %v", label, today)
 		}
-		if sum := entryObject(t, today["entry"]); sum["late"] != true || sum["id"] != entry["id"] || sum["photo_url"] != store.PublicURL(key) {
+		if sum := entryObject(t, today["entry"]); sum["late"] != true || sum["id"] != entry["id"] || sum["photo_url"] != store.Link(key) {
 			t.Fatalf("%s: summary %v", label, sum)
 		}
 	}
@@ -472,7 +472,7 @@ func TestEntryTodaySummaryOnEveryRouteThatAnswersWithToday(t *testing.T) {
 	keys := []string{store.newKey(a.id, "jpg"), store.newKey(a.id, "png"), store.newKey(a.id, "webp")}
 	created := r.created(a, day, 1, keys...)
 	id := entryObject(t, created["entry"])["id"].(string)
-	want := entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 3, cover: store.PublicURL(keys[0])}
+	want := entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 3, cover: store.Link(keys[0])}
 
 	todayOf := func(rec *httptest.ResponseRecorder, wantStatus int, already bool) map[string]any {
 		t.Helper()
@@ -504,12 +504,12 @@ func TestEntryTodaySummaryOnEveryRouteThatAnswersWithToday(t *testing.T) {
 	ids := photoIDs(t, entryObject(t, created["entry"]))
 	r.clockAt(ny, day, 21, 0, 0)
 	r.patched(a, id, map[string]any{"photos": keepPhotos(ids[1], ids[2])})
-	want.count, want.cover = 2, store.PublicURL(keys[1])
+	want.count, want.cover = 2, store.Link(keys[1])
 	checkAll("after removing the first photo", want)
 
 	// Reorder: the cover follows.
 	r.patched(a, id, map[string]any{"photos": keepPhotos(ids[2], ids[1])})
-	want.cover = store.PublicURL(keys[2])
+	want.cover = store.Link(keys[2])
 	checkAll("after a reorder", want)
 
 	// The other scalar fields follow too, and a cleared reaction is null.
@@ -573,13 +573,14 @@ func TestEntryTodayHasANullEntryOnASkippedDay(t *testing.T) {
 // entryForbiddenMembers are the names no Phase 3 answer may carry. The upload
 // ticket's own photo_key is the one exception, and only on that answer.
 var entryForbiddenMembers = map[string]bool{
-	"photo_key": true, "storage_key": true, "cover_key": true, "birthday": true, "email": true, "password_hash": true,
+	"photo_key": true, "storage_key": true, "cover_key": true, "avatar_key": true, "birthday": true, "email": true, "password_hash": true,
 }
 
 // entryLeaks returns what is wrong with an answer body: a member that must not
-// be there anywhere in the tree, a storage key sent bare (every file is a link
-// that starts with the public base), or the account's email text. ticket marks
-// the upload ticket's answer, which may carry photo_key and its upload_url.
+// be there anywhere in the tree, a storage key sent bare or in an unsigned
+// link (every file is a signed link: fakePhotoLinkBase, the key and
+// fakePhotoLinkQuery), or the account's email text. ticket marks the upload
+// ticket's answer, which may carry photo_key and its upload_url.
 func entryLeaks(body []byte, email string, ticket bool) []string {
 	var problems []string
 	if len(bytes.TrimSpace(body)) == 0 {
@@ -605,8 +606,9 @@ func entryLeaks(body []byte, email string, ticket bool) []string {
 				walk(path+"[]", child)
 			}
 		case string:
-			if !ticket && strings.Contains(x, "entries/") && !strings.HasPrefix(x, fakeEntryPhotoPublicBase) {
-				problems = append(problems, "a bare key "+x+" at "+path)
+			mentionsKey := strings.Contains(x, "entries/") || strings.Contains(x, "avatars/")
+			if !ticket && mentionsKey && !(strings.HasPrefix(x, fakePhotoLinkBase) && strings.HasSuffix(x, fakePhotoLinkQuery)) {
+				problems = append(problems, "a bare key or unsigned link "+x+" at "+path)
 			}
 		}
 	}
@@ -624,7 +626,10 @@ func TestEntryLeakScanSeesWhatItLooksFor(t *testing.T) {
 		ticket bool
 		leaks  int
 	}{
-		"clean":                  {`{"entry":{"photos":[{"url":"https://cdn.example.test/entries/u/0123456789abcdef.jpg"}]}}`, false, 0},
+		"clean":                  {`{"entry":{"photos":[{"url":"https://cdn.example.test/entries/u/0123456789abcdef.jpg?sig=test"}]}}`, false, 0},
+		"an unsigned link":       {`{"entry":{"photos":[{"url":"https://cdn.example.test/entries/u/0123456789abcdef.jpg"}]}}`, false, 1},
+		"a bare avatar key":      {`{"photo_url":"avatars/u/0123456789abcdef.jpg"}`, false, 1},
+		"an avatar_key":          {`{"user":{"avatar_key":"x"}}`, false, 1},
 		"a photo_key":            {`{"entry":{"photo_key":"x"}}`, false, 1},
 		"a photo_key in a list":  {`{"photos":[{"id":"1","PHOTO_KEY":"x"}]}`, false, 1},
 		"a cover_key deep down":  {`{"today":{"entry":{"cover_key":"x"}}}`, false, 1},
@@ -847,7 +852,7 @@ func TestEntryCreateTakesAnAbsentNullOrEmptyReactionAndComment(t *testing.T) {
 				t.Fatalf("entry: %v", entry)
 			}
 			wantEntrySummary(t, "the create answer", entryObject(t, created["today"]),
-				entrySummary{title: "Dune", stars: 7, reaction: nil, count: 1, cover: r.rig.entryPhotos.PublicURL(key)})
+				entrySummary{title: "Dune", stars: 7, reaction: nil, count: 1, cover: r.rig.entryPhotos.Link(key)})
 		})
 	}
 }

@@ -143,7 +143,8 @@ func TestDeleteAccountIntegration_PurgeDeletesOnlyThatAccount(t *testing.T) {
 	// folder.
 	keys := &fakeEntryPhotoStore{}
 	keyOf := func(p feedPerson, ext string) string { return keys.newKey(uuid.MustParse(p.id), ext) }
-	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"avatar_url": testAvatarBaseURL + "/avatars/" + b.id + "/x.jpg"})
+	avatarOf := func(p feedPerson) string { return "avatars/" + p.id + "/" + fakeAvatarKeyName }
+	w.ok(b, http.MethodPatch, "/v1/me", map[string]any{"avatar_key": avatarOf(b)})
 
 	// A and B follow each other, and C follows A. All four post one evening.
 	w.followAccepted(a, b)
@@ -200,7 +201,7 @@ func TestDeleteAccountIntegration_PurgeDeletesOnlyThatAccount(t *testing.T) {
 	const bucketName = "rndmroll-test"
 	bucket := storagetest.NewBucket(bucketName, dbKeys...)
 	for _, p := range []feedPerson{a, b, c, d} {
-		bucket.Put("avatars/" + p.id + "/x.jpg")
+		bucket.Put(avatarOf(p))
 	}
 	bucket.Put("entries/" + b.id + "/ffffffffffffffff.jpg")
 	bucket.Put(

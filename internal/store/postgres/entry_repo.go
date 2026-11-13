@@ -10,12 +10,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 )
 
 // This file holds the entry and photo methods of the spin transaction. The
 // layer knows storage keys only (folder and file name): it never builds a
 // link. Every statement carries the person's id, except PhotoKeysInUse, which
-// answers across all people because a file belongs to one photo row only.
+// answers across all people because a file belongs to one photo row only (the
+// photo rows commentPhotoKeysOf checks are read across all people for the
+// same reason).
 
 // parseID turns an id the service passes into a typed uuid. The service sends
 // canonical ids only, so a failure here is a bug and comes back as a plain
@@ -357,13 +360,64 @@ func (t *pgTx) photoKeysOf(entryID uuid.UUID) ([]string, error) {
 	return keys, rows.Err()
 }
 
+// commentPhotoKeysOf reads the photo keys of the comments and replies that go
+// with one of this person's entries by cascade: those on the entry
+// (post_comments.entry_id), and the replies under them (parent_id, one level
+// deep, migration 0009), whoever wrote them, hidden ones included. As the
+// account purge does (commentPhotosGoingWith), a key is kept only when it is
+// an entry photo key in its writer's own folder, since the database's word
+// alone is not enough to delete a file, and a file that a photo row also
+// names is left alone: the comment insert refuses a post's key, but the post
+// side does not check comment keys, so a hand-made request could share one.
+func (t *pgTx) commentPhotoKeysOf(entryID uuid.UUID) ([]string, error) {
+	rows, err := t.tx.Query(t.ctx, `
+		select c.photo_key, c.user_id from post_comments c
+		where c.photo_key is not null
+		  and exists (select 1 from entries e where e.id = $1 and e.user_id = $2)
+		  and (c.entry_id = $1 or c.parent_id in (select p.id from post_comments p where p.entry_id = $1))
+		  and not exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)
+		order by c.created_at, c.id`, entryID, t.uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := []string{}
+	for rows.Next() {
+		var key string
+		var writer uuid.UUID
+		if err := rows.Scan(&key, &writer); err != nil {
+			return nil, err
+		}
+		if writer != uuid.Nil && storage.EntryPhotoKeyOwnedBy(key, writer) {
+			keys = append(keys, key)
+		}
+	}
+	return keys, rows.Err()
+}
+
 func (t *pgTx) DeleteEntry(id string) ([]string, error) {
 	eid, err := parseID("entry", id)
 	if err != nil {
 		return nil, err
 	}
-	// The keys are read first: the photo rows go with the entry by cascade.
+	// The entry is held first, so no comment can be added between reading
+	// the comment photos and the delete: a comment insert waits on this lock
+	// through its foreign key, then finds the entry gone.
+	var held uuid.UUID
+	err = t.tx.QueryRow(t.ctx, `select id from entries where id = $1 and user_id = $2 for update`, eid, t.uid).Scan(&held)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, spin.ErrEntryNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	// The keys are read next: the photo rows go with the entry by cascade,
+	// and so do its comments with their photos.
 	keys, err := t.photoKeysOf(eid)
+	if err != nil {
+		return nil, err
+	}
+	commentKeys, err := t.commentPhotoKeysOf(eid)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +428,7 @@ func (t *pgTx) DeleteEntry(id string) ([]string, error) {
 	if tag.RowsAffected() == 0 {
 		return nil, spin.ErrEntryNotFound
 	}
-	return keys, nil
+	return append(keys, commentKeys...), nil
 }
 
 func (t *pgTx) SettleSpin(spinID string, result spin.SpinResult, at time.Time) error {

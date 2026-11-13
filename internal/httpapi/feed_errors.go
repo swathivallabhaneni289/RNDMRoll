@@ -47,7 +47,8 @@ func respondNotFound(c *gin.Context) {
 }
 
 // personView is how another account is shown. It is built in one place so
-// a new field can never leak by accident.
+// a new field can never leak by accident. PhotoURL is the profile photo's
+// signed link, null for none.
 type personView struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
@@ -55,8 +56,11 @@ type personView struct {
 	PhotoURL *string `json:"photo_url"`
 }
 
-func newPersonView(p social.Person) personView {
-	return personView{ID: p.ID.String(), Name: p.Name, Username: p.Username, PhotoURL: p.PhotoURL}
+// newPersonView shows p, signing the profile photo with link (the handler's
+// photoLink). The caller found p through the rules that decide who may see
+// whom, so the link is fine.
+func newPersonView(p social.Person, link func(string) string) personView {
+	return personView{ID: p.ID.String(), Name: p.Name, Username: p.Username, PhotoURL: photoLinkOf(p.PhotoKey, link)}
 }
 
 // pathUUID reads a path id. Anything but a canonical UUID is 404 not_found

@@ -23,7 +23,6 @@ func setRequiredEnv(t *testing.T) {
 		"S3_BUCKET":            "rndmroll-avatars",
 		"S3_ACCESS_KEY_ID":     "test-access-key",
 		"S3_SECRET_ACCESS_KEY": "test-secret-key",
-		"S3_PUBLIC_BASE_URL":   "https://cdn.example.com",
 		// Optional/defaulted keys explicitly cleared.
 		"PORT":                 "",
 		"TEST_DATABASE_URL":    "",
@@ -77,7 +76,7 @@ func TestLoad_AccumulatesAllMissingRequiredVars(t *testing.T) {
 		"ACCESS_TOKEN_TTL", "REFRESH_TOKEN_TTL", "EMAIL_TOKEN_TTL",
 		"APP_BASE_URL", "APP_DEEP_LINK_SCHEME", "MAIL_DRIVER", "RESEND_API_KEY",
 		"MAIL_FROM_ADDRESS", "MAIL_FROM_NAME", "S3_ENDPOINT", "S3_REGION", "S3_BUCKET",
-		"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PUBLIC_BASE_URL",
+		"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
 		"APP_ENV", "SPIN_TEST_TOOLS", "SPIN_TEST_USER_EMAILS",
 	}
 	for _, k := range allKeys {
