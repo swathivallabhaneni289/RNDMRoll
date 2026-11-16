@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -522,6 +524,50 @@ func TestSpinZoneErrors(t *testing.T) {
 	r.setZone(p, "America/New_York")
 	for _, bad := range []string{"2026-1-5", "tomorrow", "2026-02-30", "20261007", ""} {
 		assertFieldError(t, r.call(http.MethodPost, "/v1/spin", p.token, map[string]any{"for_date": bad}), "for_date")
+	}
+}
+
+// The zone report answers with Today too, the object GET /v1/today answers
+// with just after, so the phone needs no second request: on the first
+// report, on the same zone again, on a posted day (the summary carries the
+// cover's link) and after a move.
+func TestSpinZoneReportAnswersWithToday(t *testing.T) {
+	r := newSpinRig(t, rigOptions{})
+	p := r.person("zone-today@example.com", "zone_today")
+	const ny = "America/New_York"
+	store := r.rig.entryPhotos
+
+	report := func(label, zone string) map[string]any {
+		t.Helper()
+		rec := r.call(http.MethodPost, "/v1/time-zone", p.token, map[string]any{"time_zone": zone})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", label, rec.Code, rec.Body.String())
+		}
+		body := decodeBody(t, rec)
+		if keys := entrySortedKeys(body); !slices.Equal(keys, []string{"time_zone", "today"}) || body["time_zone"] != zone {
+			t.Fatalf("%s: %s", label, rec.Body.String())
+		}
+		today := entryObject(t, body["today"])
+		if want := r.today(p); !reflect.DeepEqual(today, want) {
+			t.Fatalf("%s: today = %v\nwant what GET /v1/today answers: %v", label, today, want)
+		}
+		return today
+	}
+
+	r.clockAt(ny, "2026-10-07", 16, 0, 0)
+	if got := report("the first report", ny); got["state"] != "open" || got["first_spin"] != true || got["time_zone"] != ny {
+		t.Fatalf("the first report: %v", got)
+	}
+	report("the same zone again", ny)
+
+	spun := r.spinEvening(p, "2026-10-07")
+	keys := []string{store.newKey(p.id, "jpg"), store.newKey(p.id, "png")}
+	r.created(p, "2026-10-07", int(spun["seq"].(float64)), keys...)
+	wantEntrySummary(t, "a posted day", report("a posted day", ny),
+		entrySummary{title: "Dune", stars: 7, reaction: "fire", count: 2, cover: store.Link(keys[0])})
+
+	if got := report("a move", "Asia/Tokyo"); got["time_zone"] != "Asia/Tokyo" || got["local_date"] != "2026-10-08" {
+		t.Fatalf("a move: %v", got)
 	}
 }
 

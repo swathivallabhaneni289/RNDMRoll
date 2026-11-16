@@ -2,6 +2,7 @@ package spintest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -187,6 +188,22 @@ func (e *Env) postWeekDays(t *testing.T, u string, thursday string) spin.TestDay
 	return res
 }
 
+// wantSameToday expects got to be want as the phone sees it: the same JSON.
+func wantSameToday(t *testing.T, got, want spin.Today) {
+	t.Helper()
+	g, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(g) != string(w) {
+		t.Fatalf("Today = %s\nwant %s", g, w)
+	}
+}
+
 func wantErr(t *testing.T, err, want error) {
 	t.Helper()
 	if !errors.Is(err, want) {
@@ -303,6 +320,54 @@ func RunServiceSuite(t *testing.T, newEnv func(t *testing.T) *Env) {
 		if got := e.today(t, u); got.State != spin.StateOpen {
 			t.Fatalf("state = %s, want open at 8:30 PM", got.State)
 		}
+	})
+
+	run("a zone report answers with Today as Today reads it just after", func(t *testing.T, e *Env) {
+		u := e.NewUser(t)
+		e.setClock(t, ny, "2026-10-07", 16, 0, 0)
+		report := func(zoneName string) spin.Today {
+			t.Helper()
+			name, got, err := e.Service.ReportTimeZone(ctx, u, zoneName)
+			if err != nil {
+				t.Fatalf("ReportTimeZone(%s): %v", zoneName, err)
+			}
+			if name != zoneName {
+				t.Fatalf("stored name = %q, want %q", name, zoneName)
+			}
+			wantSameToday(t, got, e.today(t, u))
+			return got
+		}
+
+		// The first report seeds the state row and the six categories from
+		// the clock and the reported zone, as SetTimeZone does.
+		if got := report(ny); got.State != spin.StateOpen || !got.FirstSpin || got.TimeZone != ny || len(got.Wheel) != 6 {
+			t.Fatalf("first report: %+v", got)
+		}
+		st := e.State(t, u)
+		if !st.SeededAt.Equal(e.Clock.NowFor(u)) || st.SeededLocalDate != date(t, "2026-10-07") || st.SeededTZ != ny {
+			t.Errorf("seeded_* = %v %v %q, want the clock, 2026-10-07 and %s", st.SeededAt, st.SeededLocalDate, st.SeededTZ, ny)
+		}
+		// The same zone after a spin, then a move.
+		e.spin(t, u)
+		if got := report(ny); got.State != spin.StateResult || got.Spin == nil {
+			t.Fatalf("after the spin: %+v", got)
+		}
+		if _, cats := e.Counts(t, u); cats != 6 {
+			t.Fatalf("category rows = %d, want 6 (a later report seeds nothing)", cats)
+		}
+		if got := report("Asia/Tokyo"); got.TimeZone != "Asia/Tokyo" || got.LocalDate != date(t, "2026-10-08") {
+			t.Fatalf("after a move to Tokyo: %s %v", got.TimeZone, got.LocalDate)
+		}
+		// A refused name stores nothing.
+		if _, _, err := e.Service.ReportTimeZone(ctx, u, "america/new_york"); !errors.Is(err, spin.ErrZoneInvalid) {
+			t.Fatalf("a bad name: %v, want ErrZoneInvalid", err)
+		}
+		if got := e.today(t, u); got.TimeZone != "Asia/Tokyo" {
+			t.Fatalf("zone after a refused report = %s", got.TimeZone)
+		}
+		// A stored zone that no longer loads is replaced.
+		e.ForceZone(t, u, "Nowhere/Land")
+		report(ny)
 	})
 
 	run("a spin waits for 8 PM and a second one returns the first", func(t *testing.T, e *Env) {

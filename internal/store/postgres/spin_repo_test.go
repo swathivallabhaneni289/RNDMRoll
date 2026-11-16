@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -393,4 +395,109 @@ func TestSpinRepo_LockTimeoutIsErrBusyAndFreesTheCaller(t *testing.T) {
 	if _, err := env.Service.Today(ctx, u); err != nil {
 		t.Fatalf("Today after the holder let go: %v", err)
 	}
+}
+
+// --- round trips ---
+
+// roundTrips counts what a pool sends to the database: every query (begin
+// and commit included) and every batch, one round trip each. A first-use
+// prepare and an idle connection's ping are not counted, so the count is
+// what a call costs on a connection that has run it before.
+type roundTrips struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (r *roundTrips) add() {
+	r.mu.Lock()
+	r.n++
+	r.mu.Unlock()
+}
+
+func (r *roundTrips) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	r.add()
+	return ctx
+}
+
+func (r *roundTrips) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func (r *roundTrips) TraceBatchStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceBatchStartData) context.Context {
+	r.add()
+	return ctx
+}
+
+func (r *roundTrips) TraceBatchQuery(context.Context, *pgx.Conn, pgx.TraceBatchQueryData) {}
+
+func (r *roundTrips) TraceBatchEnd(context.Context, *pgx.Conn, pgx.TraceBatchEndData) {}
+
+// of returns how many round trips fn made.
+func (r *roundTrips) of(fn func()) int {
+	r.mu.Lock()
+	before := r.n
+	r.mu.Unlock()
+	fn()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.n - before
+}
+
+// The Spin page's calls, counted in round trips. The HTTP layer adds one to
+// each for the account lookup (RequireUser): GET /v1/today is 8, and
+// POST /v1/time-zone, which answers with Today too, is 8 on the first report
+// and 7 after. Each posted or skipped date Today shows adds 2 for its entry.
+func TestSpinRepo_RoundTripsOfTheSpinPageCalls(t *testing.T) {
+	requireTestPool(t)
+	ctx := context.Background()
+	cfg, err := pgxpool.ParseConfig(testDatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trips := &roundTrips{}
+	cfg.ConnConfig.Tracer = trips
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(ctx, "truncate users cascade"); err != nil {
+		t.Fatal(err)
+	}
+	clk := clock.NewFixed(time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC))
+	svc := spin.NewService(postgres.NewSpinRepo(pool), clk, spintest.NewQueueRand(20261007))
+	users := postgres.NewUserRepo(pool)
+	newUser := func() string {
+		t.Helper()
+		u, err := users.Create(ctx, fmt.Sprintf("trips-%s@example.com", uuid.NewString()), nil, false, nil)
+		if err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+		return u.ID.String()
+	}
+	const ny = "America/New_York"
+	want := func(label string, got, want int) {
+		t.Helper()
+		t.Logf("%s: %d round trips", label, got)
+		if got != want {
+			t.Errorf("%s: %d round trips, want %d", label, got, want)
+		}
+	}
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	a := newUser()
+	want("SetTimeZone, first", trips.of(func() { _, err := svc.SetTimeZone(ctx, a, ny); must(err) }), 7)
+	want("SetTimeZone, same zone again", trips.of(func() { _, err := svc.SetTimeZone(ctx, a, ny); must(err) }), 1)
+	want("Today", trips.of(func() { _, err := svc.Today(ctx, a); must(err) }), 7)
+
+	report := func(u, zone string) func() {
+		return func() { _, _, err := svc.ReportTimeZone(ctx, u, zone); must(err) }
+	}
+	b := newUser()
+	want("ReportTimeZone, first", trips.of(report(b, ny)), 7)
+	want("ReportTimeZone, same zone again", trips.of(report(b, ny)), 6)
+	want("ReportTimeZone, a new zone", trips.of(report(b, "Asia/Tokyo")), 6)
 }

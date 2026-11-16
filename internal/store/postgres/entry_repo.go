@@ -452,23 +452,23 @@ func (t *pgTx) SettleSpin(spinID string, result spin.SpinResult, at time.Time) e
 	return nil
 }
 
-func (t *pgTx) SkippedDates(from, to spin.Date) ([]spin.Date, error) {
-	rows, err := t.tx.Query(t.ctx, `
-		select l.local_date::text
-		from (
-			select distinct on (local_date) local_date, result
-			from spins
-			where user_id = $1 and local_date between $2::date and $3::date
-			order by local_date, seq desc
-		) l
-		where l.result = 'skipped'
-		  and not exists (
-			select 1 from posted_days p where p.user_id = $1 and p.local_date = l.local_date
-		  )
-		order by l.local_date`, t.uid, from.String(), to.String())
-	if err != nil {
-		return nil, err
-	}
+// skippedDatesSQL and scanDates are SkippedDates's statement and scanner,
+// which ReadToday (spin_repo.go) also sends.
+const skippedDatesSQL = `
+	select l.local_date::text
+	from (
+		select distinct on (local_date) local_date, result
+		from spins
+		where user_id = $1 and local_date between $2::date and $3::date
+		order by local_date, seq desc
+	) l
+	where l.result = 'skipped'
+	  and not exists (
+		select 1 from posted_days p where p.user_id = $1 and p.local_date = l.local_date
+	  )
+	order by l.local_date`
+
+func scanDates(rows pgx.Rows) ([]spin.Date, error) {
 	defer rows.Close()
 	var out []spin.Date
 	for rows.Next() {
@@ -483,6 +483,14 @@ func (t *pgTx) SkippedDates(from, to spin.Date) ([]spin.Date, error) {
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+func (t *pgTx) SkippedDates(from, to spin.Date) ([]spin.Date, error) {
+	rows, err := t.tx.Query(t.ctx, skippedDatesSQL, t.uid, from.String(), to.String())
+	if err != nil {
+		return nil, err
+	}
+	return scanDates(rows)
 }
 
 func (t *pgTx) SetEntryArchived(id string, archived bool, now time.Time) error {

@@ -24,8 +24,9 @@ const (
 //
 // Every call that changes or reads a person's spin state runs inside one
 // transaction that holds the person's state row lock, re-reads the stored
-// zone under that lock and reads the clock once after it. Nothing here calls
-// the time package for "now": the clock is injected.
+// zone under that lock (a zone report stores it there instead) and reads the
+// clock once after it. Nothing here calls the time package for "now": the
+// clock is injected.
 type Service struct {
 	repo  Repository
 	clock clock.Clock
@@ -106,25 +107,27 @@ func daySettled(posted *PostedDay, latest *Spin) bool {
 	return posted != nil || (latest != nil && latest.Result != ResultOpen)
 }
 
-// dayFacts returns the date's latest spin as the screen shows it (its result
-// is posted when a posted-day row exists, else the stored value) and whether
-// the date is settled.
-func dayFacts(tx Tx, d Date) (latest *Spin, settled bool, err error) {
-	latest, err = tx.LatestSpinOfDate(d)
-	if err != nil {
-		return nil, false, err
-	}
-	posted, err := tx.PostedDay(d)
-	if err != nil {
-		return nil, false, err
-	}
+// dayFacts returns a date's latest spin as the screen shows it (its result
+// is posted when the date has a posted-day row, else the stored value) and
+// whether the date is settled. posted is that row, or nil.
+func dayFacts(latest *Spin, posted *PostedDay) (shown *Spin, settled bool) {
 	settled = daySettled(posted, latest)
 	if latest != nil && posted != nil {
-		shown := *latest
-		shown.Result = ResultPosted
-		latest = &shown
+		s := *latest
+		s.Result = ResultPosted
+		return &s, settled
 	}
-	return latest, settled, nil
+	return latest, settled
+}
+
+// postedOf returns the posted-day row of date d from days, or nil.
+func postedOf(days []PostedDay, d Date) *PostedDay {
+	for _, p := range days {
+		if p.Date == d {
+			return &p
+		}
+	}
+	return nil
 }
 
 func entriesOf(cats []Category) []WheelEntry {
@@ -149,19 +152,25 @@ func entrySummaryOf(tx Tx, d Date, latest *Spin) (*EntryRef, error) {
 	return EntryRefOf(e), nil
 }
 
-// todayIn builds the Today screen from the facts under the lock.
+// todayIn builds the Today screen from the facts under the lock. The reads
+// that need only the dates go out together (Tx.ReadToday); the entry
+// summaries depend on what they return, so they come after.
 func (s *Service) todayIn(c *call) (Today, error) {
 	tx := c.tx
 	prev := PrevDate(c.today, c.loc)
+	// The week row is the spin's day's week (BuildToday), which before 8:00 PM
+	// can be the week before: read from that week's start to this week's end.
+	// prev and today both fall in that range, so its posted days also say
+	// whether each of them is posted.
+	weekStart := WeekStart(prev)
+	weekEnd := WeekStart(c.today).AddDays(daysInWeek - 1)
+	r, err := tx.ReadToday(c.today, prev, weekStart, weekEnd)
+	if err != nil {
+		return Today{}, err
+	}
 
-	spin, settled, err := dayFacts(tx, c.today)
-	if err != nil {
-		return Today{}, err
-	}
-	yesterday, _, err := dayFacts(tx, prev)
-	if err != nil {
-		return Today{}, err
-	}
+	spin, settled := dayFacts(r.Latest, postedOf(r.Posted, c.today))
+	yesterday, _ := dayFacts(r.PrevLatest, postedOf(r.Posted, prev))
 	entry, err := entrySummaryOf(tx, c.today, spin)
 	if err != nil {
 		return Today{}, err
@@ -170,37 +179,9 @@ func (s *Service) todayIn(c *call) (Today, error) {
 	if err != nil {
 		return Today{}, err
 	}
-	last, err := tx.LastDailySpunAt()
-	if err != nil {
-		return Today{}, err
-	}
-	anySpin, err := tx.HasAnySpin()
-	if err != nil {
-		return Today{}, err
-	}
-	cats, err := tx.LiveCategories()
-	if err != nil {
-		return Today{}, err
-	}
-	st, err := tx.State()
-	if err != nil {
-		return Today{}, err
-	}
-	// The week row is the spin's day's week (BuildToday), which before 8:00 PM
-	// can be the week before: read from that week's start to this week's end.
-	weekStart := WeekStart(prev)
-	weekEnd := WeekStart(c.today).AddDays(daysInWeek - 1)
-	posted, err := tx.PostedDays(weekStart, weekEnd)
-	if err != nil {
-		return Today{}, err
-	}
-	dates := make([]Date, len(posted))
-	for i, p := range posted {
+	dates := make([]Date, len(r.Posted))
+	for i, p := range r.Posted {
 		dates[i] = p.Date
-	}
-	skipped, err := tx.SkippedDates(weekStart, weekEnd)
-	if err != nil {
-		return Today{}, err
 	}
 
 	return BuildToday(TodayInput{
@@ -212,34 +193,75 @@ func (s *Service) todayIn(c *call) (Today, error) {
 		Entry:           entry,
 		YesterdayEntry:  yesterdayEntry,
 		Settled:         settled,
-		LastDailySpunAt: last,
-		NeverSpun:       !anySpin,
-		Wheel:           entriesOf(cats),
-		BonusHeld:       st.BonusHeld == 1,
-		Goal:            st.WeeklyGoal,
+		LastDailySpunAt: r.LastDailySpunAt,
+		NeverSpun:       !r.AnySpin,
+		Wheel:           entriesOf(r.Categories),
+		BonusHeld:       r.State.BonusHeld == 1,
+		Goal:            r.State.WeeklyGoal,
 		PostedDates:     dates,
-		SkippedDates:    skipped,
+		SkippedDates:    r.Skipped,
 	}), nil
 }
 
 // --- time zone ---
 
 // SetTimeZone stores the zone the phone reports and returns the stored name.
-// A name that is not a real zone is ErrZoneInvalid.
+// A name that is not a real zone is ErrZoneInvalid. A name that is already
+// stored is left as it is, with no transaction and no lock.
 func (s *Service) SetTimeZone(ctx context.Context, userID, name string) (string, error) {
 	loc, err := ParseZone(name)
 	if err != nil {
 		return "", err
 	}
-	at := s.clock.NowFor(userID)
-	seed := Seed{At: at, LocalDate: LocalDate(at, loc), TZName: name, Goal: DefaultWeeklyGoal}
-	err = s.repo.InUserTx(ctx, userID, seed, func(tx Tx) error {
+	stored, ok, err := s.repo.Zone(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if ok && stored == name {
+		return name, nil
+	}
+	err = s.repo.InUserTx(ctx, userID, zoneSeed(s.clock.NowFor(userID), loc, name), func(tx Tx) error {
 		return tx.SetZone(name)
 	})
 	if err != nil {
 		return "", err
 	}
 	return name, nil
+}
+
+// ReportTimeZone stores the zone the phone reports, as SetTimeZone does, and
+// returns the stored name and Today, built under the same lock just after,
+// so the phone needs no GET /today after it. Today needs the lock anyway, so
+// the zone is written even when it is already stored: checking first would
+// cost the same round trip as the write.
+func (s *Service) ReportTimeZone(ctx context.Context, userID, name string) (string, Today, error) {
+	loc, err := ParseZone(name)
+	if err != nil {
+		return "", Today{}, err
+	}
+	var out Today
+	err = s.repo.InUserTx(ctx, userID, zoneSeed(s.clock.NowFor(userID), loc, name), func(tx Tx) error {
+		if err := tx.SetZone(name); err != nil {
+			return err
+		}
+		now := s.clock.NowFor(userID)
+		t, err := s.todayIn(&call{tx: tx, userID: userID, now: now, loc: loc, tzName: name, today: LocalDate(now, loc)})
+		if err != nil {
+			return err
+		}
+		out = t
+		return nil
+	})
+	if err != nil {
+		return "", Today{}, err
+	}
+	return name, out, nil
+}
+
+// zoneSeed is the seed of a zone report: the clock's instant and its date in
+// the reported zone.
+func zoneSeed(at time.Time, loc *time.Location, name string) Seed {
+	return Seed{At: at, LocalDate: LocalDate(at, loc), TZName: name, Goal: DefaultWeeklyGoal}
 }
 
 // ZoneOf returns the person's stored zone. ErrZoneMissing when none is

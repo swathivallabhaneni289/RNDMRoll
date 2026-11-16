@@ -84,12 +84,30 @@ type PhotoSlot struct {
 	SizeBytes   *int
 }
 
+// TodayReads is what Today reads under the lock that needs nothing but the
+// dates (Tx.ReadToday), each field as the Tx method it names returns it.
+type TodayReads struct {
+	// Latest and PrevLatest are the latest spins of the date and of the date
+	// before it (LatestSpinOfDate), or nil.
+	Latest          *Spin
+	PrevLatest      *Spin
+	LastDailySpunAt *time.Time
+	// AnySpin is HasAnySpin and Categories is LiveCategories.
+	AnySpin    bool
+	Categories []Category
+	State      UserState
+	// Posted and Skipped are PostedDays and SkippedDates over the range.
+	Posted  []PostedDay
+	Skipped []Date
+}
+
 // Repository is the storage contract for the spin slice. It is separate from
 // user.Repository and touches no users column.
 type Repository interface {
 	// Zone reads a person's stored time zone name outside any transaction.
 	// ok is false when none is stored. The service uses it to decide the
-	// seed and to refuse a person with no zone before taking any lock.
+	// seed, to refuse a person with no zone before taking any lock, and to
+	// leave a zone that is already stored alone (SetTimeZone).
 	Zone(ctx context.Context, userID string) (name string, ok bool, err error)
 
 	// InUserTx runs fn inside one transaction that holds the person's state
@@ -281,6 +299,12 @@ type Tx interface {
 	// (both included) whose LATEST spin (highest seq, a bonus counts) has the
 	// stored result skipped and that have no posted-day row of any source.
 	SkippedDates(from, to Date) ([]Date, error)
+
+	// ReadToday reads, in this order, LatestSpinOfDate(today),
+	// LatestSpinOfDate(prev), LastDailySpunAt, HasAnySpin, LiveCategories,
+	// State, PostedDays(from, to) and SkippedDates(from, to), and returns
+	// what each returns. Postgres sends them as one batch: one round trip.
+	ReadToday(today, prev, from, to Date) (TodayReads, error)
 
 	// ClearTestData deletes this person's entries (their photo rows go with
 	// them), then ALL of their posted days of any source, then their spins and

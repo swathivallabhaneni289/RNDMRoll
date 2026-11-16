@@ -401,6 +401,37 @@ func (t *memTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
 	return out, nil
 }
 
+// ReadToday calls the methods it stands for, in its order.
+func (t *memTx) ReadToday(today, prev, from, to spin.Date) (spin.TodayReads, error) {
+	var r spin.TodayReads
+	var err error
+	if r.Latest, err = t.LatestSpinOfDate(today); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.PrevLatest, err = t.LatestSpinOfDate(prev); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.LastDailySpunAt, err = t.LastDailySpunAt(); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.AnySpin, err = t.HasAnySpin(); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.Categories, err = t.LiveCategories(); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.State, err = t.State(); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.Posted, err = t.PostedDays(from, to); err != nil {
+		return spin.TodayReads{}, err
+	}
+	if r.Skipped, err = t.SkippedDates(from, to); err != nil {
+		return spin.TodayReads{}, err
+	}
+	return r, nil
+}
+
 func (t *memTx) InsertPostedDay(p spin.PostedDay) (bool, error) {
 	if _, ok := t.d.posted[p.Date]; ok {
 		return false, nil

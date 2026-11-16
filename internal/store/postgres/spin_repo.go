@@ -68,19 +68,24 @@ func (r *SpinRepo) Zone(ctx context.Context, userID string) (string, bool, error
 	return name, true, nil
 }
 
+// beginWithLockTimeout opens a person's transaction and sets its 5 second
+// lock timeout in the same message, so the timeout costs no round trip.
+const beginWithLockTimeout = `begin; set local lock_timeout = '5s'`
+
 // InUserTx implements spin.Repository.
 //
-// Order inside the transaction: a 5 second lock timeout; insert the state
-// row if it is missing (on conflict do nothing); when this call inserted it,
-// insert the six starting categories; lock the state row for update; run fn.
-// A concurrent first caller's insert waits for ours to commit, does nothing,
-// and then waits on the row lock, so it finds the categories.
+// Order inside the transaction: a 5 second lock timeout (sent with begin);
+// insert the state row if it is missing (on conflict do nothing); when this
+// call inserted it, insert the six starting categories; lock the state row
+// for update; run fn. A concurrent first caller's insert waits for ours to
+// commit, does nothing, and then waits on the row lock, so it finds the
+// categories.
 func (r *SpinRepo) InUserTx(ctx context.Context, userID string, seed spin.Seed, fn func(spin.Tx) error) error {
 	uid, err := parseUserID(userID)
 	if err != nil {
 		return err
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{BeginQuery: beginWithLockTimeout})
 	if err != nil {
 		return mapSpinErr(err)
 	}
@@ -90,10 +95,6 @@ func (r *SpinRepo) InUserTx(ctx context.Context, userID string, seed spin.Seed, 
 			_ = tx.Rollback(context.WithoutCancel(ctx))
 		}
 	}()
-
-	if _, err := tx.Exec(ctx, `set local lock_timeout = '5s'`); err != nil {
-		return mapSpinErr(err)
-	}
 
 	tag, err := tx.Exec(ctx, `
 		insert into user_spin_state (user_id, seeded_at, seeded_local_date, seeded_tz, weekly_goal)
@@ -144,13 +145,18 @@ type pgTx struct {
 
 var _ spin.Tx = (*pgTx)(nil)
 
-func (t *pgTx) State() (spin.UserState, error) {
+// Each read ReadToday batches keeps its statement in a const and its scanner
+// in a function, so the batch and the read's own method send the same text
+// (and share its prepared statement) and read the answer the same way.
+
+const stateSQL = `
+	select seeded_at, seeded_local_date::text, seeded_tz, weekly_goal, bonus_held, wheel_version
+	from user_spin_state where user_id = $1`
+
+func scanState(row pgx.Row) (spin.UserState, error) {
 	var st spin.UserState
 	var seededDate string
-	err := t.tx.QueryRow(t.ctx, `
-		select seeded_at, seeded_local_date::text, seeded_tz, weekly_goal, bonus_held, wheel_version
-		from user_spin_state where user_id = $1`, t.uid).
-		Scan(&st.SeededAt, &seededDate, &st.SeededTZ, &st.WeeklyGoal, &st.BonusHeld, &st.WheelVersion)
+	err := row.Scan(&st.SeededAt, &seededDate, &st.SeededTZ, &st.WeeklyGoal, &st.BonusHeld, &st.WheelVersion)
 	if err != nil {
 		return spin.UserState{}, err
 	}
@@ -159,6 +165,10 @@ func (t *pgTx) State() (spin.UserState, error) {
 		return spin.UserState{}, err
 	}
 	return st, nil
+}
+
+func (t *pgTx) State() (spin.UserState, error) {
+	return scanState(t.tx.QueryRow(t.ctx, stateSQL, t.uid))
 }
 
 func (t *pgTx) Zone() (string, bool, error) {
@@ -181,15 +191,13 @@ func (t *pgTx) SetZone(name string) error {
 	return err
 }
 
-func (t *pgTx) LiveCategories() ([]spin.Category, error) {
-	rows, err := t.tx.Query(t.ctx, `
-		select id::text, name, weight, position
-		from wheel_categories
-		where user_id = $1 and archived_at is null
-		order by position, created_at, id`, t.uid)
-	if err != nil {
-		return nil, err
-	}
+const liveCategoriesSQL = `
+	select id::text, name, weight, position
+	from wheel_categories
+	where user_id = $1 and archived_at is null
+	order by position, created_at, id`
+
+func scanCategories(rows pgx.Rows) ([]spin.Category, error) {
 	defer rows.Close()
 	var out []spin.Category
 	for rows.Next() {
@@ -200,6 +208,14 @@ func (t *pgTx) LiveCategories() ([]spin.Category, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (t *pgTx) LiveCategories() ([]spin.Category, error) {
+	rows, err := t.tx.Query(t.ctx, liveCategoriesSQL, t.uid)
+	if err != nil {
+		return nil, err
+	}
+	return scanCategories(rows)
 }
 
 func (t *pgTx) CategoryCount() (int, error) {
@@ -329,32 +345,47 @@ func scanSpin(row pgx.Row) (*spin.Spin, error) {
 	return &s, nil
 }
 
-func (t *pgTx) spinQuery(where string, args ...any) (*spin.Spin, error) {
-	s, err := scanSpin(t.tx.QueryRow(t.ctx, `select `+spinColumns+` from spins where user_id = $1 and `+where, append([]any{t.uid}, args...)...))
+// spinSelect starts every spin read; the where text after it may use $2 and
+// up.
+const spinSelect = `select ` + spinColumns + ` from spins where user_id = $1 and `
+
+// optionalSpin is scanSpin with no row read as nil.
+func optionalSpin(row pgx.Row) (*spin.Spin, error) {
+	s, err := scanSpin(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return s, err
 }
 
+func (t *pgTx) spinQuery(where string, args ...any) (*spin.Spin, error) {
+	return optionalSpin(t.tx.QueryRow(t.ctx, spinSelect+where, append([]any{t.uid}, args...)...))
+}
+
 func (t *pgTx) DailySpinOfDate(d spin.Date) (*spin.Spin, error) {
 	return t.spinQuery(`local_date = $2::date and seq = 0`, d.String())
 }
 
+// latestSpinWhere picks the date's spin with the highest seq ($2 is the date).
+const latestSpinWhere = `local_date = $2::date order by seq desc limit 1`
+
 func (t *pgTx) LatestSpinOfDate(d spin.Date) (*spin.Spin, error) {
-	return t.spinQuery(`local_date = $2::date order by seq desc limit 1`, d.String())
+	return t.spinQuery(latestSpinWhere, d.String())
 }
+
+const hasAnySpinSQL = `select exists (select 1 from spins where user_id = $1)`
 
 func (t *pgTx) HasAnySpin() (bool, error) {
 	var found bool
-	err := t.tx.QueryRow(t.ctx, `select exists (select 1 from spins where user_id = $1)`, t.uid).Scan(&found)
+	err := t.tx.QueryRow(t.ctx, hasAnySpinSQL, t.uid).Scan(&found)
 	return found, err
 }
 
-func (t *pgTx) LastDailySpunAt() (*time.Time, error) {
+const lastDailySpunAtSQL = `select max(spun_at) from spins where user_id = $1 and kind = 'daily'`
+
+func scanLastDailySpunAt(row pgx.Row) (*time.Time, error) {
 	var at *time.Time
-	err := t.tx.QueryRow(t.ctx, `select max(spun_at) from spins where user_id = $1 and kind = 'daily'`, t.uid).Scan(&at)
-	if err != nil {
+	if err := row.Scan(&at); err != nil {
 		return nil, err
 	}
 	if at == nil {
@@ -362,6 +393,10 @@ func (t *pgTx) LastDailySpunAt() (*time.Time, error) {
 	}
 	u := at.UTC()
 	return &u, nil
+}
+
+func (t *pgTx) LastDailySpunAt() (*time.Time, error) {
+	return scanLastDailySpunAt(t.tx.QueryRow(t.ctx, lastDailySpunAtSQL, t.uid))
 }
 
 func (t *pgTx) InsertSpin(s spin.Spin) (spin.Spin, bool, error) {
@@ -441,14 +476,12 @@ func (t *pgTx) PostedDay(d spin.Date) (*spin.PostedDay, error) {
 	return &p, nil
 }
 
-func (t *pgTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
-	rows, err := t.tx.Query(t.ctx, `
-		select local_date::text, source, late from posted_days
-		where user_id = $1 and local_date between $2::date and $3::date
-		order by local_date`, t.uid, from.String(), to.String())
-	if err != nil {
-		return nil, err
-	}
+const postedDaysSQL = `
+	select local_date::text, source, late from posted_days
+	where user_id = $1 and local_date between $2::date and $3::date
+	order by local_date`
+
+func scanPostedDays(rows pgx.Rows) ([]spin.PostedDay, error) {
 	defer rows.Close()
 	var out []spin.PostedDay
 	for rows.Next() {
@@ -457,6 +490,7 @@ func (t *pgTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
 		if err := rows.Scan(&dateStr, &source, &p.Late); err != nil {
 			return nil, err
 		}
+		var err error
 		if p.Date, err = spin.ParseDate(dateStr); err != nil {
 			return nil, err
 		}
@@ -464,6 +498,58 @@ func (t *pgTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+func (t *pgTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
+	rows, err := t.tx.Query(t.ctx, postedDaysSQL, t.uid, from.String(), to.String())
+	if err != nil {
+		return nil, err
+	}
+	return scanPostedDays(rows)
+}
+
+// ReadToday implements spin.Tx. It sends the eight reads as one batch, in
+// the documented order: one round trip, plus one on a connection that has
+// not prepared them yet (all of them are prepared together). The batch is
+// read to the end before the transaction is used again.
+func (t *pgTx) ReadToday(today, prev, from, to spin.Date) (spin.TodayReads, error) {
+	var r spin.TodayReads
+	b := &pgx.Batch{}
+	b.Queue(spinSelect+latestSpinWhere, t.uid, today.String()).QueryRow(func(row pgx.Row) (err error) {
+		r.Latest, err = optionalSpin(row)
+		return err
+	})
+	b.Queue(spinSelect+latestSpinWhere, t.uid, prev.String()).QueryRow(func(row pgx.Row) (err error) {
+		r.PrevLatest, err = optionalSpin(row)
+		return err
+	})
+	b.Queue(lastDailySpunAtSQL, t.uid).QueryRow(func(row pgx.Row) (err error) {
+		r.LastDailySpunAt, err = scanLastDailySpunAt(row)
+		return err
+	})
+	b.Queue(hasAnySpinSQL, t.uid).QueryRow(func(row pgx.Row) error {
+		return row.Scan(&r.AnySpin)
+	})
+	b.Queue(liveCategoriesSQL, t.uid).Query(func(rows pgx.Rows) (err error) {
+		r.Categories, err = scanCategories(rows)
+		return err
+	})
+	b.Queue(stateSQL, t.uid).QueryRow(func(row pgx.Row) (err error) {
+		r.State, err = scanState(row)
+		return err
+	})
+	b.Queue(postedDaysSQL, t.uid, from.String(), to.String()).Query(func(rows pgx.Rows) (err error) {
+		r.Posted, err = scanPostedDays(rows)
+		return err
+	})
+	b.Queue(skippedDatesSQL, t.uid, from.String(), to.String()).Query(func(rows pgx.Rows) (err error) {
+		r.Skipped, err = scanDates(rows)
+		return err
+	})
+	if err := t.tx.SendBatch(t.ctx, b).Close(); err != nil {
+		return spin.TodayReads{}, err
+	}
+	return r, nil
 }
 
 func (t *pgTx) InsertPostedDay(p spin.PostedDay) (bool, error) {

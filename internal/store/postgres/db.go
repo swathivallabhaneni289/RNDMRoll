@@ -11,7 +11,10 @@ import (
 )
 
 const (
-	maxPoolConns   int32 = 10
+	maxPoolConns int32 = 10
+	// minPoolConns connections stay open while idle, so a request after a
+	// quiet spell does not wait for a new connection to the database.
+	minPoolConns   int32 = 2
 	connectTimeout       = 5 * time.Second
 )
 
@@ -23,6 +26,7 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("postgres: parse config: %w", err)
 	}
 	cfg.MaxConns = maxPoolConns
+	cfg.MinConns = minPoolConns
 	cfg.ConnConfig.ConnectTimeout = connectTimeout
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)

@@ -90,6 +90,9 @@ type BonusRequest struct {
 	ForDate  *string `json:"for_date"`
 }
 
+// setTimeZone answers 200 with {"time_zone": name, "today": Today}: the
+// stored zone, and Today as GET /today would answer just after, so the phone
+// needs no second request.
 func (h *SpinHandler) setTimeZone(c *gin.Context) {
 	u, ok := finishedUser(c)
 	if !ok {
@@ -104,12 +107,13 @@ func (h *SpinHandler) setTimeZone(c *gin.Context) {
 		RespondFieldError(c, "time_zone", reasonRequired)
 		return
 	}
-	name, err := h.svc.SetTimeZone(c.Request.Context(), u.ID.String(), *req.TimeZone)
+	name, today, err := h.svc.ReportTimeZone(c.Request.Context(), u.ID.String(), *req.TimeZone)
 	if err != nil {
 		respondSpinError(c, err)
 		return
 	}
-	Respond(c, http.StatusOK, gin.H{"time_zone": name})
+	linkToday(&today, h.PhotoURL)
+	Respond(c, http.StatusOK, gin.H{"time_zone": name, "today": today})
 }
 
 func (h *SpinHandler) today(c *gin.Context) {
