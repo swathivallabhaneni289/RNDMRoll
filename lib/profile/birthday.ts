@@ -1,7 +1,7 @@
 /**
- * Client-side birthday rules for the profile form. Three plain number fields (Month, Day,
- * Year), no native date picker. The server decides again with its own clock; this only
- * gives the person a message before they press Continue.
+ * Client-side birthday rules for the profile form: the iPhone date sheet, or three plain number
+ * fields (Month, Day, Year) where the sheet can't load. The server decides again with its own
+ * clock; this only gives the person a message before they press Continue.
  */
 
 export const MIN_AGE = 13;
@@ -21,6 +21,8 @@ export const BIRTHDAY_MESSAGES = {
   notReal: "That date doesn't exist. Check the day and month.",
   future: 'That date is in the future.',
   underAge: 'You must be at least 13 to use RNDMRoll.',
+  /** The date sheet's box, on a tap of the grey Continue when no date was ever picked. */
+  notPicked: 'Pick your birthday.',
 } as const;
 
 export type BirthdayCheck = { ok: true; iso: string } | { ok: false; error: string };
@@ -85,4 +87,28 @@ export function checkBirthday(
   }
 
   return { ok: true, iso: `${pad(y, 4)}-${pad(m, 2)}-${pad(d, 2)}` };
+}
+
+/**
+ * What the birthday says on a tap of the grey Continue, or '' for a good date. With the date sheet
+ * (`picker`), a birthday never picked asks for one. Anything else is checkBirthday's message, so
+ * the typed boxes keep their own lines.
+ */
+export function birthdayProblem(parts: BirthdayParts, picker: boolean, now: Date = new Date()): string {
+  if (picker && parts.month === '' && parts.day === '' && parts.year === '') return BIRTHDAY_MESSAGES.notPicked;
+  const result = checkBirthday(parts, now);
+  return result.ok ? '' : result.error;
+}
+
+/**
+ * The typed box that gets the cursor for a birthday problem: the first empty one, Month for a date
+ * that doesn't exist, and Year for the rest. None for under 13, so the age rule never reads as a
+ * prompt to try another date.
+ */
+export function birthdayBoxToFix(parts: BirthdayParts, problem: string): keyof BirthdayParts | null {
+  if (problem === '' || problem === BIRTHDAY_MESSAGES.underAge) return null;
+  if (parts.month.trim() === '') return 'month';
+  if (parts.day.trim() === '') return 'day';
+  if (parts.year.trim() === '' || problem !== BIRTHDAY_MESSAGES.notReal) return 'year';
+  return 'month';
 }

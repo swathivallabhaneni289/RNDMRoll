@@ -26,6 +26,9 @@ import {
 } from '../lib/wheel/geometry.ts';
 import { msUntil, nextWaitMs, parseInstant, spokenMinutes, split } from '../lib/wheel/countdown.ts';
 import { dateLine, dateLineLong } from '../lib/wheel/format.ts';
+import { NAME_EMPTY_LINE, NAME_TAKEN_LINE, nameProblems } from '../lib/wheel/categoryNames.ts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 let checks = 0;
 let failures = 0;
@@ -247,6 +250,143 @@ check('truncate counts letters not bytes', truncate('Café au lait', 4) === 'Caf
   const wait = nextWaitMs(['2026-10-10T20:00:00Z', '2026-10-11T00:00:00Z', '2026-10-10T10:00:00Z'], anchor, 1000);
   check('nextWaitMs picks the nearest ahead', wait === parseInstant('2026-10-10T20:00:00Z') - anchor.serverMs, `${wait}`);
   check('nextWaitMs with nothing ahead', nextWaitMs(['2026-10-10T10:00:00Z'], anchor, 1000) === null);
+}
+
+// ---- Edit wheel: category names and the grey Save wheel (2026-11-16) -------------------------------
+{
+  check('empty name line', NAME_EMPTY_LINE === 'Name it or remove it.', NAME_EMPTY_LINE);
+  check('repeated name line', NAME_TAKEN_LINE === 'Already on the wheel.', NAME_TAKEN_LINE);
+  for (const line of [NAME_EMPTY_LINE, NAME_TAKEN_LINE]) {
+    check(`one short sentence, no dash or exclamation: ${line}`, /^[A-Z][^–—!]*\.$/.test(line) && line.split(' ').length <= 5, line);
+  }
+
+  const saved = { a: 'Meal', b: 'Movie', c: 'Song' };
+  const rows = (...list: [string | null, string][]) => list.map(([id, name]) => ({ id, name }));
+  const lines = (list, names = saved) =>
+    nameProblems(list, names)
+      .map((p) => (p === null ? '-' : p === NAME_EMPTY_LINE ? 'empty' : p === NAME_TAKEN_LINE ? 'taken' : `?${p}`))
+      .join(',');
+  const want = (name: string, list, expected: string, names = saved) => {
+    const got = lines(list, names);
+    check(name, got === expected, `got ${got}, wanted ${expected}`);
+  };
+  want('the saved wheel as it was has no problem', rows(['a', 'Meal'], ['b', 'Movie'], ['c', 'Song']), '-,-,-');
+  want('a new row with no name', rows(['a', 'Meal'], ['b', 'Movie'], [null, '']), '-,-,empty');
+  want('a name of spaces is empty', rows(['a', 'Meal'], [null, '   ']), '-,empty');
+  want('a saved row cleared is empty', rows(['a', ''], ['b', 'Movie']), 'empty,-');
+  want('a new row with a saved name: only the new row', rows(['a', 'Meal'], ['b', 'Movie'], [null, 'movie']), '-,-,taken');
+  want('capitals and outer spaces are ignored', rows(['b', 'Movie'], [null, '  MOVIE ']), '-,taken');
+  want('inner spaces count', rows(['b', 'Movie'], [null, 'Mo vie']), '-,-');
+  want('an earlier row renamed to a later name: only the renamed row', rows(['a', 'Song'], ['b', 'Movie'], ['c', 'Song']), 'taken,-,-');
+  want('a later row renamed to an earlier name: only the renamed row', rows(['a', 'Meal'], ['b', 'Movie'], ['c', 'meal']), '-,-,taken');
+  want('two new rows with one name: both', rows(['a', 'Meal'], [null, 'Tea'], [null, 'tea']), '-,taken,taken');
+  want('two renamed rows with one name: both', rows(['a', 'Tea'], ['b', 'Tea'], ['c', 'Song']), 'taken,taken,-');
+  want('a new and a renamed row on a saved name: both, not the saved row', rows(['a', 'Song'], ['c', 'Song'], [null, 'song']), 'taken,-,taken');
+  want('a saved row with only its capitals changed counts as typed', rows(['b', 'MOVIE'], [null, 'movie']), 'taken,taken');
+  want('a saved row with spaces added around it is as it was', rows(['b', ' Movie '], [null, 'movie']), '-,taken');
+  want('saved rows that match only on the phone both get the line', rows(['x', 'Tea'], ['y', 'TEA']), 'taken,taken', { x: 'Tea', y: 'TEA' });
+  want('an id the last read did not have counts as typed', rows(['a', 'Meal'], ['z', 'meal']), '-,taken');
+  want('an empty name is never also a repeat', rows([null, ''], [null, ' ']), 'empty,empty');
+  check('one answer per row', nameProblems(rows(['a', 'Meal'], [null, 'x'], [null, '']), saved).length === 3);
+  check('nothing for no rows', nameProblems([], saved).length === 0);
+
+  // The rule decides whether Save wheel can go, so a sweep of random lists: rows new, saved as they
+  // were or renamed, names with any capitals and outer spaces. Every repeated name keeps at least one
+  // line (or Save would go and the server refuse the list), a line goes only to a row with a twin, a
+  // saved row as it was gets one only when every row with its name is too, and empty is always empty.
+  {
+    const pool = ['Meal', 'Movie', 'Song', 'Tea', ''];
+    const vary = (name: string) => {
+      const r = rand();
+      const cased = r < 0.33 ? name.toUpperCase() : r < 0.66 ? name.toLowerCase() : name;
+      return rand() < 0.2 ? `  ${cased} ` : cased;
+    };
+    let bad: string | null = null;
+    for (let trial = 0; trial < 4000 && bad === null; trial += 1) {
+      const n = randInt(2, 12);
+      const names: Record<string, string> = {};
+      const list: { id: string | null; name: string }[] = [];
+      const kept: boolean[] = [];
+      for (let i = 0; i < n; i += 1) {
+        const name = vary(pool[randInt(0, pool.length - 1)]);
+        const kind = randInt(0, 2);
+        if (kind === 0) list.push({ id: null, name });
+        else {
+          names[`id${i}`] = kind === 1 ? name.trim() : `${name.trim()} before`;
+          list.push({ id: `id${i}`, name });
+        }
+        kept.push(kind === 1);
+      }
+      const got = nameProblems(list, names);
+      const keys = list.map((row) => row.name.trim().toLowerCase());
+      for (let i = 0; i < n && bad === null; i += 1) {
+        const group = keys.flatMap((key, j) => (key === keys[i] ? [j] : []));
+        const allKept = group.every((j) => kept[j]);
+        const expected =
+          keys[i] === '' ? NAME_EMPTY_LINE : group.length === 1 ? null : kept[i] && !allKept ? null : NAME_TAKEN_LINE;
+        if (got[i] !== expected) bad = `row ${i} got ${got[i]}, wanted ${expected}: ${JSON.stringify({ list, names })}`;
+        if (keys[i] !== '' && group.length > 1 && !group.some((j) => got[j] === NAME_TAKEN_LINE)) {
+          bad = `a repeated name with no line: ${JSON.stringify({ list, names })}`;
+        }
+      }
+      checks += 1;
+    }
+    check('name sweep: every repeated name keeps a line, only rows with a twin get one, empty is always empty', bad === null, bad ?? '');
+  }
+
+  const editorRules = readFileSync(fileURLToPath(new URL('../lib/wheel/categoryNames.ts', import.meta.url)), 'utf8');
+  check('lib/wheel/categoryNames.ts has no import', !/^\s*import\s/m.test(editorRules) && !/require\(/.test(editorRules));
+
+  // The screen has no React here, so the lines that matter are pinned as written.
+  const editor = readFileSync(fileURLToPath(new URL('../components/wheel/WheelEditor.tsx', import.meta.url)), 'utf8');
+  check('Edit wheel takes its row problems from nameProblems', /const rowProblems = nameProblems\(rows, savedNames\);/.test(editor));
+  check(
+    'the saved names come from every server answer',
+    /setSavedNames\(Object\.fromEntries\(next\.categories\.map\(\(category\) => \[category\.id, category\.name\]\)\)\);/.test(editor)
+  );
+  check('the old row lines are gone', !/Give this category a name|You already have a category with this name/.test(editor));
+  check(
+    'a problem still waits for its box to be left (or the tap on Save wheel)',
+    /const problem = row\.touched \? rowProblems\[index\] : null;/.test(editor) &&
+      /onBlur=\{\(\) => updateRow\(row\.key, \{ touched: true \}\)\}/.test(editor)
+  );
+  check(
+    'the grey Save wheel takes a tap only while something changed and a name has a problem',
+    /const blocked = hasChanges && !saving && firstProblem >= 0;/.test(editor) &&
+      /onBlockedPress=\{blocked \? showProblems : undefined\}/.test(editor) &&
+      /disabled=\{!canSave\}/.test(editor) &&
+      /const canSave = hasChanges && allValid && !saving;/.test(editor)
+  );
+  check(
+    "its VoiceOver hint is the first row's problem, only while blocked",
+    /blockedHint=\{blocked \? \(rowProblems\[firstProblem\] \?\? undefined\) : undefined\}/.test(editor)
+  );
+  check(
+    "the tap shows every row's problem, says the first, scrolls to its row and puts the cursor in it, in that order",
+    /setRows\(\(current\) => current\.map\(\(item\) => \(item\.touched \? item : \{ \.\.\.item, touched: true \}\)\)\);\s*announceProblem\(problem, NAME_LABEL\);\s*bringIntoView\(focusedInView\.ref\.current, rowRefs\.current\.get\(row\.key\)\);\s*boxRefs\.current\.get\(row\.key\)\?\.focus\(\);/.test(
+      editor
+    )
+  );
+  check(
+    'each row hands its view and its name box to the tap',
+    /if \(view\) rowRefs\.current\.set\(row\.key, view\);\s*else rowRefs\.current\.delete\(row\.key\);/.test(editor) &&
+      /if \(box\) boxRefs\.current\.set\(row\.key, box\);\s*else boxRefs\.current\.delete\(row\.key\);/.test(editor)
+  );
+  check(
+    'a problem shows with FieldError, inside the view that holds the box (the keyboard hook keeps that view in view)',
+    /<View style=\{\{ flex: 1 \}\}>\s*<TextInput\s+ref=\{ref\}[\s\S]*?\/>\s*\{problem !== null \? <FieldError text=\{problem\} label=\{NAME_LABEL\} \/> : null\}\s*<\/View>/.test(editor)
+  );
+  check(
+    'the box keeps the 1.5 ink border while a problem shows, and the problem is its hint',
+    /const marked = focused \|\| problem !== null;/.test(editor) &&
+      /borderWidth: marked \? 1\.5 : 1,\s*borderColor: marked \? color\.ink : color\.inkRest,/.test(editor) &&
+      /accessibilityHint=\{problem \?\? undefined\}/.test(editor)
+  );
+  check(
+    'Remove stays level with the box when a problem shows under it',
+    /flexDirection: 'row', alignItems: 'flex-start'/.test(editor) && /style=\{\{ height: NAME_FIELD_HEIGHT, justifyContent: 'center', paddingLeft: space\.md \}\}/.test(editor)
+  );
+  check('no plain ink row line is left', !/<Text style=\{\{ \.\.\.labelText, color: color\.ink \}\}>\{problem\}<\/Text>/.test(editor));
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);

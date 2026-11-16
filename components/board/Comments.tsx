@@ -18,6 +18,7 @@ import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { createUploadMemory, photoMessage, photoProblem } from '@/lib/entry/photo';
 import { uploadEntryPhoto } from '@/lib/api/entries';
+import { showAccessOff } from '@/lib/media/showAccessOff';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 import { useOpenPerson } from '@/lib/people/openPerson';
 
@@ -417,7 +418,8 @@ export function CommentBar({
           ? await ImagePicker.requestCameraPermissionsAsync()
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setMessage(source === 'camera' ? 'Camera access is needed to take a photo.' : 'Photo access is needed to choose a photo.');
+        // Access turned off (iOS asks only once): the phone's alert, with a way to Settings.
+        showAccessOff(source);
         return;
       }
       const options: ImagePicker.ImagePickerOptions = {

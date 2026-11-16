@@ -12,6 +12,8 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import type { Entry } from '@/lib/api/entries';
 import { COMMENT_MAX, stillNeededLine, TITLE_MAX } from '@/lib/entry/rules';
 import { formatStars } from '@/lib/entry/stars';
+import { announceProblem } from '@/lib/forms/announce';
+import { bringIntoView } from '@/lib/forms/bringIntoView';
 import { color, space, type } from '@/lib/theme/tokens';
 
 type EntryFormProps = {
@@ -47,6 +49,10 @@ const labelLine = {
  * button. Built the way the Edit wheel screen is: one KeyboardAvoidingView holds the scroll area
  * and the footer, so the footer rides above the keyboard. The route owns the `Screen`, the leave
  * guard and the navigation; this component never navigates.
+ *
+ * While a part is missing the button is grey and a tap on it scrolls to the first missing part
+ * (photo, title, stars), and VoiceOver says the Still needed line. Grey only because nothing changed
+ * (edit) or while saving, it ignores taps.
  */
 export function EntryForm({
   mode,
@@ -63,6 +69,10 @@ export function EntryForm({
   const scrollRef = useRef<ScrollView>(null);
   const commentFocusedRef = useRef(false);
   const insets = useSafeAreaInsets();
+  // The three parts Save needs, for the tap on the grey button.
+  const photoRef = useRef<View>(null);
+  const titleRef = useRef<View>(null);
+  const starsRef = useRef<View>(null);
 
   // A photo message sits under the strip at the top of the form; the person pressed Save in the
   // footer and may have scrolled down to the comment, so bring the strip into view.
@@ -72,7 +82,17 @@ export function EntryForm({
 
   const needed = stillNeededLine(draft.missing);
   const canSubmit = !submitting && draft.missing.length === 0 && (mode === 'new' || draft.dirty);
+  // Grey because a part is missing, not because nothing changed or a save is running.
+  const blocked = !terminal && !submitting && draft.missing.length > 0;
   const figure = formatStars(draft.stars);
+
+  /** The grey button was tapped: the first missing part scrolls into view and VoiceOver says the line. */
+  function showMissing() {
+    const first = draft.missing[0];
+    const part = first === 'photo' ? photoRef.current : first === 'title' ? titleRef.current : starsRef.current;
+    announceProblem(needed);
+    bringIntoView(scrollRef.current, part);
+  }
 
   return (
     <KeyboardAvoidingView
@@ -96,15 +116,17 @@ export function EntryForm({
         contentContainerStyle={{ paddingTop: space.lg, paddingBottom: space.xl }}
       >
         <View pointerEvents={submitting ? 'none' : 'auto'}>
-          <PhotoField
-            photos={draft.photos}
-            mode={mode}
-            onAdd={draft.addPhoto}
-            onRemove={draft.removePhoto}
-            message={photoMessage}
-          />
+          <View ref={photoRef}>
+            <PhotoField
+              photos={draft.photos}
+              mode={mode}
+              onAdd={draft.addPhoto}
+              onRemove={draft.removePhoto}
+              message={photoMessage}
+            />
+          </View>
 
-          <View style={{ marginTop: space.lg }}>
+          <View ref={titleRef} style={{ marginTop: space.lg }}>
             <UnderlineField
               label="Title"
               accessibilityLabel="Title"
@@ -117,7 +139,7 @@ export function EntryForm({
             />
           </View>
 
-          <View style={{ marginTop: space.lg }}>
+          <View ref={starsRef} style={{ marginTop: space.lg }}>
             <View
               style={{
                 minHeight: type.note.lineHeight,
@@ -183,6 +205,8 @@ export function EntryForm({
           onPress={terminal ? onTerminal : onSubmit}
           disabled={terminal ? false : !canSubmit}
           loading={terminal ? false : submitting}
+          onBlockedPress={blocked ? showMissing : undefined}
+          blockedHint={blocked ? needed : undefined}
         />
       </View>
     </KeyboardAvoidingView>

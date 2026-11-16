@@ -2,6 +2,7 @@ import { ActivityIndicator, GestureResponderEvent, Pressable, Text, View } from 
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AppText } from '@/components/ui/AppText';
+import { primaryButtonAnswer } from '@/lib/forms/rules';
 import { color, elevation, minTouchTarget, radius, type } from '@/lib/theme/tokens';
 
 type PrimaryButtonProps = {
@@ -12,6 +13,14 @@ type PrimaryButtonProps = {
   variant?: 'standard' | 'onPhoto' | 'outline';
   /** A small arrow after the label (the profile form's Continue and Save). */
   arrow?: boolean;
+  /**
+   * Called on a tap while the button is grey because of what is typed (`disabled` and not
+   * `loading`), so the form can show what is missing. The tap does not take focus from the box being
+   * typed in, so no blur check runs: the handler shows every message itself.
+   */
+  onBlockedPress?: (event: GestureResponderEvent) => void;
+  /** The VoiceOver hint while grey because of what is typed, for example stillNeeded's line. */
+  blockedHint?: string;
 };
 
 /**
@@ -24,6 +33,11 @@ type PrimaryButtonProps = {
  * 2026-10-09 follow-up): Dominant fill, a 1px Ink border and no shadow, with
  * the same `md` radius cap and press feedback. All variants stay strictly
  * inside the existing Ink/Dominant pair.
+ *
+ * A grey button with `onBlockedPress` keeps its grey look and gets no press
+ * feedback, but a tap runs the handler, and VoiceOver hears it as a button
+ * (not dimmed) with `blockedHint`. While loading it ignores taps, as before
+ * (primaryButtonAnswer in lib/forms/rules.ts).
  */
 export function PrimaryButton({
   label,
@@ -32,8 +46,11 @@ export function PrimaryButton({
   loading = false,
   variant = 'standard',
   arrow = false,
+  onBlockedPress,
+  blockedHint,
 }: PrimaryButtonProps) {
   const isInert = disabled || loading;
+  const answer = primaryButtonAnswer({ disabled, loading, hasBlockedPress: onBlockedPress !== undefined });
   const isOnPhoto = variant === 'onPhoto';
   const isOutline = variant === 'outline';
   // Both inverted looks put Ink text on a light fill.
@@ -57,7 +74,7 @@ export function PrimaryButton({
   return (
     <Animated.View style={isInert ? undefined : pressStyle}>
       <Pressable
-        onPress={isInert ? undefined : onPress}
+        onPress={answer.tap === 'press' ? onPress : answer.tap === 'blocked' ? onBlockedPress : undefined}
         onPressIn={
           isInert
             ? undefined
@@ -73,7 +90,8 @@ export function PrimaryButton({
               }
         }
         accessibilityRole="button"
-        accessibilityState={{ disabled, busy: loading }}
+        accessibilityState={{ disabled: answer.dimmed, busy: loading }}
+        accessibilityHint={answer.blocked ? blockedHint : undefined}
         style={{
           ...containerStyle,
           borderRadius: radius.md,

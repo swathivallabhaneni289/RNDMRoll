@@ -141,6 +141,15 @@ function clientText(code: ApiErrorCode): string {
   return new ApiError(0, code).userMessage;
 }
 
+/** A 429: too many posts, edits or photo tickets in a minute. Shorter than the client's own line. */
+const RATE_LIMITED_LINE = 'Too many tries. Wait a minute.';
+
+/**
+ * The server refused the title or the comment for a character the phone does not check: a control
+ * character, such as a pasted tab. The phone checks only that a title is there and how long each is.
+ */
+const CHARACTER_LINE = "That has a character we can't use.";
+
 /**
  * The line for a failed post (or photo upload) and whether it ends the attempt.
  *
@@ -149,8 +158,10 @@ function clientText(code: ApiErrorCode): string {
  *
  * Not terminal (the form stays as it was and Save is live again): a lost connection, which uses
  * the existing offline string; a photo that was refused or failed to upload, which use their
- * existing strings (UI spec 7); and everything else (a 400 `validation_failed` on `photos`, a
- * 429, a 500, a thrown error), which uses the existing generic string.
+ * existing strings (UI spec 7); a 429, which says to wait a minute; a 400 `validation_failed` that
+ * names the title or the comment as `invalid`, which says it has a character that can't be used;
+ * and everything else (a `validation_failed` on `photos` or on another field, a 500, a thrown
+ * error), which uses the existing generic string.
  */
 export function entryErrorMessage(err: unknown): { text: string; terminal: boolean } {
   if (err instanceof ApiError) {
@@ -162,6 +173,10 @@ export function entryErrorMessage(err: unknown): { text: string; terminal: boole
       err.code === 'photo_upload_failed'
     ) {
       return { text: clientText(err.code), terminal: false };
+    }
+    if (err.code === 'rate_limited') return { text: RATE_LIMITED_LINE, terminal: false };
+    if (err.code === 'validation_failed' && (err.field === 'title' || err.field === 'comment') && err.reason === 'invalid') {
+      return { text: CHARACTER_LINE, terminal: false };
     }
   }
   return { text: clientText('server_error'), terminal: false };

@@ -12,6 +12,7 @@ import { useEntry } from '@/components/entry/useEntry';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { AppText } from '@/components/ui/AppText';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ApiError } from '@/lib/api/client';
 import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
 import { photoSource } from '@/lib/api/photoSource';
@@ -146,23 +147,52 @@ export function Gallery({
   );
 }
 
+/** In place of the comments when the post could not be read. */
+const COMMENTS_FAILED_LINE = "Couldn't load comments.";
+
 /**
  * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the caption, a
  * hairline and the comments (no count line: the number can grow large, developer, 2026-10-18; no
  * reactions on posts), oldest first, each with its replies under it, 'Reply' and 'Hide' under the
- * words and Delete on a long press. Read from GET /posts/{entry_id}; until that answers, or if it
- * cannot, nothing is drawn here and the rest of the page is unchanged.
+ * words and Delete on a long press. Read from GET /posts/{entry_id}; until that answers nothing is
+ * drawn here. When the first read fails, one plain line and Try again take its place, as
+ * StatusMessage draws them, and Try again shows it is busy while it reads again (`failed`: the read
+ * that is running follows a failed one). The comment bar and the comment mark wait for an answer
+ * either way.
  */
 function OwnPostExtras({
   social,
   myId,
   onPhotoError,
+  failed,
 }: {
   social: PostLoad;
   myId: string | null;
   onPhotoError: () => void;
+  failed: boolean;
 }) {
   const post = social.post;
+  if (social.status === 'offline' || (failed && social.status === 'loading')) {
+    return (
+      <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl }}>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{
+            fontFamily: type.label.fontFamily,
+            fontSize: type.label.fontSize,
+            lineHeight: type.label.lineHeight,
+            color: color.ink,
+            textAlign: 'center',
+          }}
+        >
+          {COMMENTS_FAILED_LINE}
+        </Text>
+        <View style={{ marginTop: space.md }}>
+          <PrimaryButton label="Try again" onPress={social.reload} loading={social.status === 'loading'} />
+        </View>
+      </View>
+    );
+  }
   if (social.status !== 'ready' || post === null) return null;
   const comments = post.comments ?? [];
   return (
@@ -226,6 +256,13 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
       reloadEntry();
     }
   }, [socialStatus, reloadEntry]);
+  // The first read of the post failed: its line and Try again stay while Try again reads again (the
+  // post hook says 'loading' then), and go once it answers or turns out gone.
+  const [commentsFailed, setCommentsFailed] = useState(false);
+  useEffect(() => {
+    if (socialStatus === 'offline') setCommentsFailed(true);
+    else if (socialStatus === 'ready' || socialStatus === 'gone') setCommentsFailed(false);
+  }, [socialStatus]);
 
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);
@@ -409,7 +446,7 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
               onComment={social.status === 'ready' && social.post?.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
             />
             <CaptionText entry={entry} />
-            <OwnPostExtras social={social} myId={userId} onPhotoError={onPhotoError} />
+            <OwnPostExtras social={social} myId={userId} onPhotoError={onPhotoError} failed={commentsFailed} />
           </ScrollView>
 
           {deleteMessage !== null ? (

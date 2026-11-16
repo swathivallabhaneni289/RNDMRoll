@@ -266,5 +266,43 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   check('the entry page still has its own gone line', view.includes("This entry isn't here any more."));
 }
 
+// ---- your own entry page when its comments can't be read (2026-11-16) ---------------------------
+{
+  const view = source('components/entry/EntryView.tsx');
+  check('the comments failure line', /const COMMENTS_FAILED_LINE = "Couldn't load comments\.";/.test(view));
+  check(
+    'a failed read shows the line and Try again, and keeps them while Try again reads again',
+    /if \(social\.status === 'offline' \|\| \(failed && social\.status === 'loading'\)\) \{/.test(view) &&
+      /\{COMMENTS_FAILED_LINE\}/.test(view)
+  );
+  check(
+    'Try again reads the post again and is busy meanwhile (the app button, not underlined text)',
+    /<PrimaryButton label="Try again" onPress=\{social\.reload\} loading=\{social\.status === 'loading'\} \/>/.test(view) &&
+      !/textDecorationLine/.test(view)
+  );
+  check(
+    'the failed flag is set by a failed read and cleared by an answer or a gone post',
+    /if \(socialStatus === 'offline'\) setCommentsFailed\(true\);\s*else if \(socialStatus === 'ready' \|\| socialStatus === 'gone'\) setCommentsFailed\(false\);/.test(view) &&
+      /failed=\{commentsFailed\}/.test(view)
+  );
+  check(
+    'the comment bar and the comment mark still wait for an answer',
+    /\{social\.status === 'ready' && social\.post !== null \? \(\s*social\.post\.can_comment \? \(\s*<CommentBar/.test(view) &&
+      /onComment=\{social\.status === 'ready' && social\.post\?\.can_comment \?/.test(view)
+  );
+  check('the line is plain ink, centred', /color: color\.ink,\s*textAlign: 'center',\s*\}\}\s*>\s*\{COMMENTS_FAILED_LINE\}/.test(view));
+}
+
+// ---- photo access turned off, at the comment bar's photo button (2026-11-16) ---------------------
+{
+  const comments = source('components/board/Comments.tsx');
+  check(
+    'camera or photo access turned off opens the alert with Open Settings',
+    /if \(!permission\.granted\) \{(?:\s*\/\/[^\n]*)*\s*showAccessOff\(source\);\s*return;\s*\}/.test(comments) &&
+      /import \{ showAccessOff \} from '@\/lib\/media\/showAccessOff';/.test(comments)
+  );
+  check('the old access lines are gone from the comment bar', !/access is needed/.test(comments));
+}
+
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);
 if (failures > 0) process.exitCode = 1;

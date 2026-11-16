@@ -10,6 +10,7 @@ import type { PhotoSource } from '@/lib/api/entries';
 import { photoSource } from '@/lib/api/photoSource';
 import { fileSize } from '@/lib/api/profile';
 import { canAddPhoto, photoMessage, photoProblem } from '@/lib/entry/photo';
+import { showAccessOff } from '@/lib/media/showAccessOff';
 import { ImageReveal, PressScale } from '@/lib/motion/primitives';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, radius, space } from '@/lib/theme/tokens';
@@ -20,8 +21,6 @@ const CHIP = 20;
 const PILL_HEIGHT = 40;
 const PILL_GAP = 10;
 
-const CAMERA_DENIED = 'Camera access is needed to take a photo.';
-const LIBRARY_DENIED = 'Photo library access is needed to choose a photo.';
 const CAMERA_UNAVAILABLE = "Camera isn't available on this device.";
 const LIBRARY_UNAVAILABLE = "Couldn't open your photo library.";
 const FILE_REFUSED = "That file can't be used as a photo. Try another one.";
@@ -115,13 +114,14 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
   }
 
   // Both launchers reject on a device without a camera (simulators) or when the picker fails to
-  // open; the launch is wrapped on its own so a later problem is never reported as that.
+  // open; the launch is wrapped on its own so a later problem is never reported as that. Access
+  // turned off (iOS asks only once) opens the phone's alert with a way to Settings.
   async function pickFromCamera() {
     let result: ImagePicker.ImagePickerResult;
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setProblem(CAMERA_DENIED);
+        showAccessOff('camera');
         return;
       }
       result = await ImagePicker.launchCameraAsync({
@@ -142,7 +142,7 @@ export function PhotoField({ photos, mode, onAdd, onRemove, message = null }: Ph
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setProblem(LIBRARY_DENIED);
+        showAccessOff('library');
         return;
       }
       result = await ImagePicker.launchImageLibraryAsync({

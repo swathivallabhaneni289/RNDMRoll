@@ -586,5 +586,96 @@ await memoryChecks();
   );
 }
 
+// ---- the grey Save, photo access and the server's refusals (2026-11-16) ----------------------------
+{
+  const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
+
+  // A tap on the grey Save scrolls to missing[0] and says the Still needed line: that part must be
+  // the line's first word, for every mix of missing parts.
+  const parts = ['photo', 'title', 'stars'];
+  for (let mask = 1; mask < 8; mask += 1) {
+    const has = { hasPhoto: !(mask & 1), title: mask & 2 ? '' : 'Dune', stars: mask & 4 ? 0 : 7 };
+    const missing = missingParts(has);
+    const line = stillNeededLine(missing);
+    check(
+      `the first missing part leads the line: ${missing.join(',')}`,
+      missing.length > 0 && line.startsWith(`Still needed: ${missing[0]}`) && parts.includes(missing[0]),
+      line
+    );
+  }
+
+  const form = source('components/entry/EntryForm.tsx');
+  check(
+    'the Save button is grey as before',
+    /const canSubmit = !submitting && draft\.missing\.length === 0 && \(mode === 'new' \|\| draft\.dirty\);/.test(form) &&
+      /disabled=\{terminal \? false : !canSubmit\}/.test(form)
+  );
+  check(
+    'a tap on the grey Save is taken only while a part is missing (not for an edit with no change, not while saving)',
+    /const blocked = !terminal && !submitting && draft\.missing\.length > 0;/.test(form) &&
+      /onBlockedPress=\{blocked \? showMissing : undefined\}/.test(form)
+  );
+  check('its VoiceOver hint is the Still needed line, only while blocked', /blockedHint=\{blocked \? needed : undefined\}/.test(form));
+  check(
+    'the tap brings the first missing part into view and says the Still needed line',
+    /const first = draft\.missing\[0\];\s*const part = first === 'photo' \? photoRef\.current : first === 'title' \? titleRef\.current : starsRef\.current;\s*announceProblem\(needed\);\s*bringIntoView\(scrollRef\.current, part\);/.test(
+      form
+    )
+  );
+  check(
+    'the three parts carry their refs',
+    /<View ref=\{photoRef\}>\s*<PhotoField/.test(form) &&
+      /<View ref=\{titleRef\} style=\{\{ marginTop: space\.lg \}\}>\s*<UnderlineField\s+label="Title"/.test(form) &&
+      /<View ref=\{starsRef\} style=\{\{ marginTop: space\.lg \}\}>[\s\S]{0,400}<CapsLabel>Rating<\/CapsLabel>/.test(form)
+  );
+  check(
+    'the Still needed line stays, muted, above the button',
+    /\{needed !== '' && !terminal \? \(/.test(form) && /<Text style=\{\{ \.\.\.labelLine, color: color\.muted \}\}>\{needed\}<\/Text>/.test(form)
+  );
+
+  const photos = source('components/entry/PhotoField.tsx');
+  check(
+    'photo access turned off opens the alert with Open Settings, camera and library',
+    /requestCameraPermissionsAsync\(\);\s*if \(!permission\.granted\) \{\s*showAccessOff\('camera'\);\s*return;\s*\}/.test(photos) &&
+      /requestMediaLibraryPermissionsAsync\(\);\s*if \(!permission\.granted\) \{\s*showAccessOff\('library'\);\s*return;\s*\}/.test(photos) &&
+      /import \{ showAccessOff \} from '@\/lib\/media\/showAccessOff';/.test(photos)
+  );
+  check('the old access lines are gone from the photo field', !/access is needed/.test(photos));
+
+  const entries = source('lib/api/entries.ts');
+  check('the 429 line', /const RATE_LIMITED_LINE = 'Too many tries\. Wait a minute\.';/.test(entries));
+  check('the character line', /const CHARACTER_LINE = "That has a character we can't use\.";/.test(entries));
+  check(
+    'a 429 says to wait, and the form stays (not terminal)',
+    /if \(err\.code === 'rate_limited'\) return \{ text: RATE_LIMITED_LINE, terminal: false \};/.test(entries) &&
+      !/clientText\('rate_limited'\)/.test(entries)
+  );
+  check(
+    'only a title or a comment refused as invalid gets the character line (photos and the rest stay generic)',
+    /if \(err\.code === 'validation_failed' && \(err\.field === 'title' \|\| err\.field === 'comment'\) && err\.reason === 'invalid'\) \{\s*return \{ text: CHARACTER_LINE, terminal: false \};\s*\}/.test(
+      entries
+    ) && (entries.match(/validation_failed' &&/g) ?? []).length === 1
+  );
+  check(
+    'the terminal answers still come first, the generic line last',
+    /const terminal = TERMINAL_MESSAGES\[err\.code\];\s*if \(terminal !== undefined\) return \{ text: terminal, terminal: true \};/.test(entries) &&
+      /\n  \}\n  return \{ text: clientText\('server_error'\), terminal: false \};\n\}/.test(entries)
+  );
+  // The server's words, read as text: the reason a control character gets, and the two text fields.
+  const serverFile = fileURLToPath(new URL('../internal/spin/entry.go', import.meta.url));
+  if (existsSync(serverFile)) {
+    const go = readFileSync(serverFile, 'utf8');
+    check(
+      'the server refuses a control character in a title or comment as invalid',
+      /if hasControl\(title, false\) \{\s*return "", ProblemInvalid/.test(go) && /if hasControl\(text, true\) \{\s*return "", ProblemInvalid/.test(go)
+    );
+    check('the server names the fields title and comment', /fieldTitle\s*=\s*"title"/.test(go) && /fieldComment\s*=\s*"comment"/.test(go));
+    const reasons = readFileSync(fileURLToPath(new URL('../internal/spin/entry_errors.go', import.meta.url)), 'utf8');
+    check('the server spells that reason invalid', /ProblemInvalid\s*=\s*"invalid"/.test(reasons));
+    const respond = readFileSync(fileURLToPath(new URL('../internal/httpapi/errors.go', import.meta.url)), 'utf8');
+    check('the server sends the field and the reason', /"field":\s*field,[\s\S]{0,80}"reason":\s*reason,/.test(respond));
+  }
+}
+
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);
 if (failures > 0) process.exitCode = 1;

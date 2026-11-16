@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, TextInputProps, View } from 'react-native';
+import { useState, type Ref } from 'react';
+import { ActivityIndicator, Pressable, Text, TextInput, TextInputProps, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
+import { FIELD_VIEW_ID } from '@/components/ui/useKeepFocusedInputInView';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
@@ -28,6 +29,8 @@ type TextFieldProps = {
   hint?: string;
   /** A short green note under the field when its value is good, for example "Looks good.". Hidden while an error shows. */
   success?: string;
+  /** The TextInput, so a form can call focus() on a box with a problem. */
+  ref?: Ref<TextInput>;
 } & Omit<TextInputProps, 'style'>;
 
 /** The green check and note shown under a field whose value is good (the look of the username's "Available"). */
@@ -46,21 +49,60 @@ export function FieldSuccess({ text, label }: { text: string; label: string }) {
   );
 }
 
+// AppText's cap on Larger Text. The alert mark follows the first line of the words up to it.
+const LARGER_TEXT_CAP = 1.3;
+
+/**
+ * A field's problem under the field: an ink alert mark, then the words in ink at Label size. Grey
+ * words under a field are a hint and a green tick is "Looks good.", so the mark is what tells a
+ * problem apart (no red: red is only for Log out). The mark sits on the first line when the words
+ * take two. VoiceOver skips the mark and reads the words once, after the field's label when one is
+ * given.
+ */
+export function FieldError({ text, label }: { text: string; label?: string }) {
+  const { fontScale } = useWindowDimensions();
+  return (
+    <View
+      accessible
+      accessibilityLabel={label ? `${label}: ${text}` : text}
+      // Android only in this React Native. On iPhone the box's hint and announceProblem say it.
+      accessibilityLiveRegion="polite"
+      style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: space.xs }}
+    >
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{ height: type.label.lineHeight * Math.min(fontScale, LARGER_TEXT_CAP), justifyContent: 'center' }}
+      >
+        <Ionicons name="alert-circle" size={16} color={color.ink} />
+      </View>
+      {/* Shrinks to wrap the words, and stays as wide as they are in a centred column. */}
+      <View style={{ flexShrink: 1, marginLeft: space.xs }}>
+        <AppText role="label">{text}</AppText>
+      </View>
+    </View>
+  );
+}
+
 /**
  * Labeled text input with the UI-SPEC rest/focus border step (1dp
- * `color.inkRest` at rest, 1.5dp `color.ink` when focused) and the
- * error slot (in ink) below the field. The optional `status` prop
- * drives the inline trailing adornment used only by the username step;
- * `taken` renders nothing here because the taken state uses the error
- * slot instead.
+ * `color.inkRest` at rest, 1.5dp `color.ink` when focused or while an
+ * error shows) and the message slot below the field: the green
+ * FieldSuccess note, or the FieldError that replaces it. The optional
+ * `status` prop drives the inline trailing adornment used only by the
+ * username step; `taken` renders nothing here because the taken state
+ * uses the error slot instead.
  *
- * Deviation: the plan calls for `accessibilityInvalid` on the error
- * state, but that prop does not exist on React Native's TextInput type
- * (verified against the installed RN types: no `accessibilityInvalid`
- * anywhere in ViewAccessibility.d.ts or TextInput.d.ts). Using
- * `accessibilityLiveRegion="polite"` on the error text instead, which
- * announces the error to screen readers on appearance, the same
- * functional goal via a prop that actually typechecks.
+ * VoiceOver: React Native's TextInput has no `accessibilityInvalid`, and
+ * `accessibilityLiveRegion` is Android only, so nothing is said when an
+ * error appears. The error is the box's accessibilityHint instead, read
+ * when the box gets focus, and a form that shows its errors on a tap of
+ * its grey button says the first one with announceProblem
+ * (lib/forms/announce.ts). `ref` reaches the TextInput (React 19 passes
+ * it as a prop), so a form can call focus() on a box with a problem.
+ * The field's own view carries FIELD_VIEW_ID, so when the keyboard comes
+ * up the keyboard hook keeps the label, the box and the line under it in
+ * view together (useKeepFocusedInputInView).
  */
 export function TextField({
   label,
@@ -74,9 +116,12 @@ export function TextField({
   success,
   onFocus,
   onBlur,
+  ref,
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  // An error keeps the focused border, so the box is marked as well as the words under it.
+  const marked = focused || Boolean(error);
   const line = variant === 'line';
   const soft = variant === 'soft';
   const multiline = rest.multiline === true;
@@ -120,27 +165,13 @@ export function TextField({
         </View>
       ) : null}
       {success && !error && status === 'idle' ? <FieldSuccess text={success} label={label} /> : null}
-      {error ? (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={{
-            fontSize: type.label.fontSize,
-            lineHeight: type.label.lineHeight,
-            fontFamily: type.label.fontFamily,
-            color: color.ink,
-            textAlign: 'left',
-            marginTop: 4,
-          }}
-        >
-          {error}
-        </Text>
-      ) : null}
+      {error ? <FieldError text={error} label={label} /> : null}
     </>
   );
 
   if (soft) {
     return (
-      <View>
+      <View nativeID={FIELD_VIEW_ID}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <Text
             style={{
@@ -172,8 +203,8 @@ export function TextField({
             marginTop: space.xs,
             backgroundColor: color.fieldSoft,
             borderRadius: radius.md,
-            borderWidth: focused ? 1.5 : 1,
-            borderColor: focused ? color.ink : color.inkRest,
+            borderWidth: marked ? 1.5 : 1,
+            borderColor: marked ? color.ink : color.inkRest,
             paddingHorizontal: 14,
             minHeight: multiline ? type.body.lineHeight * lines + MULTILINE_PADDING * 2 + (counting ? 14 : 0) : minTouchTarget + 6,
             flexDirection: 'row',
@@ -196,8 +227,10 @@ export function TextField({
           ) : null}
           <TextInput
             {...rest}
+            ref={ref}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            accessibilityHint={error ? error : rest.accessibilityHint}
             style={{
               flex: 1,
               padding: 0,
@@ -243,18 +276,20 @@ export function TextField({
   }
 
   return (
-    <View>
+    <View nativeID={FIELD_VIEW_ID}>
       <AppText role="label">{label}</AppText>
       <TextInput
         {...rest}
+        ref={ref}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        accessibilityHint={error ? error : rest.accessibilityHint}
         style={{
           backgroundColor: line ? 'transparent' : color.secondary,
           borderRadius: line ? 0 : radius.md,
-          borderWidth: line ? 0 : focused ? 1.5 : 1,
-          borderBottomWidth: focused ? 1.5 : 1,
-          borderColor: focused ? color.ink : color.inkRest,
+          borderWidth: line ? 0 : marked ? 1.5 : 1,
+          borderBottomWidth: marked ? 1.5 : 1,
+          borderColor: marked ? color.ink : color.inkRest,
           // iOS ignores numberOfLines for height, so a multiline field takes its height from the line count here.
           minHeight: multiline ? type.body.lineHeight * lines + MULTILINE_PADDING * 2 : minTouchTarget,
           paddingHorizontal: line ? 0 : 12,

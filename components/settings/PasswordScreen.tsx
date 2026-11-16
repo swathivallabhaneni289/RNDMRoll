@@ -1,16 +1,21 @@
 import { useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { FIELD_VIEW_ID } from '@/components/ui/useKeepFocusedInputInView';
 import { BackRow } from '@/components/settings/BackRow';
 import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { ApiError } from '@/lib/api/client';
 import { changePassword } from '@/lib/api/account';
+import { announceProblem } from '@/lib/forms/announce';
+import { bringIntoView } from '@/lib/forms/bringIntoView';
+import { stillNeeded } from '@/lib/forms/rules';
 import { setSettingsNotice } from '@/lib/settings/notice';
 import {
+  CURRENT_PASSWORD_EMPTY_MESSAGE,
   CURRENT_PASSWORD_WRONG_MESSAGE,
   GENERIC_MESSAGE,
   LOOKS_GOOD_MESSAGE,
@@ -45,18 +50,34 @@ export function PasswordScreen() {
   const [showNext, setShowNext] = useState(false);
   // The new password is judged when its box is left, and after that as it is typed.
   const [nextTouched, setNextTouched] = useState(false);
+  // Set by a tap on the grey Save password: from then on the New password box names the checklist's
+  // problems too.
+  const [asked, setAsked] = useState(false);
   const [currentError, setCurrentError] = useState('');
   const [nextServerError, setNextServerError] = useState('');
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const busyRef = useRef(false);
+  // A tap on the grey button scrolls to the first box with a problem and puts the cursor in it. The
+  // two field views carry FIELD_VIEW_ID, so the keyboard leaves the line and the checklist in view.
+  const scrollRef = useRef<ScrollView>(null);
+  const currentFieldRef = useRef<View>(null);
+  const nextFieldRef = useRef<View>(null);
+  const currentBoxRef = useRef<TextInput>(null);
+  const nextBoxRef = useRef<TextInput>(null);
 
   const nextProblem = newPasswordProblem(next, current);
-  // The checklist under the box already says what is missing, so only the other problems show red.
+  // The checklist under the box already says what is missing, so only the other problems show under
+  // the box, until a tap on the grey button asks for all of them.
   const nextError =
-    nextServerError !== '' ? nextServerError : nextTouched && nextProblem !== '' && !isChecklistProblem(nextProblem) ? nextProblem : '';
+    nextServerError !== ''
+      ? nextServerError
+      : nextProblem !== '' && (asked || (nextTouched && !isChecklistProblem(nextProblem)))
+        ? nextProblem
+        : '';
   const nextOk = next !== '' && nextProblem === '' && nextServerError === '';
   const canSave = current !== '' && next !== '' && nextProblem === '' && !saving;
+  const currentMissing = current === '';
 
   function handleCurrentChange(value: string) {
     setCurrent(value);
@@ -85,6 +106,23 @@ export function PasswordScreen() {
     setFormError(err.userMessage);
   }
 
+  // A tap on the grey Save password: both boxes show their line, touched or not. Then VoiceOver says
+  // the first one (current, then new), the page scrolls it into view and the cursor goes into it.
+  function showProblems() {
+    if (currentMissing) setCurrentError(CURRENT_PASSWORD_EMPTY_MESSAGE);
+    setNextTouched(true);
+    setAsked(true);
+    if (currentMissing) {
+      announceProblem(CURRENT_PASSWORD_EMPTY_MESSAGE, 'Current password');
+      bringIntoView(scrollRef.current, currentFieldRef.current);
+      currentBoxRef.current?.focus();
+    } else if (nextProblem !== '') {
+      announceProblem(nextProblem, 'New password');
+      bringIntoView(scrollRef.current, nextFieldRef.current);
+      nextBoxRef.current?.focus();
+    }
+  }
+
   async function save() {
     if (!canSave || busyRef.current) return;
     busyRef.current = true;
@@ -107,7 +145,7 @@ export function PasswordScreen() {
   }
 
   return (
-    <Screen edges={['top', 'left', 'right']}>
+    <Screen edges={['top', 'left', 'right']} scrollRef={scrollRef}>
       <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
         <BackRow />
 
@@ -117,8 +155,9 @@ export function PasswordScreen() {
           </AppText>
         </View>
 
-        <View style={{ marginTop: space.lg }}>
+        <View ref={currentFieldRef} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.lg }}>
           <TextField
+            ref={currentBoxRef}
             label="Current password"
             variant="soft"
             value={current}
@@ -144,8 +183,9 @@ export function PasswordScreen() {
           </Pressable>
         </View>
 
-        <View style={{ marginTop: space.md }}>
+        <View ref={nextFieldRef} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.md }}>
           <TextField
+            ref={nextBoxRef}
             label="New password"
             variant="soft"
             value={next}
@@ -182,7 +222,14 @@ export function PasswordScreen() {
         ) : null}
 
         <View style={{ marginTop: space.lg }}>
-          <PrimaryButton label="Save password" disabled={!canSave} loading={saving} onPress={save} />
+          <PrimaryButton
+            label="Save password"
+            disabled={!canSave}
+            loading={saving}
+            onPress={save}
+            onBlockedPress={showProblems}
+            blockedHint={stillNeeded([currentMissing ? 'current password' : '', nextProblem !== '' ? 'new password' : ''])}
+          />
         </View>
       </View>
     </Screen>

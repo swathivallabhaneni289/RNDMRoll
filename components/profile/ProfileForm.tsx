@@ -1,29 +1,47 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, TextLink } from '@/components/ui/AppText';
 import { DialAvatar } from '@/components/brand/DialAvatar';
-import { BirthdayPickerField, birthdayPickerAvailable } from '@/components/profile/BirthdayPickerField';
+import {
+  BirthdayPickerField,
+  birthdayPickerAvailable,
+  type BirthdayPickerHandle,
+} from '@/components/profile/BirthdayPickerField';
 import { SettingsGear } from '@/components/settings/SettingsGear';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextButton } from '@/components/ui/TextButton';
-import { FieldSuccess, TextField } from '@/components/ui/TextField';
+import { FieldError, FieldSuccess, TextField } from '@/components/ui/TextField';
+import { FIELD_VIEW_ID } from '@/components/ui/useKeepFocusedInputInView';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError, isRetryable } from '@/lib/api/client';
 import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
 import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
 import { sayIfRestored } from '@/lib/auth/restored';
 import { opensExtras, shouldTryLogin, signupAnswerLost, type SignupTry } from '@/lib/auth/signupRetry';
-import { BIRTHDAY_MESSAGES, checkBirthday, EMPTY_BIRTHDAY, type BirthdayParts } from '@/lib/profile/birthday';
+import { announceProblem } from '@/lib/forms/announce';
+import { bringIntoView } from '@/lib/forms/bringIntoView';
+import { stillNeeded } from '@/lib/forms/rules';
+import { showAccessOff } from '@/lib/media/showAccessOff';
+import {
+  BIRTHDAY_MESSAGES,
+  birthdayBoxToFix,
+  birthdayProblem,
+  checkBirthday,
+  EMPTY_BIRTHDAY,
+  type BirthdayParts,
+} from '@/lib/profile/birthday';
 import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { setSettingsNotice } from '@/lib/settings/notice';
 import {
   PASSWORD_LONG_MESSAGE,
   PASSWORD_WEAK_MESSAGE,
   passwordProblem as passwordRuleProblem,
+  USERNAME_CHARACTER_MESSAGE,
+  usernameProblem,
 } from '@/lib/settings/rules';
 import { useSession } from '@/lib/session/store';
 
@@ -44,7 +62,6 @@ const BIO_MAX_LENGTH = 160;
 const NAME_MAX_LENGTH = 50;
 const EMAIL_MAX_LENGTH = 254;
 const USERNAME_DEBOUNCE_MS = 400;
-const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 // Sign-up keeps only addresses the server keeps (internal/httpapi/auth.go, validEmail and
 // asciiEmail): plain printable ASCII, no spaces, one @, dot-separated parts on both sides made of
 // letters, digits and ! # $ % & ' * + - / = ? ^ _ ` { | } ~, and a dot after the @. So "Looks
@@ -59,7 +76,6 @@ const EMAIL_TAKEN_MESSAGE = 'That email is already in use.';
 const NAME_EMPTY_MESSAGE = 'Enter your name.';
 const NAME_LONG_MESSAGE = `Name must be ${NAME_MAX_LENGTH} characters or fewer.`;
 const BIO_LONG_MESSAGE = `Bio must be ${BIO_MAX_LENGTH} characters or fewer.`;
-const USERNAME_FORMAT_MESSAGE = '3 to 20 letters, numbers, or underscores.';
 const USERNAME_TAKEN_MESSAGE = "That username's taken. Try one of these:";
 const USERNAME_TAKEN_NO_ALTERNATES_MESSAGE = "That username's taken.";
 const USERNAME_CHECK_FAILED_MESSAGE = "Couldn't check that username. Try again.";
@@ -95,6 +111,10 @@ function nameProblem(value: string): string | undefined {
 }
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
+
+type FieldKey = 'email' | 'password' | 'birthday' | 'name' | 'username';
+/** A field that holds the bottom button back, with the line it shows on a tap of the grey button. */
+type Problem = { key: FieldKey; label: string; message: string };
 
 /** How long "Saved." stays under the bottom button after a save in the Profile tab. */
 const SAVED_NOTE_MS = 3000;
@@ -147,6 +167,9 @@ export function ProfileForm({
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | undefined>(undefined);
   const [showPassword, setShowPassword] = useState(false);
+  // The Password box shows only the too-long line, as the checklist under it says the rest. After a
+  // tap on the grey Continue it shows any line, so the box names what is still missing.
+  const [passwordAsked, setPasswordAsked] = useState(false);
 
   const [birthday, setBirthday] = useState<BirthdayParts>(EMPTY_BIRTHDAY);
   const [birthdayError, setBirthdayError] = useState<string | undefined>(undefined);
@@ -190,6 +213,29 @@ export function ProfileForm({
   // was lost, or the session it brought could not be kept. A later email_taken for the same email
   // and password logs in to that account (lib/auth/signupRetry.ts). Cleared once signed in.
   const lostSignupRef = useRef<SignupTry | null>(null);
+  // A tap on the grey button scrolls to the first field with a problem (the view around its label,
+  // box and line) and puts the cursor in its box. Each view carries FIELD_VIEW_ID, so the keyboard
+  // that comes up then leaves all of it in view, the username's chips and the password checklist too.
+  const scrollRef = useRef<ScrollView>(null);
+  const fieldRefs = {
+    email: useRef<View>(null),
+    password: useRef<View>(null),
+    birthday: useRef<View>(null),
+    name: useRef<View>(null),
+    username: useRef<View>(null),
+  };
+  const boxRefs = {
+    email: useRef<TextInput>(null),
+    password: useRef<TextInput>(null),
+    name: useRef<TextInput>(null),
+    username: useRef<TextInput>(null),
+  };
+  const birthdayRef = useRef<BirthdayPickerHandle>(null);
+  const birthdayBoxRefs = {
+    month: useRef<TextInput>(null),
+    day: useRef<TextInput>(null),
+    year: useRef<TextInput>(null),
+  };
 
   useEffect(() => {
     usernameRef.current = username;
@@ -211,18 +257,20 @@ export function ProfileForm({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (username === '' || (initialUsername !== '' && username === initialUsername)) {
-      // Nothing typed, or back to the stored value: nothing to check, and it is never
-      // "taken" against itself.
+    if (initialUsername !== '' && username === initialUsername) {
+      // Back to the stored value: nothing to check, and it is never "taken" against itself.
       setUsernameStatus('idle');
       setUsernameError(undefined);
       setUsernameAlternates([]);
       return;
     }
 
-    if (!USERNAME_PATTERN.test(username)) {
+    if (usernameProblem(username, initialUsername) !== '') {
+      // Not a username yet, so nothing to check. A character it can't have is said at once. An
+      // empty or short one is said only when the box is left or the grey button is tapped, so the
+      // first letters typed show nothing under the box.
       setUsernameStatus('idle');
-      setUsernameError(USERNAME_FORMAT_MESSAGE);
+      setUsernameError(usernameProblem(username, initialUsername, 'typing') || undefined);
       setUsernameAlternates([]);
       return;
     }
@@ -295,8 +343,11 @@ export function ProfileForm({
     setUsername(alternate);
   }
 
+  // Leaving the box says what more typing could still fix (empty, too short). A taken name, or one
+  // the check couldn't reach, keeps its own line.
   function handleUsernameBlur() {
-    if (username === '') setUsernameError(USERNAME_FORMAT_MESSAGE);
+    const problem = usernameProblem(username, initialUsername);
+    if (problem !== '') setUsernameError(problem);
   }
 
   function handleEmailChange(value: string) {
@@ -369,7 +420,7 @@ export function ProfileForm({
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setAvatarError('Camera access is needed to take a photo.');
+        showAccessOff('camera');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -388,7 +439,7 @@ export function ProfileForm({
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setAvatarError('Photo library access is needed to choose a photo.');
+        showAccessOff('library');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -441,8 +492,7 @@ export function ProfileForm({
   const passwordOk = signup && password !== '' && passwordProblem(password) === undefined;
   const nameOk = signup && nameValid && (nameTouched || initialName.trim() !== '');
   const birthdayOk = signup && checkBirthday(birthday, new Date()).ok;
-  const usernameValid =
-    (initialUsername !== '' && username === initialUsername) || USERNAME_PATTERN.test(username);
+  const usernameValid = usernameProblem(username, initialUsername) === '';
   const usernameBlocking = usernameStatus === 'checking' || usernameStatus === 'taken';
 
   const hasChanges =
@@ -469,6 +519,64 @@ export function ProfileForm({
     canSubmit = hasChanges && nameValid && usernameValid && !usernameBlocking && !submitting;
   }
 
+  // What holds the bottom button back, in page order, with each field's line. A username still being
+  // checked is not a problem (Checking... shows under it), and neither is an Edit page with nothing
+  // changed, so a tap on a button grey only for those does nothing.
+  const problems: Problem[] = [];
+  function addProblem(key: FieldKey, label: string, message: string | undefined) {
+    if (message) problems.push({ key, label, message });
+  }
+  if (signup) {
+    addProblem('email', 'Email', emailTakenNow ? EMAIL_TAKEN_MESSAGE : emailProblem(email));
+    addProblem('password', 'Password', passwordProblem(password));
+    addProblem('birthday', 'Birthday', birthdayProblem(birthday, birthdayPickerAvailable));
+  }
+  if (signup || (edit && hasChanges)) {
+    addProblem('name', 'Name', nameProblem(name));
+    addProblem(
+      'username',
+      'Username',
+      usernameStatus === 'taken' ? takenMessage(usernameAlternates) : usernameProblem(username, initialUsername)
+    );
+  }
+
+  // A tap on the grey button: every field shows its line, touched or not. Then VoiceOver says the
+  // first one, the page scrolls it into view and the cursor goes into its box. A birthday never
+  // picked opens the date sheet instead; under 13 opens nothing.
+  function showProblems() {
+    if (signup) {
+      setEmailError(emailProblem(email));
+      setPasswordError(passwordProblem(password));
+      setPasswordAsked(true);
+      setBirthdayError(birthdayProblem(birthday, birthdayPickerAvailable) || undefined);
+    }
+    setNameTouched(true);
+    setNameError(nameProblem(name));
+    const usernameLine = usernameProblem(username, initialUsername);
+    if (usernameLine !== '') setUsernameError(usernameLine);
+
+    const first = problems[0];
+    if (!first) return;
+    announceProblem(first.message, first.label);
+    bringIntoView(scrollRef.current, fieldRefs[first.key].current);
+    const key = first.key;
+    if (key !== 'birthday') {
+      boxRefs[key].current?.focus();
+    } else if (!birthdayPickerAvailable) {
+      const box = birthdayBoxToFix(birthday, first.message);
+      if (box) birthdayBoxRefs[box].current?.focus();
+    } else if (first.message === BIRTHDAY_MESSAGES.notPicked) {
+      birthdayRef.current?.open();
+    }
+  }
+
+  // A server answer about the email: its box is at the top of the form, likely out of view from
+  // Continue, so the page brings it back and VoiceOver says the line.
+  function showEmailLine(message: string) {
+    announceProblem(message, 'Email');
+    bringIntoView(scrollRef.current, fieldRefs.email.current);
+  }
+
   function showRefusal() {
     Alert.alert(REFUSAL_TITLE, REFUSAL_MESSAGE);
   }
@@ -478,6 +586,7 @@ export function ProfileForm({
     switch (field) {
       case 'email':
         setEmailError(EMAIL_MESSAGE);
+        showEmailLine(EMAIL_MESSAGE);
         return true;
       case 'password':
         setPasswordError(passwordRuleProblem(password) || PASSWORD_WEAK_MESSAGE);
@@ -494,7 +603,9 @@ export function ProfileForm({
         setNameError(trimmedName.length === 0 ? NAME_EMPTY_MESSAGE : NAME_LONG_MESSAGE);
         return true;
       case 'username':
-        setUsernameError(USERNAME_FORMAT_MESSAGE);
+        // The phone and the server share the rule, so this is rare: the phone's own line, or the
+        // characters line when the phone sees nothing wrong.
+        setUsernameError(usernameProblem(username, initialUsername) || USERNAME_CHARACTER_MESSAGE);
         return true;
       case 'bio':
         setBioError(BIO_LONG_MESSAGE);
@@ -516,6 +627,7 @@ export function ProfileForm({
       // An email problem: it shows under the Email box until the email is changed, and Continue
       // waits for a different one. It does not tell the person to log in.
       setTakenEmail(email.trim().toLowerCase());
+      showEmailLine(EMAIL_TAKEN_MESSAGE);
       return;
     }
     if (err.code === 'under_minimum_age') {
@@ -706,7 +818,7 @@ export function ProfileForm({
   };
 
   return (
-    <Screen wheels="corner" edges={edit && (inTab || pushed) ? ['top', 'left', 'right'] : undefined}>
+    <Screen wheels="corner" edges={edit && (inTab || pushed) ? ['top', 'left', 'right'] : undefined} scrollRef={scrollRef}>
       <View style={{ paddingTop: space.lg, paddingBottom: space.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           {(signup || (edit && !inTab)) && router.canGoBack() ? (
@@ -763,29 +875,33 @@ export function ProfileForm({
 
         {signup ? (
           <View style={{ marginTop: space.lg }}>
-            <TextField
-              label="Email"
-              variant="soft"
-              value={email}
-              onChangeText={handleEmailChange}
-              onBlur={() => setEmailError(emailProblem(email))}
-              error={emailError ?? (emailTakenNow ? EMAIL_TAKEN_MESSAGE : undefined)}
-              success={emailOk ? LOOKS_GOOD_MESSAGE : undefined}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              textContentType="emailAddress"
-            />
-
-            <View style={{ marginTop: space.md }}>
+            <View ref={fieldRefs.email} nativeID={FIELD_VIEW_ID}>
               <TextField
+                ref={boxRefs.email}
+                label="Email"
+                variant="soft"
+                value={email}
+                onChangeText={handleEmailChange}
+                onBlur={() => setEmailError(emailProblem(email))}
+                error={emailError ?? (emailTakenNow ? EMAIL_TAKEN_MESSAGE : undefined)}
+                success={emailOk ? LOOKS_GOOD_MESSAGE : undefined}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+              />
+            </View>
+
+            <View ref={fieldRefs.password} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.md }}>
+              <TextField
+                ref={boxRefs.password}
                 label="Password"
                 variant="soft"
                 value={password}
                 onChangeText={handlePasswordChange}
                 onBlur={() => setPasswordError(passwordProblem(password))}
-                error={passwordError === PASSWORD_LONG_MESSAGE ? passwordError : undefined}
+                error={passwordAsked || passwordError === PASSWORD_LONG_MESSAGE ? passwordError : undefined}
                 success={passwordOk ? LOOKS_GOOD_MESSAGE : undefined}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -811,9 +927,10 @@ export function ProfileForm({
         ) : null}
 
         {signup ? (
-          <View style={{ marginTop: space.md }}>
+          <View ref={fieldRefs.birthday} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.md }}>
             {birthdayPickerAvailable ? (
               <BirthdayPickerField
+                ref={birthdayRef}
                 value={birthday}
                 onPick={handleBirthdayPicked}
                 error={birthdayError}
@@ -825,6 +942,7 @@ export function ProfileForm({
                 <View style={{ flexDirection: 'row', gap: space.sm }}>
                   <View style={{ flex: 1 }}>
                     <TextField
+                      ref={birthdayBoxRefs.month}
                       label="Month"
                       variant="soft"
                       value={birthday.month}
@@ -838,6 +956,7 @@ export function ProfileForm({
                   </View>
                   <View style={{ flex: 1 }}>
                     <TextField
+                      ref={birthdayBoxRefs.day}
                       label="Day"
                       variant="soft"
                       value={birthday.day}
@@ -851,6 +970,7 @@ export function ProfileForm({
                   </View>
                   <View style={{ flex: 1.6 }}>
                     <TextField
+                      ref={birthdayBoxRefs.year}
                       label="Year"
                       variant="soft"
                       value={birthday.year}
@@ -864,21 +984,20 @@ export function ProfileForm({
                   </View>
                 </View>
                 {birthdayError ? (
-                  <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
-                    <AppText role="label" tone="default">
-                      {birthdayError}
-                    </AppText>
-                  </View>
+                  <FieldError text={birthdayError} label="Birthday" />
                 ) : birthdayOk ? (
                   <FieldSuccess text={LOOKS_GOOD_MESSAGE} label="Birthday" />
                 ) : null}
               </>
             )}
-            <View style={{ marginTop: space.xs }}>
-              <AppText role="label" tone="muted">
-                Used only to check your age. Never shown to anyone.
-              </AppText>
-            </View>
+            {/* The hint under the box; a problem takes its place. */}
+            {birthdayError ? null : (
+              <View style={{ marginTop: space.xs }}>
+                <AppText role="label" tone="muted">
+                  Used only to check your age. Never shown to anyone.
+                </AppText>
+              </View>
+            )}
           </View>
         ) : null}
 
@@ -900,20 +1019,15 @@ export function ProfileForm({
                 onPress={handleChangePhoto}
               />
             </View>
-            {avatarError ? (
-              <View style={{ marginTop: space.xs }}>
-                <AppText role="label" tone="default">
-                  {avatarError}
-                </AppText>
-              </View>
-            ) : null}
+            {avatarError ? <FieldError text={avatarError} label="Photo" /> : null}
           </View>
         ) : null}
 
         {!extras ? (
           <>
-            <View style={{ marginTop: space.lg }}>
+            <View ref={fieldRefs.name} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.lg }}>
               <TextField
+                ref={boxRefs.name}
                 label="Name"
                 variant="soft"
                 value={name}
@@ -927,14 +1041,17 @@ export function ProfileForm({
               />
             </View>
 
-            <View style={{ marginTop: space.md }}>
+            <View ref={fieldRefs.username} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.md }}>
               <TextField
+                ref={boxRefs.username}
                 label="Username"
                 variant="soft"
                 prefix="@"
                 value={username}
                 onChangeText={handleUsernameChange}
                 onBlur={handleUsernameBlur}
+                // No length cap: a paste over 20 shows "At most 20 characters." at once and is
+                // never checked, where a cap would cut it short without a word.
                 // The pushed Edit page confirms a free name with the green "Looks good." (the
                 // field's own note, as the old Username page did); everywhere else it says "Available".
                 status={pushedEdit && usernameStatus === 'available' ? 'idle' : usernameStatus}
@@ -1040,6 +1157,8 @@ export function ProfileForm({
               onPress={handleSubmit}
               disabled={!canSubmit}
               loading={submitting}
+              onBlockedPress={problems.length > 0 ? showProblems : undefined}
+              blockedHint={problems.length > 0 ? stillNeeded(problems.map((problem) => problem.label.toLowerCase())) : undefined}
             />
           )}
         </View>

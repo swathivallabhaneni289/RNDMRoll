@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useImperativeHandle, useMemo, useState, type Ref } from 'react';
 import { Keyboard, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { FieldSuccess } from '@/components/ui/TextField';
+import { FieldError, FieldSuccess } from '@/components/ui/TextField';
 import { MIN_BIRTHDAY_YEAR, type BirthdayParts } from '@/lib/profile/birthday';
 import { color, elevation, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
@@ -89,24 +89,25 @@ function formatDate(date: Date): string {
   return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
+/** What a form can do with the field: open the date sheet, for a birthday that was never picked. */
+export type BirthdayPickerHandle = { open: () => void };
+
 type BirthdayPickerFieldProps = {
   /** What the form holds now; the box shows it once it is a real date. */
   value: BirthdayParts;
   /** Called with the chosen date (local calendar day) when Done is tapped. */
   onPick: (date: Date) => void;
-  /** The form's message for this value, shown in place of the green note. */
+  /** The form's message for this value, shown with the error mark in place of the green note. */
   error?: string;
   /** The green note shown when the value is good. */
   success?: string;
+  ref?: Ref<BirthdayPickerHandle>;
 };
 
-export function BirthdayPickerField({ value, onPick, error, success }: BirthdayPickerFieldProps) {
+export function BirthdayPickerField({ value, onPick, error, success, ref }: BirthdayPickerFieldProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Date>(startingDate);
   const range = useMemo(() => ({ start: atNoon(MIN_BIRTHDAY_YEAR, 0, 1), end: new Date() }), []);
-
-  if (!nativePicker) return null;
-  const { Host, DatePicker } = nativePicker;
 
   const picked = partsToDate(value);
 
@@ -115,6 +116,11 @@ export function BirthdayPickerField({ value, onPick, error, success }: BirthdayP
     setDraft(picked ?? startingDate());
     setOpen(true);
   }
+
+  useImperativeHandle(ref, () => ({ open: openSheet }));
+
+  if (!nativePicker) return null;
+  const { Host, DatePicker } = nativePicker;
 
   function closeSheet() {
     setOpen(false);
@@ -141,13 +147,14 @@ export function BirthdayPickerField({ value, onPick, error, success }: BirthdayP
         onPress={openSheet}
         accessibilityRole="button"
         accessibilityLabel={picked ? `Birthday, ${formatDate(picked)}` : 'Birthday, not set'}
-        accessibilityHint="Opens the date picker"
+        accessibilityHint={error ? error : 'Opens the date picker'}
         style={{
           marginTop: space.xs,
           backgroundColor: color.fieldSoft,
           borderRadius: radius.md,
-          borderWidth: open ? 1.5 : 1,
-          borderColor: open ? color.ink : color.inkRest,
+          // An error keeps the open border, as a text box with an error does.
+          borderWidth: open || error ? 1.5 : 1,
+          borderColor: open || error ? color.ink : color.inkRest,
           paddingHorizontal: 14,
           minHeight: minTouchTarget + 6,
           flexDirection: 'row',
@@ -161,11 +168,7 @@ export function BirthdayPickerField({ value, onPick, error, success }: BirthdayP
         <Ionicons name="chevron-down" size={18} color={color.muted} />
       </Pressable>
       {error ? (
-        <View accessibilityLiveRegion="polite" style={{ marginTop: space.xs }}>
-          <AppText role="label" tone="default">
-            {error}
-          </AppText>
-        </View>
+        <FieldError text={error} label="Birthday" />
       ) : success ? (
         <FieldSuccess text={success} label="Birthday" />
       ) : null}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,13 +16,17 @@ import { AppText } from '@/components/ui/AppText';
 import { ConfirmSheet } from '@/components/ui/ConfirmSheet';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { FieldError } from '@/components/ui/TextField';
 import { useKeepFocusedInputInView } from '@/components/ui/useKeepFocusedInputInView';
 import { Wheel } from '@/components/wheel/Wheel';
 import { ApiError } from '@/lib/api/client';
 import { getWheel, saveWheel } from '@/lib/api/spin';
 import type { WheelCategory, WheelLimits } from '@/lib/api/types';
+import { announceProblem } from '@/lib/forms/announce';
+import { bringIntoView } from '@/lib/forms/bringIntoView';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
+import { nameProblems } from '@/lib/wheel/categoryNames';
 import { clearPendingSpin, useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 /** The limits the server sends; used until the first answer arrives and as a floor if it omits them. */
@@ -41,8 +45,8 @@ const ROW_MIN_HEIGHT = 56;
 
 const NETWORK_MESSAGE = "Couldn't connect. Check your connection and try again.";
 const GENERIC_MESSAGE = 'Something went wrong. Please try again.';
-const NAME_EMPTY_MESSAGE = 'Give this category a name.';
-const NAME_TAKEN_MESSAGE = 'You already have a category with this name.';
+/** The name box's label for VoiceOver, also said before its problem. */
+const NAME_LABEL = 'Category name';
 
 type Row = {
   /** A stable key for the list; not sent. */
@@ -50,7 +54,7 @@ type Row = {
   /** The saved category's id, or null for a row added in this visit. */
   id: string | null;
   name: string;
-  /** The field has been left once, so its error may show. */
+  /** The field has been left once, or the grey Save wheel was tapped, so its problem may show. */
   touched: boolean;
 };
 
@@ -90,6 +94,10 @@ const labelText = {
  * Every way out with unsaved changes (Back, the iOS swipe, a Home or Spin tab press that pops
  * the stack) opens the leave sheet through one `beforeRemove` guard; the swipe is switched off
  * while changes are unsaved.
+ *
+ * A name's problem shows once its box is left. Save wheel is grey while a name has one, and a tap
+ * on it then shows every row's problem and puts the cursor in the first (lib/wheel/categoryNames.ts
+ * has the rules). Grey only because nothing changed, it ignores taps.
  */
 export function WheelEditor() {
   const router = useRouter();
@@ -109,6 +117,8 @@ export function WheelEditor() {
   const [limits, setLimits] = useState<WheelLimits>(DEFAULT_LIMITS);
   const [rows, setRows] = useState<Row[]>([]);
   const [baseline, setBaseline] = useState('');
+  /** Each saved category's name by id, as last read: a saved name left as it is is never the repeat. */
+  const [savedNames, setSavedNames] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -117,6 +127,10 @@ export function WheelEditor() {
   const allowLeaveRef = useRef(false);
   const pendingActionRef = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
   const savingRef = useRef(false);
+  // Each row's name box and the row itself, by row key: a tap on the grey Save wheel scrolls to the
+  // first row with a problem and puts the cursor in it.
+  const boxRefs = useRef(new Map<string, TextInput>());
+  const rowRefs = useRef(new Map<string, View>());
 
   const applyServerWheel = useCallback((next: { version: number; categories: WheelCategory[]; limits: WheelLimits }) => {
     const nextRows = rowsFrom(next.categories);
@@ -124,6 +138,7 @@ export function WheelEditor() {
     setLimits({ ...DEFAULT_LIMITS, ...next.limits });
     setRows(nextRows);
     setBaseline(signatureOf(nextRows));
+    setSavedNames(Object.fromEntries(next.categories.map((category) => [category.id, category.name])));
   }, []);
 
   const load = useCallback(async () => {
@@ -178,20 +193,27 @@ export function WheelEditor() {
 
   // ---- row validation -----------------------------------------------------------------------
 
-  const trimmedNames = rows.map((row) => row.name.trim());
-  const lowerNames = trimmedNames.map((name) => name.toLowerCase());
-  function problemFor(index: number): string | null {
-    const name = trimmedNames[index];
-    if (name.length === 0) return NAME_EMPTY_MESSAGE;
-    if (lowerNames.indexOf(lowerNames[index]) !== index || lowerNames.lastIndexOf(lowerNames[index]) !== index) {
-      return NAME_TAKEN_MESSAGE;
-    }
-    return null;
-  }
-  const rowProblems = rows.map((_, index) => problemFor(index));
+  const rowProblems = nameProblems(rows, savedNames);
+  const firstProblem = rowProblems.findIndex((problem) => problem !== null);
   const countOk = rows.length >= limits.min && rows.length <= limits.max;
-  const allValid = rowProblems.every((problem) => problem === null) && countOk;
+  const allValid = firstProblem < 0 && countOk;
   const canSave = hasChanges && allValid && !saving;
+  // Grey because of a name, not because nothing changed or a save is running: a tap shows why.
+  const blocked = hasChanges && !saving && firstProblem >= 0;
+
+  /**
+   * The grey Save wheel was tapped: every row's problem shows, left or not, VoiceOver says the
+   * first, and that row scrolls into view with the cursor in its name.
+   */
+  function showProblems() {
+    const row = rows[firstProblem];
+    const problem = rowProblems[firstProblem];
+    if (row === undefined || problem === null) return;
+    setRows((current) => current.map((item) => (item.touched ? item : { ...item, touched: true })));
+    announceProblem(problem, NAME_LABEL);
+    bringIntoView(focusedInView.ref.current, rowRefs.current.get(row.key));
+    boxRefs.current.get(row.key)?.focus();
+  }
 
   // ---- edits ---------------------------------------------------------------------------------
 
@@ -334,6 +356,10 @@ export function WheelEditor() {
                   return (
                     <View
                       key={row.key}
+                      ref={(view) => {
+                        if (view) rowRefs.current.set(row.key, view);
+                        else rowRefs.current.delete(row.key);
+                      }}
                       style={{
                         minHeight: ROW_MIN_HEIGHT,
                         paddingVertical: space.sm,
@@ -341,14 +367,18 @@ export function WheelEditor() {
                         borderTopColor: color.divider,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                         <NameField
+                          ref={(box) => {
+                            if (box) boxRefs.current.set(row.key, box);
+                            else boxRefs.current.delete(row.key);
+                          }}
                           value={row.name}
                           maxLength={limits.name_max}
                           autoFocus={focusKey === row.key}
                           onChangeText={(text) => updateRow(row.key, { name: text })}
                           onBlur={() => updateRow(row.key, { touched: true })}
-                          hasError={problem !== null}
+                          problem={problem}
                         />
                         <Pressable
                           onPress={() => removeRow(row.key)}
@@ -357,16 +387,12 @@ export function WheelEditor() {
                           accessibilityLabel={`Remove ${shownName}`}
                           accessibilityState={{ disabled: atMin }}
                           hitSlop={8}
-                          style={{ minHeight: minTouchTarget, justifyContent: 'center', paddingLeft: space.md }}
+                          // As tall as the name box, so Remove stays level with it when a problem shows under the box.
+                          style={{ height: NAME_FIELD_HEIGHT, justifyContent: 'center', paddingLeft: space.md }}
                         >
                           <Text style={{ ...labelText, color: atMin ? color.muted : color.ink }}>Remove</Text>
                         </Pressable>
                       </View>
-                      {problem ? (
-                        <View style={{ marginTop: space.xs }} accessibilityLiveRegion="polite">
-                          <Text style={{ ...labelText, color: color.ink }}>{problem}</Text>
-                        </View>
-                      ) : null}
                     </View>
                   );
                 })}
@@ -430,7 +456,14 @@ export function WheelEditor() {
                 <Text style={{ ...labelText, color: color.ink, textAlign: 'center' }}>{saveMessage}</Text>
               </View>
             ) : null}
-            <PrimaryButton label="Save wheel" onPress={() => void save()} disabled={!canSave} loading={saving} />
+            <PrimaryButton
+              label="Save wheel"
+              onPress={() => void save()}
+              disabled={!canSave}
+              loading={saving}
+              onBlockedPress={blocked ? showProblems : undefined}
+              blockedHint={blocked ? (rowProblems[firstProblem] ?? undefined) : undefined}
+            />
           </View>
         ) : null}
       </KeyboardAvoidingView>
@@ -451,48 +484,61 @@ export function WheelEditor() {
   );
 }
 
+/**
+ * A category's name box and, while it has one, its problem under it (FieldError: the alert mark and
+ * the words). The box keeps the 1.5dp ink border while the problem shows, and the problem is its
+ * VoiceOver hint. The box and its problem share one parent view, which is what the keyboard hook
+ * keeps in view, so the problem stays above the keyboard too. `ref` reaches the TextInput.
+ */
 function NameField({
   value,
   maxLength,
   autoFocus,
   onChangeText,
   onBlur,
-  hasError,
+  problem,
+  ref,
 }: {
   value: string;
   maxLength: number;
   autoFocus: boolean;
   onChangeText: (text: string) => void;
   onBlur: () => void;
-  hasError: boolean;
+  problem: string | null;
+  ref?: Ref<TextInput>;
 }) {
   const [focused, setFocused] = useState(false);
+  const marked = focused || problem !== null;
   return (
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        onBlur();
-      }}
-      maxLength={maxLength}
-      autoFocus={autoFocus}
-      autoCapitalize="sentences"
-      autoCorrect={false}
-      returnKeyType="done"
-      accessibilityLabel="Category name"
-      style={{
-        flex: 1,
-        height: NAME_FIELD_HEIGHT,
-        borderRadius: radius.md,
-        borderWidth: focused || hasError ? 1.5 : 1,
-        borderColor: hasError ? color.ink : focused ? color.ink : color.inkRest,
-        paddingHorizontal: 12,
-        fontFamily: type.body.fontFamily,
-        fontSize: type.body.fontSize,
-        color: color.ink,
-      }}
-    />
+    <View style={{ flex: 1 }}>
+      <TextInput
+        ref={ref}
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          onBlur();
+        }}
+        maxLength={maxLength}
+        autoFocus={autoFocus}
+        autoCapitalize="sentences"
+        autoCorrect={false}
+        returnKeyType="done"
+        accessibilityLabel={NAME_LABEL}
+        accessibilityHint={problem ?? undefined}
+        style={{
+          height: NAME_FIELD_HEIGHT,
+          borderRadius: radius.md,
+          borderWidth: marked ? 1.5 : 1,
+          borderColor: marked ? color.ink : color.inkRest,
+          paddingHorizontal: 12,
+          fontFamily: type.body.fontFamily,
+          fontSize: type.body.fontSize,
+          color: color.ink,
+        }}
+      />
+      {problem !== null ? <FieldError text={problem} label={NAME_LABEL} /> : null}
+    </View>
   );
 }

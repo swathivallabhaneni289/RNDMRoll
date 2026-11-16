@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
@@ -9,6 +9,9 @@ import { TextField } from '@/components/ui/TextField';
 import { BackRow } from '@/components/settings/BackRow';
 import { deleteAccount } from '@/lib/api/account';
 import { ApiError } from '@/lib/api/client';
+import { announceProblem } from '@/lib/forms/announce';
+import { bringIntoView } from '@/lib/forms/bringIntoView';
+import { stillNeeded } from '@/lib/forms/rules';
 import { GENERIC_MESSAGE } from '@/lib/settings/rules';
 import { useSession } from '@/lib/session/store';
 import { color, space, type } from '@/lib/theme/tokens';
@@ -61,7 +64,7 @@ function doneMessage(label: string): string {
 }
 
 const WRONG_PASSWORD_MESSAGE = "That password isn't right.";
-/** The Log in page's line. The button is off while the box is empty, so the server rarely says it. */
+/** The Log in page's line: a tap on the grey Delete account (the box is empty), or the server's rare "required". */
 const PASSWORD_REQUIRED_MESSAGE = 'Enter your password.';
 const TOO_MANY_MESSAGE = 'Too many tries. Wait a minute and try again.';
 
@@ -93,9 +96,20 @@ export function DeleteAccountScreen() {
   // scrolls to its end so the box is not hidden, the way the entry form keeps its comment in view.
   const scrollRef = useRef<ScrollView>(null);
   const passwordFocusedRef = useRef(false);
+  const passwordFieldRef = useRef<View>(null);
+  const passwordBoxRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
   const canDelete = password !== '' && !deleting;
+
+  // A tap on the grey Delete account: the box asks for the password, VoiceOver says it, the page
+  // scrolls the box into view and the cursor goes into it.
+  function showProblem() {
+    setPasswordError(PASSWORD_REQUIRED_MESSAGE);
+    announceProblem(PASSWORD_REQUIRED_MESSAGE, 'Password');
+    bringIntoView(scrollRef.current, passwordFieldRef.current);
+    passwordBoxRef.current?.focus();
+  }
 
   function handleChange(value: string) {
     setPassword(value);
@@ -250,8 +264,9 @@ export function DeleteAccountScreen() {
               </AppText>
             </View>
 
-            <View style={{ marginTop: space.md }}>
+            <View ref={passwordFieldRef} style={{ marginTop: space.md }}>
               <TextField
+                ref={passwordBoxRef}
                 label="Password"
                 variant="soft"
                 value={password}
@@ -294,7 +309,14 @@ export function DeleteAccountScreen() {
             ) : null}
 
             <View style={{ marginTop: space.lg }}>
-              <PrimaryButton label="Delete account" disabled={!canDelete} loading={deleting} onPress={confirmDelete} />
+              <PrimaryButton
+                label="Delete account"
+                disabled={!canDelete}
+                loading={deleting}
+                onPress={confirmDelete}
+                onBlockedPress={showProblem}
+                blockedHint={stillNeeded(['password'])}
+              />
             </View>
           </View>
         </ScrollView>
