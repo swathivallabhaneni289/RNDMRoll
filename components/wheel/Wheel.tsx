@@ -64,7 +64,7 @@ export type WheelProps = {
   onLanded?: () => void;
   /** Spoken hint for the hub button, for example "Opens at 8:00 PM." while waiting. */
   hubHint?: string;
-  /** Hidden from VoiceOver entirely (the Edit wheel preview). */
+  /** Hidden from VoiceOver entirely, with a hub that takes no taps (the Edit wheel preview, Today's loading wheel). */
   decorative?: boolean;
 };
 

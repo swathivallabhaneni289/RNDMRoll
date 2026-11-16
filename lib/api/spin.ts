@@ -1,5 +1,5 @@
 import { api } from '@/lib/api/client';
-import type { SpinResponse, Today, WheelResponse, WheelSaveEntry } from '@/lib/api/types';
+import type { SpinResponse, TimeZoneResponse, Today, WheelResponse, WheelSaveEntry } from '@/lib/api/types';
 
 /**
  * The daily spin and the wheel (plan 02-01 Task 3b and 3c). Modelled on `lib/api/profile.ts`:
@@ -15,6 +15,7 @@ export type {
   Bonus,
   Spin,
   SpinResponse,
+  TimeZoneResponse,
   Today,
   TodayEntry,
   TodayState,
@@ -27,9 +28,12 @@ export type {
   WheelSaveEntry,
 } from '@/lib/api/types';
 
-/** Tells the server which time zone the phone is in. Sent on mount, on foreground and on a change. */
-export async function reportTimeZone(timeZone: string): Promise<void> {
-  await api.post<{ time_zone: string }>('/time-zone', { time_zone: timeZone });
+/**
+ * Tells the server which time zone the phone is in: on a session's first load and when the zone
+ * changes (lib/wheel/loadToday.ts says when). The answer carries Today, except from an older server.
+ */
+export async function reportTimeZone(timeZone: string): Promise<TimeZoneResponse> {
+  return api.post<TimeZoneResponse>('/time-zone', { time_zone: timeZone });
 }
 
 /** Today's state for the signed-in person (may make their starting wheel on first use). */

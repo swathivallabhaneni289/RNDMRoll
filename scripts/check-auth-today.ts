@@ -122,9 +122,12 @@ check('no Edit wheel while offline with no answer', !shown(null, 'wheel'));
 
 const today = source('components/today/TodayScreen.tsx');
 check(
-  'the link is drawn under both settled countdowns',
-  (today.match(/<CountdownBlock anchor=\{anchor\} nextOpenAt=\{view\.next_open_at\} onZero=\{instantReached\} \/>\s*\{editLink\}/g) ?? [])
-    .length === 2
+  'the link is drawn under both settled countdowns (a failed refresh says so between them)',
+  (
+    today.match(
+      /<CountdownBlock anchor=\{anchor\} nextOpenAt=\{view\.next_open_at\} onZero=\{instantReached\} \/>\s*\{refreshLine\}\s*\{editLink\}/g
+    ) ?? []
+  ).length === 2
 );
 check('the fading copy of the wheel draws no link', /\{frozen \? null : editLink\}/.test(today));
 

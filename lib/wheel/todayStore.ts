@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Today, WheelEntry } from '@/lib/api/types';
 import { parseInstant } from '@/lib/wheel/countdown';
+import type { ReportedZone } from '@/lib/wheel/loadToday';
 
 /**
  * Today's state, shared by the Today screen, the middle Spin button and the Edit wheel screen
@@ -36,6 +37,8 @@ export type TodaySnapshot = {
   anchor: Anchor | null;
   /** The last load failed and nothing is on screen. */
   loadFailure: LoadFailure | null;
+  /** The last load failed while Today was on screen: it stays, and the page says so. */
+  refetchFailure: LoadFailure | null;
   /** A spin request is in flight. */
   requesting: 'spin' | 'bonus' | null;
   /** The last spin or bonus request failed. `action` says which one a retry sends again. */
@@ -44,7 +47,8 @@ export type TodaySnapshot = {
   spinning: boolean;
   /** The middle Spin button was pressed and Today has not acted on it yet. */
   pendingSpin: boolean;
-  lastReportedZone: string | null;
+  /** The zone the server took from this phone in this session (lib/wheel/loadToday.ts). */
+  lastReportedZone: ReportedZone | null;
   turn: Turn;
   /** A trigger was ignored while the wheel turned: one refetch runs when it lands. */
   refetchOnLanding: boolean;
@@ -58,6 +62,7 @@ function emptySnapshot(userId: string | null): TodaySnapshot {
     today: null,
     anchor: null,
     loadFailure: null,
+    refetchFailure: null,
     requesting: null,
     spinFailure: null,
     spinning: false,
@@ -139,6 +144,7 @@ export function applyToday(
     today,
     anchor: serverMs === null ? null : { serverMs, mark },
     loadFailure: null,
+    refetchFailure: null,
     ...extra,
   };
   emit();

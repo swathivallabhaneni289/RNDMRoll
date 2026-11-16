@@ -45,6 +45,15 @@ export function drawnAngles(weights: readonly number[]): number[] {
   return weights.map(() => 360 / n);
 }
 
+/**
+ * The wheel Today draws until its first answer: six equal wedges with no words, the size of the
+ * starting wheel (Meal, Movie, Song, Book, Place and Game), so a new account's real wheel takes its
+ * place without a jump. Never the bare rim (developer, 2026-11-16: "one dot and a big circle").
+ */
+export const LOADING_WHEEL: ReadonlyArray<{ name: string; weight: number }> = Object.freeze(
+  Array.from({ length: 6 }, () => Object.freeze({ name: '', weight: 1 }))
+);
+
 /** Where each wedge starts, in the same order as `angles`. The first starts at 0. */
 export function wedgeStarts(angles: readonly number[]): number[] {
   const starts: number[] = [];

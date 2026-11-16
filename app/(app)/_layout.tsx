@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { usePushSetup } from '@/lib/notifications/push';
 import { useReminderSetup } from '@/lib/notifications/reminder';
 import { useSession } from '@/lib/session/store';
 import { color, type } from '@/lib/theme/tokens';
+import { refetchToday } from '@/lib/wheel/useToday';
 
 /**
  * The signed-in app: a bottom bar of Spin, Board and Profile (developer, 2026-10-16: Home
@@ -52,6 +54,12 @@ export default function AppLayout() {
   useReminderSetup();
   // Phone pushes: the push token goes to the server, and a tapped push opens its page.
   usePushSetup();
+  // A new account sees the photo-and-bio page and Find your friends before the Spin page, so Today
+  // starts loading now and is there when the person arrives (developer, 2026-11-16). After
+  // useReminderSetup, whose Today store is claimed for this person first.
+  useEffect(() => {
+    if (extrasPending && userId !== null) void refetchToday(userId, 'mount');
+  }, [extrasPending, userId]);
 
   // A numeric height replaces the bar's own safe-area arithmetic; the bar then pads its content
   // by the inset itself, so the height is the content plus the inset.

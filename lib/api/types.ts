@@ -285,6 +285,15 @@ export interface SpinResponse {
   today: Today;
 }
 
+/**
+ * The answer of POST /time-zone: the zone as stored, and Today as of the same moment, so the phone
+ * needs no GET /today after it (2026-11-16). An older server leaves `today` out.
+ */
+export interface TimeZoneResponse {
+  time_zone: string;
+  today?: Today;
+}
+
 export interface WheelCategory {
   id: string;
   name: string;

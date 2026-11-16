@@ -23,6 +23,7 @@ import { BOARD_OPEN_LINE, MISSED_SPIN_LINE, missedLine, nextSpinLine } from '@/l
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
+import { LOADING_WHEEL } from '@/lib/wheel/geometry';
 import { useToday } from '@/lib/wheel/useToday';
 import { useUnread } from '@/lib/notifications/unreadStore';
 
@@ -191,9 +192,11 @@ export function TodayScreen() {
   const { userId, snapshot, spin, bonus, landed, tryAgain, refetch, instantReached } = useToday();
   // The dot on the bell, asked again each time this page comes into focus (Phase 5).
   const unread = useUnread();
-  const { today, anchor, loadFailure, requesting, spinFailure, spinning, turn } = snapshot;
+  const { today, anchor, loadFailure, refetchFailure, requesting, spinFailure, spinning, turn } = snapshot;
 
   const [phase, setPhase] = useState<Phase>('idle');
+  /** "Try again" under a failed refresh is waiting for its answer. */
+  const [retrying, setRetrying] = useState(false);
   const [bonusActive, setBonusActive] = useState(false);
   const [bonusSheetOpen, setBonusSheetOpen] = useState(false);
   const [animateResult, setAnimateResult] = useState(false);
@@ -310,13 +313,20 @@ export function TodayScreen() {
     void bonus(bonusAfterSeqRef.current);
   }
 
+  function retryRefresh() {
+    setRetrying(true);
+    void refetch('manual').finally(() => setRetrying(false));
+  }
+
   const busy = spinning || requesting !== null || phase !== 'idle';
   const failureKind: StatusKind | null = spinFailure ? spinFailure.kind : null;
 
   // ---- the wheel's props -------------------------------------------------------------------
 
   const turnShown = spinning || phase === 'turning' || phase === 'calm' || phase === 'revealing';
-  const wheelEntries = turnShown && turn.entries ? turn.entries : (view?.wheel ?? []);
+  // Until the first answer the wheel is drawn whole: six wedges with no words, hidden from
+  // VoiceOver (developer, 2026-11-16; 02-UI-SPEC's Loading row drew the rim only).
+  const wheelEntries = turnShown && turn.entries ? turn.entries : (view?.wheel ?? LOADING_WHEEL);
   const wheelWinner = turnShown ? turn.winnerIndex : (view?.spin ? view.spin.winner_index : null);
   const wheelSpinId = phase === 'entering' ? enteringBaseIdRef.current : turn.id;
   const wheelSize = Math.min(WHEEL_MAX, width - 2 * space.lg);
@@ -384,6 +394,14 @@ export function TodayScreen() {
     );
   }
 
+  // A refresh that failed while Today is on screen (at 8 PM the wheel would stay shut with no word
+  // why): said where the page's other messages go, with Try again. A spin's own message comes first.
+  const refreshMessage =
+    refetchFailure !== null ? <StatusMessage kind={refetchFailure} busy={retrying} onRetry={retryRefresh} /> : null;
+  /** The same, under a countdown. */
+  const refreshLine =
+    refreshMessage !== null ? <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>{refreshMessage}</View> : null;
+
   /** Slot A, B and C under the wheel (UI-SPEC 4.1). */
   function renderStateBlock(): ReactNode {
     if (view === null) return labelLine('Loading your wheel.');
@@ -408,7 +426,9 @@ export function TodayScreen() {
                 onRetry={() => tryAgain(bonusAfterSeqRef.current)}
               />
             </View>
-          ) : null}
+          ) : (
+            refreshLine
+          )}
         </View>
       );
     }
@@ -425,7 +445,7 @@ export function TodayScreen() {
                 onRetry={() => tryAgain(bonusAfterSeqRef.current)}
               />
             ) : (
-              labelLine('Open until midnight.')
+              (refreshMessage ?? labelLine('Open until midnight.'))
             )}
           </View>
         </View>
@@ -450,6 +470,7 @@ export function TodayScreen() {
           showPointer
           onLanded={handleLanded}
           hubHint={viewState === 'waiting' ? 'Opens at 8:00 PM.' : undefined}
+          decorative={view === null}
         />
       </View>
       <View style={{ marginTop: space.lg, alignItems: 'center' }}>{renderStateBlock()}</View>
@@ -469,6 +490,7 @@ export function TodayScreen() {
     const postLate = day.post_late === true;
     const bonusLinkShown = live && Boolean(day.bonus.can_use) && !busy;
     const bonusFailed = live && failureKind !== null && spinFailure?.action === 'bonus';
+    const refreshShown = live && !bonusFailed && refreshMessage !== null;
     return (
       <View style={{ marginTop: RESULT_WORD_TOP }}>
         <ResultBlock
@@ -486,12 +508,14 @@ export function TodayScreen() {
               onRetry={() => tryAgain(bonusAfterSeqRef.current)}
             />
           </View>
+        ) : refreshShown ? (
+          <View style={{ marginTop: space.lg }}>{refreshMessage}</View>
         ) : null}
         <DayActions
           day={day}
           userId={userId}
           postLate={postLate}
-          followsLink={bonusLinkShown || bonusFailed}
+          followsLink={bonusLinkShown || bonusFailed || refreshShown}
           disabled={!live || busy}
           animate={live && animateResult}
         />
@@ -534,6 +558,7 @@ export function TodayScreen() {
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          {refreshLine}
           {editLink}
         </View>
       </View>
@@ -548,6 +573,7 @@ export function TodayScreen() {
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
           <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          {refreshLine}
           {editLink}
         </View>
         <View style={{ flexGrow: 1, minHeight: space.xl }} />

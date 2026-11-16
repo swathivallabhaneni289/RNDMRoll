@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { getToday, reportTimeZone, spin as spinRequest, spinBonus as spinBonusRequest } from '@/lib/api/spin';
 import { msUntil, nextWaitMs } from '@/lib/wheel/countdown';
+import { loadToday, mustReportZone } from '@/lib/wheel/loadToday';
 import { deviceTimeZone } from '@/lib/wheel/timeZone';
 import {
   applyToday,
@@ -15,7 +16,7 @@ import {
   useTodaySnapshot,
   type SpinFailureKind,
 } from '@/lib/wheel/todayStore';
-import { useSession } from '@/lib/session/store';
+import { getSignInEpoch, useSession } from '@/lib/session/store';
 
 /**
  * Loads and spins Today (plan 02-02, binding decisions 4 to 7). The phone shows what the server
@@ -35,9 +36,13 @@ import { useSession } from '@/lib/session/store';
  *  - After `spin_closed` or `spin_not_open` Today is asked for again and the message shows
  *    once; "Try again" for those is a refetch, not a new POST. Only a network failure sends
  *    the same request again.
- *  - A failed refetch with data on screen keeps the screen and tries once more after 5 seconds.
- *  - The time zone is reported on mount, on foreground and when it differs from the last one
- *    reported, never on tab focus. A failed report does not block Today.
+ *  - A failed refetch with data on screen keeps the screen, says so under it (with Try again) and
+ *    tries once more after 5 seconds.
+ *  - The time zone is reported on a session's first load and when it changes, never by a tab
+ *    focus alone, and the report's answer carries Today (lib/wheel/loadToday.ts has the rules).
+ *    A failed report does not block Today.
+ *  - A new account starts loading Today on the photo-and-bio page (app/(app)/_layout.tsx), so the
+ *    Spin page has it when the person gets there.
  */
 
 export type LoadTrigger =
@@ -104,39 +109,35 @@ async function loadNow(userId: string, trigger: LoadTrigger): Promise<void> {
 
   const zone = deviceTimeZone();
   if (zone === null) {
-    // The plain "Something went wrong" message. Nothing is stored.
-    if (!before.today) patchToday(userId, { loadFailure: 'generic' });
+    // The plain "Something went wrong" message, instead of the page or under it. Nothing is stored.
+    patchToday(userId, before.today ? { refetchFailure: 'generic' } : { loadFailure: 'generic' });
     return;
   }
 
-  // Reported on mount, on foreground and on a change, never on tab focus.
-  const mustReport =
-    trigger === 'mount' || trigger === 'foreground' || (trigger !== 'focus' && zone !== before.lastReportedZone);
-  if (mustReport) {
-    try {
-      await reportTimeZone(zone);
-      patchIfOwner(userId, { lastReportedZone: zone });
-    } catch {
-      // A failed report never blocks Today (the server uses the stored zone). It is tried
-      // again at the next trigger, because lastReportedZone did not change.
-    }
-  }
+  // A failed report is tried again at the next load: only an answered one is remembered.
+  const session = getSignInEpoch();
+  const load = await loadToday(zone, mustReportZone(zone, before.lastReportedZone, session, trigger === 'focus'), {
+    reportZone: reportTimeZone,
+    getToday,
+    now: () => performance.now(),
+  });
+  const reported = load.reported ? { lastReportedZone: { zone, session } } : {};
 
-  const mark = performance.now();
-  try {
-    const today = await getToday();
+  if (load.ok) {
     const keep = trigger === 'followup' ? {} : { spinFailure: null };
-    if (applyToday(userId, today, mark, keep)) {
+    if (applyToday(userId, load.today, load.mark, { ...keep, ...reported })) {
       failedRefetchUsed = false;
       if (failedRefetchTimer) {
         clearTimeout(failedRefetchTimer);
         failedRefetchTimer = null;
       }
     }
-  } catch (err) {
+  } else {
     const current = readToday(userId);
     if (current.today) {
-      // Data on screen: keep the screen and try once more after 5 seconds.
+      // Data on screen: keep the screen, say the refresh failed (at 8 PM the wheel would stay
+      // shut with no word why) and try once more after 5 seconds.
+      patchIfOwner(userId, { ...reported, refetchFailure: failureKindOf(load.error) });
       if (!failedRefetchUsed && failedRefetchTimer === null) {
         failedRefetchTimer = setTimeout(() => {
           failedRefetchTimer = null;
@@ -144,8 +145,10 @@ async function loadNow(userId: string, trigger: LoadTrigger): Promise<void> {
           void refetchToday(userId, 'retry');
         }, FAILED_REFETCH_RETRY_MS);
       }
-    } else {
-      patchIfOwner(userId, { loadFailure: failureKindOf(err) });
+    } else if (!(queuedLoad !== null && queuedLoadUser === userId)) {
+      // Nothing on screen. A load already waiting to run (the Spin page's own, behind the sign-up
+      // one) decides what the page says instead.
+      patchIfOwner(userId, { ...reported, loadFailure: failureKindOf(load.error) });
     }
   }
 }
@@ -299,6 +302,15 @@ export function useToday() {
     if (snap.today?.state === 'open' && !snap.spinning && !snap.requesting) {
       void spinToday(userId);
     }
+  }, [userId]);
+
+  // A failed load from before the page opened (the sign-up one, say) is not shown: the page opens
+  // on the loading wheel while its own first load runs, and that load decides. A layout effect, so
+  // the old message is never drawn.
+  useLayoutEffect(() => {
+    if (userId === null) return;
+    const snap = readToday(userId);
+    if (snap.today === null && snap.loadFailure !== null) patchIfOwner(userId, { loadFailure: null });
   }, [userId]);
 
   // Mount (the first focus) and every later tab focus.
