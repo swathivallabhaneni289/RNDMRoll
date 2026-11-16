@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 14, 2026 |
+| **Last updated** | November 16, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -57,7 +57,7 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
-| Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 8 app check scripts, strict TypeScript |
+| Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 10 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
@@ -232,8 +232,9 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ACC-02 name and username.**
   - Name: 1 to 50 characters.
   - Username: 3 to 20 lowercase letters, numbers or underscores, unique ignoring capitals.
-  - The app suggests a username from the name and checks it live 400 ms after typing stops. A taken name shows up to 3 one-tap alternatives.
-- **ACC-02 feedback.** Email, password, birthday and name show a green "Looks good." when they're right, and a free username shows a green "Available". Limits: 10 sign-ups a minute per IP address, and 3 a minute per address and email.
+  - A username names its problem while it is typed: "No dots. Use _ instead.", the same for a space or a dash, "Leave out the @." for a leading @, "Only a to z, 0 to 9 and _." for any other character, and "At most 20 characters." The box has no length cap, so a long paste is named, not cut short. "Pick a username." and "At least 3 characters." wait until the box is left or Continue is tapped. The Edit page uses the same lines.
+  - The app suggests a username from the name and checks it live 400 ms after typing stops, once it has no problem. A taken name shows up to 3 one-tap alternatives.
+- **ACC-02 feedback.** Email, password, birthday and name show a green "Looks good." when they're right, and a free username shows a green "Available". Continue stays grey until all of it is right, and a tap on it then shows what is wrong (section 11, Forms). A birthday never picked says "Pick your birthday.", and the date scroller opens when it is the first problem. Limits: 10 sign-ups a minute per IP address, and 3 a minute per address and email.
 - **ACC-03 birthday.** Picked on the iPhone's date scroller; a real date from 1900 on. Under 13, the field says "You must be at least 13 to use RNDMRoll." and Continue stays off. If the server still refuses, the app says "RNDMRoll is for ages 13 and up." Nothing is stored. The birthday is never shown to anyone and can't be changed in the app.
 - **ACC-04.** The bio is at most 160 characters. Skip for now discards anything typed.
 - **ACC-05.** The page offers Invite friends, Suggested for you and search, and Done goes to the Spin page.
@@ -309,6 +310,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A missed day can't be spun later.
   - A retried spin request returns the same spin.
 - **SPIN-02.** Before 8 PM the heading reads "Your first spin is ready."; from 8 PM it reads "Your spin is open." That spin is the day's spin, so there is no second one at 8 PM.
+- **SPIN-02 after sign-up.** The Spin page starts loading on the photo-and-bio page, so it is ready when the person gets there.
+- **SPIN-03 while loading.** Until the server's first answer, the Spin page shows a whole wheel of six blank wedges, hidden from VoiceOver, never an empty circle.
 - **SPIN-03 the pick.** Every category has the same chance: the starting wheel and every wheel saved in the app weigh each category equally. The server stores the result, with a copy of the wheel, before answering.
 - **SPIN-03 the turn.**
   - The wheel turns for 4 seconds, at least 5 full turns, and lands on the server's pick.
@@ -332,6 +335,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The week row, its "today" and the date above the heading follow the spin's day, which runs from 8 PM to the next 8 PM. Until 8 PM on Monday they are still on Sunday, so a Sunday spin posted on Monday morning shows in the week it counts for.
 - **SPIN-08.** Available only on today's result before posting or skipping, once per day. The new category is always different. It asks "Use your bonus spin?" first.
 - **SPIN-09.** The countdown shows hours, minutes and seconds from the server's time on a steady clock, and never trusts the phone's clock.
+- **SPIN-10.** The phone reports its zone on the first load after a launch or a sign-in, and again only when the zone changes. The answer to `POST /v1/time-zone` carries the Spin page's state, so no second request follows. If a report fails, the page still loads with the zone the server already has.
 - **SPIN-11.**
   - The phone asks for permission once, at the first signed-in start, and the switch is in Settings.
   - Reminders are scheduled up to 30 evenings ahead, skipping an evening whose spin was already made.
@@ -607,11 +611,14 @@ These rules decide what counts. The server owns all of them.
 
 - Page sizes: Board 5 days (up to 10), person page 21 posts (up to 60), post history 20 (up to 50). Single lists with no more pages: notifications (at most 50, from the last 30 days), search 20, suggestions 20.
 - Camera photos and most library photos are saved as 80% JPEGs on the phone before upload. Library PNG files are saved again as PNG, and WebP files go up unchanged. Photos are cached on the phone after the first view.
+- A Spin page load is normally one request; when the zone is reported, that answer carries the page's state. On the server, eight of the state's reads go to the database together in one batch, the 5-second lock limit is sent with the start of the transaction, and two database connections stay open while idle.
+- **Later:** keep the Spin page's last state on the phone across launches, so a cold start shows it at once; fewer database round trips behind the bell's dot; and a new person's state row and starting wheel written in one statement.
 - **Launch:** set and measure targets for API response times and Board load time. None are measured yet.
 
 ### Accessibility
 
 - VoiceOver labels and hints on the app's controls. The wheel announces "Your spin is {word}." Posted and Skipped are announced when they change.
+- A box with a problem has it as its VoiceOver hint. A grey button that answers a tap is not read as dimmed, and its hint names what is missing, such as "Still needed: birthday and username." After the tap, VoiceOver says the first problem.
 - Reduce Motion: no spin, no sliding sheets, no photo reveals, and a still background.
 - Larger Text is honoured. The shared text style stops at 1.3 times, so page headers don't break. A few labels, such as the Board's day headings, have no cap yet.
 - Most touch targets are at least 44 points. A few are smaller: View all comments, a comment's name and photo, and the Terms and Privacy words on sign-up.
@@ -630,7 +637,7 @@ These rules decide what counts. The server owns all of them.
 ### Quality
 
 - More than 500 Go test functions; more than 100 of them run against a real PostgreSQL database.
-- 8 check scripts: seven for app logic and one for the legal text.
+- 10 check scripts: nine for app logic and one for the legal text.
 - Strict TypeScript.
 - **Later:** continuous integration on every push (none yet).
 
@@ -640,6 +647,7 @@ These rules decide what counts. The server owns all of them.
 
 - Paper `#F6F5F2`, ink `#111111`, muted `#625F5B`.
 - Green only for "Looks good.", "Available" and the met rules of the password checklist; red only for Log out.
+- A problem under a field is in ink with an alert mark, and its box keeps the dark border, so it never reads as a grey hint.
 - Domine for headings and Work Sans for text.
 - Buttons are rounded at most 8 points. My pictures add a few round shapes: the pill chips (Edit, Follow, Following, Follow back, Unblock), the Camera and Library buttons, the round emoji buttons and the comment field.
 
@@ -652,6 +660,13 @@ These rules decide what counts. The server owns all of them.
 - The spin is about 4 seconds of slowing down, then the word rises.
 - Tabs swap at once. Pushed pages keep the iOS slide, except the Sign up or Log in page, which fades in from Welcome.
 - No confetti, sound or neon. Two small bounces remain: the pop when an emoji is picked and the pointer settling on Welcome.
+
+**Forms.**
+
+- Most problems show once the box is left or the button is tapped. A username's characters and length show at once (ACC-02).
+- A grey button still answers a tap. On sign-up, Edit profile, Password, Delete account and Edit wheel, every field shows its problem, touched or not, the page scrolls to the first one and the cursor goes into its box. The keyboard then leaves the whole field in view, with its line and anything under it, such as the username's alternatives or the password checklist. The post form's Save scrolls to the first missing part.
+- A button that is grey only because nothing changed, or while a check or a save runs, ignores a tap.
+- **Later:** a second pass over the rest of the November 16 review of forms and messages.
 
 **Copy rules.**
 
@@ -874,6 +889,8 @@ These are the product decisions I made along the way, with the reason and the co
 | Oct 28 | Late from noon the next day instead of midnight | Four hours to post on time were too few | A softer nudge to post the same night |
 | Oct 28 | After midnight it is still "Today's spin", with a 10 AM note for a spin not yet posted and a line when a day closes without a post; the week row and the date follow the spin's day too; "Posted." and "Skipped." stay until the next 8 PM, the posted page points to the Board, and an evening with no spin is mentioned | A spin's day runs from 8 PM to the next 8 PM, so "Last night's spin" read like a new day | None recorded |
 | Nov 8 | Database and photos on Supabase in Singapore; photos private, with links that stop working within an hour | Only people allowed to see a photo get a link, like Instagram's expiring links | No backups on the free plan; data kept outside the country of most users |
+| Nov 16 | Forms say what is wrong in a few words, in ink with an alert mark, and a grey button shows the problems when tapped | A grey Continue that did nothing on a tap gave no reason | None recorded |
+| Nov 16 | The Spin page shows a whole blank wheel while it loads, and starts loading during sign-up | A bare circle looked broken, and the first Spin page after sign-up was slow | None recorded |
 
 ## 18. Out of scope and future ideas
 
@@ -921,7 +938,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 |---|---|---|
 | Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/verify`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot, verify and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
 | Me | `GET`, `PATCH /me`; `POST /me/avatar/upload-url`; `POST /me/password`; `POST /me/delete`; `GET`, `PATCH /me/notification-settings`; `GET`, `POST /me/blocks`; `DELETE /me/blocks/:user_id`; `GET /me/archive`; `GET /me/summary`; `POST`, `DELETE /me/push-tokens` | Profile edit 30; password 5 per person and 20 per IP; delete 5 per person; `GET /me` and the photo upload link have no limit |
-| Spin | `POST /time-zone`; `GET /today`; `POST /spin`, `/spin/bonus`, `/spin/skip`; `GET`, `PATCH /wheel` | Spin, bonus and skip 10; today 60; wheel save 20 |
+| Spin | `POST /time-zone` (its answer carries the Spin page's state too); `GET /today`; `POST /spin`, `/spin/bonus`, `/spin/skip`; `GET`, `PATCH /wheel` | Spin, bonus and skip 10; today 60; wheel save 20 |
 | Posts | `POST /entry-photos/upload-url`; `POST /entries`; `GET`, `PATCH /entries/:id`; `POST /entries/:id/archive`, `/unarchive`, `/delete`; `GET /diary` | Post 10; edits 20 |
 | People | `GET /people/search`, `/people/lookup`, `/people/suggestions`, `/people/:user_id`, `/followers`, `/following`; `POST /people/:user_id/mute`, `/unmute`, `/report` | Search 120; report 10 |
 | Follows | `GET`, `POST /follows`; `POST /follows/:user_id/unfollow`; `POST /follows/requests/:id/accept`, `/decline`; `POST /followers/:user_id/remove` | 60 to read; 20 for each change |
