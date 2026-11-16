@@ -100,6 +100,10 @@ var adminNotices = map[string]string{
 	"slowdown":    "Too many tries. Wait a minute and try again.",
 	"stale":       "That page was out of date. Try again.",
 	"nothingopen": "That report was already closed.",
+	// Why a good link opened nothing (whyNoAdmin).
+	"noaccount":     "No account uses the admin email yet.",
+	"admindisabled": "The admin account is disabled.",
+	"admindeleting": "The admin account is set to be deleted. Log in to the app to keep it.",
 }
 
 // AdminHandler serves /admin.
@@ -483,10 +487,10 @@ func (h *AdminHandler) login(c *gin.Context) {
 // with the page's secret, unexpired and unused, opens the page for the admin
 // it names, or for the first admin when it names none. It is spent before the
 // account is looked up, so a link that fails once never works later. A bad,
-// ended or used link is one notice. A good link for no admin (no account, one
-// that is not an admin, or no admin found when the server started) is another
-// that says what to check: it tells nothing to anyone without the secret, as
-// only a link signed with it gets that far.
+// ended or used link is one notice. A good link for no admin gets a notice
+// that says why (whyNoAdmin): it tells nothing to anyone without the secret,
+// as only a link signed with it gets that far. Log in with a password never
+// says why (badlogin).
 //
 // The answer is a page that moves on to /admin, not a redirect: a browser
 // that counts the link's own navigation as coming from elsewhere (opened
@@ -510,13 +514,37 @@ func (h *AdminHandler) openLink(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	if err != nil || !h.isAdmin(u) {
-		h.toLogin(c, "noadmin")
+	if err != nil {
+		u = nil
+	}
+	if !h.isAdmin(u) {
+		h.toLogin(c, h.whyNoAdmin(u))
 		return
 	}
 	log.Printf("httpapi: admin page opened with a link for account %s", u.ID)
 	h.setCookie(c, h.newSession(u.ID, h.passwordMark(u), time.Now()), int(adminSessionTTL.Seconds()))
 	h.render(c, "opened", adminPage{Title: "Opening", Refresh: true})
+}
+
+// whyNoAdmin is the notice for a good link that opened nothing, u being the
+// account it names (nil for none: no admin was found when the server
+// started, or no account has the address). An account that is no admin, or
+// past the grace period of a deletion its owner asked for, gets the plain
+// noadmin. An admin account that is disabled, or set to be deleted (a log in
+// to the app keeps it), gets its own. Disabled comes first, as in the app's
+// log in: logging in keeps no disabled account.
+func (h *AdminHandler) whyNoAdmin(u *user.User) string {
+	switch {
+	case u == nil:
+		return "noaccount"
+	case !h.admins[u.ID] || u.DeletionDue:
+		return "noadmin"
+	case u.Disabled:
+		return "admindisabled"
+	case u.DeletionRequested:
+		return "admindeleting"
+	}
+	return "noadmin"
 }
 
 // spendLink marks a link used, and says whether it was unused. The nonces of

@@ -687,8 +687,8 @@ func adminLinkFrom(t *testing.T, w *feedWorld, remote, token string) (*httptest.
 // session for the admin it names, or for the first admin when it names none,
 // and works once. A link that was used, has ended or is signed with another
 // secret lands on the log in page with one notice; one that names an account
-// that is no admin, or no account, with another that says what to check.
-// Neither sets a cookie.
+// that is no admin with another that says what to check, and one that names
+// no account with a third that says so. None sets a cookie.
 func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 	w, _ := newAdminWorld(t)
 	w.person("ad_linker", "Lee Linker")
@@ -731,7 +731,7 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 		{"an ended link", mint(integrationJWTSecret, "", now.Add(-adminlink.TTL)), "badlink"},
 		{"another secret", mint([]byte("another-secret-that-is-at-least-32-bytes"), "", now), "badlink"},
 		{"not an admin", mint(integrationJWTSecret, "ad_linker@example.com", now), "noadmin"},
-		{"no account", mint(integrationJWTSecret, "ad_nobody@example.com", now), "noadmin"},
+		{"no account", mint(integrationJWTSecret, "ad_nobody@example.com", now), "noaccount"},
 		{"garbled", "x.y.z.w", "badlink"},
 		{"no token", "", "badlink"},
 	} {
@@ -741,8 +741,11 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 
 	// The log in page names the way in, and a refused link says what to do.
 	for notice, words := range map[string]string{
-		"badlink": "That link expired or was already used. Run make admin for a new one.",
-		"noadmin": "No admin account for that link. Check ADMIN_EMAILS, make the account if needed, then restart the server.",
+		"badlink":       "That link expired or was already used. Run make admin for a new one.",
+		"noadmin":       "No admin account for that link. Check ADMIN_EMAILS, make the account if needed, then restart the server.",
+		"noaccount":     "No account uses the admin email yet.",
+		"admindisabled": "The admin account is disabled.",
+		"admindeleting": "The admin account is set to be deleted. Log in to the app to keep it.",
 	} {
 		login := adminDo(t, w, http.MethodGet, "/admin/login?n="+notice, "", nil, "").Body.String()
 		for _, want := range []string{"Run <code>make admin</code> in the RNDMRoll folder", words} {
@@ -751,6 +754,84 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A good link that opens no admin says why, on the real database. An
+// ADMIN_EMAILS address that had no account when the server started is no
+// account, whether a link names it or a server that found no admin gets a
+// link that names nobody. The admin set to be deleted gets its notice until
+// a log in to the app keeps the account, the admin disabled gets its own,
+// and past the grace period of a deletion the plain one comes back. Log in
+// with the right password says no more than a wrong one.
+func TestAdminIntegration_AGoodLinkForNoAdminSaysWhy(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
+	w := &feedWorld{t: t, clk: clk}
+	const bossEmail, lateEmail = "aw_boss@example.com", "aw_late@example.com"
+	boss := adminFirst(w, pool, integrationOptions{clock: clk, adminEmails: []string{bossEmail, lateEmail}}, "aw_boss")
+	// Each try from its own address, so no limit answers.
+	n := 0
+	from := func() string {
+		n++
+		return fmt.Sprintf("198.51.100.%d:1", 140+n)
+	}
+	link := func(on *feedWorld, email string) (*httptest.ResponseRecorder, string) {
+		t.Helper()
+		token, err := adminlink.New(integrationJWTSecret, email, frozenClock())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return adminLinkFrom(t, on, from(), token)
+	}
+	refused := func(name string, rec *httptest.ResponseRecorder, cookie, notice string) {
+		t.Helper()
+		if cookie != "" || rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login?n="+notice {
+			t.Fatalf("%s: %d %q, cookie %q, want %s", name, rec.Code, rec.Header().Get("Location"), cookie, notice)
+		}
+	}
+	vague := func(name string) {
+		t.Helper()
+		if loc, cookie := adminLoginFrom(t, w, from(), bossEmail, adminTestPassword); loc != "/admin/login?n=badlogin" || cookie != "" {
+			t.Fatalf("%s, log in with the right password: %q (cookie given: %v), want badlogin", name, loc, cookie != "")
+		}
+	}
+	setBoss := func(name, set string, args ...any) {
+		t.Helper()
+		tag, err := pool.Exec(context.Background(), "update users set "+set+" where id = $1", append([]any{uuid.MustParse(boss.id)}, args...)...)
+		if err != nil || tag.RowsAffected() != 1 {
+			t.Fatalf("%s: %d rows, err %v", name, tag.RowsAffected(), err)
+		}
+	}
+
+	rec, cookie := link(w, lateEmail)
+	refused("a link for the address with no account", rec, cookie, "noaccount")
+	noAdmin := &feedWorld{t: t, clk: clk,
+		engine: buildIntegrationServerWith(t, pool, integrationOptions{clock: clk, adminEmails: []string{lateEmail}}).Engine()}
+	rec, cookie = link(noAdmin, "")
+	refused("a link on a server that found no admin", rec, cookie, "noaccount")
+
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/me/delete", boss.token, map[string]any{"password": adminTestPassword}); rec.Code != http.StatusOK {
+		t.Fatalf("the admin asks for the account to be deleted: %d %s", rec.Code, rec.Body.String())
+	}
+	rec, cookie = link(w, "")
+	refused("an admin set to be deleted", rec, cookie, "admindeleting")
+	vague("an admin set to be deleted")
+	login := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": bossEmail, "password": adminTestPassword})
+	if login.Code != http.StatusOK || decodeBody(t, login)["restored"] != true {
+		t.Fatalf("the admin logs in to the app: %d %s, want 200 with restored true", login.Code, login.Body.String())
+	}
+	if rec, cookie := link(w, ""); rec.Code != http.StatusOK || cookie == "" {
+		t.Fatalf("a link once the account is kept: %d (cookie given: %v)", rec.Code, cookie != "")
+	}
+
+	setBoss("disable the admin", "disabled_at = now()")
+	rec, cookie = link(w, bossEmail)
+	refused("a disabled admin", rec, cookie, "admindisabled")
+	vague("a disabled admin")
+
+	setBoss("move a new ask past the grace period", "disabled_at = null, deletion_requested_at = now() - $2::interval", deletionPastGrace)
+	rec, cookie = link(w, "")
+	refused("an admin past the grace period", rec, cookie, "noadmin")
 }
 
 // A new password ends the admin session, as it ends the app's other

@@ -326,11 +326,28 @@ func TestAdminRemove_ClosesTheReportsOnlyOnceItIsGone(t *testing.T) {
 	}
 }
 
-// A good link for no admin says what to check, and sets no cookie: when no
-// admin was found at the start, and for an account that is no admin, none,
-// or a disabled admin. The link is spent all the same, and a bad one still
-// gets its own notice.
-func TestAdminLink_ForNoAdminSaysWhatToCheck(t *testing.T) {
+// accountState is what an account's row says about it: disabled by an admin,
+// its deletion asked for by its owner, and due once the grace period of that
+// ask is over (due only with asked, as the database reads it).
+type accountState struct{ disabled, asked, due bool }
+
+// setAccountState gives the account id that state.
+func setAccountState(f *fakeUserRepo, id uuid.UUID, s accountState) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u := f.users[id]
+	u.Disabled, u.DeletionRequested, u.DeletionDue = s.disabled, s.asked, s.due
+}
+
+// A good link for no admin says why, and sets no cookie. No account: no
+// admin was found at the start, or no account has the address. An account
+// that is no admin gets the plain notice, even when it is disabled, and so
+// does an admin past the grace period of its deletion. An admin account that
+// is disabled, or set to be deleted, gets its own notice, and disabled wins,
+// as in the app's log in. The link is spent all the same, and a bad one
+// still gets its own notice. Log in with the right password says no more
+// than a wrong one.
+func TestAdminLink_ForNoAdminSaysWhy(t *testing.T) {
 	link := func(email string) string {
 		t.Helper()
 		token, err := adminlink.New(adminUnitSecret, email, frozenClock())
@@ -339,11 +356,11 @@ func TestAdminLink_ForNoAdminSaysWhatToCheck(t *testing.T) {
 		}
 		return token
 	}
+	// Each try from its own address, so the per-address limit never answers.
 	n := 0
-	open := func(r *adminRig, token string) (*httptest.ResponseRecorder, string) {
-		t.Helper()
+	from := func() string {
 		n++
-		return adminLinkFrom(t, r.w, "198.51.100."+strconv.Itoa(n)+":1", token)
+		return "198.51.100." + strconv.Itoa(n) + ":1"
 	}
 	refused := func(name string, rec *httptest.ResponseRecorder, cookie, notice string) {
 		t.Helper()
@@ -354,24 +371,54 @@ func TestAdminLink_ForNoAdminSaysWhatToCheck(t *testing.T) {
 
 	none := newAdminRig(t, false)
 	token := link("")
-	rec, cookie := open(none, token)
-	refused("no admin found at the start", rec, cookie, "noadmin")
-	rec, cookie = open(none, token)
+	rec, cookie := adminLinkFrom(t, none.w, from(), token)
+	refused("no admin found at the start", rec, cookie, "noaccount")
+	rec, cookie = adminLinkFrom(t, none.w, from(), token)
 	refused("that link again", rec, cookie, "badlink")
 
 	r := newAdminRig(t, true)
-	r.users.seedComplete(t, "other@example.com", "Oli Other", "other", validBirthday)
-	for _, email := range []string{"other@example.com", "nobody@example.com"} {
-		rec, cookie := open(r, link(email))
-		refused("a link for "+email, rec, cookie, "noadmin")
+	other := r.users.seedComplete(t, "other@example.com", "Oli Other", "other", validBirthday)
+	rec, cookie = adminLinkFrom(t, r.w, from(), link("nobody@example.com"))
+	refused("a link for an address no account has", rec, cookie, "noaccount")
+	for _, c := range []struct {
+		name   string
+		id     uuid.UUID
+		state  accountState
+		emails []string // the addresses the links name
+		notice string
+	}{
+		{"an account that is no admin", other.ID, accountState{}, []string{"other@example.com"}, "noadmin"},
+		{"a disabled account that is no admin", other.ID, accountState{disabled: true}, []string{"other@example.com"}, "noadmin"},
+		{"a disabled admin", r.boss.ID, accountState{disabled: true}, []string{"", "BOSS@example.com"}, "admindisabled"},
+		{"an admin set to be deleted", r.boss.ID, accountState{asked: true}, []string{"", "boss@example.com"}, "admindeleting"},
+		{"a disabled admin set to be deleted", r.boss.ID, accountState{disabled: true, asked: true}, []string{""}, "admindisabled"},
+		{"an admin past the grace period", r.boss.ID, accountState{asked: true, due: true}, []string{""}, "noadmin"},
+	} {
+		setAccountState(r.users.fakeUserRepo, c.id, c.state)
+		for _, email := range c.emails {
+			rec, cookie := adminLinkFrom(t, r.w, from(), link(email))
+			refused(c.name+", a link for "+strconv.Quote(email), rec, cookie, c.notice)
+		}
+		if c.id == r.boss.ID {
+			if loc, cookie := adminLoginFrom(t, r.w, from(), "boss@example.com", adminTestPassword); loc != "/admin/login?n=badlogin" || cookie != "" {
+				t.Fatalf("%s, log in with the right password: %q (cookie given: %v), want badlogin", c.name, loc, cookie != "")
+			}
+		}
+		setAccountState(r.users.fakeUserRepo, c.id, accountState{})
 	}
-	r.users.setDisabled(r.boss.ID)
-	rec, cookie = open(r, link(""))
-	refused("a disabled admin", rec, cookie, "noadmin")
+	if rec, cookie := adminLinkFrom(t, r.w, from(), link("")); rec.Code != http.StatusOK || cookie == "" {
+		t.Fatalf("a link for the admin once it is kept: %d (cookie given: %v)", rec.Code, cookie != "")
+	}
 
-	page := adminDo(t, r.w, http.MethodGet, "/admin/login?n=noadmin", "", nil, "").Body.String()
-	if !strings.Contains(page, adminNotices["noadmin"]) || !strings.Contains(page, "Check ADMIN_EMAILS") {
-		t.Fatalf("the log in page lacks the notice: %s", page)
+	for notice, words := range map[string]string{
+		"noaccount":     "No account uses the admin email yet.",
+		"admindisabled": "The admin account is disabled.",
+		"admindeleting": "The admin account is set to be deleted. Log in to the app to keep it.",
+		"noadmin":       "No admin account for that link. Check ADMIN_EMAILS",
+	} {
+		if page := adminDo(t, r.w, http.MethodGet, "/admin/login?n="+notice, "", nil, "").Body.String(); !strings.Contains(page, words) {
+			t.Fatalf("the log in page with %s lacks %q: %s", notice, words, page)
+		}
 	}
 }
 
