@@ -47,7 +47,19 @@ The research also named the risks I designed around: a locked feed is empty with
 - **Unlimited re-spins.** They would make the daily pick meaningless. The only extra spin is earned with the weekly goal.
 - **Live-camera-only posts.** These would force people to fake or skip anything that happened earlier in the day.
 - **Music attached to posts.** People post a screenshot of the song as a photo instead, which needs no music service.
+- **Apple and Google sign-in, and reactions on friends' posts.** Email and password are enough for a friend group, and reactions repeated what comments do.
 - **A wider backlog, kept for later.** A year-end recap, taste insights ("you rate meals higher on weekends"), a shareable result card and small groups with their own wheel. Version 1 stays on the core loop: spin, post, see friends.
+
+These wait for a real launch:
+
+- **An email check at sign-up.** Sign-up asks for no code, so the app doesn't know that an email address really belongs to the person.
+- **Real email.** It's built and off, so a Forgot password code prints to the server log instead of arriving by email.
+- **Phone pushes.** Built and off until there are Apple and Expo accounts. The 8 PM reminder and the 10 AM note are made on the phone itself, so they work today.
+- **Hosting.** The server runs on my Mac for now. The database and photos are on Supabase's free plan in Singapore.
+- **The App Store.** The app runs in the iOS Simulator. Invite links open a web page with an "Open in RNDMRoll" button, because opening the app straight from a link needs a domain.
+- **Legal pages.** The Terms of Use and the Privacy Policy are drafts for now.
+
+The full list, down to photo metadata and server alerts, is in the PRD's [launch checklist](./PRD.md#launch-checklist) and [known issues](./PRD.md#known-issues).
 
 ## How I'd measure it
 
@@ -68,8 +80,8 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **Profile.** Every post you've made, your spins, your week streak and your followers.
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page where an admin can remove content or disable an account.
-- **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies and follow requests.
-- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
+- **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies and follow requests (built, off for now).
+- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
 
 ## How I built it with Claude
 
@@ -89,7 +101,7 @@ I built RNDMRoll by prompting Claude Code. I decided what the app should do and 
 - Writing the Go server, the database migrations, the app screens and the tests, following those plans.
 - Running the reviews and checks I asked for.
 
-Each phase had a written scope, a screen-by-screen design spec, a build plan and a test checklist. They're in [`.planning/`](./.planning), the record of what I asked for and approved.
+Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design spec, a build plan and a test checklist, and Phase 2.2 had a scope and a plan. Phase 6's paper covers the person page, reports and the 8 PM reminder; the rest of Phase 6 was built from my instructions without separate paper. These papers are in [`.planning/`](./.planning), the record of what I asked for and approved along the way. The [PRD](./PRD.md) is the record of what the app does today.
 
 1. Accounts and sign-up
 2. The daily spin, then Settings and smoother navigation
@@ -104,7 +116,7 @@ Each phase had a written scope, a screen-by-screen design spec, a build plan and
 | Server | Go 1.26, Gin, PostgreSQL on Supabase (Singapore) through pgx and the session pooler, 19 SQL migrations |
 | Photos | A private Supabase Storage bucket through its S3 API: signed uploads, and signed photo links that stop working within an hour, made only for people allowed to see the photo (a private MinIO bucket when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
-| Email and push | Resend for email, the Expo push service for phone notifications |
+| Email and push | Built for Resend (email) and the Expo push service (phone notifications), and switched off for now: Forgot password codes print to the server log, and no phone pushes are sent |
 
 A few things that took real care:
 
@@ -117,7 +129,7 @@ A few things that took real care:
 
 You need macOS with Xcode and the iOS Simulator, Node, Go 1.26, PostgreSQL, [golang-migrate](https://github.com/golang-migrate/migrate) and [MinIO](https://min.io) for photos.
 
-1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as Forgot password codes) to the server log instead of sending them.
+1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as Forgot password codes) to the server log instead of sending them, and `APP_ENV=test`, which lets the admin page's login cookie work on plain `http://localhost`.
 2. **Photo storage.** Start MinIO, create a private bucket (no public read access), and point the `S3_*` lines in `.env` at it (for example `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_REGION=us-east-1`). For Supabase, turn on the S3 connection in Storage settings, make a private bucket, and use the endpoint, region and access keys from that page. Keep the keys on the server only.
 3. **Database.**
    ```sh
@@ -145,6 +157,8 @@ make test-all-integration  # everything, against TEST_DATABASE_URL, one package 
 npm run typecheck          # the app's TypeScript check
 node --experimental-strip-types scripts/check-legal.ts  # the Terms and Privacy text; add --write to refresh docs/legal
 ```
+
+If the integration tests fail with `column "..." does not exist`, the test database has hit PostgreSQL's limit of 1,600 columns in a table: the tests that undo and redo migrations use up a few more on every run. With nothing connected to it, recreate it with `dropdb rndmroll_test && createdb rndmroll_test`, and the suite migrates the new database itself. Don't use `make db-create` for this, since it also makes `rndmroll_dev`.
 
 Where things are:
 
