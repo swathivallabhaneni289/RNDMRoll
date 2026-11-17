@@ -18,7 +18,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { POST_GONE_LINE, POST_REMOVED_LINE, REPORT_SENT, UNDER_REVIEW, commentFailureLine, reportOutcome } from '../lib/board/text.ts';
 import { placementStep } from '../lib/board/placement.ts';
-import { countAfterComment, placeComment, withEmoji, withReplyPrefix, withoutComment } from '../lib/board/comments.ts';
+import { afterReplyEnds, countAfterComment, placeComment, withEmoji, withReplyPrefix, withoutComment } from '../lib/board/comments.ts';
 import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
 import { COMMENT_MAX } from '../lib/entry/rules.ts';
 import {
@@ -358,9 +358,26 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     }
   }
 
+  // Reply mode ended (the close mark, or the comment being answered left the page): a lone mention
+  // goes, so one tap on Post never sends just '@maya' as a new comment.
+  eq('reply mode ended from outside takes away a lone mention', afterReplyEnds('@maya ', 'maya'), '');
+  eq('a lone mention with no space goes too', afterReplyEnds('@maya', 'maya'), '');
+  eq('the mention Reply wrote goes whole', afterReplyEnds(withReplyPrefix('', 'twenty_characters_xy', COMMENT_MAX), 'twenty_characters_xy'), '');
+  eq('typed words stay', afterReplyEnds('@maya hi', 'maya'), '@maya hi');
+  eq('a mention of someone else stays', afterReplyEnds('@sam ', 'maya'), '@sam ');
+  eq('no username: nothing was added, so nothing is taken', afterReplyEnds('@', ''), '@');
+  eq('an empty box stays empty', afterReplyEnds('', 'maya'), '');
+
   const comments = source('components/board/Comments.tsx');
   check('the emoji row adds through withEmoji', /setText\(\(before\) => withEmoji\(before, char, COMMENT_MAX\)\);/.test(comments));
   check('Reply fills the box through withReplyPrefix', /setText\(\(before\) => withReplyPrefix\(before, username, COMMENT_MAX\)\)/.test(comments));
+  // Reply mode also ends from outside the bar: the comment being answered was reported or deleted,
+  // or the reply came back not found. The lone mention goes then too, as at the close mark.
+  check(
+    'the box takes a lone mention away whenever reply mode ends, not only at the close mark',
+    /if \(replyTo === null\) \{[\s\S]{0,300}?setText\(\(before\) => afterReplyEnds\(before, [a-z]+\)\);[\s\S]{0,60}?return;\s*\}/.test(comments)
+  );
+  check('the close mark keeps the same rule', /function cancelReply\(\) \{[\s\S]{0,200}?afterReplyEnds\(before, replyTo\.author\.username\)/.test(comments));
   check('the box allows COMMENT_MAX', /maxLength=\{COMMENT_MAX\}/.test(comments));
 }
 

@@ -14,7 +14,7 @@ import { reportComment, reportFailureLine } from '@/lib/api/reports';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName } from '@/lib/api/social';
-import { withEmoji, withReplyPrefix } from '@/lib/board/comments';
+import { afterReplyEnds, withEmoji, withReplyPrefix } from '@/lib/board/comments';
 import { REPORT_SENT, UNDER_REVIEW } from '@/lib/board/text';
 import { setReportNotice } from '@/lib/report/notice';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
@@ -373,8 +373,9 @@ export function CommentList({
  *
  * Reply mode (`replyTo` set, from a comment's 'Reply'): a small line 'Replying to {name}' with a
  * close mark sits above the field, the field gets '@username ' in front and the keyboard comes up;
- * the send is a reply. The close mark ends reply mode (and takes away the '@username ' if nothing
- * else was typed).
+ * the send is a reply. The close mark ends reply mode, and so does the comment being answered
+ * leaving the page (reported or deleted) or coming back not found; either way the '@username '
+ * goes if nothing else was typed.
  */
 export function CommentBar({
   onSend,
@@ -399,7 +400,8 @@ export function CommentBar({
   const [photo, setPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
   const uploads = useRef(createUploadMemory()).current;
   const canSend = (text.trim().length > 0 || photo !== null) && text.trim().length <= COMMENT_MAX && !sending;
-  const mention = replyTo !== null && replyTo.author.username !== '' ? `@${replyTo.author.username}` : '';
+  // The username of the comment being answered, kept for the moment reply mode ends.
+  const answeringRef = useRef('');
 
   // Each Reply tap is a new object, so tapping Reply again refills and focuses the field.
   useEffect(() => {
@@ -407,8 +409,16 @@ export function CommentBar({
   }, [focusKey]);
 
   useEffect(() => {
-    if (replyTo === null) return;
+    if (replyTo === null) {
+      // Reply mode ended, maybe from outside the bar (a report or a delete): a lone mention goes,
+      // as at the close mark, so Post never sends just '@username' as a new comment.
+      const ended = answeringRef.current;
+      answeringRef.current = '';
+      if (ended !== '') setText((before) => afterReplyEnds(before, ended));
+      return;
+    }
     const username = replyTo.author.username;
+    answeringRef.current = username;
     if (username !== '') setText((before) => withReplyPrefix(before, username, COMMENT_MAX));
     inputRef.current?.focus();
   }, [replyTo]);
@@ -420,7 +430,7 @@ export function CommentBar({
   }
 
   function cancelReply() {
-    if (mention !== '' && text.trim() === mention) setText('');
+    if (replyTo !== null) setText((before) => afterReplyEnds(before, replyTo.author.username));
     onCancelReply?.();
   }
 

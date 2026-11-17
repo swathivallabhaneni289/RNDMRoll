@@ -69,3 +69,13 @@ export function withReplyPrefix(before: string, username: string, max: number): 
   const text = `@${username} ${before.replace(/^@\S+\s*/, '')}`.slice(0, max);
   return /[\uD800-\uDBFF]$/.test(text) ? text.slice(0, -1) : text;
 }
+
+/**
+ * The comment box's text once reply mode ends: by the close mark, or from outside the bar (the
+ * comment being answered was reported or deleted, or the reply came back not found). A lone
+ * "@username" goes, so one tap on Post never sends just the mention as a new comment; anything
+ * typed stays. With no username, Reply added nothing, so nothing is taken.
+ */
+export function afterReplyEnds(text: string, username: string): string {
+  return username !== '' && text.trim() === `@${username}` ? '' : text;
+}
