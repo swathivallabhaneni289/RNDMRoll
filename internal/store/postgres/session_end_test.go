@@ -175,7 +175,7 @@ func TestUserRepo_ChangePassword_RefusesADisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := time.Now()
-	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, &at); err != nil {
+	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, &at, at); err != nil {
 		t.Fatal(err)
 	}
 	err = users.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", uuid.New(), []byte("pw-disabled-new-00000000000001"), expires, nil)
@@ -190,7 +190,7 @@ func TestUserRepo_ChangePassword_RefusesADisabledAccount(t *testing.T) {
 		t.Fatalf("refresh tokens %d (err %v), want the 1 there was", rows, err)
 	}
 	// Enabled again, it changes.
-	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, nil); err != nil {
+	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, nil, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := users.ChangePassword(ctx, owner.ID, "new-bcrypt-hash", uuid.New(), []byte("pw-disabled-new-00000000000002"), expires, nil); err != nil {
@@ -275,7 +275,7 @@ func TestPasswordResetRepo_Spend_SaysWhyItCouldNotSpend(t *testing.T) {
 
 	// SetDisabled deletes the code.
 	at := time.Now()
-	if err := admins.SetDisabled(ctx, owner.ID, &at); err != nil {
+	if err := admins.SetDisabled(ctx, owner.ID, &at, at); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := resetTries(t, pool, owner.ID); ok {
@@ -343,7 +343,7 @@ func TestAdminRepo_SetDisabled_RevokesARefreshThatCommitsWhileItRuns(t *testing.
 	// The admin disables the account, and has to wait for that refresh.
 	at := time.Now()
 	done := make(chan error, 1)
-	go func() { done <- admins.SetDisabled(ctx, owner.ID, &at) }()
+	go func() { done <- admins.SetDisabled(ctx, owner.ID, &at, at) }()
 	waitForALockWait(t, pool)
 	if err := rotating.Commit(ctx); err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestAdminRepo_SetDisabled_RevokesARefreshThatCommitsWhileItRuns(t *testing.
 	if n := activeTokenCount(t, pool, owner.ID); n != 0 {
 		t.Errorf("%d live refresh tokens after the disable, want none", n)
 	}
-	if err := admins.SetDisabled(ctx, owner.ID, nil); err != nil {
+	if err := admins.SetDisabled(ctx, owner.ID, nil, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := pushes.Tokens(ctx, owner.ID); err != nil || len(got) != 0 {

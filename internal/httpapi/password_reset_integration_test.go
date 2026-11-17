@@ -984,7 +984,7 @@ func TestPasswordResetIntegration_AnAccountDisabledMeanwhileGetsTheWrongCodeAnsw
 
 	w.hook(func() {
 		at := time.Now()
-		if err := postgres.NewAdminRepo(w.pool).SetDisabled(context.Background(), id, &at); err != nil {
+		if err := postgres.NewAdminRepo(w.pool).SetDisabled(context.Background(), id, &at, at); err != nil {
 			t.Error(err)
 		}
 	})

@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -166,9 +169,13 @@ func TestAdminDisabledTab_ListsThemWithEnable(t *testing.T) {
 	}
 }
 
-// Dismiss closes every report the card sent, each through Resolve (which
-// checks it is open and about that person), and goes back where it came from:
-// only the Reports tab, the Disabled tab or the person's page.
+// Dismiss closes every report the card sent in one call (DismissItem checks
+// each is open and about that person, and holds the post or comment while
+// it works), and goes back where it came from: only the Reports tab, the
+// Disabled tab, the Removed tab or the person's page. A dismissal that shows
+// a hidden post or comment again says so; one that closed nothing, or
+// failed, says that. A post's or comment's dismissal is logged on its
+// owner's own clock.
 func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
@@ -180,23 +187,59 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 		return rec.Code, rec.Header().Get("Location")
 	}
 	code, to := dismiss(url.Values{"kind": {admin.KindPost}, "id": {a.String(), b.String()}, "person": {person.String()}, "from": {"list"}})
-	if code != http.StatusSeeOther || to != "/admin?n=dismissed" || len(r.repo.resolves) != 2 ||
-		r.repo.resolves[0] != (adminResolve{admin.KindPost, a, person}) || r.repo.resolves[1] != (adminResolve{admin.KindPost, b, person}) {
-		t.Fatalf("dismiss from the list: %d %q, resolves %+v", code, to, r.repo.resolves)
+	if code != http.StatusSeeOther || to != "/admin?n=dismissed" || len(r.repo.dismissals) != 1 || r.repo.resolved != 1 {
+		t.Fatalf("dismiss from the list: %d %q, %d calls", code, to, len(r.repo.dismissals))
 	}
-	// From the person's page, or a made-up place: back to the person's page.
-	for _, from := range []string{"", "https://evil.example/", "/admin/people"} {
-		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "person": {person.String()}, "from": {from}}); to != "/admin/people/"+person.String()+"?n=dismissed" {
-			t.Fatalf("from %q: %q", from, to)
+	if got := r.repo.dismissals[0]; got.kind != admin.KindPost || got.person != person || !slices.Equal(got.ids, []uuid.UUID{a, b}) {
+		t.Fatalf("the call: %+v, want the post, both ids and the person", got)
+	}
+	// The owner has no time zone in the spin store, so their own clock
+	// cannot be read: the real one stands in. Once they have one, it is
+	// the spin clock's.
+	if at := r.repo.dismissals[0].loggedAt; time.Since(at) < 0 || time.Since(at) > time.Minute {
+		t.Fatalf("logged at %v, want now when the owner's clock cannot be read", at)
+	}
+	if _, err := r.spin.SetTimeZone(context.Background(), person.String(), "America/New_York"); err != nil {
+		t.Fatal(err)
+	}
+	dismiss(url.Values{"kind": {admin.KindComment}, "id": {a.String()}, "person": {person.String()}, "from": {"list"}})
+	if got := r.repo.dismissals[1]; got.kind != admin.KindComment || !got.loggedAt.Equal(adminRigNow) {
+		t.Fatalf("a comment's dismissal: %+v, want it logged at the owner's %v", got, adminRigNow)
+	}
+	// From the person's page, the Removed tab, or a made-up place.
+	for from, want := range map[string]string{
+		"":                      "/admin/people/" + person.String() + "?n=dismissed",
+		"https://evil.example/": "/admin/people/" + person.String() + "?n=dismissed",
+		"/admin/people":         "/admin/people/" + person.String() + "?n=dismissed",
+		"disabled":              "/admin/disabled?n=dismissed",
+		"removed":               "/admin/removed?n=dismissed",
+	} {
+		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "person": {person.String()}, "from": {from}}); to != want {
+			t.Fatalf("from %q: %q, want %q", from, to, want)
 		}
 	}
+	// It showed a hidden post again.
+	r.repo.shownAgain = true
+	if _, to := dismiss(url.Values{"kind": {admin.KindPost}, "id": {a.String()}, "person": {person.String()}, "from": {"list"}}); to != "/admin?n=shownagain" {
+		t.Fatalf("a dismissal that shows it again: %q", to)
+	}
+	if page := adminDo(t, r.w, http.MethodGet, "/admin?n=shownagain", cookie, nil, "").Body.String(); !strings.Contains(page, "Dismissed. It shows again, and they were told.") {
+		t.Fatalf("the list lacks the notice: %s", page)
+	}
+	r.repo.shownAgain = false
 	// Nothing was open any more.
 	r.repo.notOpen = map[uuid.UUID]bool{a: true, b: true}
 	if _, to := dismiss(url.Values{"kind": {admin.KindPost}, "id": {a.String(), b.String()}, "person": {person.String()}, "from": {"list"}}); to != "/admin?n=nothingopen" {
 		t.Fatalf("all closed already: %q", to)
 	}
+	r.repo.notOpen = nil
+	r.repo.dismissErr = errors.New("conn closed")
+	if _, to := dismiss(url.Values{"kind": {admin.KindPost}, "id": {a.String()}, "person": {person.String()}, "from": {"list"}}); to != "/admin?n=failed" {
+		t.Fatalf("a dismissal that fails: %q", to)
+	}
+	r.repo.dismissErr = nil
 	// A form the page never draws closes nothing.
-	before := len(r.repo.resolves)
+	before := r.repo.resolved
 	tooMany := make([]string, adminDismissMost+1)
 	for i := range tooMany {
 		tooMany[i] = uuid.NewString()
@@ -212,8 +255,8 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 			t.Errorf("%s: %q, want the list", name, to)
 		}
 	}
-	if len(r.repo.resolves) != before {
-		t.Fatalf("a bad form resolved %d reports", len(r.repo.resolves)-before)
+	if r.repo.resolved != before {
+		t.Fatalf("a bad form dismissed %d times", r.repo.resolved-before)
 	}
 }
 

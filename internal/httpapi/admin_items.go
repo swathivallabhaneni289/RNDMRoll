@@ -38,6 +38,11 @@ type adminItem struct {
 	Open       bool
 	Resolution string
 	ResolvedAt *time.Time
+	// Hidden says an open post or comment is hidden while under review now,
+	// as the database worked it out (admin.Report.Hidden). Never on a closed
+	// group, and never counted from IDs or Reporters: those stop at the
+	// page's limit and leave out reporters with no username.
+	Hidden bool
 }
 
 // adminCard is what the "item" template draws: an item, the page's CSRF
@@ -128,6 +133,7 @@ func groupReports(owner admin.Person, reports []admin.Report) (open, closed []ad
 		}
 		it := &(*list)[i]
 		it.IDs = append(it.IDs, r.ID)
+		it.Hidden = it.Hidden || (r.ResolvedAt == nil && r.Hidden)
 		if r.Reporter != "" && !slices.Contains(it.Reporters, r.Reporter) {
 			it.Reporters = append(it.Reporters, r.Reporter)
 		}
@@ -151,10 +157,18 @@ func groupReports(owner admin.Person, reports []admin.Report) (open, closed []ad
 	return open, closed
 }
 
-// sortOpen puts open groups in the order the admin works through them: by
-// tier, then the most reported, then the longest waiting.
+// sortOpen puts open groups in the order the admin works through them: the
+// ones hidden while under review first (nobody but their owners sees them
+// until the admin decides), then by tier, then the most reported, then the
+// longest waiting.
 func sortOpen(items []adminItem) {
 	slices.SortStableFunc(items, func(a, b adminItem) int {
+		if a.Hidden != b.Hidden {
+			if a.Hidden {
+				return -1
+			}
+			return 1
+		}
 		if a.tier() != b.tier() {
 			return a.tier() - b.tier()
 		}

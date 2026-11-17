@@ -201,13 +201,13 @@ func TestSessionLocks_EverythingAtOnceNeverDeadlocks(t *testing.T) {
 		defer wg.Done()
 		for range rounds / 20 {
 			at := time.Now()
-			if err := admins.SetDisabled(ctx, owner.ID, &at); err != nil {
+			if err := admins.SetDisabled(ctx, owner.ID, &at, at); err != nil {
 				fail("disable", err)
 			}
 			if err := refresh.RevokeAllForUser(ctx, owner.ID); err != nil {
 				fail("end every session", err)
 			}
-			if err := admins.SetDisabled(ctx, owner.ID, nil); err != nil {
+			if err := admins.SetDisabled(ctx, owner.ID, nil, time.Now()); err != nil {
 				fail("enable", err)
 			}
 		}

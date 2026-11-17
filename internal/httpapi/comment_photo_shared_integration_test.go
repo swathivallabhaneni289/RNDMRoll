@@ -67,9 +67,9 @@ func TestPostIntegration_APostRefusesACommentsPhotoFile(t *testing.T) {
 
 // A file that a comment and a post both name stays while the post shows it.
 // Both routes refuse such a file, but two hand-made requests at the same
-// moment could still leave one. Deleting the comment, by its writer or by an
-// admin's remove, removes the files of the comment and its replies but not
-// that one.
+// moment could still leave one. Deleting the comment, by its writer or
+// straight through the store's delete (the one cleanup reads share),
+// removes the files of the comment and its replies but not that one.
 func TestPostIntegration_DeletingACommentKeepsAFileAPostStillShows(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
@@ -110,14 +110,14 @@ func TestPostIntegration_DeletingACommentKeepsAFileAPostStillShows(t *testing.T)
 		t.Fatalf("B's post links: %v, want %v", got, photos.linksOf(bPhoto))
 	}
 
-	// An admin's remove goes through the same delete.
+	// The store's own delete, with no route in front of it.
 	again := comment(b, map[string]any{"text": "Again"})
 	setCommentPhoto(t, pool, again, bPhoto)
-	keys, err := postgres.NewAdminRepo(pool).DeleteComment(context.Background(), uuid.MustParse(again))
+	keys, err := postgres.NewBoardRepo(pool).DeleteComment(context.Background(), uuid.MustParse(again))
 	if err != nil || len(keys) != 0 {
-		t.Fatalf("the admin's remove: keys %v (err %v), want none", keys, err)
+		t.Fatalf("the store's delete: keys %v (err %v), want none", keys, err)
 	}
 	if got := postPhotoKeys(t, pool, bEntry); !slices.Equal(got, []string{bPhoto}) {
-		t.Fatalf("B's post photos after the admin's remove: %v, want [%s]", got, bPhoto)
+		t.Fatalf("B's post photos after the store's delete: %v, want [%s]", got, bPhoto)
 	}
 }

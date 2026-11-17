@@ -1,7 +1,8 @@
 // Package admin holds what the admin web page reads and changes: every open
-// report with whose it is, one person's reports, the disabled accounts, and
-// the actions (dismiss, remove the post or comment, disable or enable the
-// account). The page itself is internal/httpapi/admin.go.
+// report with whose it is, one person's reports, the disabled accounts, what
+// was removed, the decision log, and the actions (dismiss, remove the post or
+// comment and bring it back, disable or enable the account). The page itself
+// is internal/httpapi/admin.go.
 package admin
 
 import (
@@ -12,7 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// ErrNotFound is a person or report that is not there.
+// ErrNotFound is a person, report, post or comment that is not there. For an
+// action on a post or comment it is also one the action cannot reach: Remove
+// finds it removed already, and Bring it back finds it brought back already
+// or past RemovalGrace.
 var ErrNotFound = errors.New("admin: not found")
 
 // Report kinds.
@@ -28,6 +32,31 @@ const (
 	Removed   = "removed"
 	Disabled  = "disabled"
 )
+
+// RemovalGrace is how long a post or comment an admin removed is kept
+// (developer, 2026-11-17): hidden from everyone, its owner too, and back with
+// Bring it back until then. After it the purge deletes it and its photos for
+// good. The line is on the database's clock.
+const RemovalGrace = 30 * 24 * time.Hour
+
+// The decision log (migration 0020's moderation_events): what an admin
+// decided about a post, a comment or an account. Item is KindPost,
+// KindComment or ItemAccount.
+const (
+	ItemAccount = "account"
+
+	LogRemoved    = "removed"
+	LogRestored   = "restored"
+	LogShownAgain = "shown_again"
+	LogDisabled   = "disabled"
+	LogEnabled    = "enabled"
+)
+
+// Ref is the short reference of a decision: the first 8 hex characters of
+// its id in the log. The Removed tab, the person's history and the owner's
+// bell item about a removal all show the removal's, so an email asking for a
+// second look can name it.
+func Ref(event uuid.UUID) string { return event.String()[:8] }
 
 // ReasonWords are the report reasons as the admin reads them (the same list
 // the app shows), on the page and in the report email.
@@ -82,6 +111,10 @@ type Person struct {
 	// account to be deleted (nil when they have not). Such an account is not
 	// disabled and is not in the disabled list.
 	DeletionRequestedAt *time.Time
+	// RemovedBefore is how many of their posts and comments an admin removed
+	// and did not bring back, read from the decision log: the purge and a
+	// reporter's deleted account take nothing from it.
+	RemovedBefore int
 }
 
 // Report is one report about a person: about them, one of their posts, or
@@ -110,6 +143,12 @@ type Report struct {
 	CommentID *uuid.UUID
 	Body      string
 	PhotoKey  string
+	// Hidden says the post or comment is hidden while under review now
+	// (social.ReviewThreshold open reports from accounts that are not gone),
+	// worked out in SQL by the same rule as every read of the app. Never on
+	// a closed report, a report about a person, or a post or comment that is
+	// gone or that a removal keeps from everyone.
+	Hidden bool
 }
 
 // OpenReport is an open report with the person it is about: the one
@@ -119,7 +158,56 @@ type OpenReport struct {
 	Report
 }
 
-// Repository is the admin page's storage.
+// RemovedItem is a post or comment an admin removed inside RemovalGrace, as
+// the Removed tab shows it: as it is, with whose it is and why it went.
+type RemovedItem struct {
+	// Kind is KindPost or KindComment, and ID the post's or the comment's.
+	Kind  string
+	ID    uuid.UUID
+	Owner Person
+	// A post: its title, its day (YYYY-MM-DD), its text ("" for none) and
+	// every photo's key, in order.
+	Title     string
+	LocalDate string
+	Note      string
+	PhotoKeys []string
+	// A comment: its text and its photo's key ("" for none).
+	Body     string
+	PhotoKey string
+	// RemovedAt is when it was removed and DaysLeft the whole days (rounded
+	// up) until RemovalGrace ends, both on the database's clock.
+	RemovedAt time.Time
+	DaysLeft  int
+	// Reasons and Ref come from its removal in the decision log: the reasons
+	// of the reports Remove closed (the most serious first) and the
+	// removal's Ref. Both are empty when the log has no removal for it.
+	Reasons []string
+	Ref     string
+}
+
+// Event is one decision in the log, about one of the person's posts or
+// comments, or their account.
+type Event struct {
+	ID uuid.UUID
+	// Item is KindPost, KindComment or ItemAccount, and Action one of the
+	// Log names.
+	Item   string
+	Action string
+	// ItemID is the post's, the comment's or the account's id, kept after
+	// the purge.
+	ItemID uuid.UUID
+	// Snapshot is the title or the comment's text when it was decided, and
+	// Reasons the reasons of the reports a removal closed.
+	Snapshot string
+	Reasons  []string
+	// At is when, on the owner's own clock.
+	At time.Time
+}
+
+// Repository is the admin page's storage. The moderation actions each run
+// in one transaction, and log what they decided there (Event). at is the
+// server's now, which closes reports; loggedAt is the owner's own now, which
+// the log keeps for the bell and the history.
 type Repository interface {
 	// OpenReports is every open report with whose it is, newest first: at
 	// most OpenReportsLimit+1 of them, so the page can tell when more are
@@ -129,19 +217,33 @@ type Repository interface {
 	// first.
 	DisabledPeople(ctx context.Context) ([]Person, error)
 	// Person is a person someone reported (about them, a post or a comment,
-	// open or closed) or a disabled account; anyone else is ErrNotFound, so
-	// the page opens no one else.
+	// open or closed), a disabled account, or someone the log names; anyone
+	// else is ErrNotFound, so the page opens no one else.
 	Person(ctx context.Context, id uuid.UUID) (Person, error)
 	Reports(ctx context.Context, person uuid.UUID) ([]Report, error)
-	// Resolve closes one open report about person. False when there was none.
-	Resolve(ctx context.Context, kind string, id, person uuid.UUID, resolution string, at time.Time) (bool, error)
-	// OpenReportIDs is the id of every open report on one post or comment
-	// (kind KindPost or KindComment). Remove reads them before it deletes
-	// the target: once it is gone its reports no longer point at it.
-	OpenReportIDs(ctx context.Context, kind string, target uuid.UUID) ([]uuid.UUID, error)
-	// ResolveIDs closes the reports of kind with these ids that are still
-	// open.
-	ResolveIDs(ctx context.Context, kind string, ids []uuid.UUID, resolution string, at time.Time) error
+	// Events is the person's decision log, newest first.
+	Events(ctx context.Context, person uuid.UUID) ([]Event, error)
+	// Removed is every post and comment removed inside RemovalGrace, the
+	// most recently removed first, and RemovedCount how many there are.
+	Removed(ctx context.Context) ([]RemovedItem, error)
+	RemovedCount(ctx context.Context) (int, error)
+	// DismissItem closes the open reports of kind with these ids that are
+	// about person, and says how many it closed. For a post or a comment it
+	// holds the item meanwhile, so no report lands in between, and when the
+	// item was hidden while under review before and is not after (and is
+	// not removed), it logs that it shows again: shownAgain.
+	DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (closed int, shownAgain bool, err error)
+	// RemoveItem removes person's post or comment (kind KindPost or
+	// KindComment): it is gone for everyone, its owner too, from now on the
+	// database's clock. Every report still open on it is closed as Removed,
+	// and the removal is logged with its title or text and the reasons of
+	// those reports. Nothing is deleted: the purge does that after
+	// RemovalGrace. ErrNotFound when it is not there or removed already.
+	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error
+	// RestoreItem brings person's removed post or comment back while it is
+	// inside RemovalGrace, and logs it. Its reports stay closed. ErrNotFound
+	// when it is not removed, or past the grace.
+	RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error
 	// ReportTarget is the post or comment an open-or-closed report points
@@ -150,9 +252,7 @@ type Repository interface {
 	// SetDisabled disables the account at at, or enables it again when at
 	// is nil. Disabling ends every session of the account in the same
 	// transaction (its refresh tokens are revoked), and deletes its Forgot
-	// password code and its push tokens.
-	SetDisabled(ctx context.Context, person uuid.UUID, at *time.Time) error
-	// DeleteComment deletes a comment and its replies and returns their
-	// photo keys, leaving out a file that a post's photo also names.
-	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
+	// password code and its push tokens. When it changes the account, the
+	// decision is logged at loggedAt in that transaction too.
+	SetDisabled(ctx context.Context, person uuid.UUID, at *time.Time, loggedAt time.Time) error
 }

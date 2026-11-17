@@ -216,9 +216,12 @@ func TestSocialCoverage_TheBellSaysABonusSpinWasAdded(t *testing.T) {
 
 // ADM-04: Dismiss closes every report on the card and only those. A report
 // of the same comment that came in after the page was drawn stays open, alone
-// on its card, and the Reports tab still counts it.
+// on its card, and the Reports tab still counts it. That third report hid the
+// comment, and the dismissal of the card's two leaves one: it shows again,
+// the notice says so, and it is logged once for its writer.
 func TestSocialCoverage_DismissClosesOnlyTheReportsOnTheCardAsItWasDrawn(t *testing.T) {
-	w, _ := newAdminWorld(t)
+	pool := requireIntegrationPool(t)
+	w, _ := newAdminWorldOn(t, pool)
 	a := w.person("sd_alice", "Alice Ames")
 	b := w.person("sd_bob", "Bob Brown")
 	r1 := w.person("sd_rae", "Rae One")
@@ -254,9 +257,18 @@ func TestSocialCoverage_DismissClosesOnlyTheReportsOnTheCardAsItWasDrawn(t *test
 
 	// R3 reports the comment after the page was drawn; then Dismiss.
 	w.ok(r3, http.MethodPost, report, map[string]any{"reason": "hate"})
+	if ids, _ := w.commentIDs(a, aEntry); len(ids) != 0 {
+		t.Fatalf("three reports, yet the post's owner still sees the comment: %v", ids)
+	}
 	rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie, form, "")
-	if rec.Header().Get("Location") != "/admin/people/"+b.id+"?n=dismissed" {
+	if rec.Header().Get("Location") != "/admin/people/"+b.id+"?n=shownagain" {
 		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got := loggedActions(t, pool, b.id); !slices.Equal(got, []string{"shown_again comment " + comment}) {
+		t.Fatalf("the log: %v, want the comment shown again once", got)
+	}
+	if ids, _ := w.commentIDs(a, aEntry); !slices.Equal(ids, []string{comment}) {
+		t.Fatalf("the comment for the post's owner after the dismissal: %v", ids)
 	}
 
 	page = adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()

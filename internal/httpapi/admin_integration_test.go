@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
@@ -243,8 +245,7 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	w.call(a, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
 
 	// Disabling closed every report about B; a new report opens one again,
-	// from Cara (A's own report is not made twice). Remove that reported post
-	// through the app's own delete.
+	// from Cara (A's own report is not made twice). Remove that reported post.
 	w.call(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
 	w.ok(c, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
 	page = adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
@@ -272,9 +273,10 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 }
 
 // The admin page opens only people someone reported (them, a post or a
-// comment, open or closed) and disabled accounts, and shows no email address.
-// Anyone else's page is the list, with nothing about them, and a disable or
-// an enable sent for them anyway changes nothing.
+// comment, open or closed), disabled accounts and people the decision log
+// names, and shows no email address. Anyone else's page is the list, with
+// nothing about them, and a disable or an enable sent for them anyway
+// changes nothing.
 func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	w, _ := newAdminWorldOn(t, pool)
@@ -350,7 +352,8 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 
 	// A disabled account opens with no report left about it (its only
 	// reporter deleted their account), so the disabled list can enable it.
-	// Once enabled, its page is the list, which still says so.
+	// Once enabled it still opens: the decision log names it, and its
+	// history says what was decided, newest first.
 	gone := w.person("ad_gone", "Gale Gone")
 	w.ok(a, http.MethodPost, "/v1/people/"+gone.id+"/report", map[string]any{"reason": "harassment"})
 	rec = adminDo(t, w, http.MethodPost, "/admin/people/"+gone.id+"/disable", cookie, url.Values{"csrf": {csrf}}, "")
@@ -370,7 +373,14 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if rec.Header().Get("Location") != "/admin/people/"+gone.id+"?n=enabled" {
 		t.Fatalf("enable: %q", rec.Header().Get("Location"))
 	}
-	sentToList("an enabled account no report names", adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, ""), "/admin?n=enabled")
+	enabled := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "")
+	if body := enabled.Body.String(); enabled.Code != http.StatusOK || !strings.Contains(body, "Account enabled again.") ||
+		!strings.Contains(body, "<strong>Account enabled</strong>") ||
+		strings.Index(body, "<strong>Account enabled</strong>") > strings.Index(body, "<strong>Account disabled</strong>") {
+		t.Fatalf("an enabled account no report names, want its page with the notice and its history: %d %s", enabled.Code, body)
+	}
+	// A page that does not open keeps a fixed notice on the way to the list.
+	sentToList("an unreported person with a fixed notice", adminDo(t, w, http.MethodGet, "/admin/people/"+quiet.id+"?n=enabled", cookie, nil, ""), "/admin?n=enabled")
 	if list := adminDo(t, w, http.MethodGet, "/admin?n=enabled", cookie, nil, "").Body.String(); !strings.Contains(list, "Account enabled again.") {
 		t.Fatalf("the list lacks the notice: %s", list)
 	}
@@ -932,6 +942,22 @@ func TestAdminIntegration_ANewPasswordEndsTheAdminSession(t *testing.T) {
 	login(setTo)
 }
 
+// loggedActions is the decision log about owner, oldest first, a row as its
+// action, item and item id.
+func loggedActions(t *testing.T, pool *pgxpool.Pool, owner string) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), `select action || ' ' || item || ' ' || item_id::text
+		from moderation_events where owner_id = $1 order by created_at, id`, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 // adminReportID is the report id an open report's forms carry.
 func adminReportID(t *testing.T, report string) string {
 	t.Helper()
@@ -945,9 +971,11 @@ func adminReportID(t *testing.T, report string) string {
 
 // Remove closes every report still open on the post or comment, whoever made
 // it, and leaves a report already dismissed as it was. With nothing left
-// open, the person leaves the open reports.
+// open, the person leaves the open reports. The post's three reports hid it,
+// so their dismissal shows it again, once, and says so.
 func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
-	w, _ := newAdminWorld(t)
+	pool := requireIntegrationPool(t)
+	w, _ := newAdminWorldOn(t, pool)
 	b := w.person("ad_bob", "Bob Brown")
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
@@ -999,7 +1027,10 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 	if n := strings.Count(personPage(), `<article class="card`); n != 2 {
 		t.Fatalf("%d cards, want one for the post and one for the comment", n)
 	}
-	act("dismiss", "post", "Violence or threats · Hate speech · Spam", "dismissed")
+	act("dismiss", "post", "Violence or threats · Hate speech · Spam", "shownagain")
+	if got := loggedActions(t, pool, b.id); !slices.Equal(got, []string{"shown_again post " + bEntry}) {
+		t.Fatalf("the log after the dismissal: %v, want the post shown again once", got)
+	}
 	// Alice cannot report the post again: it is gone for her for good. Erin,
 	// who never reported it, does: her report is open, alone on a card.
 	w.call(reporters[0], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"}, http.StatusNotFound)

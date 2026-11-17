@@ -29,45 +29,60 @@ import (
 var adminUnitSecret = []byte("admin-unit-test-secret-at-least-32-bytes")
 
 // fakeAdminRepo is admin.Repository in memory, for the admin page's unit
-// tests: the test sets what the calls answer, and the calls that change
-// something are recorded.
+// tests: the test sets what the calls answer, and every call is counted or
+// recorded, so a check that nothing ran means it.
 type fakeAdminRepo struct {
-	// target and owner are what ReportTarget answers for any report, and
-	// open is what OpenReportIDs answers.
+	// target and owner are what ReportTarget answers for any report.
 	target *uuid.UUID
 	owner  uuid.UUID
-	open   []uuid.UUID
-	// commentKeys and deleteErr are what DeleteComment answers; closeErr is
-	// what ResolveIDs answers.
-	commentKeys []string
-	deleteErr   error
-	closeErr    error
+	// removeErr, restoreErr and dismissErr are what RemoveItem, RestoreItem
+	// and DismissItem answer, and shownAgain is whether DismissItem says the
+	// item shows again.
+	removeErr  error
+	restoreErr error
+	dismissErr error
+	shownAgain bool
 
-	// openReports, disabled and reports are what OpenReports, DisabledPeople
-	// and Reports answer; Resolve finds the report ids in notOpen closed.
-	openReports []admin.OpenReport
-	disabled    []admin.Person
-	reports     []admin.Report
-	notOpen     map[uuid.UUID]bool
+	// openReports, disabled, reports, removed and events are what
+	// OpenReports, DisabledPeople, Reports, Removed and Events answer;
+	// removedBefore is the RemovedBefore of the person Person answers;
+	// DismissItem finds the report ids in notOpen closed.
+	openReports   []admin.OpenReport
+	disabled      []admin.Person
+	reports       []admin.Report
+	removed       []admin.RemovedItem
+	events        []admin.Event
+	removedBefore int
+	notOpen       map[uuid.UUID]bool
 
-	reads    int            // OpenReports, DisabledPeople, Person and Reports
-	resolved int            // Resolve
-	resolves []adminResolve // each Resolve call
-	deleted  []uuid.UUID    // DeleteComment
-	closed   []adminClose
+	reads      int            // OpenReports, DisabledPeople, Person, Reports, Events, Removed and RemovedCount
+	resolved   int            // DismissItem
+	dismissals []adminDismiss // each DismissItem call
+	removes    []adminAction  // each RemoveItem call
+	restores   []adminAction  // each RestoreItem call
+	disables   []adminDisable // each SetDisabled call
 }
 
-// adminResolve is one Resolve call.
-type adminResolve struct {
-	kind       string
-	id, person uuid.UUID
+// adminDismiss is one DismissItem call.
+type adminDismiss struct {
+	kind     string
+	ids      []uuid.UUID
+	person   uuid.UUID
+	loggedAt time.Time
 }
 
-// adminClose is one ResolveIDs call.
-type adminClose struct {
-	kind       string
-	ids        []uuid.UUID
-	resolution string
+// adminAction is one RemoveItem or RestoreItem call.
+type adminAction struct {
+	kind           string
+	target, person uuid.UUID
+	loggedAt       time.Time
+}
+
+// adminDisable is one SetDisabled call.
+type adminDisable struct {
+	person   uuid.UUID
+	disabled bool
+	loggedAt time.Time
 }
 
 var _ admin.Repository = (*fakeAdminRepo)(nil)
@@ -84,7 +99,7 @@ func (f *fakeAdminRepo) DisabledPeople(context.Context) ([]admin.Person, error) 
 
 func (f *fakeAdminRepo) Person(_ context.Context, id uuid.UUID) (admin.Person, error) {
 	f.reads++
-	return admin.Person{ID: id, Username: "someone"}, nil
+	return admin.Person{ID: id, Username: "someone", RemovedBefore: f.removedBefore}, nil
 }
 
 func (f *fakeAdminRepo) Reports(context.Context, uuid.UUID) ([]admin.Report, error) {
@@ -92,19 +107,44 @@ func (f *fakeAdminRepo) Reports(context.Context, uuid.UUID) ([]admin.Report, err
 	return f.reports, nil
 }
 
-func (f *fakeAdminRepo) Resolve(_ context.Context, kind string, id, person uuid.UUID, _ string, _ time.Time) (bool, error) {
+func (f *fakeAdminRepo) Events(context.Context, uuid.UUID) ([]admin.Event, error) {
+	f.reads++
+	return f.events, nil
+}
+
+func (f *fakeAdminRepo) Removed(context.Context) ([]admin.RemovedItem, error) {
+	f.reads++
+	return f.removed, nil
+}
+
+func (f *fakeAdminRepo) RemovedCount(context.Context) (int, error) {
+	f.reads++
+	return len(f.removed), nil
+}
+
+func (f *fakeAdminRepo) DismissItem(_ context.Context, kind string, ids []uuid.UUID, person uuid.UUID, _, loggedAt time.Time) (int, bool, error) {
 	f.resolved++
-	f.resolves = append(f.resolves, adminResolve{kind: kind, id: id, person: person})
-	return !f.notOpen[id], nil
+	f.dismissals = append(f.dismissals, adminDismiss{kind: kind, ids: slices.Clone(ids), person: person, loggedAt: loggedAt})
+	if f.dismissErr != nil {
+		return 0, false, f.dismissErr
+	}
+	closed := 0
+	for _, id := range ids {
+		if !f.notOpen[id] {
+			closed++
+		}
+	}
+	return closed, closed > 0 && f.shownAgain, nil
 }
 
-func (f *fakeAdminRepo) OpenReportIDs(context.Context, string, uuid.UUID) ([]uuid.UUID, error) {
-	return f.open, nil
+func (f *fakeAdminRepo) RemoveItem(_ context.Context, kind string, target, person uuid.UUID, _, loggedAt time.Time) error {
+	f.removes = append(f.removes, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
+	return f.removeErr
 }
 
-func (f *fakeAdminRepo) ResolveIDs(_ context.Context, kind string, ids []uuid.UUID, resolution string, _ time.Time) error {
-	f.closed = append(f.closed, adminClose{kind: kind, ids: ids, resolution: resolution})
-	return f.closeErr
+func (f *fakeAdminRepo) RestoreItem(_ context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
+	f.restores = append(f.restores, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
+	return f.restoreErr
 }
 
 func (f *fakeAdminRepo) ResolvePerson(context.Context, uuid.UUID, string, time.Time) error {
@@ -115,13 +155,9 @@ func (f *fakeAdminRepo) ReportTarget(context.Context, string, uuid.UUID) (*uuid.
 	return f.target, f.owner, nil
 }
 
-func (f *fakeAdminRepo) SetDisabled(context.Context, uuid.UUID, *time.Time) error {
+func (f *fakeAdminRepo) SetDisabled(_ context.Context, person uuid.UUID, at *time.Time, loggedAt time.Time) error {
+	f.disables = append(f.disables, adminDisable{person: person, disabled: at != nil, loggedAt: loggedAt})
 	return nil
-}
-
-func (f *fakeAdminRepo) DeleteComment(_ context.Context, id uuid.UUID) ([]string, error) {
-	f.deleted = append(f.deleted, id)
-	return f.commentKeys, f.deleteErr
 }
 
 // adminUsers is the fake user repository with a switch: while getErr is set,
@@ -138,9 +174,13 @@ func (u *adminUsers) GetByID(ctx context.Context, id uuid.UUID) (*user.User, err
 	return u.fakeUserRepo.GetByID(ctx, id)
 }
 
+// adminRigNow is the time on the rig's spin clock: an owner's own now, once
+// they have a time zone there.
+var adminRigNow = time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+
 // adminRig is the admin page over fakes, on the frozen limit clock, with one
-// account, boss@example.com, whose password is adminTestPassword. A post is
-// deleted through a spin service over the in-memory spin repository.
+// account, boss@example.com, whose password is adminTestPassword. The owners'
+// clocks are a spin service over the in-memory spin repository.
 type adminRig struct {
 	t      *testing.T
 	h      *AdminHandler
@@ -168,7 +208,7 @@ func newAdminRig(t *testing.T, bossIsAdmin bool) *adminRig {
 	if bossIsAdmin {
 		admins = []uuid.UUID{r.boss.ID}
 	}
-	r.spin = spin.NewService(spintest.NewMemRepo(), clock.NewFixed(time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)), spintest.NewQueueRand(1))
+	r.spin = spin.NewService(spintest.NewMemRepo(), clock.NewFixed(adminRigNow), spintest.NewQueueRand(1))
 	r.h = NewAdminHandler(r.repo, users, NewEntryHandler(r.spin, r.photos), adminUnitSecret, admins, false)
 	r.h.clock = frozenClock
 	gin.SetMode(gin.TestMode)
@@ -282,21 +322,21 @@ func TestAdminSession_ALookupThatFailsKeepsIt(t *testing.T) {
 	sentToLogin(t, "no such account", adminDo(t, r.w, http.MethodGet, "/admin", cookie, nil, ""), "expired", true)
 }
 
-// Remove closes the reports only once the post or comment is gone. A delete
-// that fails closes nothing, so the page still offers Remove; a delete that
-// works and a close that fails says so. Once both work, every report that
-// was open on it is closed as removed, and its photo file goes. A post that
-// cannot be deleted, or that is no longer there, closes nothing either.
-func TestAdminRemove_ClosesTheReportsOnlyOnceItIsGone(t *testing.T) {
+// Remove is one repository call that takes the post or comment down: no
+// file is deleted and no post goes through the app's delete (that needs the
+// owner's time zone, and the purge deletes it after 30 days). The card names
+// a report, and the target and owner come from it: a card for someone else,
+// or a target that is gone, changes nothing. Removed already is gone, and a
+// failure says so. The removal is logged on the owner's own clock.
+func TestAdminRemove_IsOneCallThatDeletesNothing(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
-	owner, target := uuid.New(), uuid.New()
+	owner, target, report := uuid.New(), uuid.New(), uuid.New()
 	r.repo.target, r.repo.owner = &target, owner
-	r.repo.open = []uuid.UUID{uuid.New(), uuid.New()}
-	remove := func(kind string) string {
+	remove := func(kind, person string) string {
 		t.Helper()
 		rec := adminDo(t, r.w, http.MethodPost, "/admin/reports/remove", cookie,
-			url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {kind}, "id": {r.repo.open[0].String()}, "person": {owner.String()}}, "")
+			url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {kind}, "id": {report.String()}, "person": {person}}, "")
 		if rec.Code != http.StatusSeeOther {
 			t.Fatalf("remove %s: %d %s", kind, rec.Code, rec.Body.String())
 		}
@@ -304,40 +344,51 @@ func TestAdminRemove_ClosesTheReportsOnlyOnceItIsGone(t *testing.T) {
 	}
 	back := func(notice string) string { return "/admin/people/" + owner.String() + "?n=" + notice }
 
-	r.repo.deleteErr = errors.New("conn closed")
-	if got := remove(admin.KindComment); got != back("failed") || len(r.repo.deleted) != 1 || len(r.repo.closed) != 0 {
-		t.Fatalf("a delete that fails: %q, %d deletes, closes %v; want failed and nothing closed", got, len(r.repo.deleted), r.repo.closed)
+	// The owner has no time zone, which the app's delete of a post would
+	// need: the soft removal does not.
+	for i, kind := range []string{admin.KindComment, admin.KindPost} {
+		if got := remove(kind, owner.String()); got != back("removed") {
+			t.Fatalf("remove a %s: %q", kind, got)
+		}
+		got := r.repo.removes[i]
+		if got.kind != kind || got.target != target || got.person != owner || time.Since(got.loggedAt) < 0 || time.Since(got.loggedAt) > time.Minute {
+			t.Fatalf("the %s's removal: %+v, want the target, its owner and now (no clock of theirs)", kind, got)
+		}
 	}
-
-	r.repo.deleteErr, r.repo.closeErr = nil, errors.New("conn closed")
-	if got := remove(admin.KindComment); got != back("failed") || len(r.repo.deleted) != 2 || len(r.repo.closed) != 1 {
-		t.Fatalf("a close that fails after the delete: %q, %d deletes, closes %v; want failed", got, len(r.repo.deleted), r.repo.closed)
-	}
-
-	r.repo.closeErr = nil
-	r.repo.commentKeys = []string{"entries/" + owner.String() + "/abcdefabcdefabcd.jpg"}
-	if got := remove(admin.KindComment); got != back("removed") {
-		t.Fatalf("a remove that works: %q", got)
-	}
-	want := adminClose{kind: admin.KindComment, ids: r.repo.open, resolution: admin.Removed}
-	if last := r.repo.closed[len(r.repo.closed)-1]; last.kind != want.kind || !slices.Equal(last.ids, want.ids) || last.resolution != want.resolution {
-		t.Fatalf("closed %+v, want %+v", last, want)
-	}
-	if got := r.photos.deletes(); !slices.Equal(got, r.repo.commentKeys) {
-		t.Fatalf("removed files %v, want %v", got, r.repo.commentKeys)
-	}
-
-	// The owner has no time zone, so the post cannot be deleted; then the
-	// post is no longer there.
-	closes := len(r.repo.closed)
-	if got := remove(admin.KindPost); got != back("failed") || len(r.repo.closed) != closes {
-		t.Fatalf("a post that cannot be deleted: %q, closes %v", got, r.repo.closed[closes:])
+	if len(r.photos.deletes()) != 0 {
+		t.Fatalf("a removal deleted files: %v", r.photos.deletes())
 	}
 	if _, err := r.spin.SetTimeZone(context.Background(), owner.String(), "America/New_York"); err != nil {
 		t.Fatal(err)
 	}
-	if got := remove(admin.KindPost); got != back("gone") || len(r.repo.closed) != closes {
-		t.Fatalf("a post that is no longer there: %q, closes %v", got, r.repo.closed[closes:])
+	remove(admin.KindPost, owner.String())
+	if got := r.repo.removes[2].loggedAt; !got.Equal(adminRigNow) {
+		t.Fatalf("logged at %v, want the owner's own %v", got, adminRigNow)
+	}
+
+	r.repo.removeErr = admin.ErrNotFound
+	if got := remove(admin.KindPost, owner.String()); got != back("gone") {
+		t.Fatalf("removed already: %q", got)
+	}
+	r.repo.removeErr = errors.New("conn closed")
+	if got := remove(admin.KindComment, owner.String()); got != back("failed") {
+		t.Fatalf("a removal that fails: %q", got)
+	}
+	r.repo.removeErr = nil
+	calls := len(r.repo.removes)
+	someoneElse := uuid.New()
+	if got := remove(admin.KindPost, someoneElse.String()); got != "/admin/people/"+someoneElse.String()+"?n=failed" {
+		t.Fatalf("a card for someone else: %q", got)
+	}
+	r.repo.target = nil
+	if got := remove(admin.KindComment, owner.String()); got != back("gone") {
+		t.Fatalf("a target that is gone: %q", got)
+	}
+	if got := remove(admin.KindPerson, owner.String()); got != "/admin" {
+		t.Fatalf("a person: %q", got)
+	}
+	if len(r.repo.removes) != calls || len(r.photos.deletes()) != 0 {
+		t.Fatalf("%d removals and files %v after the refusals", len(r.repo.removes)-calls, r.photos.deletes())
 	}
 }
 

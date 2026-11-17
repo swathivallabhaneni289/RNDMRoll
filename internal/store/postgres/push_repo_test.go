@@ -331,7 +331,7 @@ func TestPushRepo_ChangePasswordAndDisableStopPushes(t *testing.T) {
 	// An admin disables the account: nothing is sent, also for a token saved
 	// after it (the disable and the end of every session are separate steps).
 	disabledAt := time.Now()
-	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, &disabledAt); err != nil {
+	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, &disabledAt, disabledAt); err != nil {
 		t.Fatalf("SetDisabled: %v", err)
 	}
 	wantSentTo(t, repo, owner.ID)
@@ -343,7 +343,7 @@ func TestPushRepo_ChangePasswordAndDisableStopPushes(t *testing.T) {
 		t.Fatalf("RevokeAllForUser: %v", err)
 	}
 	// Enabled again, the old sessions stay over.
-	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, nil); err != nil {
+	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, owner.ID, nil, time.Now()); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	wantSentTo(t, repo, owner.ID)

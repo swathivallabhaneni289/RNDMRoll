@@ -1,7 +1,8 @@
 // Package httpapi: admin.go serves the admin web page at /admin (developer,
 // 2026-10-18, like Instagram's review tool): open reports grouped by the
-// reported person, one person's reports, and the actions (dismiss a report,
-// remove the reported post or comment, disable or enable the account).
+// reported person, one person's reports and decision log, what was removed
+// in the last 30 days, and the actions (dismiss a report, remove the reported
+// post or comment and bring it back, disable or enable the account).
 //
 // It is a plain server-rendered page, outside /v1 and its bearer tokens:
 //   - Only the accounts that had an ADMIN_EMAILS address when the server
@@ -26,11 +27,11 @@
 //     left open across a new log in) does nothing and goes back to the list.
 //   - Pages are html/template (every user-written text is escaped), with a
 //     strict Content-Security-Policy and no framing.
-//   - It opens only people someone reported and disabled accounts, and never
-//     shows an email address (AdminRepo.Person, developer, 2026-10-29:
-//     privacy first). Anyone else's page goes back to the list, and disabling
-//     or enabling them is refused the same way. A report names its reporter
-//     by username only.
+//   - It opens only people someone reported, disabled accounts and people
+//     the decision log names, and never shows an email address
+//     (AdminRepo.Person, developer, 2026-10-29: privacy first). Anyone
+//     else's page goes back to the list, and disabling or enabling them is
+//     refused the same way. A report names its reporter by username only.
 package httpapi
 
 import (
@@ -56,7 +57,6 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminlink"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
@@ -66,16 +66,15 @@ var adminFiles embed.FS
 const (
 	adminCookie     = "rndmroll_admin"
 	adminSessionTTL = 8 * time.Hour
-	// adminCloseTimeout bounds closing the reports of a post or comment the
-	// admin removed, which goes on after the browser has left (remove).
-	adminCloseTimeout = 10 * time.Second
 )
 
 // The notices a redirect may carry. Only these fixed words are ever shown:
 // nothing from the query is echoed.
 var adminNotices = map[string]string{
 	"dismissed":   "Dismissed. Its reports are closed.",
-	"removed":     "Removed. Its reports are closed.",
+	"shownagain":  "Dismissed. It shows again, and they were told.",
+	"removed":     "Removed. It's on the Removed tab for 30 days.",
+	"restored":    "Brought back. They were told.",
 	"gone":        "That post or comment is already gone.",
 	"disabled":    "Account disabled. They are logged out and hidden from everyone.",
 	"enabled":     "Account enabled again.",
@@ -173,6 +172,51 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			}
 			return "Account"
 		},
+		// reasons writes report reasons in words, the most serious first, for
+		// the history: commas, so no line there reads like a card's reasons.
+		"reasons": func(rs []string) string {
+			words := make([]string, 0, len(rs))
+			for _, r := range rs {
+				if w, ok := admin.ReasonWords[r]; ok {
+					r = w
+				}
+				words = append(words, r)
+			}
+			return strings.Join(words, ", ")
+		},
+		// decision names one row of the decision log.
+		"decision": func(e admin.Event) string {
+			what := "Account"
+			switch e.Item {
+			case admin.KindPost:
+				what = "Post"
+			case admin.KindComment:
+				what = "Comment"
+			}
+			switch e.Action {
+			case admin.LogRemoved:
+				return what + " removed"
+			case admin.LogRestored:
+				return what + " brought back"
+			case admin.LogShownAgain:
+				return what + " shown again"
+			case admin.LogDisabled:
+				return what + " disabled"
+			case admin.LogEnabled:
+				return what + " enabled"
+			}
+			return what + " " + e.Action
+		},
+		// daysLeft is how long a removed post or comment has before it is
+		// deleted for good.
+		"daysLeft": func(days int) string {
+			if days == 1 {
+				return "1 day left"
+			}
+			return strconv.Itoa(days) + " days left"
+		},
+		// ref is the short reference of a log row.
+		"ref": admin.Ref,
 		"closed": func(resolution string) string {
 			switch resolution {
 			case admin.Dismissed:
@@ -258,10 +302,12 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 	in.Use(h.requireAdmin)
 	in.GET("", h.list)
 	in.GET("/disabled", h.disabledPage)
+	in.GET("/removed", h.removedPage)
 	in.GET("/people/:id", h.person)
 	in.POST("/logout", h.sameOrigin, h.checkCSRF, h.logout)
 	in.POST("/reports/dismiss", h.sameOrigin, h.checkCSRF, h.dismiss)
 	in.POST("/reports/remove", h.sameOrigin, h.checkCSRF, h.remove)
+	in.POST("/removed/restore", h.sameOrigin, h.checkCSRF, h.restore)
 	in.POST("/people/:id/disable", h.sameOrigin, h.checkCSRF, h.disable)
 	in.POST("/people/:id/enable", h.sameOrigin, h.checkCSRF, h.enable)
 }
@@ -441,11 +487,13 @@ type adminPage struct {
 	Notice  string
 	Person  admin.Person
 	Self    bool
-	// Tab is the section the page is in ("reports" or "disabled"; none on a
-	// person's page), and OpenCount and DisabledCount are the tabs' numbers.
+	// Tab is the section the page is in ("reports", "disabled" or
+	// "removed"; none on a person's page), and OpenCount, DisabledCount and
+	// RemovedCount are the tabs' numbers.
 	Tab           string
 	OpenCount     int
 	DisabledCount int
+	RemovedCount  int
 	// Items are every open report, put together (the Reports tab); Open and
 	// Closed are one person's (their page).
 	Items  []adminItem
@@ -456,6 +504,10 @@ type adminPage struct {
 	Capped bool
 	// People are the disabled accounts (the Disabled tab).
 	People []admin.Person
+	// Removed is what the Removed tab lists.
+	Removed []admin.RemovedItem
+	// History is the person's decision log, newest first (their page).
+	History []admin.Event
 }
 
 func (h *AdminHandler) render(c *gin.Context, name string, p adminPage) {
@@ -604,8 +656,13 @@ func (h *AdminHandler) list(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	removed, err := h.repo.RemovedCount(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
 	h.render(c, "list", adminPage{Title: "Reports", CSRF: h.csrf(c), Tab: "reports", Items: items, Capped: capped,
-		OpenCount: len(items), DisabledCount: len(people)})
+		OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed})
 }
 
 func (h *AdminHandler) disabledPage(c *gin.Context) {
@@ -620,8 +677,37 @@ func (h *AdminHandler) disabledPage(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	removed, err := h.repo.RemovedCount(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
 	h.render(c, "disabled", adminPage{Title: "Disabled", CSRF: h.csrf(c), Tab: "disabled", People: people,
-		OpenCount: len(items), DisabledCount: len(people)})
+		OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed})
+}
+
+// removedPage is the Removed tab: every post and comment removed in the
+// last admin.RemovalGrace, the most recently removed first, each with Bring
+// it back. Unlike the Reports tab it does not refresh itself.
+func (h *AdminHandler) removedPage(c *gin.Context) {
+	ctx := c.Request.Context()
+	removed, err := h.repo.Removed(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	items, _, err := h.openItems(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	people, err := h.repo.DisabledPeople(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	h.render(c, "removed", adminPage{Title: "Removed", CSRF: h.csrf(c), Tab: "removed", Removed: removed,
+		OpenCount: len(items), DisabledCount: len(people), RemovedCount: len(removed)})
 }
 
 // openItems is every open report put together by what it is about, in the
@@ -685,9 +771,19 @@ func (h *AdminHandler) person(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	removed, err := h.repo.RemovedCount(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	history, err := h.repo.Events(ctx, id)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
 	open, closed := groupReports(p, reports)
 	h.render(c, "person", adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open, Closed: closed,
-		Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people)})
+		History: history, Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed})
 }
 
 func (h *AdminHandler) fail(c *gin.Context, err error) {
@@ -701,23 +797,27 @@ func back(c *gin.Context, person uuid.UUID, notice string) {
 }
 
 // backTo returns to the page the action was sent from, as its form's "from"
-// says: the Reports tab ("list"), the Disabled tab ("disabled"), or else the
-// person's page. Only these fixed places, never a path from the request.
+// says: the Reports tab ("list"), the Disabled tab ("disabled"), the Removed
+// tab ("removed"), or else the person's page. Only these fixed places, never
+// a path from the request.
 func backTo(c *gin.Context, person uuid.UUID, notice string) {
 	switch c.PostForm("from") {
 	case "list":
 		c.Redirect(http.StatusSeeOther, "/admin?n="+notice)
 	case "disabled":
 		c.Redirect(http.StatusSeeOther, "/admin/disabled?n="+notice)
+	case "removed":
+		c.Redirect(http.StatusSeeOther, "/admin/removed?n="+notice)
 	default:
 		back(c, person, notice)
 	}
 }
 
 // toList answers a person's page the admin may not open (nobody reported
-// them and they are not disabled, or there is no such account) with the
-// list, saying nothing about them. It keeps a fixed notice, so enabling an
-// account no report names still says so.
+// them, they are not disabled and the decision log names nothing of theirs,
+// or there is no such account) with the list, saying nothing about them. It
+// keeps a fixed notice, so an action that went back to a page that no
+// longer opens still says how it went.
 func toList(c *gin.Context) {
 	to := "/admin"
 	if n := c.Query("n"); adminNotices[n] != "" {
@@ -743,6 +843,19 @@ func (h *AdminHandler) mayOpen(c *gin.Context, person uuid.UUID) bool {
 
 // --- actions ---
 
+// ownerNow is the owner's own now, which a decision about their post,
+// comment or account is logged at (the bell and the history read it): the
+// spin slice's clock for them, or the real one when that cannot be read (no
+// stored time zone, say).
+func (h *AdminHandler) ownerNow(ctx context.Context, owner uuid.UUID) time.Time {
+	if h.entries != nil && h.entries.svc != nil {
+		if now, _, err := h.entries.svc.ViewerClock(ctx, owner.String()); err == nil {
+			return now
+		}
+	}
+	return time.Now()
+}
+
 func formIDs(c *gin.Context) (kind string, id, person uuid.UUID, ok bool) {
 	kind = c.PostForm("kind")
 	var err1, err2 error
@@ -762,7 +875,10 @@ const adminDismissMost = admin.OpenReportsLimit
 const adminBodyBytes = 64 << 10
 
 // dismiss closes the reports on one card: every id the form sends, each
-// only while it is open and about that person (Resolve checks both).
+// only while it is open and about that person (DismissItem checks both, in
+// one transaction). A post or comment that was hidden while under review
+// and is not once they are closed shows again, and its owner is told: the
+// notice says so.
 func (h *AdminHandler) dismiss(c *gin.Context) {
 	kind := c.PostForm("kind")
 	person, err := uuid.Parse(c.PostForm("person"))
@@ -781,31 +897,31 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 		}
 		ids = append(ids, id)
 	}
-	ctx, now, closed := c.Request.Context(), time.Now().UTC(), 0
-	for _, id := range ids {
-		ok, err := h.repo.Resolve(ctx, kind, id, person, admin.Dismissed, now)
-		if err != nil {
-			backTo(c, person, "failed")
-			return
-		}
-		if ok {
-			closed++
-		}
+	ctx := c.Request.Context()
+	loggedAt := time.Now()
+	if kind != admin.KindPerson {
+		loggedAt = h.ownerNow(ctx, person)
 	}
-	if closed == 0 {
+	closed, shownAgain, err := h.repo.DismissItem(ctx, kind, ids, person, time.Now().UTC(), loggedAt)
+	switch {
+	case err != nil:
+		log.Printf("httpapi: admin dismiss %s: %v", kind, err)
+		backTo(c, person, "failed")
+	case closed == 0:
 		backTo(c, person, "nothingopen")
-		return
+	case shownAgain:
+		backTo(c, person, "shownagain")
+	default:
+		backTo(c, person, "dismissed")
 	}
-	backTo(c, person, "dismissed")
 }
 
-// remove takes down the reported post (through the app's own delete, so its
-// photos, the photos in its comments and the posted day are handled as when
-// its owner deletes it) or the reported comment, and then closes every report
-// that was open on it. Their ids are read first, since once the post or
-// comment is gone its reports no longer point at it, and they are closed only
-// once it is gone: a delete that fails closes nothing, so the page still
-// offers Remove.
+// remove takes down the reported post or comment for everyone, its owner
+// too, in one transaction that also closes every report open on it and logs
+// the removal (RemoveItem). Nothing is deleted: Bring it back on the Removed
+// tab undoes it for admin.RemovalGrace, and the purge deletes it and its
+// photos after. The card names a report of it, whose target and owner come
+// from the database, so a card for someone else changes nothing.
 func (h *AdminHandler) remove(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -822,21 +938,10 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		backTo(c, person, "gone")
 		return
 	}
-	open, err := h.repo.OpenReportIDs(ctx, kind, *target)
-	if err != nil {
-		backTo(c, person, "failed")
-		return
-	}
-	if kind == admin.KindComment {
-		var keys []string
-		if keys, err = h.repo.DeleteComment(ctx, *target); err == nil {
-			h.entries.removeFiles(ctx, keys)
-		}
-	} else {
-		err = h.removePost(ctx, owner, *target)
-	}
-	if errors.Is(err, spin.ErrEntryNotFound) {
-		// It was deleted meanwhile (by its owner, say): this closes nothing.
+	err = h.repo.RemoveItem(ctx, kind, *target, owner, time.Now().UTC(), h.ownerNow(ctx, owner))
+	if errors.Is(err, admin.ErrNotFound) {
+		// Deleted by its owner meanwhile, or removed already: this changes
+		// nothing.
 		backTo(c, person, "gone")
 		return
 	}
@@ -845,25 +950,31 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		backTo(c, person, "failed")
 		return
 	}
-	// It is gone, so its reports are closed even when the browser has left
-	// meanwhile. Should that fail, they show it gone, to dismiss.
-	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), adminCloseTimeout)
-	defer cancel()
-	if err := h.repo.ResolveIDs(closeCtx, kind, open, admin.Removed, time.Now().UTC()); err != nil {
-		log.Printf("httpapi: admin remove %s, closing its reports: %v", kind, err)
-		backTo(c, person, "failed")
-		return
-	}
 	backTo(c, person, "removed")
 }
 
-func (h *AdminHandler) removePost(ctx context.Context, owner, entryID uuid.UUID) error {
-	out, err := h.entries.svc.DeleteEntry(ctx, owner.String(), entryID.String())
-	if err != nil {
-		return err
+// restore is Bring it back on the Removed tab: the post or comment shows
+// again, and its owner is told, while it is inside admin.RemovalGrace. Its
+// reports stay closed, so its reporters still never see it. Past the grace,
+// back already or deleted, it is gone.
+func (h *AdminHandler) restore(c *gin.Context) {
+	kind, id, person, ok := formIDs(c)
+	if !ok || kind == admin.KindPerson {
+		c.Redirect(http.StatusSeeOther, "/admin/removed")
+		return
 	}
-	h.entries.removeFiles(ctx, out.Dropped)
-	return nil
+	ctx := c.Request.Context()
+	err := h.repo.RestoreItem(ctx, kind, id, person, h.ownerNow(ctx, person))
+	if errors.Is(err, admin.ErrNotFound) {
+		backTo(c, person, "gone")
+		return
+	}
+	if err != nil {
+		log.Printf("httpapi: admin restore %s: %v", kind, err)
+		backTo(c, person, "failed")
+		return
+	}
+	backTo(c, person, "restored")
 }
 
 func (h *AdminHandler) disable(c *gin.Context) {
@@ -884,7 +995,8 @@ func (h *AdminHandler) disable(c *gin.Context) {
 	// Logged out everywhere: SetDisabled revokes every refresh token in the
 	// transaction that disables the account, so no refresh token works again,
 	// and every request with an old access token is refused (RequireUser).
-	if err := h.repo.SetDisabled(ctx, id, &now); err != nil {
+	// It logs the decision in that transaction too.
+	if err := h.repo.SetDisabled(ctx, id, &now, h.ownerNow(ctx, id)); err != nil {
 		back(c, id, "failed")
 		return
 	}
@@ -903,7 +1015,8 @@ func (h *AdminHandler) enable(c *gin.Context) {
 	if !h.mayOpen(c, id) {
 		return
 	}
-	if err := h.repo.SetDisabled(c.Request.Context(), id, nil); err != nil {
+	ctx := c.Request.Context()
+	if err := h.repo.SetDisabled(ctx, id, nil, h.ownerNow(ctx, id)); err != nil {
 		backTo(c, id, "failed")
 		return
 	}

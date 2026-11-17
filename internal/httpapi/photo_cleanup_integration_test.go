@@ -125,9 +125,11 @@ func TestPostIntegration_DeletingAPostRemovesItsCommentPhotos(t *testing.T) {
 	}
 }
 
-// An admin's remove goes through the same delete: the post's photos and its
-// comments' photos are removed.
-func TestAdminIntegration_RemovingAPostRemovesItsCommentPhotos(t *testing.T) {
+// An admin's Remove deletes nothing yet: the post with its photos, and the
+// comment under it with its photo, stay for Bring it back, while they are
+// gone for everyone, the owner and the comment's writer (who never reported
+// it) included. The purge deletes the files once the 30 days are over.
+func TestAdminIntegration_RemovingAPostKeepsItsPhotosForThePurge(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
 	photos := &fakeEntryPhotoStore{}
@@ -135,13 +137,16 @@ func TestAdminIntegration_RemovingAPostRemovesItsCommentPhotos(t *testing.T) {
 	adminFirst(w, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}, entryPhotos: photos}, "ad_boss")
 	a := w.person("ad_alice", "Alice Ames")
 	b := w.person("ad_bob", "Bob Brown")
+	c := w.person("ad_cara", "Cara Cole")
 	w.followAccepted(a, b)
+	w.followAccepted(c, b)
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
 	w.post(a, day)
+	w.post(c, day)
 	aPhoto := photos.newKey(uuid.MustParse(a.id), "jpg")
-	w.call(a, http.MethodPost, "/v1/posts/"+bEntry+"/comments", map[string]any{"photo_key": aPhoto}, http.StatusCreated)
-	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
+	aComment := w.call(a, http.MethodPost, "/v1/posts/"+bEntry+"/comments", map[string]any{"photo_key": aPhoto}, http.StatusCreated)["comment"].(map[string]any)["id"].(string)
+	w.ok(c, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
 	bPhotos := postPhotoKeys(t, pool, bEntry)
 
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
@@ -159,9 +164,20 @@ func TestAdminIntegration_RemovingAPostRemovesItsCommentPhotos(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Location"), "n=removed") {
 		t.Fatalf("remove post: %s", rec.Header().Get("Location"))
 	}
-	if got, want := photos.deletes()[before:], append(slices.Clone(bPhotos), aPhoto); !slices.Equal(got, want) {
-		t.Fatalf("removed files = %v, want %v", got, want)
+	if got := photos.deletes()[before:]; len(got) != 0 {
+		t.Fatalf("Remove deleted files %v, want none until the purge", got)
 	}
+	if got := postPhotoKeys(t, pool, bEntry); !slices.Equal(got, bPhotos) {
+		t.Fatalf("the post's photos after Remove: %v, want %v", got, bPhotos)
+	}
+	var kept string
+	if err := pool.QueryRow(context.Background(), `select photo_key from post_comments where id = $1`, aComment).Scan(&kept); err != nil || kept != aPhoto {
+		t.Fatalf("the comment under it: photo %q (err %v), want it kept with %s", kept, err, aPhoto)
+	}
+	for _, p := range []feedPerson{b, a} {
+		w.call(p, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
+	}
+	w.call(b, http.MethodGet, "/v1/entries/"+bEntry, nil, http.StatusNotFound)
 }
 
 // Over Postgres, a new profile photo removes the file of the one it replaced,

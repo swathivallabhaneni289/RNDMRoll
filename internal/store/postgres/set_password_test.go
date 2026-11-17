@@ -115,7 +115,7 @@ func TestUserRepo_SetPassword_RefusesADisabledOrDeletedAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := time.Now()
-	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, disabled.ID, &at); err != nil {
+	if err := postgres.NewAdminRepo(pool).SetDisabled(ctx, disabled.ID, &at, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := users.SetPassword(ctx, disabled.ID, "terminal-bcrypt-hash"); !errors.Is(err, user.ErrAccountDisabled) {
