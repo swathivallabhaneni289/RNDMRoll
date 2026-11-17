@@ -38,10 +38,19 @@ type adminModWorld struct {
 
 func newAdminModWorld(t *testing.T) *adminModWorld {
 	t.Helper()
+	return newAdminModWorldWith(t, "")
+}
+
+// newAdminModWorldWith is newAdminModWorld whose bell gives contact as the
+// address to ask for a second look ("" for none, as with CONTACT_EMAIL
+// unset).
+func newAdminModWorldWith(t *testing.T, contact string) *adminModWorld {
+	t.Helper()
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
 	w := &adminModWorld{feedWorld: &feedWorld{t: t, clk: clk}, pool: pool, photos: &fakeEntryPhotoStore{}, heard: &heardReports{}}
 	adminFirst(w.feedWorld, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}, entryPhotos: w.photos,
+		contactEmail: contact,
 		wire: func(s *social.Service, b *board.Service, _ *Deps) {
 			s.SetReportNotifier(w.heard)
 			b.SetReportNotifier(w.heard)

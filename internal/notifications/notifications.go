@@ -1,8 +1,10 @@
 // Package notifications builds the bell's list from data that already exists
 // (comments, replies, follows, requests, the spin window and the person's
-// spins, goal weeks). No notification is stored and no job runs; the only
-// state is one seen time per person. The notification settings filter the
-// list and the unread flag.
+// spins, goal weeks, and the admin's decisions about the person's own posts
+// and comments in the decision log). No notification is stored and no job
+// runs; the only state is one seen time per person. The notification
+// settings filter the list and the unread flag, except for the admin's
+// decisions, which always show.
 // Reactions on posts make no items (developer, 2026-10-18: reactions were
 // removed from the app; the stored "reactions" switch no longer changes the
 // list).
@@ -19,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 )
@@ -32,6 +35,16 @@ const (
 	KindFollowAccepted = "follow_accepted"
 	KindSpinOpen       = "spin_open"
 	KindBonusSpin      = "bonus_spin"
+
+	// The admin's decisions about the viewer's own post or comment
+	// (developer, 2026-11-17): "We removed your post. It broke our rules."
+	// and "Sorry, we got that wrong. Your post is back.", and the same for a
+	// comment. Back is a Bring it back, or a Dismiss that showed a hidden
+	// one again.
+	KindPostRemoved    = "post_removed"
+	KindCommentRemoved = "comment_removed"
+	KindPostBack       = "post_back"
+	KindCommentBack    = "comment_back"
 )
 
 // Sections.
@@ -69,6 +82,29 @@ type Bonus struct {
 	At        time.Time
 }
 
+// Decision is one row of the decision log (migration 0020's
+// moderation_events) about the viewer's own post or comment, as the
+// repository reads it: the facts, which decisionItem turns into an item by
+// the rules of its kind.
+type Decision struct {
+	// ID is the log row's. The item's id and the removal's ref come from it.
+	ID uuid.UUID
+	// Item is admin.KindPost or admin.KindComment; Action is admin.LogRemoved,
+	// admin.LogRestored or admin.LogShownAgain.
+	Item, Action string
+	// At is the owner's own clock when it was decided.
+	At time.Time
+	// Snapshot is the title or the comment text when it was decided.
+	Snapshot string
+	// EntryID is the post (for a comment, its post) while it is still in the
+	// database: nil once it is deleted.
+	EntryID *uuid.UUID
+	// Visible is whether the viewer can see that post now (social.CanView).
+	Visible bool
+	// PhotoKey is that post's first photo, read only while it is Visible.
+	PhotoKey *string
+}
+
 // Item is one row of the list as the viewer sees it.
 type Item struct {
 	ID           string
@@ -83,6 +119,11 @@ type Item struct {
 	Text         *string
 	RequestID    *uuid.UUID
 	PhotoKey     *string
+	// Ref and Contact are on a removal only: its short reference
+	// (admin.Ref), and the address to email for a second look ("" while
+	// none is set).
+	Ref     string
+	Contact string
 }
 
 // List is the list and its unread flag.
@@ -108,6 +149,10 @@ type Repository interface {
 	// Accepted: the viewer's requests that the other person accepted.
 	Accepted(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	Bonuses(ctx context.Context, viewer uuid.UUID, since time.Time) ([]Bonus, error)
+	// Decisions: the admin's removals and returns of the viewer's own posts
+	// and comments, dated by the viewer's own clock. Decisions about the
+	// account are not among them.
+	Decisions(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Decision, error)
 	Seen(ctx context.Context, viewer uuid.UUID) (time.Time, bool, error)
 	// MarkSeen moves the seen time forward only.
 	MarkSeen(ctx context.Context, viewer uuid.UUID, at time.Time) error
@@ -125,12 +170,21 @@ type Service struct {
 	repo   Repository
 	social *social.Service
 	clk    Clock
+	// contact is the address a removal's owner can email for a second look
+	// (SetContact); "" sends none.
+	contact string
 }
 
 // NewService builds a Service.
 func NewService(repo Repository, soc *social.Service, clk Clock) *Service {
 	return &Service{repo: repo, social: soc, clk: clk}
 }
+
+// SetContact sets the address the owner of a removed post or comment can
+// email to ask for a second look: the server's CONTACT_EMAIL, and never an
+// admin's sign-in address by default. The bell sends it on a removal only,
+// and sends none while it is "". Call it before the service is used.
+func (s *Service) SetContact(address string) { s.contact = address }
 
 // SectionOf is an item's section in the viewer's zone, by the same day count
 // as its label: today (or later), the six days before, earlier.
@@ -238,6 +292,19 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		}
 	}
 
+	// The admin's decisions about the viewer's own posts and comments have
+	// no actor, and no switch turns them off: they are the only word the
+	// owner gets that something of theirs was removed or is back.
+	decisions, err := s.repo.Decisions(ctx, viewer, since, MaxItems)
+	if err != nil {
+		return List{}, err
+	}
+	for _, d := range decisions {
+		if it, ok := s.decisionItem(d); ok {
+			items = append(items, it)
+		}
+	}
+
 	slices.SortFunc(items, func(a, b Item) int {
 		if c := b.At.Compare(a.At); c != 0 {
 			return c
@@ -263,6 +330,60 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		}
 	}
 	return out, nil
+}
+
+// decisionKind is the item kind of a decision about a post or a comment, ""
+// for any other (an account's, say), which makes no item.
+func decisionKind(item, action string) string {
+	removed := action == admin.LogRemoved
+	back := action == admin.LogRestored || action == admin.LogShownAgain
+	switch {
+	case item == admin.KindPost && removed:
+		return KindPostRemoved
+	case item == admin.KindComment && removed:
+		return KindCommentRemoved
+	case item == admin.KindPost && back:
+		return KindPostBack
+	case item == admin.KindComment && back:
+		return KindCommentBack
+	}
+	return ""
+}
+
+// decisionItem is the item for one decision, with the id kind:<log row>, at
+// the decision's own time and with the title or the comment text as it was
+// then (whole, on one line, as the email asking for a second look quotes
+// it). A removal carries no way back to what was removed, not even while it
+// is still kept for Bring it back: no post and no photo, only its ref and
+// the address to ask at. A post that is back opens the post, and shows its
+// first photo while the viewer can see it; a comment that is back opens its
+// post only while the viewer can see that post, which may be someone
+// else's, and shows no photo.
+func (s *Service) decisionItem(d Decision) (Item, bool) {
+	kind := decisionKind(d.Item, d.Action)
+	if kind == "" {
+		return Item{}, false
+	}
+	it := Item{ID: kind + ":" + d.ID.String(), Kind: kind, At: d.At.UTC()}
+	// A comment that is only a photo has no text, as in commentRows.
+	if text := strings.ReplaceAll(d.Snapshot, "\n", " "); text != "" {
+		it.Text = &text
+	}
+	switch kind {
+	case KindPostRemoved, KindCommentRemoved:
+		it.Ref = admin.Ref(d.ID)
+		it.Contact = s.contact
+	case KindPostBack:
+		it.EntryID = d.EntryID
+		if d.Visible {
+			it.PhotoKey = d.PhotoKey
+		}
+	case KindCommentBack:
+		if d.Visible {
+			it.EntryID = d.EntryID
+		}
+	}
+	return it, true
 }
 
 // Unread is the bell's dot: the same answer as the list's flag. A person

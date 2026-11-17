@@ -416,3 +416,27 @@ func TestLoad_PushDriverDefaultsToOffAndRejectsUnknown(t *testing.T) {
 		t.Errorf("Load() with PUSH_DRIVER=apns: want an error naming PUSH_DRIVER, got %v", err)
 	}
 }
+
+// The bell's address for a second look is CONTACT_EMAIL alone, trimmed. With
+// it unset there is none, even when ADMIN_EMAILS names admins: an admin's
+// sign-in address is never handed out by default.
+func TestLoad_ContactEmailIsReadFromItsOwnSettingOnly(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ADMIN_EMAILS", "boss@example.com, second@example.com")
+	t.Setenv("CONTACT_EMAIL", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.ContactEmail != "" || len(cfg.AdminEmails) != 2 {
+		t.Fatalf("ContactEmail = %q with CONTACT_EMAIL unset and admins %v, want none", cfg.ContactEmail, cfg.AdminEmails)
+	}
+
+	t.Setenv("CONTACT_EMAIL", "  Second.Look@example.com ")
+	if cfg, err = Load(); err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.ContactEmail != "Second.Look@example.com" {
+		t.Fatalf("ContactEmail = %q, want the setting trimmed", cfg.ContactEmail)
+	}
+}

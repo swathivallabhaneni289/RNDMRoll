@@ -125,6 +125,9 @@ func main() {
 	socialService := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardService := board.NewService(postgres.NewBoardRepo(pool), socialService, spinService, spinClock, entryPhotos.Link)
 	notificationsService := notifications.NewService(postgres.NewNotificationsRepo(pool), socialService, spinService)
+	// The bell tells the owner of a removed post or comment where to ask for
+	// a second look: CONTACT_EMAIL, or nothing while it is not set.
+	notificationsService.SetContact(cfg.ContactEmail)
 
 	// The diary and the Profile summary only read, through the pool, on the
 	// same clock as the spin service. Followers are counted by follows.

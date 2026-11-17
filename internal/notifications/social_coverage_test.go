@@ -48,6 +48,7 @@ type socialRead struct {
 type socialNotes struct {
 	comments, replies, follows, requests, accepted []Raw
 	bonuses                                        []Bonus
+	decisions                                      []Decision
 	seen                                           time.Time
 	haveSeen                                       bool
 	reads                                          []socialRead
@@ -85,6 +86,11 @@ func (n *socialNotes) Accepted(_ context.Context, _ uuid.UUID, since time.Time, 
 func (n *socialNotes) Bonuses(_ context.Context, _ uuid.UUID, since time.Time) ([]Bonus, error) {
 	n.read("bonuses", since, 0)
 	return n.bonuses, nil
+}
+
+func (n *socialNotes) Decisions(_ context.Context, _ uuid.UUID, since time.Time, limit int) ([]Decision, error) {
+	n.read("decisions", since, limit)
+	return n.decisions, nil
 }
 
 func (n *socialNotes) Seen(context.Context, uuid.UUID) (time.Time, bool, error) {
@@ -203,8 +209,10 @@ func TestSocialCoverage_TheBellKeepsTheNewest50FromTheLast30Days(t *testing.T) {
 			}
 		}
 	}
-	if len(notes.reads) != 6 {
-		t.Fatalf("the reads: %+v, want all six", notes.reads)
+	// Six reads, and the admin's decisions about the viewer's own posts
+	// and comments, which take the same window and limit.
+	if len(notes.reads) != 7 {
+		t.Fatalf("the reads: %+v, want all seven", notes.reads)
 	}
 }
 

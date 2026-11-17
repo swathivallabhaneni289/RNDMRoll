@@ -50,6 +50,12 @@ type itemView struct {
 	RequestID    *string      `json:"request_id"`
 	// PhotoURL is the post's first photo, "" when the item has none.
 	PhotoURL string `json:"photo_url"`
+	// Contact and Ref are sent on an admin's removal only (post_removed,
+	// comment_removed): the address to email for a second look, left out
+	// while the server has none, and the removal's short reference. The key
+	// is never "email": no feed answer carries one.
+	Contact string `json:"contact,omitempty"`
+	Ref     string `json:"ref,omitempty"`
 }
 
 // newItemView shows one item: photoURL signs the post's picture, personLink
@@ -58,7 +64,7 @@ type itemView struct {
 func newItemView(it notifications.Item, photoURL, personLink func(string) string) itemView {
 	v := itemView{
 		ID: it.ID, Kind: it.Kind, At: spin.Instant(it.At), AtLabel: it.AtLabel, Section: it.Section,
-		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text,
+		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text, Contact: it.Contact, Ref: it.Ref,
 	}
 	if it.Actor != nil {
 		p := newPersonView(*it.Actor, personLink)

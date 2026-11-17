@@ -172,6 +172,9 @@ type integrationOptions struct {
 	// wire, when set, adds to the wiring before the server is built (the
 	// push tests hang a fake push sender on the services).
 	wire func(socialSvc *social.Service, boardSvc *board.Service, deps *Deps)
+	// contactEmail is the bell's address for a second look, as
+	// CONTACT_EMAIL sets it; "" means none, as when it is not set.
+	contactEmail string
 }
 
 // buildIntegrationServerWith is buildIntegrationServer with the spin slice's
@@ -223,6 +226,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.Link)
 	notificationsSvc := notifications.NewService(postgres.NewNotificationsRepo(pool), socialSvc, spinSvc)
+	notificationsSvc.SetContact(opts.contactEmail)
 
 	deps := Deps{
 		Auth:          authHandler,
