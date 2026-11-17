@@ -174,6 +174,59 @@ func TestViolenceOrNudityGoesOutWithinAMinute(t *testing.T) {
 	}
 }
 
+// The report that makes a post or comment hidden while under review is
+// urgent whatever its reason: a spam report that hides something goes out
+// within a minute of the last email, not the hour, together with what was
+// waiting. The email counts it among the reports and says how many hid
+// something; an email with none says nothing about it.
+func TestAHidingReportGoesOutWithinAMinute(t *testing.T) {
+	r := newRig(t)
+	r.a.Reported("spam") // sent at once
+	if strings.Contains(r.last().text, "Hidden") || strings.Contains(r.last().html, "Hidden") {
+		t.Fatalf("an email with no hiding report mentions it: %s", r.last().text)
+	}
+	r.pass(20 * time.Second)
+	r.a.Reported("other")
+	if ft := r.live(); ft == nil || ft.d != CalmGap-20*time.Second {
+		t.Fatalf("timer: %+v, want the rest of the hour for a calm report", ft)
+	}
+	r.a.ReportedHiding("spam")
+	if ft := r.live(); ft == nil || ft.d != 40*time.Second {
+		t.Fatalf("timer: %+v, want the 40 seconds left of the minute", ft)
+	}
+	r.pass(40 * time.Second)
+	if r.emails() != 2 {
+		t.Fatalf("emails: %d, want the hiding one sent within the minute", r.emails())
+	}
+	got := r.last()
+	if want := "2 new reports on RNDMRoll.\n\nSpam: 1\nSomething else: 1\n\nHidden while you take a look: 1\n\nSee them on the admin page: " + pageURL + "\n"; got.text != want {
+		t.Fatalf("text:\n%q\nwant\n%q", got.text, want)
+	}
+	if got.subject != "RNDMRoll: 2 new reports" || !strings.Contains(got.html, "</p><p>Hidden while you take a look: 1</p><p><a href=") {
+		t.Fatalf("subject %q, html %s", got.subject, got.html)
+	}
+	// Counted once and then cleared: the next calm report waits the hour
+	// again, and its email says nothing of hiding.
+	r.pass(2 * time.Minute)
+	r.a.Reported("spam")
+	if ft := r.live(); ft == nil || ft.d != CalmGap-2*time.Minute {
+		t.Fatalf("timer after the hiding email: %+v, want the calm hour", ft)
+	}
+	r.pass(CalmGap)
+	if r.emails() != 3 || strings.Contains(r.last().text, "Hidden") {
+		t.Fatalf("emails: %d, the next one: %s", r.emails(), r.last().text)
+	}
+	// With nothing sent for a minute, it goes out the moment it comes in,
+	// and a nil Alerts ignores it.
+	r.pass(time.Minute)
+	r.a.ReportedHiding("harassment")
+	if r.emails() != 4 || !strings.Contains(r.last().text, "Bullying or harassment: 1\n\nHidden while you take a look: 1") {
+		t.Fatalf("emails: %d, want it sent at once: %s", r.emails(), r.last().text)
+	}
+	var none *Alerts
+	none.ReportedHiding("spam")
+}
+
 func TestCloseSendsWhatIsWaitingAndThenCountsNothing(t *testing.T) {
 	r := newRig(t)
 	r.a.Reported("spam")
@@ -210,7 +263,7 @@ func TestEveryAdminIsEmailedAndAFailureLogsNoAddress(t *testing.T) {
 }
 
 func TestTheEmailEscapesItsLink(t *testing.T) {
-	e := compose(map[string]int{"spam": 1}, `https://x.test/admin/go?a=1&b="2"`)
+	e := compose(map[string]int{"spam": 1}, 0, `https://x.test/admin/go?a=1&b="2"`)
 	if !strings.Contains(e.html, `href="https://x.test/admin/go?a=1&amp;b=&#34;2&#34;"`) {
 		t.Fatalf("html: %s", e.html)
 	}

@@ -28,18 +28,30 @@ import (
 // reviewThreshold is social.ReviewThreshold written into the SQL.
 var reviewThreshold = strconv.Itoa(social.ReviewThreshold)
 
+// postOpenReports counts the open reports on the post under alias e from
+// people whose accounts are not gone: what postUnderReview weighs. A
+// reporter has one report a post (unique reporter_id, entry_id), so the count
+// is a count of people.
+func postOpenReports(e string) string {
+	return `(select count(*) from post_reports mro join users mru on mru.id = mro.reporter_id
+		where mro.entry_id = ` + e + `.id and mro.resolved_at is null and not ` + goneAccount("mru") + `)`
+}
+
+// commentOpenReports is postOpenReports for the comment under alias c.
+func commentOpenReports(c string) string {
+	return `(select count(*) from comment_reports mco join users mcu on mcu.id = mco.reporter_id
+		where mco.comment_id = ` + c + `.id and mco.resolved_at is null and not ` + goneAccount("mcu") + `)`
+}
+
 // postUnderReview is a where fragment true when the post under alias e is
-// hidden while under review. A reporter has one report a post (unique
-// reporter_id, entry_id), so the count is a count of people.
+// hidden while under review.
 func postUnderReview(e string) string {
-	return `((select count(*) from post_reports mro join users mru on mru.id = mro.reporter_id
-		where mro.entry_id = ` + e + `.id and mro.resolved_at is null and not ` + goneAccount("mru") + `) >= ` + reviewThreshold + `)`
+	return `(` + postOpenReports(e) + ` >= ` + reviewThreshold + `)`
 }
 
 // commentUnderReview is postUnderReview for the comment under alias c.
 func commentUnderReview(c string) string {
-	return `((select count(*) from comment_reports mco join users mcu on mcu.id = mco.reporter_id
-		where mco.comment_id = ` + c + `.id and mco.resolved_at is null and not ` + goneAccount("mcu") + `) >= ` + reviewThreshold + `)`
+	return `(` + commentOpenReports(c) + ` >= ` + reviewThreshold + `)`
 }
 
 // postReportedBy is a where fragment true when the viewer v reported the post

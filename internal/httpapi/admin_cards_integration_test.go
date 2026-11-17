@@ -15,10 +15,12 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 )
 
-// heardReports is a report notifier that keeps each reason it hears.
+// heardReports is a report notifier that keeps each reason it hears, and
+// apart from them the reasons of the reports that hid their post or comment.
 type heardReports struct {
 	mu      sync.Mutex
 	reasons []string
+	hid     []string
 }
 
 func (h *heardReports) Reported(reason string) {
@@ -27,10 +29,25 @@ func (h *heardReports) Reported(reason string) {
 	h.reasons = append(h.reasons, reason)
 }
 
+func (h *heardReports) ReportedHiding(reason string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reasons = append(h.reasons, reason)
+	h.hid = append(h.hid, reason)
+}
+
+// got is every report heard, hiding ones included, in order.
 func (h *heardReports) got() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return slices.Clone(h.reasons)
+}
+
+// hiding is the reports heard as the ones that hid something, in order.
+func (h *heardReports) hiding() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.hid)
 }
 
 var dismissIDs = regexp.MustCompile(`<input type="hidden" name="id" value="([0-9a-f-]{36})">`)

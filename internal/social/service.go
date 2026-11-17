@@ -120,6 +120,11 @@ func (s *Service) SetFollowNotifier(n FollowNotifier) {
 // in the background and never fails the request.
 type ReportNotifier interface {
 	Reported(reason string)
+	// ReportedHiding is Reported for the one report that made its post or
+	// comment hidden while under review (the ReviewThreshold-th open one):
+	// the admin email sends it at once, as it does violence and nudity.
+	// People are never hidden, so a report of a person is never one.
+	ReportedHiding(reason string)
 }
 
 // SetReportNotifier sets who hears about reports of people; nil for no one.

@@ -1,10 +1,11 @@
 // Package adminalert emails the admins when someone reports a person, a post
 // or a comment (developer, 2026-11-17: "notifications so we know that there
 // are new reports"). A report of violence or nudity goes out at once, at most
-// one email a minute; anything else at most one email an hour, counted
-// together. An email says how many reports came in and why, and links to the
-// admin page. It never names anyone or shows what was reported: the page
-// does that, behind its log in.
+// one email a minute, and so does the report that makes a post or comment
+// hidden while under review (ReportedHiding); anything else at most one email
+// an hour, counted together. An email says how many reports came in and why,
+// how many of them hid something, and links to the admin page. It never names
+// anyone or shows what was reported: the page does that, behind its log in.
 //
 // What is waiting is kept in memory, so Close sends it before the server
 // stops (a free server is put to sleep when it is idle).
@@ -25,7 +26,7 @@ import (
 
 const (
 	// UrgentGap is the least time between two emails when a waiting report
-	// is violence or nudity.
+	// is violence or nudity, or hid a post or comment.
 	UrgentGap = time.Minute
 	// CalmGap is the least time between two emails otherwise.
 	CalmGap = time.Hour
@@ -53,8 +54,11 @@ type Alerts struct {
 	deliver func(email)
 	sending sync.WaitGroup
 
-	mu       sync.Mutex
-	pending  map[string]int
+	mu      sync.Mutex
+	pending map[string]int
+	// hid counts the waiting reports that made a post or comment hidden
+	// while under review.
+	hid      int
 	lastSent time.Time
 	timer    stopper
 	closed   bool
@@ -81,7 +85,13 @@ func New(sender Sender, to []string, pageURL string, logger *slog.Logger) *Alert
 // Reported counts one report kept (the board and social services call it
 // after the save) and sends the email now when one is due, or sets a timer
 // for when it will be.
-func (a *Alerts) Reported(reason string) {
+func (a *Alerts) Reported(reason string) { a.count(reason, false) }
+
+// ReportedHiding counts one report kept that made its post or comment hidden
+// while under review: urgent, whatever its reason.
+func (a *Alerts) ReportedHiding(reason string) { a.count(reason, true) }
+
+func (a *Alerts) count(reason string, hid bool) {
 	if a == nil {
 		return
 	}
@@ -91,6 +101,9 @@ func (a *Alerts) Reported(reason string) {
 		return
 	}
 	a.pending[reason]++
+	if hid {
+		a.hid++
+	}
 	a.plan()
 }
 
@@ -101,6 +114,9 @@ func (a *Alerts) plan() {
 		return
 	}
 	gap := CalmGap
+	if a.hid > 0 {
+		gap = UrgentGap
+	}
 	for reason := range a.pending {
 		if admin.Urgent(reason) {
 			gap = UrgentGap
@@ -130,8 +146,8 @@ func (a *Alerts) fire() {
 // flush sends what is waiting as one email and starts the gap again. Called
 // with mu held.
 func (a *Alerts) flush(now time.Time) {
-	e := compose(a.pending, a.pageURL)
-	a.pending = map[string]int{}
+	e := compose(a.pending, a.hid, a.pageURL)
+	a.pending, a.hid = map[string]int{}, 0
 	a.lastSent = now
 	if a.timer != nil {
 		a.timer.Stop()
@@ -181,8 +197,9 @@ func (a *Alerts) Close(ctx context.Context) {
 }
 
 // compose writes the email: how many reports, each reason with its count (the
-// most serious first), and the link. No names, no text, no photos.
-func compose(counts map[string]int, pageURL string) email {
+// most serious first), how many of them hid something (only when any did),
+// and the link. No names, no text, no photos.
+func compose(counts map[string]int, hid int, pageURL string) email {
 	reasons := make([]string, 0, len(counts))
 	total := 0
 	for reason, n := range counts {
@@ -208,7 +225,15 @@ func compose(counts map[string]int, pageURL string) email {
 		}
 		lines = append(lines, fmt.Sprintf("%s: %d", words, counts[reason]))
 	}
-	text := head + "\n\n" + strings.Join(lines, "\n") + "\n\nSee them on the admin page: " + pageURL + "\n"
+	hidden := ""
+	if hid > 0 {
+		hidden = fmt.Sprintf("Hidden while you take a look: %d", hid)
+	}
+	text := head + "\n\n" + strings.Join(lines, "\n")
+	if hidden != "" {
+		text += "\n\n" + hidden
+	}
+	text += "\n\nSee them on the admin page: " + pageURL + "\n"
 	var b strings.Builder
 	b.WriteString("<p>" + html.EscapeString(head) + "</p><p>")
 	for i, line := range lines {
@@ -217,6 +242,10 @@ func compose(counts map[string]int, pageURL string) email {
 		}
 		b.WriteString(html.EscapeString(line))
 	}
-	b.WriteString(`</p><p><a href="` + html.EscapeString(pageURL) + `">See them on the admin page</a></p>`)
+	b.WriteString("</p>")
+	if hidden != "" {
+		b.WriteString("<p>" + html.EscapeString(hidden) + "</p>")
+	}
+	b.WriteString(`<p><a href="` + html.EscapeString(pageURL) + `">See them on the admin page</a></p>`)
 	return email{subject: fmt.Sprintf("RNDMRoll: %d new %s", total, noun), text: text, html: b.String()}
 }

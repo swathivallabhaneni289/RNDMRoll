@@ -194,19 +194,19 @@ func TestModerationIntegration_TwoReportsThatRaceAreKeptOnce(t *testing.T) {
 	w.sql(`update post_reports set resolved_at = now(), resolution = 'dismissed' where reporter_id = $1`, r.id)
 	w.sql(`update comment_reports set resolved_at = now(), resolution = 'dismissed' where reporter_id = $1`, r.id)
 	owner, writer := uuid.MustParse(o.id), uuid.MustParse(cw.id)
-	if err := repo.ReportPost(ctx, viewer, eid, owner, "Another title", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportPost(ctx, viewer, eid, owner, "Another title", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("the store's repeat post report: %v, want ErrNotFound", err)
 	}
-	if err := repo.ReportComment(ctx, viewer, cid, writer, "Other words", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportComment(ctx, viewer, cid, writer, "Other words", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("the store's repeat comment report: %v, want ErrNotFound", err)
 	}
 	if got := reports(); got != "spam dismissed | harassment Rude dismissed" {
 		t.Fatalf("the reports after the store's repeats: %s", got)
 	}
-	if err := repo.ReportPost(ctx, viewer, uuid.New(), owner, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportPost(ctx, viewer, uuid.New(), owner, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("a report of a post that is gone: %v, want ErrNotFound", err)
 	}
-	if err := repo.ReportComment(ctx, viewer, uuid.New(), writer, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportComment(ctx, viewer, uuid.New(), writer, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("a report of a comment that is gone: %v, want ErrNotFound", err)
 	}
 }

@@ -33,10 +33,11 @@ func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, rea
 	if row.Owner.ID == viewer {
 		return ErrNotFound
 	}
-	if err := s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {
+	hid, err := s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason, s.clk.NowFor(viewer.String()).UTC())
+	if err != nil {
 		return err
 	}
-	s.reported(reason)
+	s.reported(reason, hid)
 	return nil
 }
 
@@ -63,16 +64,23 @@ func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID
 	if _, err := s.visibleComment(ctx, viewer, c.EntryID, c.ID); err != nil {
 		return err
 	}
-	if err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {
+	hid, err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC())
+	if err != nil {
 		return err
 	}
-	s.reported(reason)
+	s.reported(reason, hid)
 	return nil
 }
 
-// reported tells the report notifier, when there is one, about a report kept.
-func (s *Service) reported(reason string) {
-	if s.reports != nil {
+// reported tells the report notifier, when there is one, about a report
+// kept: as a hiding one when it made its post or comment hidden while under
+// review, which the admin email sends at once.
+func (s *Service) reported(reason string, hid bool) {
+	switch {
+	case s.reports == nil:
+	case hid:
+		s.reports.ReportedHiding(reason)
+	default:
 		s.reports.Reported(reason)
 	}
 }
