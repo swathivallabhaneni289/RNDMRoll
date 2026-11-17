@@ -2,7 +2,7 @@
 
 # Terms of Use
 
-Effective November 13, 2026
+Effective November 17, 2026
 
 These terms are the rules for using RNDMRoll, the app where you spin a wheel once a day and post one real thing for the category it lands on. They are an agreement between you and the developer of RNDMRoll ("we" or "us").
 
@@ -27,13 +27,13 @@ You can't use RNDMRoll if we have disabled an account of yours before, or if the
 
 Your posts, photos, comments, profile and wheel are yours. You keep every right you have to them.
 
-To run RNDMRoll, we need your permission to store what you post, copy it, and show it to the people allowed to see it. By posting, you give us that permission. It's free, it applies worldwide, and we use it only to run RNDMRoll. It ends when you delete the content or your account is deleted, except for the few copies the Privacy Policy says we keep, such as the words of a reported post.
+To run RNDMRoll, we need your permission to store what you post, copy it, and show it to the people allowed to see it. By posting, you give us that permission. It's free, it applies worldwide, and we use it only to run RNDMRoll. It ends when the content or your account is deleted, except for the few copies the Privacy Policy says we keep, such as the words of a reported post.
 
 Only post things you have the right to share. A photo of your own dinner is fine. Someone else's photo, or a picture of a person who didn't want to be posted, isn't.
 
 ## Who sees your posts
 
-Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports. Photo links stop working within an hour, as the Privacy Policy explains.
+Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.
 
 People who are signed in can find your account by your name or username, so friends can find you and send a request. What they see before you accept is described in the Privacy Policy.
 
@@ -56,11 +56,13 @@ RNDMRoll is for small groups of friends. Don't use it to:
 
 ## Reports and what we do about them
 
-You can report a person, a post or a comment. The person you report isn't told.
+You can report a person, a post or a comment. A post or comment you report disappears for you. The person you report is never told it was you.
 
-We review reports. We may remove posts or comments, or disable accounts, that break these terms, put someone at risk or could cause legal trouble, and we may act without warning when that is needed to keep people safe. A disabled account can't log in, and its profile, posts and comments are hidden from everyone else on RNDMRoll.
+A post or comment that several people report may be hidden from everyone but its owner while we review it.
 
-If you think we got a decision wrong, email us at .
+We review reports. We may remove posts or comments, or disable accounts, that break these terms, put someone at risk or could cause legal trouble, and we may act without warning when that is needed to keep people safe. A post or comment we remove is hidden from everyone, its owner included. We keep it for 30 days in case we got it wrong, then delete it with its photos. A disabled account can't log in, and its profile, posts and comments are hidden from everyone else on RNDMRoll.
+
+If you think we got a decision wrong, email us at  and ask for a second look. If we removed a post or comment of yours, the message about it in the app opens that email for you, and we can bring it back within the 30 days.
 
 Don't make a new account to get around a block or a disabled account.
 
