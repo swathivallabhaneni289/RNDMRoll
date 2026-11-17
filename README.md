@@ -122,7 +122,7 @@ A few things that took real care:
 
 - **Time zones.** Every person's day, 8 PM opening and late window follow their own zone, including the days clocks jump for daylight saving (`internal/spin/window.go`).
 - **One source of time.** The server writes every time label ("8:41 PM", "Mon", "Oct 3") so the app never guesses.
-- **Tests.** More than 500 Go test functions, and more than 100 of them run against a real PostgreSQL database.
+- **Tests.** More than 700 Go test functions, and more than 180 of them run against a real PostgreSQL database. Together they run about 85% of the server's code. Twelve check scripts cover the app's logic and the legal text.
 
 <details>
 <summary><b>Run it locally</b></summary>
@@ -155,6 +155,7 @@ Tests:
 make test                  # quick tests, no database needed
 make test-all-integration  # everything, against TEST_DATABASE_URL, one package at a time
 npm run typecheck          # the app's TypeScript check
+for f in scripts/check-*.ts; do node --experimental-strip-types "$f"; done  # all 12 check scripts
 node --experimental-strip-types scripts/check-legal.ts  # the Terms and Privacy text; add --write to refresh docs/legal
 ```
 

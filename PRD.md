@@ -57,7 +57,7 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
-| Quality | More than 500 Go test functions (more than 100 of them against a real PostgreSQL database), 10 app check scripts, strict TypeScript |
+| Quality | More than 700 Go test functions (more than 180 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
@@ -650,8 +650,9 @@ These rules decide what counts. The server owns all of them.
 
 ### Quality
 
-- More than 500 Go test functions; more than 100 of them run against a real PostgreSQL database.
-- 10 check scripts: nine for app logic and one for the legal text.
+- More than 700 Go test functions; more than 180 of them run against a real PostgreSQL database.
+- The Go tests run about 85% of the server's code (statement coverage).
+- 12 check scripts: eleven for app logic and one for the legal text.
 - Strict TypeScript.
 - **Later:** continuous integration on every push (none yet).
 
@@ -827,20 +828,19 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 
 Some were found while writing this document; others were already in the planning notes. None blocks the demo, and all are on the launch list.
 
-1. **A hidden reply still appears in a notification list.** The person it answers still sees its text in their list.
-2. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
-3. **A photo link already given out keeps working until it runs out.** After a block, a removed follower or an archive, a link a phone already has stops working within an hour, not at once.
-4. **Some photo files are never removed from storage.** This covers uploads never posted and any file whose one removal try failed. The server makes no new links for them.
-5. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
-6. **Search words appear in server logs.**
-7. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
-8. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
-9. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
-10. **A closed report about a person stays closed** when the same reporter reports them again, so the admin page never shows it. Post and comment reports open again.
-11. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
-12. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
-13. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
-14. **After a big time zone change, the countdown's line can say the wrong time.** When a move puts 8 PM less than 12 hours after the last spin, the wheel opens when the 12 hours end, such as 9:50 PM. The countdown counts to that moment and the wheel opens on time, but the line under it still reads "Opens at 8:00 PM."
+1. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
+2. **A photo link already given out keeps working until it runs out.** After a block, a removed follower or an archive, a link a phone already has stops working within an hour, not at once.
+3. **Some photo files are never removed from storage.** This covers uploads never posted and any file whose one removal try failed. The server makes no new links for them.
+4. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
+5. **Search words appear in server logs.**
+6. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
+7. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
+8. **The locked Board's count can be off.** It can include people whose post was deleted or archived, while the first names come only from visible posts.
+9. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
+10. **Some of your own comments can't be reached.** After an unfollow, a removal, a block or an archive, your comment on that post stays, and the app has no list of your comments to delete it from.
+11. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
+12. **After a big time zone change, the countdown's line can say the wrong time.** When a move puts 8 PM less than 12 hours after the last spin, the wheel opens when the 12 hours end, such as 9:50 PM. The countdown counts to that moment and the wheel opens on time, but the line under it still reads "Opens at 8:00 PM."
+13. **A Dismiss from an old admin page can close a newer report.** When the same person reports the same thing again after the page was drawn, Dismiss on the old card closes the new report too. The Reports tab redraws every minute; a person's page doesn't.
 
 ### Open questions
 
