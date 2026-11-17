@@ -71,21 +71,10 @@ const (
 	adminCloseTimeout = 10 * time.Second
 )
 
-// The reasons as the admin reads them (the same list the app shows).
-var adminReasonWords = map[string]string{
-	"spam":          "Spam",
-	"nudity":        "Nudity or sexual content",
-	"harassment":    "Bullying or harassment",
-	"hate":          "Hate speech",
-	"violence":      "Violence or threats",
-	"impersonation": "Pretending to be someone else",
-	"other":         "Something else",
-}
-
 // The notices a redirect may carry. Only these fixed words are ever shown:
 // nothing from the query is echoed.
 var adminNotices = map[string]string{
-	"dismissed":   "Report dismissed.",
+	"dismissed":   "Dismissed. Its reports are closed.",
 	"removed":     "Removed. Its reports are closed.",
 	"gone":        "That post or comment is already gone.",
 	"disabled":    "Account disabled. They are logged out and hidden from everyone.",
@@ -170,7 +159,7 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			return d.Format("Jan 2, 2006")
 		},
 		"reason": func(r string) string {
-			if w, ok := adminReasonWords[r]; ok {
+			if w, ok := admin.ReasonWords[r]; ok {
 				return w
 			}
 			return r
@@ -194,6 +183,18 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 				return "Closed when the account was disabled"
 			}
 			return "Closed"
+		},
+		// card hands the "item" template one item with the page's CSRF token
+		// and which page it is on.
+		"card": func(it adminItem, csrf, from string) adminCard {
+			return adminCard{Item: it, CSRF: csrf, From: from}
+		},
+		// initial is the letter shown for a person with no profile photo.
+		"initial": func(username string) string {
+			for _, r := range username {
+				return strings.ToUpper(string(r))
+			}
+			return "?"
 		},
 		// photo signs the link of a post, comment or profile photo key.
 		// The page signs each photo once, for both its link and its
@@ -244,17 +245,19 @@ func (h *AdminHandler) now() time.Time {
 // Register mounts /admin on the engine (outside /v1).
 func (h *AdminHandler) Register(engine *gin.Engine) {
 	g := engine.Group("/admin")
-	g.Use(middleware.BodyLimit(middleware.MaxBodyBytes), adminHeaders)
+	g.Use(middleware.BodyLimit(adminBodyBytes), adminHeaders)
 	g.GET("/style.css", func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/css; charset=utf-8", h.css)
 	})
 	g.GET("/login", h.loginPage)
 	g.POST("/login", h.perAddress(), h.sameOrigin, h.login)
 	g.GET("/link", h.perAddress(), h.openLink)
+	g.GET("/go", h.goPage)
 
 	in := g.Group("")
 	in.Use(h.requireAdmin)
 	in.GET("", h.list)
+	in.GET("/disabled", h.disabledPage)
 	in.GET("/people/:id", h.person)
 	in.POST("/logout", h.sameOrigin, h.checkCSRF, h.logout)
 	in.POST("/reports/dismiss", h.sameOrigin, h.checkCSRF, h.dismiss)
@@ -433,14 +436,26 @@ func (h *AdminHandler) sameOrigin(c *gin.Context) {
 type adminPage struct {
 	Title string
 	// Refresh moves the page on to /admin at once (the page a link opens).
-	Refresh   bool
-	CSRF      string
-	Notice    string
-	Summaries []admin.Summary
-	Disabled  []admin.Summary
-	Person    admin.Person
-	Reports   []admin.Report
-	Self      bool
+	Refresh bool
+	CSRF    string
+	Notice  string
+	Person  admin.Person
+	Self    bool
+	// Tab is the section the page is in ("reports" or "disabled"; none on a
+	// person's page), and OpenCount and DisabledCount are the tabs' numbers.
+	Tab           string
+	OpenCount     int
+	DisabledCount int
+	// Items are every open report, put together (the Reports tab); Open and
+	// Closed are one person's (their page).
+	Items  []adminItem
+	Open   []adminItem
+	Closed []adminItem
+	// Capped says Items holds only the newest admin.OpenReportsLimit open
+	// reports.
+	Capped bool
+	// People are the disabled accounts (the Disabled tab).
+	People []admin.Person
 }
 
 func (h *AdminHandler) render(c *gin.Context, name string, p adminPage) {
@@ -569,19 +584,71 @@ func (h *AdminHandler) logout(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/login?n=signedout")
 }
 
+// goPage is where the report email links (internal/adminalert). The session
+// cookie is SameSite=Strict, so a click in a mail app or webmail arrives
+// without it; this page asks for nothing and moves on to the list itself,
+// and that step, from this site, carries the cookie.
+func (h *AdminHandler) goPage(c *gin.Context) {
+	h.render(c, "go", adminPage{Title: "Reports", Refresh: true})
+}
+
 func (h *AdminHandler) list(c *gin.Context) {
 	ctx := c.Request.Context()
-	sums, err := h.repo.Summaries(ctx)
+	items, capped, err := h.openItems(ctx)
 	if err != nil {
 		h.fail(c, err)
 		return
 	}
-	off, err := h.repo.DisabledPeople(ctx)
+	people, err := h.repo.DisabledPeople(ctx)
 	if err != nil {
 		h.fail(c, err)
 		return
 	}
-	h.render(c, "list", adminPage{Title: "Reports", CSRF: h.csrf(c), Summaries: sums, Disabled: off})
+	h.render(c, "list", adminPage{Title: "Reports", CSRF: h.csrf(c), Tab: "reports", Items: items, Capped: capped,
+		OpenCount: len(items), DisabledCount: len(people)})
+}
+
+func (h *AdminHandler) disabledPage(c *gin.Context) {
+	ctx := c.Request.Context()
+	people, err := h.repo.DisabledPeople(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	items, _, err := h.openItems(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	h.render(c, "disabled", adminPage{Title: "Disabled", CSRF: h.csrf(c), Tab: "disabled", People: people,
+		OpenCount: len(items), DisabledCount: len(people)})
+}
+
+// openItems is every open report put together by what it is about, in the
+// order the admin works through them (sortOpen). capped says the read hit
+// admin.OpenReportsLimit, so the oldest are not among them.
+func (h *AdminHandler) openItems(ctx context.Context) (items []adminItem, capped bool, err error) {
+	open, err := h.repo.OpenReports(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if capped = len(open) >= admin.OpenReportsLimit; capped {
+		log.Printf("httpapi: admin: %d open reports or more; the page shows the newest", admin.OpenReportsLimit)
+	}
+	var owners []admin.Person
+	byOwner := map[uuid.UUID][]admin.Report{}
+	for _, r := range open {
+		if _, seen := byOwner[r.Owner.ID]; !seen {
+			owners = append(owners, r.Owner)
+		}
+		byOwner[r.Owner.ID] = append(byOwner[r.Owner.ID], r.Report)
+	}
+	for _, o := range owners {
+		group, _ := groupReports(o, byOwner[o.ID])
+		items = append(items, group...)
+	}
+	sortOpen(items)
+	return items, capped, nil
 }
 
 func (h *AdminHandler) person(c *gin.Context) {
@@ -605,8 +672,19 @@ func (h *AdminHandler) person(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	h.render(c, "person", adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Reports: reports,
-		Self: id == adminUser(c).ID})
+	items, _, err := h.openItems(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	people, err := h.repo.DisabledPeople(ctx)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	open, closed := groupReports(p, reports)
+	h.render(c, "person", adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open, Closed: closed,
+		Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people)})
 }
 
 func (h *AdminHandler) fail(c *gin.Context, err error) {
@@ -617,6 +695,20 @@ func (h *AdminHandler) fail(c *gin.Context, err error) {
 // back returns to the person's page with one of the fixed notices.
 func back(c *gin.Context, person uuid.UUID, notice string) {
 	c.Redirect(http.StatusSeeOther, "/admin/people/"+person.String()+"?n="+notice)
+}
+
+// backTo returns to the page the action was sent from, as its form's "from"
+// says: the Reports tab ("list"), the Disabled tab ("disabled"), or else the
+// person's page. Only these fixed places, never a path from the request.
+func backTo(c *gin.Context, person uuid.UUID, notice string) {
+	switch c.PostForm("from") {
+	case "list":
+		c.Redirect(http.StatusSeeOther, "/admin?n="+notice)
+	case "disabled":
+		c.Redirect(http.StatusSeeOther, "/admin/disabled?n="+notice)
+	default:
+		back(c, person, notice)
+	}
 }
 
 // toList answers a person's page the admin may not open (nobody reported
@@ -658,22 +750,50 @@ func formIDs(c *gin.Context) (kind string, id, person uuid.UUID, ok bool) {
 	return
 }
 
+// adminDismissMost bounds the reports one Dismiss closes: a card's reports
+// (a card holds at most admin.OpenReportsLimit).
+const adminDismissMost = admin.OpenReportsLimit
+
+// adminBodyBytes is the largest form the admin page takes: room for a
+// Dismiss that sends adminDismissMost report ids (about 40 bytes each).
+const adminBodyBytes = 64 << 10
+
+// dismiss closes the reports on one card: every id the form sends, each
+// only while it is open and about that person (Resolve checks both).
 func (h *AdminHandler) dismiss(c *gin.Context) {
-	kind, id, person, ok := formIDs(c)
-	if !ok {
+	kind := c.PostForm("kind")
+	person, err := uuid.Parse(c.PostForm("person"))
+	raw := c.PostFormArray("id")
+	if err != nil || len(raw) == 0 || len(raw) > adminDismissMost ||
+		(kind != admin.KindPerson && kind != admin.KindPost && kind != admin.KindComment) {
 		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}
-	closed, err := h.repo.Resolve(c.Request.Context(), kind, id, person, admin.Dismissed, time.Now().UTC())
-	if err != nil {
-		back(c, person, "failed")
+	ids := make([]uuid.UUID, 0, len(raw))
+	for _, s := range raw {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			c.Redirect(http.StatusSeeOther, "/admin")
+			return
+		}
+		ids = append(ids, id)
+	}
+	ctx, now, closed := c.Request.Context(), time.Now().UTC(), 0
+	for _, id := range ids {
+		ok, err := h.repo.Resolve(ctx, kind, id, person, admin.Dismissed, now)
+		if err != nil {
+			backTo(c, person, "failed")
+			return
+		}
+		if ok {
+			closed++
+		}
+	}
+	if closed == 0 {
+		backTo(c, person, "nothingopen")
 		return
 	}
-	if !closed {
-		back(c, person, "nothingopen")
-		return
-	}
-	back(c, person, "dismissed")
+	backTo(c, person, "dismissed")
 }
 
 // remove takes down the reported post (through the app's own delete, so its
@@ -692,16 +812,16 @@ func (h *AdminHandler) remove(c *gin.Context) {
 	ctx := c.Request.Context()
 	target, owner, err := h.repo.ReportTarget(ctx, kind, id)
 	if err != nil || owner != person {
-		back(c, person, "failed")
+		backTo(c, person, "failed")
 		return
 	}
 	if target == nil {
-		back(c, person, "gone")
+		backTo(c, person, "gone")
 		return
 	}
 	open, err := h.repo.OpenReportIDs(ctx, kind, *target)
 	if err != nil {
-		back(c, person, "failed")
+		backTo(c, person, "failed")
 		return
 	}
 	if kind == admin.KindComment {
@@ -714,12 +834,12 @@ func (h *AdminHandler) remove(c *gin.Context) {
 	}
 	if errors.Is(err, spin.ErrEntryNotFound) {
 		// It was deleted meanwhile (by its owner, say): this closes nothing.
-		back(c, person, "gone")
+		backTo(c, person, "gone")
 		return
 	}
 	if err != nil {
 		log.Printf("httpapi: admin remove %s: %v", kind, err)
-		back(c, person, "failed")
+		backTo(c, person, "failed")
 		return
 	}
 	// It is gone, so its reports are closed even when the browser has left
@@ -728,10 +848,10 @@ func (h *AdminHandler) remove(c *gin.Context) {
 	defer cancel()
 	if err := h.repo.ResolveIDs(closeCtx, kind, open, admin.Removed, time.Now().UTC()); err != nil {
 		log.Printf("httpapi: admin remove %s, closing its reports: %v", kind, err)
-		back(c, person, "failed")
+		backTo(c, person, "failed")
 		return
 	}
-	back(c, person, "removed")
+	backTo(c, person, "removed")
 }
 
 func (h *AdminHandler) removePost(ctx context.Context, owner, entryID uuid.UUID) error {
@@ -781,8 +901,8 @@ func (h *AdminHandler) enable(c *gin.Context) {
 		return
 	}
 	if err := h.repo.SetDisabled(c.Request.Context(), id, nil); err != nil {
-		back(c, id, "failed")
+		backTo(c, id, "failed")
 		return
 	}
-	back(c, id, "enabled")
+	backTo(c, id, "enabled")
 }

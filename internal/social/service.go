@@ -98,6 +98,8 @@ type Service struct {
 	repo   Repository
 	clk    clock.Clock
 	notify FollowNotifier
+	// reports hears about every report kept (SetReportNotifier).
+	reports ReportNotifier
 }
 
 // FollowNotifier hears about new follow requests and accepted ones (the
@@ -111,6 +113,18 @@ type FollowNotifier interface {
 // SetFollowNotifier sets who hears about follow requests; nil for no one.
 func (s *Service) SetFollowNotifier(n FollowNotifier) {
 	s.notify = n
+}
+
+// ReportNotifier hears about every report kept, of a person, a post or a
+// comment, with its reason (the admin email, internal/adminalert). It works
+// in the background and never fails the request.
+type ReportNotifier interface {
+	Reported(reason string)
+}
+
+// SetReportNotifier sets who hears about reports of people; nil for no one.
+func (s *Service) SetReportNotifier(n ReportNotifier) {
+	s.reports = n
 }
 
 // NewService builds a Service.

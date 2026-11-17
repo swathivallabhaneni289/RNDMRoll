@@ -1,55 +1,88 @@
-:root { --ink: #141414; --muted: #6b6b6b; --line: #dedbd5; --page: #f6f4f0; --card: #ffffff; }
+:root { --ink: #141414; --muted: #6b6b6b; --line: #dedbd5; --page: #f6f4f0; --card: #ffffff; --soft: #ecebe7; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
 main { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 24px; }
+header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 16px; }
 h1 { font: 600 24px/1.2 Georgia, serif; margin: 0; }
-h2 { font: 600 18px/1.3 Georgia, serif; margin: 32px 0 8px; }
+h2 { font: 600 18px/1.3 Georgia, serif; margin: 32px 0 12px; }
+h3 { font: 600 20px/1.3 Georgia, serif; margin: 2px 0 0; }
 a { color: var(--ink); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a.home:hover { text-decoration: none; }
-p, .note, .quote { text-wrap: pretty; }
+p, .note, .text { text-wrap: pretty; }
 .muted { color: var(--muted); }
 .when { white-space: nowrap; }
 .note { padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 16px; }
-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 14px; font-weight: 400; color: var(--muted); }
-tr:last-child td { border-bottom: none; }
-td.who a { font-weight: 600; }
-td.who a, td.who span, td.reasons span { display: block; }
-.narrow { display: none; }
-.person { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
-.person p { margin: 0; }
-.avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; flex: none; }
-.report { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }
-.report.closed { opacity: 0.7; }
-.report p { margin: 0; }
-.report .what { font-weight: 600; }
-.quote { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--line); white-space: pre-wrap; word-break: break-word; }
-.quote .title { font-weight: 600; }
-.thumb { width: 96px; height: 120px; object-fit: cover; border-radius: 4px; display: block; margin: 8px 0; }
-.photos { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.photos .thumb { margin: 0; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* Sections: Reports and Disabled, with how many each holds. */
+.tabs { display: inline-flex; margin: 0 0 24px; border: 1px solid var(--ink); border-radius: 6px; overflow: hidden; }
+.tabs a { padding: 6px 16px; background: var(--card); }
+.tabs a + a { border-left: 1px solid var(--ink); }
+.tabs a.on { background: var(--ink); color: var(--page); }
+.tabs .n, details.past .n { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tabs a.on .n { color: var(--line); }
+
+/* One card per reported post, comment or account. */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+.card p { margin: 0; }
+.card.closed { opacity: 0.75; }
+.why { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.reasons { font-weight: 600; }
+.kind, .day { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.kind { white-space: nowrap; }
+.by { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.card .by { margin-top: 2px; }
+.body { margin-top: 16px; }
+.strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.strip a { display: block; }
+.strip img { display: block; width: 168px; height: 210px; object-fit: cover; border-radius: 4px; background: var(--soft); }
+.text { margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
+.card .quote { margin-top: 8px; padding-left: 12px; border-left: 3px solid var(--line); }
+.owner { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* A person: profile photo (or their first letter), username and name. */
+.who { display: flex; align-items: center; gap: 10px; }
+.who p { margin: 0; }
+.who a { display: block; flex: none; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; display: block; background: var(--soft); }
+.avatar.blank { display: inline-flex; align-items: center; justify-content: center; font: 600 15px/1 Georgia, serif; color: var(--muted); }
+.body .avatar, .profile .avatar { width: 56px; height: 56px; }
+.body .avatar.blank, .profile .avatar.blank { font-size: 22px; }
+.profile .by { margin-top: 10px; }
+.profile .status { margin-top: 6px; }
+.tag { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--ink); border-radius: 4px; padding: 0 6px; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.actions form { margin: 0; }
+.actions .push { margin-left: auto; }
 form.inline { display: inline; }
 button, a.button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; }
-a.button { display: inline-block; text-decoration: none; }
+a.button { display: inline-block; }
+button:hover, a.button:hover { background: var(--soft); }
 button.strong { background: var(--ink); color: var(--page); }
+button.strong:hover { background: #333333; }
+
+/* Disabled accounts: one row each, with Enable right there. */
+.lede { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+.rows { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: none; }
+.row p { margin: 0; }
+.row .actions { margin-top: 0; }
+.empty { background: var(--card); border: 1px dashed var(--line); border-radius: 8px; padding: 32px 16px; text-align: center; color: var(--muted); margin: 0 0 16px; }
+
+details.past { margin-top: 32px; }
+details.past summary { cursor: pointer; font: 600 18px/1.3 Georgia, serif; margin-bottom: 12px; }
+
 label { display: block; margin: 12px 0 4px; }
 input[type=email], input[type=password] { width: 100%; max-width: 360px; padding: 8px 10px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
 .login { max-width: 400px; margin: 64px auto; }
 .login .note { margin-top: 16px; }
 .login .actions { margin-top: 16px; }
 code { font: 14px/1.5 ui-monospace, Menlo, monospace; }
+
 @media (max-width: 600px) {
-  table, tbody, tr, td { display: block; }
-  thead { display: none; }
-  tr { display: flex; flex-wrap: wrap; column-gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
-  tr:last-child { border-bottom: none; }
-  td { padding: 0; border-bottom: none; }
-  td.who, td.reasons { flex-basis: 100%; }
-  td.count, td.when { order: 1; color: var(--muted); }
-  td.reasons { order: 2; margin-top: 4px; }
-  .narrow { display: inline; }
+  .card { padding: 14px 16px; }
+  .strip a { flex: 0 0 calc(50% - 4px); }
+  .strip img { width: 100%; height: auto; aspect-ratio: 4 / 5; }
+  .row { grid-template-columns: 1fr; gap: 8px; }
+  .actions .push { margin-left: 0; }
 }

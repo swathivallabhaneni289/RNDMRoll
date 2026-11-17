@@ -306,7 +306,7 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if rec.Header().Get("Location") != "/admin/people/"+reported.id+"?n=dismissed" {
 		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	if after := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String(); !strings.Contains(after, "Report dismissed.") || !strings.Contains(after, "Dismissed") {
+	if after := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String(); !strings.Contains(after, "Dismissed. Its reports are closed.") || !strings.Contains(after, "Closed reports") {
 		t.Fatalf("after the dismissal: %s", after)
 	}
 
@@ -342,8 +342,8 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), `delete from user_reports where reported_id = $1`, gone.id); err != nil {
 		t.Fatal(err)
 	}
-	if list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String(); !strings.Contains(list, `href="/admin/people/`+gone.id+`"`) {
-		t.Fatalf("the disabled list lacks them: %s", list)
+	if list := adminDo(t, w, http.MethodGet, "/admin/disabled", cookie, nil, "").Body.String(); !strings.Contains(list, `href="/admin/people/`+gone.id+`"`) {
+		t.Fatalf("the Disabled tab lacks them: %s", list)
 	}
 	if page := adminDo(t, w, http.MethodGet, "/admin/people/"+gone.id, cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Enable account") {
 		t.Fatalf("a disabled account no report names: %d %s", page.Code, page.Body.String())
@@ -371,12 +371,12 @@ func adminPost(w *feedWorld, p feedPerson, date string, keys ...string) string {
 	return entryObject(w.t, w.call(p, http.MethodPost, "/v1/entries", body, http.StatusCreated)["entry"])["id"].(string)
 }
 
-// adminReportOf returns the one report on an admin person page that holds
-// mark: from its opening tag to the next report's (or the page's end).
+// adminReportOf returns the one report card on an admin page that holds
+// mark: from its opening tag to the next card's (or the page's end).
 func adminReportOf(t *testing.T, page, mark string) string {
 	t.Helper()
 	var found []string
-	for _, part := range strings.Split(page, `<div class="report`)[1:] {
+	for _, part := range strings.Split(page, `<article class="card`)[1:] {
 		if strings.Contains(part, mark) {
 			found = append(found, part)
 		}
@@ -419,10 +419,10 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	}
 	report := adminReportOf(t, page.Body.String(), "Nudity or sexual content")
 	for _, want := range []string{
-		`<span class="muted">Title now:</span> <span class="title">Dune, again</span>`,
-		`<span class="muted">Title when reported:</span> Dune</p>`,
+		`<h3>Dune, again</h3>`,
+		`<p class="by">Title when reported: Dune</p>`,
 		"&lt;b&gt;Three&lt;/b&gt; photos\nand a note",
-		`Posted for <span class="when">Oct 8, 2026</span>`,
+		`<p class="day">Oct 8, 2026</p>`,
 	} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("the report lacks %q: %s", want, report)
@@ -466,11 +466,11 @@ func TestAdminIntegration_AReportAgainSavesTheNewTitle(t *testing.T) {
 
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
 	page := adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "")
-	if page.Code != http.StatusOK || strings.Count(page.Body.String(), `<div class="report`) != 1 {
+	if page.Code != http.StatusOK || strings.Count(page.Body.String(), `<article class="card`) != 1 {
 		t.Fatalf("the page, want one report: %d %s", page.Code, page.Body.String())
 	}
 	report := adminReportOf(t, page.Body.String(), "Bullying or harassment")
-	if !strings.Contains(report, `<div class="quote"><span class="title">Dune, again</span>`) ||
+	if !strings.Contains(report, `<h3>Dune, again</h3>`) ||
 		strings.Contains(report, "Title now") || strings.Contains(report, "Title when reported") {
 		t.Fatalf("the report, want the title then once and no label: %s", report)
 	}
@@ -525,10 +525,10 @@ func TestAdminIntegration_AGonePostShowsNoPhoto(t *testing.T) {
 		t.Fatalf("the page: %d %s", page.Code, page.Body.String())
 	}
 	report := adminReportOf(t, page.Body.String(), "The post is gone.")
-	if !strings.Contains(report, `<span class="title">Dune</span>`) {
+	if !strings.Contains(report, `<h3>Dune</h3>`) {
 		t.Fatalf("the report lacks the title: %s", report)
 	}
-	for _, bad := range []string{"<img", fakePhotoLinkBase, "Posted for", "Slow and worth it."} {
+	for _, bad := range []string{"<img", fakePhotoLinkBase, `class="day"`, "Slow and worth it."} {
 		if strings.Contains(report, bad) {
 			t.Fatalf("the gone post's report has %q: %s", bad, report)
 		}
@@ -720,7 +720,7 @@ func TestAdminIntegration_MakeAdminLinkOpensThePageOnce(t *testing.T) {
 		if rec.Code != http.StatusOK || cookie == "" || !strings.Contains(rec.Body.String(), `<meta http-equiv="refresh" content="0;url=/admin">`) {
 			t.Fatalf("a link for %q: %d, cookie %q, %s", email, rec.Code, cookie, rec.Body.String())
 		}
-		if page := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Open reports") {
+		if page := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `aria-current="page">Reports`) {
 			t.Fatalf("the session a link for %q opened: %d", email, page.Code)
 		}
 		again, cookie := adminLinkFrom(t, w, from(), token)
@@ -949,29 +949,45 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 		t.Helper()
 		return adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
 	}
+	// act sends a card's own form: Remove with the id it carries, Dismiss
+	// with every id on the card.
 	act := func(action, kind, mark, notice string) {
 		t.Helper()
 		page := personPage()
-		rec := adminDo(t, w, http.MethodPost, "/admin/reports/"+action, cookie, url.Values{"csrf": {csrfOf(t, page)},
-			"kind": {kind}, "id": {adminReportID(t, adminReportOf(t, page, mark))}, "person": {b.id}}, "")
+		card := adminReportOf(t, page, mark)
+		form := url.Values{"csrf": {csrfOf(t, page)}, "kind": {kind}, "person": {b.id}}
+		if action == "dismiss" {
+			for _, m := range dismissIDs.FindAllStringSubmatch(card[strings.Index(card, `action="/admin/reports/dismiss"`):], -1) {
+				form.Add("id", m[1])
+			}
+		} else {
+			form.Set("id", adminReportID(t, card))
+		}
+		rec := adminDo(t, w, http.MethodPost, "/admin/reports/"+action, cookie, form, "")
 		if rec.Header().Get("Location") != "/admin/people/"+b.id+"?n="+notice {
-			t.Fatalf("%s the report %q: %d %q, want %s", action, mark, rec.Code, rec.Header().Get("Location"), notice)
+			t.Fatalf("%s the card %q: %d %q, want %s", action, mark, rec.Code, rec.Header().Get("Location"), notice)
 		}
 	}
-	act("dismiss", "post", "Post · Violence or threats", "dismissed")
-	act("remove", "comment", "Comment · Bullying or harassment", "removed")
-	act("remove", "post", "Post · Hate speech", "removed")
+	// The post's three reports are one card, and the comment's two another.
+	if n := strings.Count(personPage(), `<article class="card`); n != 2 {
+		t.Fatalf("%d cards, want one for the post and one for the comment", n)
+	}
+	act("dismiss", "post", "Violence or threats · Hate speech · Spam", "dismissed")
+	// Alice reports the post again: her report opens again, alone on a card.
+	w.ok(reporters[0], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"})
+	act("remove", "comment", "Nudity or sexual content · Bullying or harassment", "removed")
+	act("remove", "post", `Violence or threats</p><p class="kind">Post`, "removed")
 
+	// Each closed card is one action: what Remove closed, and the two
+	// reports dismissed before, which it left as they were.
 	page := personPage()
 	for mark, closed := range map[string]string{
-		"Post · Spam":                        "Removed",
-		"Post · Hate speech":                 "Removed",
-		"Post · Violence or threats":         "Dismissed",
-		"Comment · Bullying or harassment":   "Removed",
-		"Comment · Nudity or sexual content": "Removed",
+		`Violence or threats</p><p class="kind">Post`:       "Removed",
+		"Violence or threats · Hate speech</p>":             "Dismissed",
+		"Nudity or sexual content · Bullying or harassment": "Removed",
 	} {
-		if report := adminReportOf(t, page, mark); !strings.Contains(report, `<p class="muted">`+closed+` · `) {
-			t.Fatalf("the report %q, want %s: %s", mark, closed, report)
+		if card := adminReportOf(t, page, mark); !strings.Contains(card, `<p class="by">`+closed+` · `) {
+			t.Fatalf("the card %q, want %s: %s", mark, closed, card)
 		}
 	}
 	if strings.Contains(page, "<button>Dismiss</button>") || strings.Contains(page, "Remove post") || strings.Contains(page, "Remove comment") {

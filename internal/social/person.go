@@ -120,7 +120,13 @@ func (s *Service) Report(ctx context.Context, viewer, id uuid.UUID, reason strin
 	if err := s.reachable(ctx, viewer, id); err != nil {
 		return err
 	}
-	return s.repo.Report(ctx, viewer, id, reason, s.now(viewer))
+	if err := s.repo.Report(ctx, viewer, id, reason, s.now(viewer)); err != nil {
+		return err
+	}
+	if s.reports != nil {
+		s.reports.Reported(reason)
+	}
+	return nil
 }
 
 // PeopleOf is another person's Followers (followers true) or Following list.

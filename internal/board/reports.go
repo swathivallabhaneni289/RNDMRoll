@@ -31,7 +31,11 @@ func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, rea
 	if row.Owner.ID == viewer {
 		return ErrNotFound
 	}
-	return s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason, s.clk.NowFor(viewer.String()).UTC())
+	if err := s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {
+		return err
+	}
+	s.reported(reason)
+	return nil
 }
 
 // ReportComment keeps the viewer's report of a comment they can read on a
@@ -57,5 +61,16 @@ func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID
 	if _, err := s.social.Profile(ctx, viewer, c.Author.ID); err != nil {
 		return ErrNotFound
 	}
-	return s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC())
+	if err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {
+		return err
+	}
+	s.reported(reason)
+	return nil
+}
+
+// reported tells the report notifier, when there is one, about a report kept.
+func (s *Service) reported(reason string) {
+	if s.reports != nil {
+		s.reports.Reported(reason)
+	}
 }

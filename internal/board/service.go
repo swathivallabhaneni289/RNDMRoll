@@ -87,6 +87,8 @@ type Service struct {
 	clk      clock.Clock
 	photoURL func(string) string
 	notify   CommentNotifier
+	// reports hears about every report kept (SetReportNotifier).
+	reports social.ReportNotifier
 }
 
 // CommentNotifier hears about every new comment and reply (the phone push,
@@ -98,6 +100,12 @@ type CommentNotifier interface {
 // SetCommentNotifier sets who hears about new comments; nil for no one.
 func (s *Service) SetCommentNotifier(n CommentNotifier) {
 	s.notify = n
+}
+
+// SetReportNotifier sets who hears about reports of posts and comments; nil
+// for no one.
+func (s *Service) SetReportNotifier(n social.ReportNotifier) {
+	s.reports = n
 }
 
 // NewService builds a Service. photoURL turns a storage key into its link;

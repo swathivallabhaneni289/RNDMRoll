@@ -26,53 +26,100 @@ func NewAdminRepo(pool *pgxpool.Pool) *AdminRepo {
 
 var _ admin.Repository = (*AdminRepo)(nil)
 
-// openReports is every open report as (person, reason, created_at).
-const openReports = `
-	select reported_id as person, reason, created_at from user_reports where resolved_at is null
-	union all
-	select owner_id, reason, created_at from post_reports where resolved_at is null
-	union all
-	select owner_id, reason, created_at from comment_reports where resolved_at is null`
+// adminPersonColumns are a person's columns as the admin page reads them (users
+// as u), in scanAdminPerson's order. The email is never among them.
+const adminPersonColumns = `u.id, coalesce(u.username, ''), coalesce(u.name, ''), coalesce(u.bio, ''), coalesce(u.avatar_key, ''),
+	u.created_at, u.disabled_at, u.deletion_requested_at`
 
-func scanSummaries(rows pgx.Rows) ([]admin.Summary, error) {
+// scanAdminPerson reads adminPersonColumns into p, ahead of rest.
+func scanAdminPerson(row pgx.Row, p *admin.Person, rest ...any) error {
+	return row.Scan(append([]any{&p.ID, &p.Username, &p.Name, &p.Bio, &p.PhotoKey, &p.CreatedAt, &p.DisabledAt,
+		&p.DeletionRequestedAt}, rest...)...)
+}
+
+// allReports is every report in the three tables as the page reads it, with
+// owner: the person reported, or whose post or comment it is. A post report
+// carries the post as it is now (its title, its day, its text and every
+// photo, in order), so the admin sees what was reported in full; a post that
+// is gone has none of them. Callers filter it by owner or by resolved_at.
+const allReports = `
+	select 'person' as kind, ur.reported_id as owner, ur.reporter_id as id, coalesce(rp.username, '') as reporter,
+	       ur.reason, ur.created_at, ur.resolved_at, coalesce(ur.resolution, '') as resolution,
+	       null::uuid as entry_id, '' as title, '' as title_now, '' as local_date, '' as note,
+	       array[]::text[] as photo_keys, null::uuid as comment_id, '' as body, '' as photo_key
+	from user_reports ur join users rp on rp.id = ur.reporter_id
+	union all
+	select 'post', pr.owner_id, pr.id, coalesce(rp.username, ''), pr.reason, pr.created_at, pr.resolved_at,
+	       coalesce(pr.resolution, ''), pr.entry_id, pr.title, coalesce(e.title, ''),
+	       coalesce(e.local_date::text, ''), coalesce(e.comment, ''),
+	       coalesce((select array_agg(ph.storage_key order by ph.position) from entry_photos ph
+	                 where ph.entry_id = pr.entry_id), array[]::text[]),
+	       null::uuid, '', ''
+	from post_reports pr join users rp on rp.id = pr.reporter_id
+	left join entries e on e.id = pr.entry_id
+	union all
+	select 'comment', cr.owner_id, cr.id, coalesce(rp.username, ''), cr.reason, cr.created_at, cr.resolved_at,
+	       coalesce(cr.resolution, ''), null::uuid, '', '', '', '', array[]::text[],
+	       cr.comment_id, cr.body,
+	       coalesce((select pc.photo_key from post_comments pc where pc.id = cr.comment_id), '')
+	from comment_reports cr join users rp on rp.id = cr.reporter_id`
+
+// reportColumns are allReports' columns (as r) in scanReport's order.
+const reportColumns = `r.kind, r.id, r.reporter, r.reason, r.created_at, r.resolved_at, r.resolution,
+	r.entry_id, r.title, r.title_now, r.local_date, r.note, r.photo_keys, r.comment_id, r.body, r.photo_key`
+
+// reportFields are rep's fields in reportColumns' order.
+func reportFields(rep *admin.Report) []any {
+	return []any{&rep.Kind, &rep.ID, &rep.Reporter, &rep.Reason, &rep.CreatedAt, &rep.ResolvedAt,
+		&rep.Resolution, &rep.EntryID, &rep.Title, &rep.TitleNow, &rep.LocalDate, &rep.Note, &rep.PhotoKeys,
+		&rep.CommentID, &rep.Body, &rep.PhotoKey}
+}
+
+// OpenReports implements admin.Repository: every open report with whose it
+// is, newest first, at most admin.OpenReportsLimit.
+func (r *AdminRepo) OpenReports(ctx context.Context) ([]admin.OpenReport, error) {
+	rows, err := r.pool.Query(ctx, `
+		select `+adminPersonColumns+`, `+reportColumns+`
+		from (`+allReports+`) r join users u on u.id = r.owner
+		where r.resolved_at is null
+		order by r.created_at desc
+		limit $1`, admin.OpenReportsLimit)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
-	out := []admin.Summary{}
+	out := []admin.OpenReport{}
 	for rows.Next() {
-		var s admin.Summary
-		if err := rows.Scan(&s.PersonID, &s.Username, &s.Name, &s.Disabled, &s.Open, &s.Reasons, &s.LatestAt); err != nil {
+		var o admin.OpenReport
+		if err := scanAdminPerson(rows, &o.Owner, reportFields(&o.Report)...); err != nil {
 			return nil, err
 		}
-		s.LatestAt = s.LatestAt.UTC()
-		out = append(out, s)
+		o.Report.CreatedAt = o.Report.CreatedAt.UTC()
+		out = append(out, o)
 	}
 	return out, rows.Err()
 }
 
-// Summaries implements admin.Repository: people with open reports, the most
-// reported first, then the newest.
-func (r *AdminRepo) Summaries(ctx context.Context) ([]admin.Summary, error) {
+// DisabledPeople implements admin.Repository: disabled accounts, the most
+// recently disabled first.
+func (r *AdminRepo) DisabledPeople(ctx context.Context) ([]admin.Person, error) {
 	rows, err := r.pool.Query(ctx, `
-		select u.id, coalesce(u.username, ''), coalesce(u.name, ''), u.disabled_at is not null,
-		       count(*)::int, array_agg(distinct o.reason order by o.reason), max(o.created_at)
-		from (`+openReports+`) o join users u on u.id = o.person
-		group by u.id
-		order by count(*) desc, max(o.created_at) desc`)
-	if err != nil {
-		return nil, err
-	}
-	return scanSummaries(rows)
-}
-
-// DisabledPeople implements admin.Repository: disabled accounts, newest first.
-func (r *AdminRepo) DisabledPeople(ctx context.Context) ([]admin.Summary, error) {
-	rows, err := r.pool.Query(ctx, `
-		select u.id, coalesce(u.username, ''), coalesce(u.name, ''), true, 0, array[]::text[], u.disabled_at
+		select `+adminPersonColumns+`
 		from users u where u.disabled_at is not null
 		order by u.disabled_at desc`)
 	if err != nil {
 		return nil, err
 	}
-	return scanSummaries(rows)
+	defer rows.Close()
+	out := []admin.Person{}
+	for rows.Next() {
+		var p admin.Person
+		if err := scanAdminPerson(rows, &p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // Person implements admin.Repository: a person with a report about them, a
@@ -82,15 +129,13 @@ func (r *AdminRepo) DisabledPeople(ctx context.Context) ([]admin.Summary, error)
 // signs the link.
 func (r *AdminRepo) Person(ctx context.Context, id uuid.UUID) (admin.Person, error) {
 	var p admin.Person
-	err := r.pool.QueryRow(ctx, `
-		select u.id, coalesce(u.username, ''), coalesce(u.name, ''), coalesce(u.bio, ''), coalesce(u.avatar_key, ''),
-		       u.created_at, u.disabled_at, u.deletion_requested_at
+	err := scanAdminPerson(r.pool.QueryRow(ctx, `
+		select `+adminPersonColumns+`
 		from users u
 		where u.id = $1 and (u.disabled_at is not null
 		       or exists (select 1 from user_reports where reported_id = u.id)
 		       or exists (select 1 from post_reports where owner_id = u.id)
-		       or exists (select 1 from comment_reports where owner_id = u.id))`, id).Scan(
-		&p.ID, &p.Username, &p.Name, &p.Bio, &p.PhotoKey, &p.CreatedAt, &p.DisabledAt, &p.DeletionRequestedAt)
+		       or exists (select 1 from comment_reports where owner_id = u.id))`, id), &p)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.Person{}, admin.ErrNotFound
 	}
@@ -98,37 +143,13 @@ func (r *AdminRepo) Person(ctx context.Context, id uuid.UUID) (admin.Person, err
 }
 
 // Reports implements admin.Repository: every report about the person, open
-// ones first, newest first within each. A post report carries the post as it
-// is now (its title, its day, its text and every photo, in order), so the
-// admin sees what was reported in full; a post that is gone has none of them.
+// ones first, newest first within each (allReports says what each carries).
 func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Report, error) {
 	rows, err := r.pool.Query(ctx, `
-		select * from (
-			select 'person' as kind, ur.reporter_id as id, coalesce(rp.username, '') as reporter, ur.reason,
-			       ur.created_at, ur.resolved_at, coalesce(ur.resolution, '') as resolution,
-			       null::uuid as entry_id, '' as title, '' as title_now, '' as local_date, '' as note,
-			       array[]::text[] as photo_keys, null::uuid as comment_id, '' as body, '' as photo_key
-			from user_reports ur join users rp on rp.id = ur.reporter_id
-			where ur.reported_id = $1
-			union all
-			select 'post', pr.id, coalesce(rp.username, ''), pr.reason, pr.created_at, pr.resolved_at,
-			       coalesce(pr.resolution, ''), pr.entry_id, pr.title, coalesce(e.title, ''),
-			       coalesce(e.local_date::text, ''), coalesce(e.comment, ''),
-			       coalesce((select array_agg(ph.storage_key order by ph.position) from entry_photos ph
-			                 where ph.entry_id = pr.entry_id), array[]::text[]),
-			       null::uuid, '', ''
-			from post_reports pr join users rp on rp.id = pr.reporter_id
-			left join entries e on e.id = pr.entry_id
-			where pr.owner_id = $1
-			union all
-			select 'comment', cr.id, coalesce(rp.username, ''), cr.reason, cr.created_at, cr.resolved_at,
-			       coalesce(cr.resolution, ''), null::uuid, '', '', '', '', array[]::text[],
-			       cr.comment_id, cr.body,
-			       coalesce((select pc.photo_key from post_comments pc where pc.id = cr.comment_id), '')
-			from comment_reports cr join users rp on rp.id = cr.reporter_id
-			where cr.owner_id = $1
-		) all_reports
-		order by (resolved_at is null) desc, created_at desc
+		select `+reportColumns+`
+		from (`+allReports+`) r
+		where r.owner = $1
+		order by (r.resolved_at is null) desc, r.created_at desc
 		limit 200`, person)
 	if err != nil {
 		return nil, err
@@ -137,9 +158,7 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 	out := []admin.Report{}
 	for rows.Next() {
 		var rep admin.Report
-		if err := rows.Scan(&rep.Kind, &rep.ID, &rep.Reporter, &rep.Reason, &rep.CreatedAt, &rep.ResolvedAt,
-			&rep.Resolution, &rep.EntryID, &rep.Title, &rep.TitleNow, &rep.LocalDate, &rep.Note, &rep.PhotoKeys,
-			&rep.CommentID, &rep.Body, &rep.PhotoKey); err != nil {
+		if err := rows.Scan(reportFields(&rep)...); err != nil {
 			return nil, err
 		}
 		rep.CreatedAt = rep.CreatedAt.UTC()

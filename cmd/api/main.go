@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/adminalert"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
@@ -171,6 +173,7 @@ func main() {
 	// transaction, so a change that fails never loses the code.
 	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, refreshSvc, postgres.NewPasswordResetRepo(pool),
 		codeSender, cfg.JWTSecret, cfg.AccessTokenTTL)
+	var reportAlerts *adminalert.Alerts
 	if len(cfg.AdminEmails) > 0 {
 		// The admins are the accounts these addresses have now, found once.
 		// An address with no account is no admin until it has one and the
@@ -187,6 +190,14 @@ func main() {
 		}
 		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler,
 			cfg.JWTSecret, admins, cfg.AppEnv != "test")
+		if len(admins) > 0 {
+			// New reports are emailed to the admins (internal/adminalert), with
+			// the reset code's sender: the log in test mode, Resend otherwise.
+			reportAlerts = adminalert.New(codeSender, adminAddresses(cfg.AdminEmails, missing),
+				strings.TrimRight(cfg.AppBaseURL, "/")+"/admin/go", logger)
+			boardService.SetReportNotifier(reportAlerts)
+			socialService.SetReportNotifier(reportAlerts)
+		}
 	}
 	authHandler.SetAdminEmails(cfg.AdminEmails)
 	if cfg.SpinTestTools {
@@ -268,9 +279,30 @@ func main() {
 				logger.Warn("background work cut off at shutdown")
 			}
 		}
+		// Reports still waiting for their email go out now: they are kept
+		// only in memory.
+		reportAlerts.Close(shutdownCtx)
 	}
 
 	logger.Info("server stopped")
+}
+
+// adminAddresses are the ADMIN_EMAILS addresses that have an account (all
+// but missing), each once, in lower case.
+func adminAddresses(all, missing []string) []string {
+	skip := map[string]bool{}
+	for _, m := range missing {
+		skip[strings.ToLower(strings.TrimSpace(m))] = true
+	}
+	var out []string
+	for _, a := range all {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a != "" && !skip[a] {
+			skip[a] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // waitAll runs each wait in turn and reports whether all of them returned

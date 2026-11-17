@@ -768,11 +768,10 @@ func TestDeleteAccountIntegration_AdminPage(t *testing.T) {
 		strings.Contains(body, "Deletion requested") {
 		t.Fatalf("D's admin page: %s, want \"Disabled\" and not \"Deletion requested\"", body)
 	}
-	// The list: D under Disabled accounts, B not.
-	list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "")
-	_, disabled, found := strings.Cut(list.Body.String(), "<h2>Disabled accounts</h2>")
-	if list.Code != http.StatusOK || !found || !strings.Contains(disabled, "@dx_dan") || strings.Contains(disabled, "@dx_bob") {
-		t.Fatalf("the admin list: %d %s, want @dx_dan under Disabled accounts and no @dx_bob", list.Code, list.Body.String())
+	// The Disabled tab: D, not B.
+	tab := adminDo(t, w, http.MethodGet, "/admin/disabled", cookie, nil, "")
+	if body := tab.Body.String(); tab.Code != http.StatusOK || !strings.Contains(body, "@dx_dan") || strings.Contains(body, "@dx_bob") {
+		t.Fatalf("the Disabled tab: %d %s, want @dx_dan and no @dx_bob", tab.Code, body)
 	}
 
 	// The admin asks too: the session ends at the next page, and its cookie

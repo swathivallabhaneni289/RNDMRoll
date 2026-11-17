@@ -1,6 +1,6 @@
-// Package admin holds what the admin web page reads and changes: open
-// reports grouped by the reported person, one person's reports, and the
-// actions (dismiss, remove the post or comment, disable or enable the
+// Package admin holds what the admin web page reads and changes: every open
+// report with whose it is, one person's reports, the disabled accounts, and
+// the actions (dismiss, remove the post or comment, disable or enable the
 // account). The page itself is internal/httpapi/admin.go.
 package admin
 
@@ -29,17 +29,41 @@ const (
 	Disabled  = "disabled"
 )
 
-// Summary is one reported person on the first page: how many open reports
-// name them, the reasons, and the newest.
-type Summary struct {
-	PersonID uuid.UUID
-	Username string
-	Name     string
-	Disabled bool
-	Open     int
-	Reasons  []string
-	LatestAt time.Time
+// ReasonWords are the report reasons as the admin reads them (the same list
+// the app shows), on the page and in the report email.
+var ReasonWords = map[string]string{
+	"spam":          "Spam",
+	"nudity":        "Nudity or sexual content",
+	"harassment":    "Bullying or harassment",
+	"hate":          "Hate speech",
+	"violence":      "Violence or threats",
+	"impersonation": "Pretending to be someone else",
+	"other":         "Something else",
 }
+
+// reasonOrder ranks the reasons, the most serious first: violence and nudity
+// lead (planned 2026-10-29), then bullying and hate, then the rest.
+var reasonOrder = map[string]int{
+	"violence": 0, "nudity": 1, "harassment": 2, "hate": 3,
+	"impersonation": 4, "spam": 5, "other": 6,
+}
+
+// ReasonRank is where reason comes in that order; an unknown one comes last.
+func ReasonRank(reason string) int {
+	if n, ok := reasonOrder[reason]; ok {
+		return n
+	}
+	return len(reasonOrder)
+}
+
+// Urgent reports whether reason is violence or nudity: the page shows these
+// first and the email about them goes out at once.
+func Urgent(reason string) bool {
+	return ReasonRank(reason) <= 1
+}
+
+// OpenReportsLimit bounds OpenReports: the newest this many open reports.
+const OpenReportsLimit = 500
 
 // Person is the reported or disabled person as the admin sees them. It has
 // no email address: the page never shows one.
@@ -87,10 +111,21 @@ type Report struct {
 	PhotoKey  string
 }
 
+// OpenReport is an open report with the person it is about: the one
+// reported, or whose post or comment it is.
+type OpenReport struct {
+	Owner Person
+	Report
+}
+
 // Repository is the admin page's storage.
 type Repository interface {
-	Summaries(ctx context.Context) ([]Summary, error)
-	DisabledPeople(ctx context.Context) ([]Summary, error)
+	// OpenReports is every open report with whose it is, newest first: at
+	// most OpenReportsLimit of them.
+	OpenReports(ctx context.Context) ([]OpenReport, error)
+	// DisabledPeople is every disabled account, the most recently disabled
+	// first.
+	DisabledPeople(ctx context.Context) ([]Person, error)
 	// Person is a person someone reported (about them, a post or a comment,
 	// open or closed) or a disabled account; anyone else is ErrNotFound, so
 	// the page opens no one else.

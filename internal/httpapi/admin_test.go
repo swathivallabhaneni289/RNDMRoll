@@ -43,10 +43,24 @@ type fakeAdminRepo struct {
 	deleteErr   error
 	closeErr    error
 
-	reads    int         // Summaries, DisabledPeople, Person and Reports
-	resolved int         // Resolve
-	deleted  []uuid.UUID // DeleteComment
+	// openReports, disabled and reports are what OpenReports, DisabledPeople
+	// and Reports answer; Resolve finds the report ids in notOpen closed.
+	openReports []admin.OpenReport
+	disabled    []admin.Person
+	reports     []admin.Report
+	notOpen     map[uuid.UUID]bool
+
+	reads    int            // OpenReports, DisabledPeople, Person and Reports
+	resolved int            // Resolve
+	resolves []adminResolve // each Resolve call
+	deleted  []uuid.UUID    // DeleteComment
 	closed   []adminClose
+}
+
+// adminResolve is one Resolve call.
+type adminResolve struct {
+	kind       string
+	id, person uuid.UUID
 }
 
 // adminClose is one ResolveIDs call.
@@ -58,14 +72,14 @@ type adminClose struct {
 
 var _ admin.Repository = (*fakeAdminRepo)(nil)
 
-func (f *fakeAdminRepo) Summaries(context.Context) ([]admin.Summary, error) {
+func (f *fakeAdminRepo) OpenReports(context.Context) ([]admin.OpenReport, error) {
 	f.reads++
-	return []admin.Summary{}, nil
+	return f.openReports, nil
 }
 
-func (f *fakeAdminRepo) DisabledPeople(context.Context) ([]admin.Summary, error) {
+func (f *fakeAdminRepo) DisabledPeople(context.Context) ([]admin.Person, error) {
 	f.reads++
-	return []admin.Summary{}, nil
+	return f.disabled, nil
 }
 
 func (f *fakeAdminRepo) Person(_ context.Context, id uuid.UUID) (admin.Person, error) {
@@ -75,12 +89,13 @@ func (f *fakeAdminRepo) Person(_ context.Context, id uuid.UUID) (admin.Person, e
 
 func (f *fakeAdminRepo) Reports(context.Context, uuid.UUID) ([]admin.Report, error) {
 	f.reads++
-	return []admin.Report{}, nil
+	return f.reports, nil
 }
 
-func (f *fakeAdminRepo) Resolve(context.Context, string, uuid.UUID, uuid.UUID, string, time.Time) (bool, error) {
+func (f *fakeAdminRepo) Resolve(_ context.Context, kind string, id, person uuid.UUID, _ string, _ time.Time) (bool, error) {
 	f.resolved++
-	return true, nil
+	f.resolves = append(f.resolves, adminResolve{kind: kind, id: id, person: person})
+	return !f.notOpen[id], nil
 }
 
 func (f *fakeAdminRepo) OpenReportIDs(context.Context, string, uuid.UUID) ([]uuid.UUID, error) {

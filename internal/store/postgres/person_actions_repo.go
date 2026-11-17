@@ -32,11 +32,14 @@ func (r *SocialRepo) IsMuted(ctx context.Context, muter, muted uuid.UUID) (bool,
 	return yes, err
 }
 
-// Report implements social.Repository.
+// Report implements social.Repository. A second report by the same person
+// replaces the reason and opens it again, as a post's or a comment's does
+// (2026-11-17: before, one the admin had closed stayed closed, unseen).
 func (r *SocialRepo) Report(ctx context.Context, reporter, reported uuid.UUID, reason string, at time.Time) error {
 	_, err := r.pool.Exec(ctx, `
 		insert into user_reports (reporter_id, reported_id, reason, created_at) values ($1, $2, $3, $4)
-		on conflict (reporter_id, reported_id) do update set reason = excluded.reason, created_at = excluded.created_at`,
+		on conflict (reporter_id, reported_id) do update
+		set reason = excluded.reason, created_at = excluded.created_at, resolved_at = null, resolution = null`,
 		reporter, reported, reason, at)
 	return err
 }
