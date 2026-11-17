@@ -25,9 +25,10 @@ import type { ApiUser, AuthResult } from '@/lib/api/types';
 
 /**
  * SecureStore-backed session persistence and React context. This is the only module
- * in the repository permitted to import expo-secure-store: every credential (access
- * and refresh token) is written to and read from the OS keychain here, and nowhere
- * else, including React state that survives a reload or any logging call.
+ * that touches session credentials: every credential (access and refresh token) is
+ * written to and read from the OS keychain here, and nowhere else, including React
+ * state that survives a reload or any logging call. (The 8 PM reminder keeps its two
+ * on/off flags in the keychain too, through its own import; no credential.)
  */
 
 const ACCESS_TOKEN_KEY = 'rndmroll.access_token';

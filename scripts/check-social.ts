@@ -2,8 +2,9 @@
 /**
  * Throwaway checks for the social screens' fixes: a comment on a post that went away, a follow
  * request that went away, an invite link that leads to no one, where your posts list opens, the
- * two Settings pages when the first read fails, and a profile photo that would not load. Not part
- * of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
+ * two Settings pages when the first read fails, a profile photo that would not load, the comment
+ * box's emoji row and reply prefix, and the report reasons on the phone, the server, the admin page
+ * and the database. Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
  * imports and tsc, which scans every .ts file in the repo, would object to it.)
@@ -14,7 +15,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { POST_GONE_LINE, commentFailureLine } from '../lib/board/text.ts';
 import { placementStep } from '../lib/board/placement.ts';
-import { countAfterComment, placeComment } from '../lib/board/comments.ts';
+import { countAfterComment, placeComment, withEmoji, withReplyPrefix } from '../lib/board/comments.ts';
+import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
+import { COMMENT_MAX } from '../lib/entry/rules.ts';
 
 let checks = 0;
 let failures = 0;
@@ -302,6 +305,79 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       /import \{ showAccessOff \} from '@\/lib\/media\/showAccessOff';/.test(comments)
   );
   check('the old access lines are gone from the comment bar', !/access is needed/.test(comments));
+}
+
+// ---- the comment box: the emoji row and the reply's @username (CMT-01, CMT-03) -------------------
+{
+  // The server counts characters (code points); the box counts as its maxLength does (UTF-16 units).
+  const characters = (s: string) => [...s].length;
+  const fits = (s: string) => s.length <= COMMENT_MAX && characters(s) <= 140 && s.isWellFormed();
+  const fire = '🔥';
+  eq('the box and the server have the same limit', COMMENT_MAX, 140);
+  check('the server limit is 140 characters', /MaxCommentRunes = 140\b/.test(source('internal/board/model.go')));
+  eq('an emoji that fits is added at the end', withEmoji('Nice', fire, COMMENT_MAX), `Nice${fire}`);
+  eq('an emoji that ends at 140 exactly is added', withEmoji('a'.repeat(138), fire, COMMENT_MAX), `${'a'.repeat(138)}${fire}`);
+  eq('139 units and a 2-unit emoji: the text is unchanged', withEmoji('a'.repeat(139), fire, COMMENT_MAX), 'a'.repeat(139));
+  eq('a full box is unchanged', withEmoji('a'.repeat(140), fire, COMMENT_MAX), 'a'.repeat(140));
+  for (const emoji of COMMENT_EMOJIS) {
+    let text = '';
+    for (let i = 0; i < 200; i += 1) text = withEmoji(text, emoji.char, COMMENT_MAX);
+    check(`tapping ${emoji.label} again and again stops inside the limit`, fits(text) && text.length > COMMENT_MAX - emoji.char.length, `${text.length} units`);
+  }
+
+  eq('a reply starts with the @username and a space', withReplyPrefix('', 'maya', COMMENT_MAX), '@maya ');
+  eq('what was typed stays after it', withReplyPrefix('so good', 'maya', COMMENT_MAX), '@maya so good');
+  eq('a mention already there is replaced', withReplyPrefix('@sam  so good', 'maya', COMMENT_MAX), '@maya so good');
+  eq('a long text is cut to the limit', withReplyPrefix('a'.repeat(140), 'maya', COMMENT_MAX), `@maya ${'a'.repeat(134)}`);
+  // 139 units ending in emoji: the old cut kept half of the 67th emoji, which reaches the server as
+  // U+FFFD and is refused as invalid text.
+  const typed = `a${fire.repeat(69)}`;
+  check('the case is real: a plain cut keeps half an emoji', /[\uD800-\uDBFF]$/.test(`@maya ${typed}`.slice(0, COMMENT_MAX)));
+  eq('the reply drops the half emoji', withReplyPrefix(typed, 'maya', COMMENT_MAX), `@maya a${fire.repeat(66)}`);
+  for (const username of ['abc', 'maya', 'maya_b', 'twenty_characters_xy']) {
+    for (const lead of ['', 'a', 'ab']) {
+      for (const emoji of COMMENT_EMOJIS) {
+        // A box filled to the brim with whole emoji.
+        const before = lead + emoji.char.repeat(Math.floor((COMMENT_MAX - lead.length) / emoji.char.length));
+        const got = withReplyPrefix(before, username, COMMENT_MAX);
+        check(`a reply by @${username} after ${lead.length} letters and ${emoji.label}`, fits(got) && got.startsWith(`@${username} `), `${got.length} units`);
+      }
+    }
+  }
+
+  const comments = source('components/board/Comments.tsx');
+  check('the emoji row adds through withEmoji', /setText\(\(before\) => withEmoji\(before, char, COMMENT_MAX\)\);/.test(comments));
+  check('Reply fills the box through withReplyPrefix', /setText\(\(before\) => withReplyPrefix\(before, username, COMMENT_MAX\)\)/.test(comments));
+  check('the box allows COMMENT_MAX', /maxLength=\{COMMENT_MAX\}/.test(comments));
+}
+
+// ---- the seven report reasons: the same keys, order and words everywhere (SAFE-01) ---------------
+{
+  const prd = (source('PRD.md').match(/\*\*SAFE-01 reasons\.\*\* ([^\n]*)\./)?.[1] ?? '').split('; ');
+  const keys = ['spam', 'nudity', 'harassment', 'hate', 'violence', 'impersonation', 'other'];
+  const appList = source('lib/api/person.ts').match(/export const REPORT_REASONS = \[([\s\S]*?)\] as const;/)?.[1] ?? '';
+  const app = [...appList.matchAll(/\{ reason: '([a-z]+)', label: '([^']+)' \}/g)].map((m) => `${m[1]}=${m[2]}`);
+  const serverList = source('internal/social/person.go').match(/var ReportReasons = \[\]string\{([^}]*)\}/)?.[1] ?? '';
+  const server = [...serverList.matchAll(/"([a-z]+)"/g)].map((m) => m[1]);
+  const model = source('internal/admin/model.go');
+  const wordsList = model.match(/var ReasonWords = map\[string\]string\{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const words = Object.fromEntries([...wordsList.matchAll(/"([a-z]+)":\s*"([^"]+)"/g)].map((m) => [m[1], m[2]]));
+  const orderList = model.match(/var reasonOrder = map\[string\]int\{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const ranks = Object.fromEntries([...orderList.matchAll(/"([a-z]+)": (\d+)/g)].map((m) => [m[1], Number(m[2])]));
+
+  eq('the PRD lists seven reasons', prd.length, 7);
+  eq('the app: the PRD reasons, in its order, with its words', app.join(' | '), keys.map((k, i) => `${k}=${prd[i]}`).join(' | '));
+  eq('the server takes the same keys in the same order', server.join(','), keys.join(','));
+  eq('the admin page and the email: the same words', keys.map((k) => words[k]).join(' | '), prd.join(' | '));
+  eq('the admin page and the email: no other reason', Object.keys(words).length, keys.length);
+  eq('the admin order ranks each reason once', keys.map((k) => ranks[k]).sort().join(','), '0,1,2,3,4,5,6');
+  eq('the admin order: violence and nudity, then bullying and hate', ['violence', 'nudity', 'harassment', 'hate'].map((k) => ranks[k]).join(','), '0,1,2,3');
+  // The database refuses any other reason: the three tables check the same seven.
+  const tables = [...['0010_mutes_user_reports', '0012_reports_disabled'].map((m) => source(`migrations/${m}.up.sql`)).join('\n').matchAll(/reason in\s*\(([^)]*)\)/g)];
+  eq('three report tables check the reason', tables.length, 3);
+  for (const [i, m] of tables.entries()) {
+    eq(`report table ${i + 1} takes the same seven`, [...m[1].matchAll(/'([a-z]+)'/g)].map((k) => k[1]).join(','), keys.join(','));
+  }
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);

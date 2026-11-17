@@ -5,6 +5,16 @@ import * as SecureStore from 'expo-secure-store';
 import type * as NotificationsModule from 'expo-notifications';
 import { listenForTaps, loadNotifications, queueScheduleChange } from '@/lib/notifications/module';
 import { POST_NOTE_TITLE, postNoteBody, postNoteDate } from '@/lib/notifications/postNote';
+import {
+  isReminderId,
+  permissionFrom,
+  REMINDER_HOUR,
+  REMINDER_ID,
+  REMINDER_MINUTE,
+  reminderDates,
+  shouldSchedule,
+  type ReminderPermission,
+} from '@/lib/notifications/reminderRules';
 import { getAccessToken, useSession } from '@/lib/session/store';
 import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
@@ -36,9 +46,22 @@ import { useTodaySnapshot } from '@/lib/wheel/todayStore';
  *    switch shows off, there is no ask, and the app starts as before.
  */
 
-/** 8:00 PM, in the phone's own time zone. */
-export const REMINDER_HOUR = 20;
-export const REMINDER_MINUTE = 0;
+// The pure rules live in reminderRules.ts (no imports, so scripts/check-push.ts runs them); they
+// are exported from here as before.
+export {
+  isReminderId,
+  PERMISSION_OFF_MESSAGE,
+  permissionFrom,
+  permissionLine,
+  REMINDER_DAYS_AHEAD,
+  REMINDER_HOUR,
+  REMINDER_ID,
+  REMINDER_MINUTE,
+  reminderDates,
+  shouldSchedule,
+  switchShowsOn,
+} from '@/lib/notifications/reminderRules';
+export type { ReminderPermission } from '@/lib/notifications/reminderRules';
 
 export const REMINDER_TITLE = "Spin o'clock";
 export const REMINDER_BODY = 'Your wheel is ready when you are.';
@@ -46,23 +69,14 @@ export const REMINDER_BODY = 'Your wheel is ready when you are.';
 /** Tapping the reminder opens the Spin tab. */
 export const REMINDER_ROUTE = '/(app)/today';
 
-/** The one scheduled notification's id: scheduling again replaces it instead of adding one. */
-export const REMINDER_ID = 'rndmroll-daily-spin-reminder';
-
 /** The morning note's id. It starts with the reminder's, so a tap opens the Spin tab and push ignores it. */
 export const POST_NOTE_ID = `${REMINDER_ID}-post`;
 
 /** The switch's label on Settings > Notifications: the 8 PM reminder and the morning note. */
 export const REMINDER_SWITCH_LABEL = 'Remind me to spin and post';
 
-/** The one line under the switch while the phone's own permission is off. */
-export const PERMISSION_OFF_MESSAGE = 'Turn on notifications for RNDMRoll in Settings.';
-
 const REMINDER_ON_KEY = 'rndmroll.reminder_on';
 const REMINDER_ASKED_KEY = 'rndmroll.reminder_asked';
-
-/** What the phone allows: 'unavailable' when this build has no notification module. */
-export type ReminderPermission = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 
 /** The notification's text and where a tap goes. Pure. */
 export function reminderContent(): NotificationsModule.NotificationContentInput {
@@ -72,31 +86,6 @@ export function reminderContent(): NotificationsModule.NotificationContentInput 
 /** Every day at 20:00 local time. Pure; `daily` is the module's DAILY trigger type. */
 export function reminderTrigger(daily: NotificationsModule.SchedulableTriggerInputTypes.DAILY) {
   return { type: daily, hour: REMINDER_HOUR, minute: REMINDER_MINUTE };
-}
-
-/** How many evenings ahead the reminder is set one by one when the next opening is known. */
-export const REMINDER_DAYS_AHEAD = 30;
-
-/**
- * The evenings the reminder fires on, at 8:00 PM phone time, when the next opening is known
- * (Today's next_open_at): every 8:00 PM from today on that is still ahead and not before that
- * opening. So a person who already made today's spin (a first spin in the morning, developer
- * 2026-10-19) is not told "Your spin is open." that same evening. Pure.
- */
-export function reminderDates(nowMs: number, nextOpenMs: number, days = REMINDER_DAYS_AHEAD): Date[] {
-  const out: Date[] = [];
-  const start = new Date(nowMs);
-  for (let i = 0; out.length < days && i < days + 2; i += 1) {
-    const at = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, REMINDER_HOUR, REMINDER_MINUTE, 0, 0);
-    // A minute of slack: the server's 8 PM and the phone's can differ by a little.
-    if (at.getTime() > nowMs && at.getTime() >= nextOpenMs - 60_000) out.push(at);
-  }
-  return out;
-}
-
-/** True for any of the reminder's own scheduled notifications. Pure. */
-export function isReminderId(id: string): boolean {
-  return id === REMINDER_ID || id.startsWith(`${REMINDER_ID}-`);
 }
 
 /** The next opening the server last gave (ms), or null before the first Today answer. */
@@ -127,28 +116,6 @@ export function notePostNote(lateFromIso: string | null, categoryName: string | 
   if (next?.lateFromMs === postNote?.lateFromMs && next?.category === postNote?.category) return;
   postNote = next;
   void rebuildReminder();
-}
-
-/** True when a reminder should be scheduled. Pure. */
-export function shouldSchedule(switchOn: boolean, permission: ReminderPermission): boolean {
-  return switchOn && permission === 'granted';
-}
-
-/** What the switch shows: on only while it is on AND the phone allows notifications. Pure. */
-export function switchShowsOn(switchOn: boolean, permission: ReminderPermission): boolean {
-  return shouldSchedule(switchOn, permission);
-}
-
-/** The line under the switch: only when the person turned the phone's permission off. Pure. */
-export function permissionLine(permission: ReminderPermission): string {
-  return permission === 'denied' ? PERMISSION_OFF_MESSAGE : '';
-}
-
-/** The module's permission answer, reduced to the four states above. Pure. */
-export function permissionFrom(answer: { granted: boolean; status: string }): ReminderPermission {
-  if (answer.granted) return 'granted';
-  if (answer.status === 'undetermined') return 'undetermined';
-  return 'denied';
 }
 
 /** True when the reminder can work on this build. */

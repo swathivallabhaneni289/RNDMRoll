@@ -9,6 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
+import { answerLost, codeLine, maybeSpentByLostReset, SHORT_CODE, tooMany } from '@/lib/auth/resetPage';
 import { sayIfRestored } from '@/lib/auth/restored';
 import { useSession } from '@/lib/session/store';
 import { passwordProblem } from '@/lib/settings/rules';
@@ -18,17 +19,8 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GENERIC = 'Something went wrong. Please try again.';
 /** A 429 on this page: the server's limits count requests here, not wrong codes. */
 const TOO_MANY = 'Too many requests. Wait a minute and try again.';
-/**
- * The lines under the Code box, one for each answer about the code (the server's reason). The phone
- * does not count tries (it cannot see the server's count), so each line is true whatever the server
- * holds, and none says whether the email has an account. The server keeps wrong tries across new
- * codes until the code expires (30 minutes after the last code went out), so the line says so.
- */
-const WRONG_CODE =
-  "That code isn't right or has expired. Wrong tries add up, even across new codes. After 5, you can send a new code 30 minutes after the last one was sent.";
-const REPLACED = 'That code was replaced by a newer one. Use the newest code in your email.';
-const USED = 'That code was already used. If your password changed, log in with the new one.';
-const SHORT_CODE = 'Enter the 6-digit code from the email.';
+// The lines for the server's answers about the code, and the rules that pick them, are in
+// lib/auth/resetPage.ts (codeLine, maybeSpentByLostReset, tooMany, answerLost).
 /** The code step's line under its heading when no notice is set (a sent code's notice takes its place). */
 const CODE_HINT = 'Enter the 6-digit code from the email.';
 /** The password step's lines under its heading: green, then muted. */
@@ -44,33 +36,6 @@ const MAYBE_CHANGED = 'Something went wrong. If your password did change, log in
 const MAYBE_CHANGED_AFTER = 'If your password did change, log in with the new one.';
 /** The new password is set, but this phone could not keep the new session. */
 const SET_LOG_IN = 'Your new password is set. Log in with it.';
-
-/** The line for the server's reason about the code; an unknown one reads as a wrong code. */
-function codeLine(reason: string | undefined): string {
-  if (reason === 'replaced') return REPLACED;
-  if (reason === 'used') return USED;
-  if (reason === 'invalid') return SHORT_CODE;
-  return WRONG_CODE;
-}
-
-/**
- * True when a field "code" answer, of the check or of a reset, says MAYBE_CHANGED_AFTER instead of
- * its line: after a reset whose answer was lost, every reason but replaced and invalid. One rule for
- * both requests, so they never disagree.
- */
-function maybeSpentByLostReset(reason: string | undefined, afterLostAnswer: boolean): boolean {
-  return afterLostAnswer && reason !== 'replaced' && reason !== 'invalid';
-}
-
-/** Too many requests: by the HTTP status too, as a 429 without the usual body has no code. */
-function tooMany(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 429 || err.code === 'rate_limited');
-}
-
-/** No answer came (no connection, the client's own time limit) or the server failed. */
-function answerLost(err: unknown): boolean {
-  return !(err instanceof ApiError) || err.status === 0 || err.status >= 500;
-}
 
 /**
  * Forgot password (developer, 2026-10-21), opened from Log in. Three steps on one page, as the new
