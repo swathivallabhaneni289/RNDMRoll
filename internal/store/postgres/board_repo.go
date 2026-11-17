@@ -134,7 +134,8 @@ func notMuted(col string) string {
 var visibleOwner = `e.archived_at is null and ` + postVisibleTo("$1::uuid", "e")
 
 // Cards implements board.Repository. The dates are the viewer's posted
-// dates, which is the rest of the rule.
+// dates; visibleOwner checks the posted day of someone else's post too, as
+// the rule it shares with the other reads, at the cost of one key probe.
 func (r *BoardRepo) Cards(ctx context.Context, viewer uuid.UUID, dates []string) ([]board.EntryRow, error) {
 	rows, err := r.pool.Query(ctx, boardEntrySelect+`
 		where e.local_date = any($2::date[]) and `+visibleOwner+` and `+notMuted("e.user_id")+`
