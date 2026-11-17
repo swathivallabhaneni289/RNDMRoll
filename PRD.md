@@ -584,7 +584,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - It doesn't record which admin acted (ADM-05).
 - **Reporting again.** A second report of the same account by the same person replaces the reason and opens it again, even after an admin closed it. A second report of the same post or comment answers like a miss (SAFE-01).
 - **ADM-06 the email.** When someone reports a person, post or comment, the admins get an email: at once for violence or nudity, and for the report that hides a post or comment (SAFE-05), at most one a minute; otherwise at most one an hour, counting everything that came in.
-  - It says how many reports came in and why, and links to the admin page. It never names anyone or shows what was reported.
+  - It says how many reports came in and why, how many of them hid a post or comment ("Hidden while you take a look: N", only when any did), and links to the admin page. It never names anyone or shows what was reported.
   - The link opens the page through a short hop, so an admin who is logged in stays logged in when they click it from their mail.
   - Waiting reports are kept in memory and sent when the server stops.
   - It uses the same sender as the Forgot password code: printed to the server log for now, sent with Resend once email is on.
@@ -623,7 +623,7 @@ These rules decide what counts. The server owns all of them.
 | Spins figure | Days spun; a bonus spin doesn't add one |
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who made a first spin today or has never spun |
 | Who sees a post | Nobody in the app once an admin removed it, the author included. Otherwise the author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, they haven't reported it, it isn't hidden under review, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo, and a removed post until it is deleted. |
-| Who sees a comment | Anyone who can see the post, except: a comment they reported, with its replies; a comment the post's author hid, seen only by its writer and the post's author; a comment hidden under review, seen only by its writer; and a removed comment, seen by nobody in the app. |
+| Who sees a comment | Anyone who can see the post, except: a comment by someone they blocked or who blocked them, or whose account is disabled or being deleted; a comment they reported; a comment the post's author hid, seen only by its writer and the post's author; a comment hidden under review, seen only by its writer; and a removed comment, seen by nobody in the app. A reply shows only with the comment it answers. |
 | Hidden under review | 3 or more open reports on a post or comment from people whose accounts aren't disabled or being deleted. Worked out live from the open reports, never stored. |
 | Removed | An admin's Remove: hidden from everyone at once, kept 30 days so it can be brought back, then deleted with its photos. One 30-day rule, on the database clock. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
