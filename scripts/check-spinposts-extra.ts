@@ -3,7 +3,8 @@
  * Throwaway checks for the Board's words and its Late marker (BRD-02, BRD-03, BRD-04, SPIN-06), the
  * 8 PM reminder and the morning note (SPIN-11, SPIN-14), the phone's request limit and who may end a
  * session (section 10, Reliability), the Spin page's fixed words and numbers (SPIN-02, SPIN-03,
- * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05) and the photo settings (section 10, Performance).
+ * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05), the photo settings (section 10, Performance) and
+ * how a report ends (moderation, 2026-11-17).
  * Not part of the app bundle. Run from the repo root with:
  *   node --experimental-strip-types scripts/check-spinposts-extra.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
@@ -689,6 +690,21 @@ const { ApiError, api, isRetryable } = client;
     check(`${rel} never reads the phone's clock (SPIN-09)`, !/Date\.now\(/.test(source(rel)));
   }
   check('the countdown counts on a steady clock', /msUntil\(nextOpenAt, anchor, performance\.now\(\)\)/.test(source('components/today/CountdownBlock.tsx')));
+}
+
+// ---- how a report ends, with the client's own errors (moderation, 2026-11-17) ---------------------
+{
+  // The post page, a comment's menu and the person page all end a report through this line.
+  const reports = await load('lib/api/reports.ts');
+  const line = reports.reportFailureLine;
+  eq('a report answered 404 counts as sent', line(new ApiError(404, 'not_found')), null);
+  eq('so does a 404 whose body did not read', line(new ApiError(404, 'server_error')), null);
+  eq('too many tries says to wait', line(new ApiError(429, 'rate_limited')), 'Too many tries. Wait a minute and try again.');
+  eq('no connection says so', line(new ApiError(0, 'network_unavailable')), "Couldn't connect. Check your connection and try again.");
+  eq('a server failure is the plain line', line(new ApiError(500, 'server_error')), 'Something went wrong. Please try again.');
+  eq('a refused reason is the plain line', line(new ApiError(400, 'validation_failed')), 'Something went wrong. Please try again.');
+  eq('anything but an answer is the plain line', line(new Error('lost')), 'Something went wrong. Please try again.');
+  check('the old thanks line is gone', !('REPORT_THANKS' in reports));
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);

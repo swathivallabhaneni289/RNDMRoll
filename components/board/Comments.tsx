@@ -10,11 +10,13 @@ import type { Comment } from '@/lib/api/board';
 import { ApiError } from '@/lib/api/client';
 import { canHide, hideComment, isHidden, unhideComment } from '@/lib/api/comments';
 import { REPORT_REASONS } from '@/lib/api/person';
-import { REPORT_THANKS, reportComment } from '@/lib/api/reports';
+import { reportComment, reportFailureLine } from '@/lib/api/reports';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName } from '@/lib/api/social';
 import { withEmoji, withReplyPrefix } from '@/lib/board/comments';
+import { REPORT_SENT, UNDER_REVIEW } from '@/lib/board/text';
+import { setReportNotice } from '@/lib/report/notice';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { createUploadMemory, photoMessage, photoProblem } from '@/lib/entry/photo';
@@ -93,24 +95,31 @@ export function QuietNote({ text, tone = 'default' }: { text: string; tone?: 'de
  * press on the comment (developer, 2026-10-18, like Instagram), asked first with the phone's own
  * alert (no red button, no fade); deleting a comment takes its replies with it. Replies come in the
  * server's order, right after their comment, one step in with a smaller initial and no rule above.
+ * Report (someone else's comment) sends one report at a time; once sent, the comment and its
+ * replies leave the list for good and "Report sent." shows over the page (moderation, 2026-11-17).
+ * Your own comment that 3 or more people reported reads 'Hidden while we take a look.' under it.
  * `onPhotoError` runs when a comment's photo will not load (its link may have run out).
  */
 export function CommentList({
   comments,
   myId,
   onDelete,
+  onReported,
   onReply,
   onPhotoError,
 }: {
   comments: Comment[];
   myId: string | null;
   onDelete: (id: string) => Promise<string | null>;
+  /** A comment you reported leaves the list, with its replies: it is gone for you from then on. */
+  onReported?: (commentId: string) => void;
   onReply?: (comment: Comment) => void;
   onPhotoError?: () => void;
 }) {
   const openPerson = useOpenPerson();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const reportingRef = useRef(false);
   // Hide and Unhide answer at once on the row; the next read of the post agrees.
   const [hiddenNow, setHiddenNow] = useState<Record<string, boolean>>({});
   // The long-press menu: Delete (when the server allows it) and Report (not on your own), then
@@ -133,17 +142,28 @@ export function CommentList({
     };
   }
 
-  function sendReport(comment: Comment, reason: (typeof REPORT_REASONS)[number]['reason']) {
+  /**
+   * One report at a time. Sent (a 404 counts too): the comment leaves the list with its replies and
+   * the page stays. Otherwise one line here, and the comment stays.
+   */
+  async function sendReport(comment: Comment, reason: (typeof REPORT_REASONS)[number]['reason']) {
+    if (reportingRef.current) return;
+    reportingRef.current = true;
     setMessage('');
-    void reportComment(comment.id, reason)
-      .then(() => setMessage(REPORT_THANKS))
-      .catch((err: unknown) =>
-        setMessage(
-          err instanceof ApiError && err.code === 'network_unavailable'
-            ? err.userMessage
-            : 'Something went wrong. Please try again.',
-        ),
-      );
+    let failure: string | null = null;
+    try {
+      await reportComment(comment.id, reason);
+    } catch (err) {
+      failure = reportFailureLine(err);
+    } finally {
+      reportingRef.current = false;
+    }
+    if (failure !== null) {
+      setMessage(failure);
+      return;
+    }
+    onReported?.(comment.id);
+    setReportNotice(REPORT_SENT);
   }
 
   const menuItems: MenuItem[] =
@@ -152,7 +172,7 @@ export function CommentList({
       : menuStep === 'reasons'
         ? REPORT_REASONS.map((item) => ({
             label: item.label,
-            onPress: afterClose(() => sendReport(menuFor, item.reason)),
+            onPress: afterClose(() => void sendReport(menuFor, item.reason)),
           }))
         : [
             ...(menuFor.can_delete ? [{ label: 'Delete', onPress: afterClose(() => askDelete(menuFor)) }] : []),
@@ -242,10 +262,10 @@ export function CommentList({
               accessible={false}
               style={{ flex: 1, marginLeft: space.sm, opacity: busyId === comment.id ? 0.5 : 1 }}
             >
-              {/* One element for a screen reader: who, when and the words, with Delete as an action. */}
+              {/* One element for a screen reader: who, when and the words (and the review line), with Delete as an action. */}
               <View
                 accessible
-                accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text !== '' ? comment.text : 'a photo'}`}
+                accessibilityLabel={`${isReply ? 'Reply. ' : ''}${name}, ${hidden ? `${comment.at_label}, hidden` : comment.at_label}: ${comment.text !== '' ? comment.text : 'a photo'}${comment.under_review ? `. ${UNDER_REVIEW}` : ''}`}
                 accessibilityHint={hasMenu ? 'Press and hold for more.' : undefined}
                 accessibilityActions={[
                   ...(comment.can_delete ? [{ name: 'delete', label: 'Delete' }] : []),
@@ -295,6 +315,12 @@ export function CommentList({
                     onError={onPhotoError}
                   />
                 </Pressable>
+              ) : null}
+              {comment.under_review ? (
+                // Its writer's line only, in ink like every line here; the group above says it to a screen reader.
+                <View style={{ marginTop: space.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  <AppText role="label">{UNDER_REVIEW}</AppText>
+                </View>
               ) : null}
               {onReply || canHide(comment) ? (
                 // Reply and Hide side by side in one plain style, never underlined (developer,

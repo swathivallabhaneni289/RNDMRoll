@@ -1,6 +1,6 @@
 /**
- * The words of the Board, the post page and Notifications (Phase 5, with the follow wording of
- * 05-FOLLOW-OVERRIDES section 6). Pure: no React and no imports, so a node script can read it.
+ * The words of the Board, the post page, reports and Notifications (Phase 5, with the follow wording
+ * of 05-FOLLOW-OVERRIDES section 6). Pure: no React and no imports, so a node script can read it.
  * The phone works nothing out: every count, label and date comes from the server.
  */
 
@@ -80,3 +80,30 @@ export function commentFailureLine(code: string | null, what: 'comment' | 'reply
   if (what === 'reply') return "Couldn't post your reply. Please try again.";
   return 'Something went wrong. Please try again.';
 }
+
+/**
+ * The one line after a report of a post, a comment or a person (moderation, 2026-11-17), shown for
+ * a moment over whatever page is showing (lib/report/notice.ts).
+ */
+export const REPORT_SENT = 'Report sent.';
+
+/**
+ * How a report ended, by the answer's status and error code (the three report flows ask this
+ * through reportFailureLine in lib/api/reports.ts). A 404 is done, like a 200: the server answers a
+ * repeat report of a post or comment like a miss, and a post, comment or person that went away is
+ * gone for the reporter either way. No connection and too many tries keep the client's own words.
+ */
+export function reportOutcome(status: number, code: string | null): 'done' | 'client' | 'generic' {
+  if (status === 404 || code === 'not_found') return 'done';
+  if (status === 429 || code === 'rate_limited' || code === 'network_unavailable') return 'client';
+  return 'generic';
+}
+
+/**
+ * Under your own post or comment while 3 or more reports wait for the admin (the server's
+ * `under_review`, sent only to you). Until the admin looks, no one else sees it.
+ */
+export const UNDER_REVIEW = 'Hidden while we take a look.';
+
+/** The Spin page's posted row when an admin removed the day's post (Today's `entry_removed`). */
+export const POST_REMOVED_LINE = 'We removed this post. The day still counts.';

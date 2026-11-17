@@ -8,7 +8,7 @@ import { AppText } from '@/components/ui/AppText';
 import type { Card } from '@/lib/api/board';
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName, type Person } from '@/lib/api/social';
-import { cardSpoken, starsFigure } from '@/lib/board/text';
+import { UNDER_REVIEW, cardSpoken, starsFigure } from '@/lib/board/text';
 import { PressScale } from '@/lib/motion/primitives';
 import { color, radius, space, type } from '@/lib/theme/tokens';
 
@@ -65,7 +65,8 @@ export function NameChip({ person, label }: { person: Person | null; label: stri
 /**
  * One card of the Board (05-UI-SPEC 3.3, the developer's picture 09): the photo with the name chip
  * at its top left and the category at its bottom left, then the title and the stars with the figure.
- * The whole card is one button. Plain and light: no blur, no fade.
+ * Your own card says 'Hidden while we take a look.' under them while 3 or more reports wait for the
+ * admin. The whole card is one button. Plain and light: no blur, no fade.
  */
 export function PostCard({
   card,
@@ -94,13 +95,13 @@ export function PostCard({
     <PressScale
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={cardSpoken({
+      accessibilityLabel={`${cardSpoken({
         title: card.title,
         stars: card.stars,
         category: card.category.name,
         by: card.mine ? 'you' : name,
         late: card.late,
-      })}
+      })}${card.under_review ? ` ${UNDER_REVIEW}` : ''}`}
       accessibilityHint="Opens the post."
       style={{ width }}
     >
@@ -178,6 +179,12 @@ export function PostCard({
           </AppText>
         </View>
       </View>
+      {card.under_review ? (
+        // Sent on your own card only; the card's spoken label above says it too.
+        <View style={{ marginTop: space.xs }}>
+          <AppText role="label">{UNDER_REVIEW}</AppText>
+        </View>
+      ) : null}
     </PressScale>
   );
 }

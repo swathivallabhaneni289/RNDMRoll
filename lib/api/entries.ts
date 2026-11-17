@@ -43,6 +43,11 @@ export type Entry = {
   archived: boolean;
   /** The owner switched commenting off for this entry. */
   comments_off: boolean;
+  /**
+   * Sent to you only, while 3 or more reports wait for the admin: until then no one else sees the
+   * entry. Left out otherwise, so read it with `=== true`.
+   */
+  under_review?: boolean;
   created_at: string;
   updated_at: string;
 };
