@@ -67,7 +67,8 @@ type PersonPost struct {
 
 // PersonPosts is one page of owner's grid as the viewer sees it, newest
 // first: the same rule as the Board (an accepted follow, no block either
-// way, not archived, and only days the viewer posted too). before is the
+// way, not archived, only days the viewer posted too, and nothing removed,
+// under review or reported by the viewer). before is the
 // date of the last tile of the page before (DecodePersonCursor). next, the
 // date of this page's last tile, is set when more may follow.
 func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, before *string, limit int) ([]PersonPost, *string, error) {
@@ -101,9 +102,12 @@ func (s *Service) PersonPosts(ctx context.Context, viewer, owner uuid.UUID, befo
 }
 
 // PersonPostCount is the Posts figure of a person's page: their posts,
-// archived ones left out. Anyone who can open the page sees it.
-func (s *Service) PersonPostCount(ctx context.Context, owner uuid.UUID) (int, error) {
-	return s.repo.PostCount(ctx, owner)
+// archived ones left out. Anyone who can open the page sees it. It also
+// leaves out what moderation keeps from the viewer (removed, under review,
+// reported by them), as the grid does. It still counts posts on days the
+// viewer did not post, which the grid does not show.
+func (s *Service) PersonPostCount(ctx context.Context, viewer, owner uuid.UUID) (int, error) {
+	return s.repo.PostCount(ctx, viewer, owner)
 }
 
 // SetCommentHidden hides or shows a comment on the viewer's own post. Only

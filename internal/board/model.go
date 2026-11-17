@@ -74,6 +74,14 @@ type EntryRow struct {
 	CreatedAt   time.Time
 	Archived    bool
 	CommentsOff bool
+	// Removed, UnderReview and Reported are what moderation says about the
+	// entry (migration 0020), read as the viewer sees it: an admin removed
+	// it, it is hidden while under review, the viewer reported it. A list
+	// read leaves out what the viewer may not see, so there only the owner's
+	// own row can be UnderReview.
+	Removed     bool
+	UnderReview bool
+	Reported    bool
 	// Photos are in position order; the first is the cover.
 	Photos []PhotoRow
 }
@@ -100,6 +108,10 @@ type CommentRow struct {
 	Hidden bool
 	// PhotoKey is the comment's one photo (migration 0013), nil for none.
 	PhotoKey *string
+	// UnderReview: the comment is hidden while under review. Comments hands
+	// such a comment to its writer only, so there it is never set on someone
+	// else's.
+	UnderReview bool
 }
 
 // Card is one post on the Board.
@@ -119,6 +131,9 @@ type Card struct {
 	PostedLocalTime string
 	CommentCount    int
 	MyReaction      *string
+	// UnderReview: the viewer's own post is hidden from everyone else while
+	// under review. Never set on anyone else's card.
+	UnderReview bool
 }
 
 // Photo is a photo link of a post.
@@ -145,6 +160,9 @@ type Comment struct {
 	PhotoURL string
 	// ParentID is set on a reply: the top-level comment it sits under.
 	ParentID *uuid.UUID
+	// UnderReview: the viewer wrote it and it is hidden from everyone else
+	// while under review. Unlike Hidden, only its writer is told.
+	UnderReview bool
 }
 
 // Received is one reaction on the viewer's own post.

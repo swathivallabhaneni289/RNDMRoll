@@ -196,6 +196,13 @@ type Tx interface {
 	// either read from the repository or checked with canonicalUUID first. A
 	// repository may parse it with uuid.Parse and treat a failure as a bug.
 	// Storage keys are plain text, never links.
+	//
+	// In Postgres an admin can remove an entry (migration 0020). EntryOfDate,
+	// EntryByID, ArchivedEntries and the photo writes then treat it as gone,
+	// exactly like a deleted one: its posted day, spin result and goal weeks
+	// stay. Postgres also sets Entry.UnderReview when the entry is hidden
+	// from everyone else while under review. MemRepo can do neither, so the
+	// shared suite never sees them; the Postgres tests cover them.
 
 	// EntryOfDate returns this person's entry for the local date d, or nil
 	// when there is none. The Entry is complete: Photos holds every photo row

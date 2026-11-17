@@ -3,15 +3,19 @@ package social
 import "testing"
 
 func TestCanViewMatrix(t *testing.T) {
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 256; i++ {
 		f := Facts{
 			IsOwner:         i&1 != 0,
 			Follows:         i&2 != 0,
 			Blocked:         i&4 != 0,
 			Archived:        i&8 != 0,
 			ViewerPostedDay: i&16 != 0,
+			Removed:         i&32 != 0,
+			UnderReview:     i&64 != 0,
+			Reported:        i&128 != 0,
 		}
-		want := f.IsOwner || (f.Follows && !f.Blocked && !f.Archived && f.ViewerPostedDay)
+		want := !f.Removed && (f.IsOwner ||
+			(f.Follows && !f.Blocked && !f.Archived && f.ViewerPostedDay && !f.Reported && !f.UnderReview))
 		if got := CanView(f); got != want {
 			t.Errorf("%+v: CanView %v, want %v", f, got, want)
 		}
@@ -38,6 +42,14 @@ func TestCanViewMatrix(t *testing.T) {
 		{"archived", Facts{Follows: true, ViewerPostedDay: true, Archived: true}, false},
 		{"blocked", Facts{Follows: true, ViewerPostedDay: true, Blocked: true}, false},
 		{"stranger who posted", Facts{ViewerPostedDay: true}, false},
+		// Moderation (migration 0020): a removed entry is gone even for its
+		// owner, who still sees one hidden while under review; a report hides
+		// it from its reporter.
+		{"owner of a removed entry", Facts{IsOwner: true, Removed: true}, false},
+		{"follower of a removed entry", Facts{Follows: true, ViewerPostedDay: true, Removed: true}, false},
+		{"owner of an entry under review", Facts{IsOwner: true, UnderReview: true}, true},
+		{"follower of an entry under review", Facts{Follows: true, ViewerPostedDay: true, UnderReview: true}, false},
+		{"follower who reported it", Facts{Follows: true, ViewerPostedDay: true, Reported: true}, false},
 	}
 	for _, c := range cases {
 		if got := CanView(c.f); got != c.want {

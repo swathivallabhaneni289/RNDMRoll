@@ -17,7 +17,9 @@ import (
 // DiaryReader is the read-only diary.Reader over the pool. Every query is
 // scoped to one person, opens no transaction block and takes no lock, so it
 // never waits for a spin or a post. Archived entries are left out of rows,
-// chips, tastes and recent; spin days and goal weeks do not look at entries.
+// chips, tastes and recent, and so are entries an admin removed (migration
+// 0020), as if they were deleted: their posted days still keep them from
+// showing as skipped. Spin days and goal weeks do not look at entries.
 type DiaryReader struct {
 	pool *pgxpool.Pool
 }
@@ -51,7 +53,8 @@ func (r *DiaryReader) entries(ctx context.Context, uid uuid.UUID, where string, 
 		var e spin.Entry
 		var dateStr string
 		if err := rows.Scan(&e.ID, &e.SpinID, &dateStr, &e.CategoryID, &e.CategoryName, &e.Title, &e.Stars,
-			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt, &e.Archived, &e.CommentsOff); err != nil {
+			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt, &e.Archived, &e.CommentsOff,
+			&e.UnderReview); err != nil {
 			return nil, err
 		}
 		if e.LocalDate, err = spin.ParseDate(dateStr); err != nil {
@@ -123,7 +126,7 @@ func (r *DiaryReader) Rows(ctx context.Context, userID string, categoryID *strin
 		catArg = cid
 	}
 	list, err := r.entries(ctx, uid, `
-		e.archived_at is null
+		e.archived_at is null and e.removed_at is null
 		and ($2::date is null or e.local_date < $2::date)
 		and ($3::uuid is null or s.category_id = $3::uuid)
 		order by e.local_date desc
@@ -192,7 +195,7 @@ func (r *DiaryReader) Chips(ctx context.Context, userID string) ([]diary.Chip, e
 		  and exists (
 			select 1 from entries e
 			join spins s on s.id = e.spin_id and s.user_id = e.user_id
-			where e.user_id = $1 and e.archived_at is null and s.category_id = c.id)
+			where e.user_id = $1 and e.archived_at is null and e.removed_at is null and s.category_id = c.id)
 		`+chipOrder, uid)
 	if err != nil {
 		return nil, err
@@ -254,7 +257,7 @@ func (r *DiaryReader) Tastes(ctx context.Context, userID string) ([]diary.RawTas
 		from entries e
 		join spins s on s.id = e.spin_id and s.user_id = e.user_id
 		join wheel_categories c on c.id = s.category_id and c.user_id = s.user_id
-		where e.user_id = $1 and e.archived_at is null
+		where e.user_id = $1 and e.archived_at is null and e.removed_at is null
 		group by c.id, c.name, c.archived_at, c.position
 		`+chipOrder, uid)
 	if err != nil {
@@ -278,7 +281,7 @@ func (r *DiaryReader) Recent(ctx context.Context, userID string, n int) ([]spin.
 	if err != nil {
 		return nil, err
 	}
-	return r.entries(ctx, uid, `e.archived_at is null order by e.local_date desc limit $2`, n)
+	return r.entries(ctx, uid, `e.archived_at is null and e.removed_at is null order by e.local_date desc limit $2`, n)
 }
 
 // TimeZone implements diary.Reader.
@@ -296,10 +299,12 @@ func (r *DiaryReader) TimeZone(ctx context.Context, userID string) (string, erro
 }
 
 // Social implements diary.Reader with the comments the post page shows the
-// owner: comments and replies, leaving out anyone with a block either way and
-// a reply whose top-level comment's writer has one (board.Thread). A comment
-// the owner hid is left out too, so it never shows under a post in the list.
-// Only the person's own entries are read.
+// owner: comments and replies, leaving out anyone with a block either way,
+// anything moderation keeps from the owner (a comment they reported, or one
+// under review or removed), and a reply whose top-level comment is left out
+// for either reason (board.Thread). A comment the owner hid is left out too,
+// so it never shows under a post in the list. Only the person's own entries
+// are read, and none an admin removed.
 func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []string) (map[string]diary.PostSocial, error) {
 	uid, err := diaryUserID(userID)
 	if err != nil {
@@ -324,8 +329,10 @@ func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []stri
 		join users u on u.id = c.user_id
 		left join post_comments p on p.id = c.parent_id
 		where c.entry_id = any($2::uuid[]) and e.user_id = $1 and c.hidden_at is null
-		  and not ` + blockedEither("$1::uuid", "c.user_id") + `
-		  and (c.parent_id is null or not ` + blockedEither("$1::uuid", "p.user_id") + `)`
+		  and ` + postShownTo("$1::uuid", "e") + `
+		  and not ` + blockedEither("$1::uuid", "c.user_id") + ` and ` + commentShownTo("$1::uuid", "c") + `
+		  and (c.parent_id is null or (not ` + blockedEither("$1::uuid", "p.user_id") + `
+		    and ` + commentShownTo("$1::uuid", "p") + `))`
 	rows, err := r.pool.Query(ctx, `select c.entry_id, count(*) `+shown+` group by c.entry_id`, uid, ids)
 	if err != nil {
 		return nil, err

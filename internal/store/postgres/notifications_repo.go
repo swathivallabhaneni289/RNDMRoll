@@ -26,8 +26,10 @@ var _ notifications.Repository = (*NotificationsRepo)(nil)
 
 // Comments implements notifications.Repository. A reply counts as a comment
 // for the post's owner while its top-level comment is shown to the owner
-// (no block with its writer), and not at all when the owner wrote that
-// top-level comment: the owner then gets the reply item only.
+// (no block with its writer, and nothing moderation keeps from them), and
+// not at all when the owner wrote that top-level comment: the owner then
+// gets the reply item only. Nothing on a removed post is listed, and nothing
+// the owner reported or that is under review.
 func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.commentRows(ctx, notifications.KindComment, `
 		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name,
@@ -37,8 +39,10 @@ func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since
 		left join post_comments p on p.id = c.parent_id
 		join spins s on s.id = e.spin_id
 		where e.user_id = $1 and c.user_id <> $1 and c.created_at > $2
-		  and not `+blockedEither("$1::uuid", "c.user_id")+`
-		  and (c.parent_id is null or (p.user_id <> $1 and not `+blockedEither("$1::uuid", "p.user_id")+`))
+		  and `+postShownTo("$1::uuid", "e")+`
+		  and not `+blockedEither("$1::uuid", "c.user_id")+` and `+commentShownTo("$1::uuid", "c")+`
+		  and (c.parent_id is null or (p.user_id <> $1 and not `+blockedEither("$1::uuid", "p.user_id")+`
+		    and `+commentShownTo("$1::uuid", "p")+`))
 		order by c.created_at desc, c.id desc
 		limit $3`, owner, since, limit)
 }
@@ -47,9 +51,9 @@ func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since
 // top-level comment the viewer wrote, with no block between the viewer and
 // the reply's writer, that the viewer may read (not hidden by the post's
 // owner, unless the viewer is that owner: shownComment, as on the post
-// page), on a post the viewer can still see (the rule of social.CanView: the
-// viewer's own, or a followed owner's with no block, not archived, on a day
-// the viewer posted).
+// page; and nothing moderation keeps from them, on the reply or on their own
+// comment), on a post the viewer can still see (social.CanView,
+// postVisibleTo).
 func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.commentRows(ctx, notifications.KindReply, `
 		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name,
@@ -60,11 +64,8 @@ func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since
 		join spins s on s.id = e.spin_id
 		where p.user_id = $1 and c.user_id <> $1 and c.created_at > $2
 		  and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
-		  and (e.user_id = $1 or (
-		    e.archived_at is null
-		    and exists (select 1 from follows f where f.follower_id = $1 and f.followee_id = e.user_id and f.status = 'accepted')
-		    and not `+blockedEither("$1::uuid", "e.user_id")+`
-		    and exists (select 1 from posted_days pd where pd.user_id = $1 and pd.local_date = e.local_date)))
+		  and `+commentShownTo("$1::uuid", "c")+` and `+commentShownTo("$1::uuid", "p")+`
+		  and `+postVisibleTo("$1::uuid", "e")+`
 		order by c.created_at desc, c.id desc
 		limit $3`, viewer, since, limit)
 }

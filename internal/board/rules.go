@@ -49,8 +49,9 @@ func cleanComment(s string, photo bool) (string, *FieldProblem) {
 // Thread orders the comments the viewer may see into one flat list: the
 // top-level comments in the order given (oldest first), each followed
 // directly by its replies in the order given. A reply whose top-level
-// comment is not in rows (its writer has a block with the viewer) is left
-// out, so a reply is never drawn under the wrong comment.
+// comment is not in rows (its writer has a block with the viewer, or
+// moderation keeps it from them) is left out, so a reply is never drawn
+// under the wrong comment, and it goes with the comment it answers.
 func Thread(rows []CommentRow) []CommentRow {
 	tops := make(map[uuid.UUID]bool, len(rows))
 	replies := map[uuid.UUID][]CommentRow{}

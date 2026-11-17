@@ -27,11 +27,14 @@ func NewBoardRepo(pool *pgxpool.Pool) *BoardRepo {
 var _ board.Repository = (*BoardRepo)(nil)
 
 // boardEntrySelect reads an entry with its owner, its spin's category and
-// zone, and the owner's late flag.
-const boardEntrySelect = `
+// zone, the owner's late flag, and what moderation says about it for the
+// viewer, who is $1 in every statement that uses it: removed, under review,
+// and reported by the viewer.
+var boardEntrySelect = `
 	select e.id, ` + personColumns + `, e.local_date::text, s.category_id::text, s.category_name, s.tz_name,
 	       e.title, e.stars, e.reaction, e.comment, coalesce(p.late, false), e.created_at,
-	       e.archived_at is not null, e.comments_off
+	       e.archived_at is not null, e.comments_off,
+	       e.removed_at is not null, ` + postUnderReview("e") + `, ` + postReportedBy("$1::uuid", "e") + `
 	from entries e
 	join spins s on s.id = e.spin_id and s.user_id = e.user_id
 	join users u on u.id = e.user_id
@@ -42,7 +45,8 @@ func scanBoardEntry(row interface{ Scan(...any) error }) (board.EntryRow, error)
 	var e board.EntryRow
 	err := row.Scan(&e.ID, &e.Owner.ID, &e.Owner.Name, &e.Owner.Username, &e.Owner.PhotoKey,
 		&e.LocalDate, &e.CategoryID, &e.CategoryName, &e.TZName,
-		&e.Title, &e.Stars, &e.Reaction, &e.Note, &e.Late, &e.CreatedAt, &e.Archived, &e.CommentsOff)
+		&e.Title, &e.Stars, &e.Reaction, &e.Note, &e.Late, &e.CreatedAt, &e.Archived, &e.CommentsOff,
+		&e.Removed, &e.UnderReview, &e.Reported)
 	e.CreatedAt = e.CreatedAt.UTC()
 	e.Photos = []board.PhotoRow{}
 	return e, err
@@ -78,9 +82,10 @@ func (r *BoardRepo) photosOf(ctx context.Context, rows []board.EntryRow) error {
 	return prows.Err()
 }
 
-// EntryByID implements board.Repository.
-func (r *BoardRepo) EntryByID(ctx context.Context, id uuid.UUID) (board.EntryRow, error) {
-	e, err := scanBoardEntry(r.pool.QueryRow(ctx, boardEntrySelect+` where e.id = $1`, id))
+// EntryFor implements board.Repository. Nothing is filtered here: the
+// service decides with social.CanView, from the facts read with the row.
+func (r *BoardRepo) EntryFor(ctx context.Context, viewer, id uuid.UUID) (board.EntryRow, error) {
+	e, err := scanBoardEntry(r.pool.QueryRow(ctx, boardEntrySelect+` where e.id = $2`, viewer, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return board.EntryRow{}, board.ErrNotFound
 	}
@@ -124,11 +129,9 @@ func notMuted(col string) string {
 }
 
 // visibleOwner is the where fragment of the list rule for entry alias e and
-// viewer $1: the viewer's own, or a person the viewer follows (accepted)
-// with no block either way. Archived entries are never listed.
-var visibleOwner = `e.archived_at is null and (e.user_id = $1 or (
-		exists (select 1 from follows f where f.follower_id = $1 and f.followee_id = e.user_id and f.status = 'accepted')
-		and not ` + blockedEither("$1::uuid", "e.user_id") + `))`
+// viewer $1: social.CanView (postVisibleTo), and archived entries are never
+// listed, the viewer's own included.
+var visibleOwner = `e.archived_at is null and ` + postVisibleTo("$1::uuid", "e")
 
 // Cards implements board.Repository. The dates are the viewer's posted
 // dates, which is the rest of the rule.
@@ -165,13 +168,16 @@ func (r *BoardRepo) CommentCounts(ctx context.Context, viewer uuid.UUID, entryID
 		return out, nil
 	}
 	// The same comments as the post page: a reply counts only while its
-	// top-level comment is shown (board.Thread).
+	// top-level comment is shown (board.Thread), so every rule on the comment
+	// is checked on its parent too.
 	rows, err := r.pool.Query(ctx, `
 		select c.entry_id, count(*) from post_comments c
 		join entries e on e.id = c.entry_id
 		left join post_comments p on p.id = c.parent_id
 		where c.entry_id = any($2::uuid[]) and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
-		  and (c.parent_id is null or (not `+blockedEither("$1::uuid", "p.user_id")+` and `+shownComment("p", "e")+`))
+		  and `+commentShownTo("$1::uuid", "c")+`
+		  and (c.parent_id is null or (not `+blockedEither("$1::uuid", "p.user_id")+` and `+shownComment("p", "e")+`
+		    and `+commentShownTo("$1::uuid", "p")+`))
 		group by c.entry_id`, viewer, entryIDs)
 	if err != nil {
 		return nil, err
@@ -225,11 +231,14 @@ func (r *BoardRepo) PostedCount(ctx context.Context, viewer uuid.UUID, date stri
 	return n, err
 }
 
-// NamesOnDay implements board.Repository.
+// NamesOnDay implements board.Repository. A post moderation keeps from the
+// viewer gives no name; its posted day still counts in PostedCount, as a
+// deleted post's does.
 func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date string, limit int) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `
 		select coalesce(u.name, '') from entries e join users u on u.id = e.user_id
 		where e.local_date = $2::date and e.archived_at is null and `+followedClause+` and `+notMuted("u.id")+`
+		  and `+postShownTo("$1::uuid", "e")+`
 		order by e.created_at, e.id
 		limit $3`, viewer, date, limit)
 	if err != nil {
@@ -247,12 +256,14 @@ func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date strin
 	return out, rows.Err()
 }
 
-// Comments implements board.Repository.
+// Comments implements board.Repository. A comment under review is listed
+// for its writer only, so its under_review is set on the viewer's own.
 func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]board.CommentRow, error) {
 	rows, err := r.pool.Query(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null, c.photo_key
+		select `+commentColumns+`
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.entry_id = $2 and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
+		  and `+commentShownTo("$1::uuid", "c")+`
 		order by c.created_at, c.id`, viewer, entryID)
 	if err != nil {
 		return nil, err
@@ -269,10 +280,15 @@ func (r *BoardRepo) Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]
 	return out, rows.Err()
 }
 
+// commentColumns are the columns scanComment reads, for the comment alias c,
+// its writer u and its entry e.
+var commentColumns = `c.id, c.entry_id, ` + personColumns + `, e.user_id, c.body, c.created_at, c.parent_id,
+	c.hidden_at is not null, c.photo_key, ` + commentUnderReview("c")
+
 func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) {
 	var c board.CommentRow
 	err := row.Scan(&c.ID, &c.EntryID, &c.Author.ID, &c.Author.Name, &c.Author.Username, &c.Author.PhotoKey,
-		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden, &c.PhotoKey)
+		&c.EntryOwner, &c.Body, &c.CreatedAt, &c.ParentID, &c.Hidden, &c.PhotoKey, &c.UnderReview)
 	c.CreatedAt = c.CreatedAt.UTC()
 	return c, err
 }
@@ -389,7 +405,7 @@ func shownComment(c, e string) string {
 // CommentByID implements board.Repository.
 func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.CommentRow, error) {
 	c, err := scanComment(r.pool.QueryRow(ctx, `
-		select c.id, c.entry_id, `+personColumns+`, e.user_id, c.body, c.created_at, c.parent_id, c.hidden_at is not null, c.photo_key
+		select `+commentColumns+`
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
 		where c.id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {

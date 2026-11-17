@@ -195,10 +195,13 @@ type WeekDayView struct {
 // (json "-"), and the HTTP layer turns it into PhotoURL, the cover's link,
 // just before the answer is written. PhotoURL is empty until then.
 type EntryRef struct {
-	ID          string  `json:"id"`
-	Late        bool    `json:"late"`
-	Archived    bool    `json:"archived"`
-	CommentsOff bool    `json:"comments_off"`
+	ID          string `json:"id"`
+	Late        bool   `json:"late"`
+	Archived    bool   `json:"archived"`
+	CommentsOff bool   `json:"comments_off"`
+	// UnderReview is Entry.UnderReview. It is not sent yet: the answer gains
+	// it with the app's line for it.
+	UnderReview bool    `json:"-"`
 	Title       string  `json:"title"`
 	Stars       int     `json:"stars"`
 	Reaction    *string `json:"reaction"`

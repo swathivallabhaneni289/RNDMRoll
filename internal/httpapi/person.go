@@ -121,7 +121,7 @@ func (h *PersonHandler) person(c *gin.Context) {
 		respondFeedError(c, err)
 		return
 	}
-	posts, err := h.board.PersonPostCount(ctx, id)
+	posts, err := h.board.PersonPostCount(ctx, u.ID, id)
 	if err != nil {
 		respondFeedError(c, err)
 		return

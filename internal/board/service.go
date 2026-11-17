@@ -15,11 +15,16 @@ import (
 // Repository is the board's storage. The list reads apply the same rule as
 // social.CanView in SQL: the viewer's own entries, and the entries of people
 // the viewer follows (accepted) with no block either way and not archived,
-// on dates the viewer posted. Archived entries are left off every list,
-// the owner's own included (the owner reads them on the post page).
+// on dates the viewer posted, that the viewer did not report and that are
+// not hidden while under review. A removed entry is on no list, its owner's
+// included. Archived entries are left off every list, the owner's own
+// included (the owner reads them on the post page). Comments follow the same
+// moderation rules, with the writer as their owner.
 type Repository interface {
-	// EntryByID reads any entry (any owner). ErrNotFound when missing.
-	EntryByID(ctx context.Context, id uuid.UUID) (EntryRow, error)
+	// EntryFor reads any entry (any owner) with what moderation says about it
+	// for viewer: Removed, UnderReview and Reported, read in the same
+	// statement. ErrNotFound when missing.
+	EntryFor(ctx context.Context, viewer, id uuid.UUID) (EntryRow, error)
 	// PostedDates are the viewer's posted dates, newest first, at most
 	// upTo, strictly before `before` when set, at most limit.
 	PostedDates(ctx context.Context, viewer uuid.UUID, upTo string, before *string, limit int) ([]string, error)
@@ -29,10 +34,14 @@ type Repository interface {
 	// on the viewer's posted days), newest first, strictly before the date
 	// `before` when set, at most limit.
 	PersonEntries(ctx context.Context, viewer, owner uuid.UUID, before *string, limit int) ([]EntryRow, error)
-	// PostCount is how many posts owner has, archived ones left out.
-	PostCount(ctx context.Context, owner uuid.UUID) (int, error)
+	// PostCount is how many posts owner has, archived ones left out, and the
+	// ones moderation keeps from viewer (removed, under review, reported by
+	// them), so it counts what the grid can show.
+	PostCount(ctx context.Context, viewer, owner uuid.UUID) (int, error)
 	// CommentCounts and MyReactions are the viewer's view of entryIDs.
-	// Comments by someone with a block with the viewer are not counted.
+	// CommentCounts counts what the post page lists: comments by someone
+	// with a block with the viewer, and those moderation keeps from the
+	// viewer, are not counted, and neither are the replies under them.
 	CommentCounts(ctx context.Context, viewer uuid.UUID, entryIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	MyReactions(ctx context.Context, viewer uuid.UUID, entryIDs []uuid.UUID) (map[uuid.UUID]string, error)
 	// PostedCount is how many people the viewer follows posted date.
@@ -42,7 +51,9 @@ type Repository interface {
 	NamesOnDay(ctx context.Context, viewer uuid.UUID, date string, limit int) ([]string, error)
 	// Comments of an entry, oldest first (top-level comments and replies
 	// alike, with ParentID set on a reply), without writers who have a block
-	// with the viewer. Thread puts them in page order.
+	// with the viewer and without the comments moderation keeps from them.
+	// Thread puts them in page order, and drops the replies whose top-level
+	// comment is not there.
 	Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]CommentRow, error)
 	// Received are the reactions on owner's entry, newest change first,
 	// without people who have a block with the owner.
@@ -216,7 +227,8 @@ func (s *Service) cardsOf(ctx context.Context, viewer uuid.UUID, rows []EntryRow
 	out := make([]Card, 0, len(rows))
 	for _, r := range rows {
 		// Every listed row passed the rule in SQL: the viewer's own, or a
-		// followed person's on a date the viewer posted, with no block.
+		// followed person's on a date the viewer posted, with no block, and
+		// nothing moderation keeps from the viewer.
 		f := social.Facts{IsOwner: r.Owner.ID == viewer, Follows: true, ViewerPostedDay: true}
 		out = append(out, s.cardOf(r, f, viewer, counts[r.ID], mine, zone))
 	}
@@ -238,6 +250,8 @@ func (s *Service) cardOf(r EntryRow, f social.Facts, viewer uuid.UUID, comments 
 		PostedAt:        r.CreatedAt,
 		PostedLocalTime: spin.PostedLocalTime(r.CreatedAt, r.TZName, zone),
 		CommentCount:    comments,
+		// Only the owner is told: anyone else never gets the card at all.
+		UnderReview: r.UnderReview && r.Owner.ID == viewer,
 	}
 	if len(r.Photos) > 0 {
 		c.PhotoURL = s.link(f, r.Photos[0].Key)
@@ -250,9 +264,11 @@ func (s *Service) cardOf(r EntryRow, f social.Facts, viewer uuid.UUID, comments 
 }
 
 // visible reads an entry and the facts for the viewer; a missing entry and
-// one the viewer may not see are both ErrNotFound.
+// one the viewer may not see are both ErrNotFound. It gates the post page,
+// reactions, comments, replies and both reports, so a removed post, one under
+// review and one the viewer reported are all a miss there too.
 func (s *Service) visible(ctx context.Context, viewer, entryID uuid.UUID) (EntryRow, social.Facts, error) {
-	row, err := s.repo.EntryByID(ctx, entryID)
+	row, err := s.repo.EntryFor(ctx, viewer, entryID)
 	if err != nil {
 		return EntryRow{}, social.Facts{}, err
 	}
@@ -260,6 +276,9 @@ func (s *Service) visible(ctx context.Context, viewer, entryID uuid.UUID) (Entry
 	if err != nil {
 		return EntryRow{}, social.Facts{}, err
 	}
+	// Moderation's facts come with the entry row, like Archived: ViewFacts
+	// reads nothing for the owner, who still must not see a removed post.
+	f.Removed, f.UnderReview, f.Reported = row.Removed, row.UnderReview, row.Reported
 	if !social.CanView(f) {
 		return EntryRow{}, social.Facts{}, ErrNotFound
 	}
@@ -333,6 +352,8 @@ func (s *Service) commentOf(c CommentRow, viewer, owner uuid.UUID, now time.Time
 		ParentID: c.ParentID,
 		// Only comments the viewer may read reach here, so the link is fine.
 		PhotoURL: s.commentPhotoURL(c.PhotoKey),
+		// Only its writer is told; the post's owner never gets it at all.
+		UnderReview: c.UnderReview && c.Author.ID == viewer,
 	}
 }
 

@@ -237,12 +237,16 @@ func (r *PushRepo) RemoveTokens(ctx context.Context, tokens []string) error {
 }
 
 // CommentTargets implements push.Repository with the bell's rules
-// (NotificationsRepo.Comments and Replies) for this one comment:
+// (NotificationsRepo.Comments and Replies) for this one comment, each read
+// as the person it would go to, so nothing moderation keeps from them is
+// pushed (a removed post, or a comment they reported or that is under
+// review, the comment's top-level comment included):
 //   - the post's owner gets "comment" for a comment or a reply by someone
 //     else with no block, except a reply under the owner's own comment or
 //     under a writer the owner has a block with;
 //   - the top-level comment's writer gets "reply" for a reply by someone else
-//     with no block, on a post they can still see.
+//     with no block, on a post they can still see (social.CanView,
+//     postVisibleTo).
 func (r *PushRepo) CommentTargets(ctx context.Context, commentID uuid.UUID) ([]push.Target, error) {
 	rows, err := r.pool.Query(ctx, `
 		select e.user_id, 'comment', c.user_id, c.entry_id, c.body, true
@@ -250,8 +254,10 @@ func (r *PushRepo) CommentTargets(ctx context.Context, commentID uuid.UUID) ([]p
 		join entries e on e.id = c.entry_id
 		left join post_comments p on p.id = c.parent_id
 		where c.id = $1 and c.user_id <> e.user_id
-		  and not `+blockedEither("e.user_id", "c.user_id")+`
-		  and (c.parent_id is null or (p.user_id <> e.user_id and not `+blockedEither("e.user_id", "p.user_id")+`))
+		  and `+postShownTo("e.user_id", "e")+`
+		  and not `+blockedEither("e.user_id", "c.user_id")+` and `+commentShownTo("e.user_id", "c")+`
+		  and (c.parent_id is null or (p.user_id <> e.user_id and not `+blockedEither("e.user_id", "p.user_id")+`
+		    and `+commentShownTo("e.user_id", "p")+`))
 		union all
 		select p.user_id, 'reply', c.user_id, c.entry_id, c.body, e.user_id = p.user_id
 		from post_comments c
@@ -259,11 +265,8 @@ func (r *PushRepo) CommentTargets(ctx context.Context, commentID uuid.UUID) ([]p
 		join entries e on e.id = c.entry_id
 		where c.id = $1 and c.user_id <> p.user_id
 		  and not `+blockedEither("p.user_id", "c.user_id")+`
-		  and (e.user_id = p.user_id or (
-		    e.archived_at is null
-		    and exists (select 1 from follows f where f.follower_id = p.user_id and f.followee_id = e.user_id and f.status = 'accepted')
-		    and not `+blockedEither("p.user_id", "e.user_id")+`
-		    and exists (select 1 from posted_days pd where pd.user_id = p.user_id and pd.local_date = e.local_date)))`,
+		  and `+commentShownTo("p.user_id", "c")+` and `+commentShownTo("p.user_id", "p")+`
+		  and `+postVisibleTo("p.user_id", "e"),
 		commentID)
 	if err != nil {
 		return nil, err

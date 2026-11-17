@@ -74,9 +74,13 @@ type Entry struct {
 	Late         bool
 	Archived     bool
 	CommentsOff  bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Photos       []EntryPhoto
+	// UnderReview: enough people reported the post that it is hidden from
+	// everyone but its owner while the admin takes a look. Only the Postgres
+	// repository sets it (migration 0020).
+	UnderReview bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Photos      []EntryPhoto
 }
 
 // EntryPhoto is one stored photo of an entry. Key is the storage key (a
@@ -418,6 +422,7 @@ func EntryRefOf(e *Entry) *EntryRef {
 		Late:        e.Late,
 		Archived:    e.Archived,
 		CommentsOff: e.CommentsOff,
+		UnderReview: e.UnderReview,
 		Title:       e.Title,
 		Stars:       e.Stars,
 		PhotoCount:  len(e.Photos),

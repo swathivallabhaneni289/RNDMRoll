@@ -110,11 +110,16 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	w, boss := newAdminWorld(t)
 	a := w.person("ad_alice", "Alice Ames")
 	b := w.person("ad_bob", "Bob Brown")
+	// Cara follows B and reports nothing at first, so she shows what
+	// everyone else sees of B's post: A's report takes it away from A.
+	c := w.person("ad_cara", "Cara Cole")
 	w.followAccepted(a, b)
 	w.followAccepted(b, a)
+	w.followAccepted(c, b)
 	const day = "2026-10-08"
 	bEntry := w.post(b, day)
 	aEntry := w.post(a, day)
+	w.post(c, day)
 
 	// Reports from the app: a post, a comment with markup in it, a person.
 	w.call(b, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
@@ -184,8 +189,12 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "n=removed") {
 		t.Fatalf("remove comment: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
-	if ids, _ := w.commentIDs(a, aEntry); len(ids) != 0 {
-		t.Fatalf("comment still there: %v", ids)
+	// A reported it, so it is gone for A anyway: B, who wrote it, shows it
+	// is gone for everyone.
+	for _, p := range []feedPerson{a, b} {
+		if ids, _ := w.commentIDs(p, aEntry); len(ids) != 0 {
+			t.Fatalf("comment still there for %s: %v", p.name, ids)
+		}
 	}
 
 	// Disable B: logged out, refused, and gone for A everywhere.
@@ -205,8 +214,9 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 		t.Fatalf("a wrong password learns the account is disabled: %s", bad2.Body.String())
 	}
 	w.call(a, http.MethodGet, "/v1/people/"+b.id, nil, http.StatusNotFound)
-	w.call(a, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
-	if ids := cardIDs(t, w.board(a, "")); has(ids, bEntry) {
+	// B's post is checked as Cara: A reported it, so it is gone for A anyway.
+	w.call(c, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
+	if ids := cardIDs(t, w.board(c, "")); has(ids, bEntry) {
 		t.Fatalf("board still has b: %v", ids)
 	}
 	if got := w.searchNames(a, "ad_bob"); len(got) != 0 {
@@ -219,18 +229,24 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 		t.Fatalf("follower count still counts b")
 	}
 
-	// Enable: everything comes back.
+	// Enable: everything comes back, except B's post for A, who reported it:
+	// that is gone for its reporter for good.
 	csrf = csrfOf(t, adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String())
 	adminDo(t, w, http.MethodPost, "/admin/people/"+b.id+"/enable", cookie, url.Values{"csrf": {csrf}}, "")
-	if login := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "ad_bob@example.com", "password": adminTestPassword}); login.Code != http.StatusOK {
+	login = integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": "ad_bob@example.com", "password": adminTestPassword})
+	if login.Code != http.StatusOK {
 		t.Fatalf("login after enable: %d", login.Code)
 	}
+	b.token = decodeBody(t, login)["access_token"].(string)
 	w.ok(a, http.MethodGet, "/v1/people/"+b.id, nil)
-	w.ok(a, http.MethodGet, "/v1/posts/"+bEntry, nil)
+	w.ok(c, http.MethodGet, "/v1/posts/"+bEntry, nil)
+	w.call(a, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
 
-	// Disabling closed every report about B; a new report opens one again.
-	// Remove that reported post through the app's own delete.
-	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
+	// Disabling closed every report about B; a new report opens one again,
+	// from Cara (A's own report is not made twice). Remove that reported post
+	// through the app's own delete.
+	w.call(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"}, http.StatusNotFound)
+	w.ok(c, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
 	page = adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
 	var postReport string
 	for _, part := range strings.Split(page, `name="kind" value="post"><input type="hidden" name="id" value="`)[1:] {
@@ -244,7 +260,9 @@ func TestAdminIntegration_LoginReportsAndActions(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Location"), "n=removed") {
 		t.Fatalf("remove post: %s", rec.Header().Get("Location"))
 	}
-	w.call(a, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
+	// Both reporters lost it already, so its owner shows it is gone.
+	w.call(b, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
+	w.call(b, http.MethodGet, "/v1/entries/"+bEntry, nil, http.StatusNotFound)
 
 	// Logging out ends the session cookie.
 	rec = adminDo(t, w, http.MethodPost, "/admin/logout", cookie, url.Values{"csrf": {csrfOf(t, page)}}, "")
@@ -449,30 +467,37 @@ func TestAdminIntegration_APostReportShowsTheWholePost(t *testing.T) {
 	}
 }
 
-// A second report of a post by the same person, after its title changed,
-// saves the new title with the new reason: the one report shows that title
-// once, with no label.
-func TestAdminIntegration_AReportAgainSavesTheNewTitle(t *testing.T) {
+// A report made after a post's title changed saves the new title: the post's
+// one card, which shows its newest report, has that title once, with no
+// label. The first reporter cannot report it again: the post is gone for
+// them, so that report is answered like a miss and stays as it was.
+func TestAdminIntegration_AReportAfterAnEditSavesTheNewTitle(t *testing.T) {
 	w, _ := newAdminWorld(t)
 	a := w.person("ad_alice", "Alice Ames")
 	b := w.person("ad_bob", "Bob Brown")
+	c := w.person("ad_cara", "Cara Cole")
 	w.followAccepted(a, b)
+	w.followAccepted(c, b)
 	const day = "2026-10-08"
 	w.post(a, day)
+	w.post(c, day)
 	bEntry := w.post(b, day)
 	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "spam"})
 	w.ok(b, http.MethodPatch, "/v1/entries/"+bEntry, map[string]any{"title": "Dune, again"})
-	w.ok(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "harassment"})
+	w.call(a, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"}, http.StatusNotFound)
+	// A minute later, so Cara's report is the newest one.
+	w.clk.Advance(time.Minute)
+	w.ok(c, http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "harassment"})
 
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
 	page := adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "")
 	if page.Code != http.StatusOK || strings.Count(page.Body.String(), `<article class="card`) != 1 {
-		t.Fatalf("the page, want one report: %d %s", page.Code, page.Body.String())
+		t.Fatalf("the page, want one card for the post: %d %s", page.Code, page.Body.String())
 	}
-	report := adminReportOf(t, page.Body.String(), "Bullying or harassment")
-	if !strings.Contains(report, `<h3>Dune, again</h3>`) ||
+	report := adminReportOf(t, page.Body.String(), "Bullying or harassment · Spam")
+	if !strings.Contains(report, `<h3>Dune, again</h3>`) || strings.Contains(report, "Violence") ||
 		strings.Contains(report, "Title now") || strings.Contains(report, "Title when reported") {
-		t.Fatalf("the report, want the title then once and no label: %s", report)
+		t.Fatalf("the card, want the new title once, no label, and no second reason from A: %s", report)
 	}
 }
 
@@ -928,17 +953,19 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 	bEntry := w.post(b, day)
 	comment := w.call(b, http.MethodPost, "/v1/posts/"+bEntry+"/comments", map[string]any{"text": "rude"}, http.StatusCreated)["comment"].(map[string]any)["id"].(string)
 	var reporters []feedPerson
-	for _, username := range []string{"ad_alice", "ad_cara", "ad_dana"} {
+	for _, username := range []string{"ad_alice", "ad_cara", "ad_dana", "ad_erin"} {
 		p := w.person(username, "Reporter "+username)
 		w.followAccepted(p, b)
 		w.post(p, day)
 		reporters = append(reporters, p)
 	}
-	for i, reason := range []string{"spam", "hate", "violence"} {
-		w.ok(reporters[i], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": reason})
-	}
+	// The comment first: once its reporters report the post too, the post is
+	// gone for them, and with three reports it is hidden from everyone but B.
 	for i, reason := range []string{"harassment", "nudity"} {
 		w.ok(reporters[i], http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": reason})
+	}
+	for i, reason := range []string{"spam", "hate", "violence"} {
+		w.ok(reporters[i], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": reason})
 	}
 
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
@@ -973,17 +1000,19 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 		t.Fatalf("%d cards, want one for the post and one for the comment", n)
 	}
 	act("dismiss", "post", "Violence or threats · Hate speech · Spam", "dismissed")
-	// Alice reports the post again: her report opens again, alone on a card.
-	w.ok(reporters[0], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"})
+	// Alice cannot report the post again: it is gone for her for good. Erin,
+	// who never reported it, does: her report is open, alone on a card.
+	w.call(reporters[0], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"}, http.StatusNotFound)
+	w.ok(reporters[3], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"})
 	act("remove", "comment", "Nudity or sexual content · Bullying or harassment", "removed")
 	act("remove", "post", `Violence or threats</p><p class="kind">Post`, "removed")
 
-	// Each closed card is one action: what Remove closed, and the two
+	// Each closed card is one action: what Remove closed, and the three
 	// reports dismissed before, which it left as they were.
 	page := personPage()
 	for mark, closed := range map[string]string{
 		`Violence or threats</p><p class="kind">Post`:       "Removed",
-		"Violence or threats · Hate speech</p>":             "Dismissed",
+		"Violence or threats · Hate speech · Spam</p>":      "Dismissed",
 		"Nudity or sexual content · Bullying or harassment": "Removed",
 	} {
 		if card := adminReportOf(t, page, mark); !strings.Contains(card, `<p class="by">`+closed+` · `) {
@@ -996,5 +1025,7 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 	if list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String(); !strings.Contains(list, "No open reports.") {
 		t.Fatalf("the list still has open reports: %s", list)
 	}
-	w.call(reporters[0], http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
+	// Every reporter lost the post when they reported it, so its owner shows
+	// that it is gone.
+	w.call(b, http.MethodGet, "/v1/posts/"+bEntry, nil, http.StatusNotFound)
 }

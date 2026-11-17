@@ -33,11 +33,18 @@ func parseID(what, s string) (uuid.UUID, error) {
 
 // entrySelect is the one read of an entry. The category id and the name come
 // from the entry's own spin (the entry stores neither), and late is the late
-// flag of the date's posted-day row, false when the date has none.
-const entrySelect = `
+// flag of the date's posted-day row, false when the date has none. It reads
+// the person's own entries only, so under review tells the owner their post
+// is hidden from everyone else (migration 0020).
+//
+// It does not leave out a removed entry: InsertEntry's read-back must find
+// whatever holds the date or the spin. The owner's reads (EntryOfDate,
+// EntryByID, ArchivedEntries, the diary) add "e.removed_at is null"
+// themselves, so a removed post is gone for its owner as if deleted.
+var entrySelect = `
 	select e.id::text, e.spin_id::text, e.local_date::text, s.category_id::text, s.category_name,
 	       e.title, e.stars, e.reaction, e.comment, coalesce(p.late, false), e.created_at, e.updated_at,
-	       e.archived_at is not null, e.comments_off
+	       e.archived_at is not null, e.comments_off, ` + postUnderReview("e") + `
 	from entries e
 	join spins s on s.id = e.spin_id and s.user_id = e.user_id
 	left join posted_days p on p.user_id = e.user_id and p.local_date = e.local_date
@@ -50,7 +57,8 @@ func (t *pgTx) entryRow(where string, args ...any) (*spin.Entry, error) {
 	var dateStr string
 	err := t.tx.QueryRow(t.ctx, entrySelect+where, append([]any{t.uid}, args...)...).
 		Scan(&e.ID, &e.SpinID, &dateStr, &e.CategoryID, &e.CategoryName, &e.Title, &e.Stars,
-			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt, &e.Archived, &e.CommentsOff)
+			&e.Reaction, &e.Comment, &e.Late, &e.CreatedAt, &e.UpdatedAt, &e.Archived, &e.CommentsOff,
+			&e.UnderReview)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -105,11 +113,11 @@ func (t *pgTx) photosOf(entryID uuid.UUID) ([]spin.EntryPhoto, error) {
 	return out, rows.Err()
 }
 
-// entryExists is nil when the entry is this person's and spin.ErrEntryNotFound
-// otherwise.
+// entryExists is nil when the entry is this person's and not removed, and
+// spin.ErrEntryNotFound otherwise.
 func (t *pgTx) entryExists(id uuid.UUID) error {
 	var one int
-	err := t.tx.QueryRow(t.ctx, `select 1 from entries where id = $1 and user_id = $2`, id, t.uid).Scan(&one)
+	err := t.tx.QueryRow(t.ctx, `select 1 from entries where id = $1 and user_id = $2 and removed_at is null`, id, t.uid).Scan(&one)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return spin.ErrEntryNotFound
 	}
@@ -124,8 +132,10 @@ func (t *pgTx) insertPhotoRow(entryID uuid.UUID, position int, key, contentType,
 	return err
 }
 
+// EntryOfDate leaves out a removed entry: Today then reads the day as one
+// whose post was deleted, still posted, and a new post that day is refused.
 func (t *pgTx) EntryOfDate(d spin.Date) (*spin.Entry, error) {
-	return t.entryQuery(`e.local_date = $2::date`, d.String())
+	return t.entryQuery(`e.local_date = $2::date and e.removed_at is null`, d.String())
 }
 
 func (t *pgTx) EntryByID(id string) (*spin.Entry, error) {
@@ -133,7 +143,7 @@ func (t *pgTx) EntryByID(id string) (*spin.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	e, err := t.entryQuery(`e.id = $2`, eid)
+	e, err := t.entryQuery(`e.id = $2 and e.removed_at is null`, eid)
 	if err != nil {
 		return nil, err
 	}
@@ -525,8 +535,10 @@ func (t *pgTx) SetEntryArchived(id string, archived bool, now time.Time) error {
 }
 
 func (t *pgTx) ArchivedEntries() ([]spin.Entry, error) {
+	// The list leaves out a removed entry as EntryByID does, so one removed
+	// archived post never fails the whole list.
 	rows, err := t.tx.Query(t.ctx,
-		`select e.id::text from entries e where e.user_id = $1 and e.archived_at is not null
+		`select e.id::text from entries e where e.user_id = $1 and e.archived_at is not null and e.removed_at is null
 		 order by e.local_date desc`, t.uid)
 	if err != nil {
 		return nil, err
