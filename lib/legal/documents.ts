@@ -23,13 +23,14 @@ export type LegalDocument = {
 /** Where people write to RNDMRoll: one place, so it is changed once. */
 export const CONTACT_EMAIL = '';
 
-const EFFECTIVE = 'November 13, 2026';
+const EFFECTIVE = 'November 17, 2026';
 
 /**
  * The Privacy Policy's own date, since it can change without the Terms (it did for what admins see,
- * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13.
+ * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13, and for reports,
+ * hiding and removals on 2026-11-17.
  */
-const PRIVACY_EFFECTIVE = 'November 13, 2026';
+const PRIVACY_EFFECTIVE = 'November 17, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
@@ -77,7 +78,7 @@ export const TERMS: LegalDocument = {
       blocks: [
         paragraph('Your posts, photos, comments, profile and wheel are yours. You keep every right you have to them.'),
         paragraph(
-          "To run RNDMRoll, we need your permission to store what you post, copy it, and show it to the people allowed to see it. By posting, you give us that permission. It's free, it applies worldwide, and we use it only to run RNDMRoll. It ends when you delete the content or your account is deleted, except for the few copies the Privacy Policy says we keep, such as the words of a reported post.",
+          "To run RNDMRoll, we need your permission to store what you post, copy it, and show it to the people allowed to see it. By posting, you give us that permission. It's free, it applies worldwide, and we use it only to run RNDMRoll. It ends when the content or your account is deleted, except for the few copies the Privacy Policy says we keep, such as the words of a reported post.",
         ),
         paragraph(
           "Only post things you have the right to share. A photo of your own dinner is fine. Someone else's photo, or a picture of a person who didn't want to be posted, isn't.",
@@ -88,7 +89,7 @@ export const TERMS: LegalDocument = {
       heading: 'Who sees your posts',
       blocks: [
         paragraph(
-          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports. Photo links stop working within an hour, as the Privacy Policy explains.',
+          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.',
         ),
         paragraph(
           'People who are signed in can find your account by your name or username, so friends can find you and send a request. What they see before you accept is described in the Privacy Policy.',
@@ -119,11 +120,16 @@ export const TERMS: LegalDocument = {
     {
       heading: 'Reports and what we do about them',
       blocks: [
-        paragraph("You can report a person, a post or a comment. The person you report isn't told."),
         paragraph(
-          "We review reports. We may remove posts or comments, or disable accounts, that break these terms, put someone at risk or could cause legal trouble, and we may act without warning when that is needed to keep people safe. A disabled account can't log in, and its profile, posts and comments are hidden from everyone else on RNDMRoll.",
+          'You can report a person, a post or a comment. A post or comment you report disappears for you. The person you report is never told it was you.',
         ),
-        paragraph(`If you think we got a decision wrong, email us at ${CONTACT_EMAIL}.`),
+        paragraph('A post or comment that several people report may be hidden from everyone but its owner while we review it.'),
+        paragraph(
+          "We review reports. We may remove posts or comments, or disable accounts, that break these terms, put someone at risk or could cause legal trouble, and we may act without warning when that is needed to keep people safe. A post or comment we remove is hidden from everyone, its owner included. We keep it for 30 days in case we got it wrong, then delete it with its photos. A disabled account can't log in, and its profile, posts and comments are hidden from everyone else on RNDMRoll.",
+        ),
+        paragraph(
+          `If you think we got a decision wrong, email us at ${CONTACT_EMAIL} and ask for a second look. If we removed a post or comment of yours, the message about it in the app opens that email for you, and we can bring it back within the 30 days.`,
+        ),
         paragraph("Don't make a new account to get around a block or a disabled account."),
       ],
     },
@@ -219,7 +225,7 @@ export const PRIVACY: LegalDocument = {
           'To run RNDMRoll: make your account, open your spin at 8 PM your time, save your posts and show them to the people allowed to see them.',
           'To count your week: posted days, the weekly goal, bonus spins and your week streak.',
           'To send what you asked for: the 8 PM reminder, notifications in the app, phone notifications when they are on, and password reset codes by email.',
-          'To keep people safe: limit repeated tries, review reports, and remove content or disable accounts that break the Terms of Use.',
+          'To keep people safe: limit repeated tries, review reports, hide reported posts and comments, remove content or disable accounts that break the Terms of Use, and keep a record of those decisions.',
           'To find and fix problems.',
         ),
         paragraph(
@@ -235,10 +241,11 @@ export const PRIVACY: LegalDocument = {
           'People who follow you: in the app, only people whose follow request you accepted can see your posts, their photos, the comments on them and your followers and following lists. They see a day of your posts only after posting their own for that day. Before they post, they can see that you posted that day and your first name, but not your post.',
           'Anyone signed in: anyone with an account can find you by name or username, and you may appear in their suggestions. They can see your name, username, profile photo and bio, and how many posts, spins, followers and following you have, and your week streak. They cannot see your posts.',
           'When you comment: everyone who can see the post sees your comment, with your name, username and profile photo.',
+          'Reports: a post or comment you report is hidden from you from then on. A post or comment of yours that several people report is hidden from everyone but you while we take a look, and you see a line saying so. The people you report are never told it was you.',
           'Your posts show the time you posted, in your own time zone, and say Late when you posted late.',
           'Archived posts and their photos are hidden from everyone else in the app. A photo link someone already had stops working within an hour.',
           "If you block someone, they can't find you or see your profile, posts or comments, and you don't see their posts or comments. Photo links they already had stop working within an hour. You still see their name, username and profile photo in your Blocked accounts list and on their page, so you can unblock them.",
-          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. They can open only accounts that someone reported or that are disabled.",
+          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. They can see a post or comment they removed, with its photos, for 30 days, and the record of decisions about an account, including how many of its posts and comments were removed before. They can open only accounts that someone reported, that are disabled, or that have such a record.",
           "We run RNDMRoll's server, so we can reach everything it stores, in our database and in our photo storage at Supabase. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.",
         ),
         paragraph('Other users and admins never see your email address or your birthday.'),
@@ -248,7 +255,7 @@ export const PRIVACY: LegalDocument = {
       heading: 'Photo links',
       blocks: [
         paragraph(
-          'Photos are kept in private storage at Supabase. A photo opens only through a link from our server, and the server gives links only to people allowed to see that photo. Each link stops working within an hour. When someone loses access, for example after a block, a removed follower or an archived post, the server stops giving them links at once, but a link they already have works until it runs out. Your profile photo is shown the same way to anyone signed in, except people you blocked. Someone who blocked you still sees it in their Blocked accounts list and on your page. People who viewed a photo may still have a copy on their phone, or a screenshot.',
+          'Photos are kept in private storage at Supabase. A photo opens only through a link from our server, and the server gives links only to people allowed to see that photo. Each link stops working within an hour. When someone loses access, for example after a block, a removed follower, an archived post, a report or a removal, the server stops giving them links at once, but a link they already have works until it runs out. Your profile photo is shown the same way to anyone signed in, except people you blocked. Someone who blocked you still sees it in their Blocked accounts list and on your page. People who viewed a photo may still have a copy on their phone, or a screenshot.',
         ),
       ],
     },
@@ -288,9 +295,11 @@ export const PRIVACY: LegalDocument = {
         list(
           'Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in before then.',
           'When you delete a post, it is deleted with its photos and its comments, including photos in those comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.',
+          'When we remove a post or comment, it is hidden from everyone at once, you included, and kept for 30 days in case we got it wrong. Then it is deleted with its photos and with any comments or replies under it. Your spin for that day, and the fact that you posted, stay.',
           'Some photo files can stay in storage after what they belonged to is gone: photos you uploaded but never posted, and, rarely, a photo whose removal failed. The server makes no new links for these files, so any link to one stops working within an hour. We delete all of your photo files when your account is deleted.',
           'Archived posts stay, hidden from everyone else in the app, until you restore or delete them.',
           "Reports are kept after the reported content is removed, with a copy of the post's title or the comment's words, so we can look back at them. They're deleted when the account that made the report, or the account it's about, is deleted.",
+          "A record of each decision we make about your posts, comments or account: what we decided and when, the post's title or the comment's words at the time, and the reasons it was reported. It is kept while your account exists, so we can answer you about a decision, and deleted with your account.",
           'A login ends 30 days after you last used the app. Records of past logins, with the details your phone sent, are kept while your account exists, to help protect it.',
           "A password reset code stops working after 30 minutes or 5 wrong tries. It's deleted once it's used, or replaced when you ask for a new one.",
           "Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, including any search words, and are kept only as long as we need them to fix problems and keep RNDMRoll safe. Supabase also keeps its own logs of requests to our database and photo storage for a short time.",
@@ -307,6 +316,7 @@ export const PRIVACY: LegalDocument = {
           'Remove a follower, unfollow, mute or block anyone.',
           "In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.",
           `Ask for a copy of your information, or ask us to correct it, by emailing ${CONTACT_EMAIL} from the address on your account. We'll answer within 30 days.`,
+          `Ask for a second look at a post or comment we removed by emailing ${CONTACT_EMAIL}. The message about it in the app opens that email for you, and we can bring it back within 30 days of removing it.`,
           'Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in before then keeps it. Copies in server logs are cleared on their normal schedule.',
         ),
         paragraph(

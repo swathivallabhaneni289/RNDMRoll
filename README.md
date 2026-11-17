@@ -79,7 +79,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **Board.** Posts from the people you follow, locked until you've posted that day. Comments, replies and photos in comments.
 - **Profile.** Every post you've made, your spins, your week streak and your followers.
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
-- **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page, one card per reported thing, where an admin can remove content or disable an account, and the admin gets an email about new reports.
+- **Safety.** Block, mute, and report a person, post or comment. A post or comment you report is gone for you, and one that 3 people report is hidden until an admin looks. Reports go to an admin web page, one card per reported thing, and the admin gets an email. The admin can remove content, kept 30 days in case it should come back, or disable an account. The owner is told in the app and can email for a second look.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies and follow requests (built, off for now).
 - **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
 
@@ -113,7 +113,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 | Part | Tools |
 |---|---|
 | App | TypeScript, React Native 0.86, Expo 57, Expo Router, Reanimated |
-| Server | Go 1.26, Gin, PostgreSQL on Supabase (Singapore) through pgx and the session pooler, 19 SQL migrations |
+| Server | Go 1.26, Gin, PostgreSQL on Supabase (Singapore) through pgx and the session pooler, 20 SQL migrations |
 | Photos | A private Supabase Storage bucket through its S3 API: signed uploads, and signed photo links that stop working within an hour, made only for people allowed to see the photo (a private MinIO bucket when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
 | Email and push | Built for Resend (email) and the Expo push service (phone notifications), and switched off for now: Forgot password codes print to the server log, and no phone pushes are sent |
