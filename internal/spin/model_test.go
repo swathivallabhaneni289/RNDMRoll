@@ -1001,6 +1001,66 @@ func TestBuildToday_AnEntryOfTodayAndOneOfYesterdayStaySeparate(t *testing.T) {
 	}
 }
 
+// entry_removed explains a missing entry of the shown spin's date only: an
+// admin removed it. A deleted entry, one shown after all (brought back
+// between the reads), a state with no entry and the other date's removal all
+// leave it out of the answer.
+func TestBuildToday_EntryRemovedExplainsOnlyTheShownDatesMissingPost(t *testing.T) {
+	loc := mustLoc(t, ny)
+	yesterday := at(t, loc, "2026-10-07", 20, 30, 0)
+	spun := at(t, loc, "2026-10-08", 20, 30, 0)
+	evening := at(t, loc, "2026-10-08", 21, 0, 0)
+	morning := at(t, loc, "2026-10-09", 10, 0, 0)
+	daily := spinAt(t, ny, spun, KindDaily, 0)
+	cases := []struct {
+		name                  string
+		now                   time.Time
+		spin, yesterday       *Spin
+		entry                 *EntryRef
+		removed, prevRemoved  bool
+		wantState             TodayState
+		wantEntry, wantReason bool
+	}{
+		{"posted, the entry removed", evening, settledAs(daily, ResultPosted, instantPtr(evening)), nil, nil, true, false, StatePosted, false, true},
+		{"posted, the entry deleted", evening, settledAs(daily, ResultPosted, instantPtr(evening)), nil, nil, false, false, StatePosted, false, false},
+		{"posted, the entry back", evening, settledAs(daily, ResultPosted, instantPtr(evening)), nil, entrySummary("Back"), true, false, StatePosted, true, false},
+		{"a result shows no entry", evening, settledAs(daily, ResultOpen, nil), nil, nil, true, false, StateResult, false, false},
+		{"posted, yesterday's entry removed", evening, settledAs(daily, ResultPosted, instantPtr(evening)), nil, nil, false, true, StatePosted, false, false},
+		{"yesterday's spin, its entry removed", morning, nil, settledAs(spinAt(t, ny, yesterday, KindDaily, 0), ResultPosted, instantPtr(yesterday)), nil, false, true, StatePosted, false, true},
+		{"yesterday's spin, today's flag", morning, nil, settledAs(spinAt(t, ny, yesterday, KindDaily, 0), ResultPosted, instantPtr(yesterday)), nil, true, false, StatePosted, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput(t, ny, c.now)
+			in.Spin, in.YesterdaySpin, in.Settled = c.spin, c.yesterday, c.spin != nil && c.spin.Result != ResultOpen
+			if c.spin != nil {
+				in.Entry = c.entry
+				in.LastDailySpunAt = &spun
+			} else {
+				in.YesterdayEntry = c.entry
+				in.LastDailySpunAt = &yesterday
+			}
+			in.EntryRemoved, in.YesterdayEntryRemoved = c.removed, c.prevRemoved
+			got := BuildToday(in)
+			if got.State != c.wantState || (got.Entry != nil) != c.wantEntry || got.EntryRemoved != c.wantReason {
+				t.Fatalf("state %s, entry %+v, entry_removed %v; want %s, an entry %v, entry_removed %v",
+					got.State, got.Entry, got.EntryRemoved, c.wantState, c.wantEntry, c.wantReason)
+			}
+			raw, err := json.Marshal(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			if v, present := m["entry_removed"]; present != c.wantReason || (present && v != true) {
+				t.Errorf("entry_removed in the answer: %v (present %v), want it only as true when the post was removed: %s", v, present, raw)
+			}
+		})
+	}
+}
+
 func TestBuildToday_EntrySummaryCarriesTheCoverAndTheCount(t *testing.T) {
 	loc := mustLoc(t, ny)
 	spun := at(t, loc, "2026-10-07", 20, 30, 0)

@@ -30,9 +30,10 @@ import (
 // database, as the admin page does.
 
 // modWorld is a feed world over a pool the test also writes to, with the
-// board and spin services on the same database: the owner's under review
-// flags are not in the answers yet, so the tests read them there. rand picks
-// the spins' winners, so a test can choose a post's category.
+// board and spin services on the same database, so a test can read the
+// owner's under review flags straight from the services as well as from the
+// answers. rand picks the spins' winners, so a test can choose a post's
+// category.
 type modWorld struct {
 	*feedWorld
 	pool     *pgxpool.Pool
@@ -43,11 +44,23 @@ type modWorld struct {
 
 func newModWorld(t *testing.T) *modWorld {
 	t.Helper()
+	return newModWorldWith(t, nil)
+}
+
+// newModWorldWith is newModWorld with wire run on the server's board service
+// as it is built (to set its report notifier, say); nil for nothing.
+func newModWorldWith(t *testing.T, wire func(*board.Service)) *modWorld {
+	t.Helper()
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
 	w := &modWorld{pool: pool, rand: spintest.NewQueueRand(20)}
 	engine := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk, rand: w.rand,
-		wire: func(_ *social.Service, b *board.Service, _ *Deps) { w.boardSvc = b }}).Engine()
+		wire: func(_ *social.Service, b *board.Service, _ *Deps) {
+			w.boardSvc = b
+			if wire != nil {
+				wire(b)
+			}
+		}}).Engine()
 	w.feedWorld = &feedWorld{t: t, engine: engine, clk: clk}
 	w.spinSvc = spin.NewService(postgres.NewSpinRepo(pool), clk, spin.NewSystemRand())
 	return w
