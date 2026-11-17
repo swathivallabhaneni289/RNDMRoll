@@ -37,6 +37,11 @@ export type Card = {
   posted_local_time: string;
   /** Null when the caller may not see comments (Phase 6). */
   comment_count: number | null;
+  /**
+   * Your own card only: 3 or more reports wait for the admin, and until then no one else sees the
+   * post. Never `hidden`, which is a post owner hiding a comment.
+   */
+  under_review: boolean;
 };
 
 export type Comment = {
@@ -58,6 +63,11 @@ export type Comment = {
   hidden: boolean;
   /** The comment's one photo (06-FOLLOW-OVERRIDES section 10), '' for none. The text may be '' then. */
   photo_url: string;
+  /**
+   * Sent to its writer only: 3 or more reports wait for the admin, and until then no one else sees
+   * the comment (the post's owner neither). Not `hidden` above, which the writer is never told.
+   */
+  under_review: boolean;
 };
 
 export type Post = {
@@ -152,6 +162,7 @@ function readCard(raw: Raw): Card | null {
     posted_at: text(raw.posted_at),
     posted_local_time: text(raw.posted_local_time),
     comment_count: typeof raw.comment_count === 'number' ? raw.comment_count : null,
+    under_review: raw.under_review === true,
   };
 }
 
@@ -168,6 +179,7 @@ function readComment(raw: Raw): Comment | null {
     can_hide: raw.can_hide === true,
     hidden: raw.hidden === true,
     photo_url: text(raw.photo_url),
+    under_review: raw.under_review === true,
   };
 }
 

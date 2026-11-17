@@ -17,6 +17,7 @@ import { ApiError } from '@/lib/api/client';
 import { archiveEntry, deleteEntry, entryErrorMessage, unarchiveEntry, updateEntry, type Entry } from '@/lib/api/entries';
 import { photoSource } from '@/lib/api/photoSource';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
+import { UNDER_REVIEW } from '@/lib/board/text';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
@@ -202,6 +203,7 @@ function OwnPostExtras({
         comments={comments}
         myId={myId}
         onDelete={social.remove}
+        onReported={social.drop}
         onReply={post.can_comment ? social.startReply : undefined}
         onPhotoError={onPhotoError}
       />
@@ -222,7 +224,8 @@ function OwnPostExtras({
  * comment mark, which puts the cursor in the comment box) and the CaptionText. Then the comments
  * and the comment bar pinned at the bottom ('Commenting is off.' in its place when commenting is
  * switched off), all from GET /posts/{id}. The page reloads when it comes back into focus; the
- * Board stack mounts it too (`from` = 'board').
+ * Board stack mounts it too (`from` = 'board'). While 3 or more reports wait for the admin, one
+ * line over the photos says 'Hidden while we take a look.' (only you see the entry until then).
  *
  * Delete asks with the phone's own alert (Cancel, and a red Delete). The delete is POST
  * /entries/{id}/delete; the answer's Today goes into the store; 'not found' counts as done.
@@ -434,6 +437,11 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
       {ready ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {entry.under_review === true ? (
+              <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+                <AppText role="label">{UNDER_REVIEW}</AppText>
+              </View>
+            ) : null}
             <Gallery
               photos={entry.photos}
               title={entry.title}

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { AccessibilityInfo, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,13 @@ import {
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName, follow, getFollows, type Person, type Relation } from '@/lib/api/social';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
+import {
+  SECOND_LOOK_HINT,
+  decisionLine,
+  isDecisionKind,
+  secondLookFallback,
+  secondLookMailto,
+} from '@/lib/notifications/moderation';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -74,12 +81,23 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
         rest: 'You hit your goal this week. One bonus spin added.',
         spoken: 'You hit your goal this week. One bonus spin added.',
       };
+    case 'post_removed':
+    case 'comment_removed':
+    case 'post_back':
+    case 'comment_back': {
+      // An admin's decision about your own post or comment: no person, like the spin items.
+      const line = decisionLine(item.kind);
+      return { name: '', rest: line, spoken: line };
+    }
   }
 }
 
-/** The round mark at the left of a row: the person, the wheel mark, or a solid dot for a bonus. */
+/**
+ * The round mark at the left of a row: the person, the wheel mark (the app's own items: your spin
+ * is open, an admin's decision), or a solid dot for a bonus.
+ */
 function RowMark({ item }: { item: NotificationItem }) {
-  if (item.kind === 'spin_open') {
+  if (item.kind === 'spin_open' || isDecisionKind(item.kind)) {
     return (
       <View style={{ width: AVATAR, height: AVATAR, alignItems: 'center', justifyContent: 'center' }}>
         <Svg width={AVATAR} height={AVATAR} style={{ position: 'absolute' }}>
@@ -140,10 +158,12 @@ function Thumb({ item }: { item: NotificationItem }) {
  * label. Opening the page marks everything seen, so the bell's dot goes out; the dots it loaded
  * with stay until the person leaves.
  *
- * A tap opens your own entry page (a comment), the post a reply is on (your entry page
- * when it is yours), People on Followers (a new follower) or Following (an accepted request), or
- * the Spin page (your spin is open, a bonus spin). No bottom bar, so the page keeps all four
- * safe-area edges.
+ * A tap opens your own entry page (a comment, or your post back after an admin's look), the post a
+ * reply or your comment that is back is on (your entry page when it is yours), People on Followers
+ * (a new follower) or Following (an accepted request), or the Spin page (your spin is open, a bonus
+ * spin). A removed post or comment opens an email to the server's contact address to ask for a
+ * second look; with no address the tap does nothing, and when no mail app opens a line under the
+ * row names the address. No bottom bar, so the page keeps all four safe-area edges.
  */
 export function NotificationsScreen() {
   const router = useRouter();
@@ -157,6 +177,8 @@ export function NotificationsScreen() {
   const itemsRef = useRef<NotificationItem[] | null>(null);
   const openingRef = useRef(false);
   const busyRef = useRef(false);
+  // The removed item whose email no mail app could open: its line names the address instead.
+  const [mailFailedId, setMailFailedId] = useState<string | null>(null);
 
   /** What the viewer is toward each person, for the buttons on follow rows. A failure leaves them off. */
   const loadRelations = useCallback(async () => {
@@ -246,15 +268,41 @@ export function NotificationsScreen() {
     else openPost(entryId);
   }
 
+  /** A removed post's or comment's email for a second look, or null (not removed, or no address). */
+  function secondLookLink(item: NotificationItem): string | null {
+    if (item.kind !== 'post_removed' && item.kind !== 'comment_removed') return null;
+    return secondLookMailto({
+      kind: item.kind,
+      contact: item.contact,
+      username: user?.username ?? '',
+      text: item.text ?? '',
+      ref: item.ref,
+    });
+  }
+
+  /** Opens the mail app; when none opens (the iOS Simulator has none), the row's line names the address. */
+  function askSecondLook(item: NotificationItem, link: string) {
+    setMailFailedId(null);
+    Linking.openURL(link).catch(() => {
+      setMailFailedId(item.id);
+      AccessibilityInfo.announceForAccessibility(secondLookFallback(item.contact));
+    });
+  }
+
   function open(item: NotificationItem) {
-    if (item.kind === 'comment') {
+    if (item.kind === 'comment' || item.kind === 'post_back') {
       if (item.entry_id === null) return;
       openEntry(item.entry_id);
       return;
     }
-    if (item.kind === 'reply') {
+    if (item.kind === 'reply' || item.kind === 'comment_back') {
       if (item.entry_id === null) return;
       void openReply(item.entry_id);
+      return;
+    }
+    if (item.kind === 'post_removed' || item.kind === 'comment_removed') {
+      const link = secondLookLink(item);
+      if (link !== null) askSecondLook(item, link);
       return;
     }
     if (item.kind === 'spin_open' || item.kind === 'bonus_spin') {
@@ -279,9 +327,12 @@ export function NotificationsScreen() {
     }
   }
 
-  /** What sits at the right of a row: the post's picture, a follow button, or nothing. */
+  /**
+   * What sits at the right of a row: the post's picture (a comment, a reply, your post back while
+   * you can see it), a follow button, or nothing. A removed item never shows its picture.
+   */
   function rowEnd(item: NotificationItem) {
-    if ((item.kind === 'comment' || item.kind === 'reply') && item.photo_url !== '') {
+    if ((item.kind === 'comment' || item.kind === 'reply' || item.kind === 'post_back') && item.photo_url !== '') {
       return (
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Thumb item={item} />
@@ -304,41 +355,52 @@ export function NotificationsScreen() {
     const spoken = `${words.spoken} ${item.at_label}${item.unread ? '. New' : ''}`;
     const end = rowEnd(item);
     return (
-      <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}>
-        {item.unread ? (
-          <View style={{ position: 'absolute', left: -space.md, top: 0, bottom: 0, justifyContent: 'center' }}>
-            <UnreadDot />
-          </View>
-        ) : null}
-        <Pressable
-          onPress={() => open(item)}
-          accessibilityRole="button"
-          accessibilityLabel={spoken}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: AVATAR }}
-        >
-          {item.actor ? (
-            <Pressable
-              onPress={() => item.actor && openPerson(item.actor.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`${firstName(item.actor)}'s profile`}
-              hitSlop={6}
-            >
-              <RowMark item={item} />
-            </Pressable>
-          ) : (
-            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <RowMark item={item} />
+      <View key={item.id}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm }}>
+          {item.unread ? (
+            <View style={{ position: 'absolute', left: -space.md, top: 0, bottom: 0, justifyContent: 'center' }}>
+              <UnreadDot />
             </View>
-          )}
-          <View style={{ flex: 1, marginLeft: GAP }}>
-            <Text numberOfLines={3} maxFontSizeMultiplier={1.3} style={rowText}>
-              {words.name !== '' ? <Text style={{ fontFamily: type.button.fontFamily }}>{words.name}</Text> : null}
-              {words.rest}
-              {item.at_label !== '' ? <Text style={{ color: color.muted }}>{`  ${item.at_label.replace(/ /g, ' ')}`}</Text> : null}
+          ) : null}
+          <Pressable
+            onPress={() => open(item)}
+            accessibilityRole="button"
+            accessibilityLabel={spoken}
+            accessibilityHint={secondLookLink(item) !== null ? SECOND_LOOK_HINT : undefined}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: AVATAR }}
+          >
+            {item.actor ? (
+              <Pressable
+                onPress={() => item.actor && openPerson(item.actor.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${firstName(item.actor)}'s profile`}
+                hitSlop={6}
+              >
+                <RowMark item={item} />
+              </Pressable>
+            ) : (
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <RowMark item={item} />
+              </View>
+            )}
+            <View style={{ flex: 1, marginLeft: GAP }}>
+              <Text numberOfLines={3} maxFontSizeMultiplier={1.3} style={rowText}>
+                {words.name !== '' ? <Text style={{ fontFamily: type.button.fontFamily }}>{words.name}</Text> : null}
+                {words.rest}
+                {item.at_label !== '' ? <Text style={{ color: color.muted }}>{`  ${item.at_label.replace(/ /g, ' ')}`}</Text> : null}
+              </Text>
+            </View>
+          </Pressable>
+          {end ? <View style={{ marginLeft: GAP }}>{end}</View> : null}
+        </View>
+        {mailFailedId === item.id ? (
+          // Plain words under the sentence, never a link; the address can be selected and copied.
+          <View style={{ marginLeft: AVATAR + GAP, paddingBottom: space.sm }}>
+            <Text selectable maxFontSizeMultiplier={1.3} style={rowText}>
+              {secondLookFallback(item.contact)}
             </Text>
           </View>
-        </Pressable>
-        {end ? <View style={{ marginLeft: GAP }}>{end}</View> : null}
+        ) : null}
       </View>
     );
   }

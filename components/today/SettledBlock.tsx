@@ -6,6 +6,7 @@ import { CapsLabel } from '@/components/today/CapsLabel';
 import { AppText } from '@/components/ui/AppText';
 import { photoSource } from '@/lib/api/photoSource';
 import type { Today, TodayEntry } from '@/lib/api/types';
+import { POST_REMOVED_LINE, UNDER_REVIEW } from '@/lib/board/text';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { SETTLED_LABEL } from '@/lib/entry/rules';
 import { starsSpoken } from '@/lib/entry/stars';
@@ -26,19 +27,20 @@ const STRIKE_OVERHANG = 4;
 /**
  * The entry as one row (picture 04): the cover thumbnail with '+N' for the other photos, and at its
  * right the category, the title, the stars and the reaction. Everything comes from `Today.entry`
- * and the shown spin's category name: no second request and no loading state. 'Posted late.' sits
- * under the row, a hairline closes it; an entry that was deleted leaves one line in its place
- * (the day still counts). 'View entry' sits at the bottom of the text column, outside the spoken
- * group so it stays its own button, and opens the entry page with `from` = 'today'.
+ * and the shown spin's category name: no second request and no loading state. 'Hidden while we
+ * take a look.' (3 or more reports wait for the admin) and 'Posted late.' sit under the row, a
+ * hairline closes it; an entry that was deleted, or that an admin removed (`removed`), leaves one
+ * line in its place (the day still counts). 'View entry' sits at the bottom of the text column,
+ * outside the spoken group so it stays its own button, and opens the entry page with `from` = 'today'.
  */
-function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; categoryName: string }) {
+function PostedRow({ entry, removed, categoryName }: { entry: TodayEntry | null; removed: boolean; categoryName: string }) {
   const reduceMotion = useReduceMotion();
   const router = useRouter();
 
   if (entry === null) {
     return (
       <AppText role="label" tone="muted">
-        This entry was deleted. The day still counts.
+        {removed ? POST_REMOVED_LINE : 'This entry was deleted. The day still counts.'}
       </AppText>
     );
   }
@@ -149,6 +151,12 @@ function PostedRow({ entry, categoryName }: { entry: TodayEntry | null; category
         </View>
       </View>
 
+      {entry.under_review === true ? (
+        <View style={{ marginTop: space.sm }}>
+          <AppText role="label">{UNDER_REVIEW}</AppText>
+        </View>
+      ) : null}
+
       {entry.late ? (
         <View style={{ marginTop: space.sm }}>
           <AppText role="label" tone="muted">
@@ -214,7 +222,9 @@ export function SettledBlock({ today }: { today: Today }) {
     return <SkippedWord label={SETTLED_LABEL} name={spin.category.name} />;
   }
   if (today.state === 'posted') {
-    return <PostedRow entry={today.entry ?? null} categoryName={today.spin?.category.name ?? ''} />;
+    return (
+      <PostedRow entry={today.entry ?? null} removed={today.entry_removed === true} categoryName={today.spin?.category.name ?? ''} />
+    );
   }
   return null;
 }

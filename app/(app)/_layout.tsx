@@ -1,14 +1,17 @@
 import { useEffect } from 'react';
+import { AccessibilityInfo, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SpinTabIcon } from '@/components/nav/SpinTabIcon';
 import { isSelectedTab, TabIcon } from '@/components/nav/TabIcon';
 import { spokenTabLabel, TabLabel } from '@/components/nav/TabLabel';
+import { AppText } from '@/components/ui/AppText';
 import { usePushSetup } from '@/lib/notifications/push';
 import { useReminderSetup } from '@/lib/notifications/reminder';
+import { useReportNotice } from '@/lib/report/notice';
 import { useSession } from '@/lib/session/store';
-import { color, type } from '@/lib/theme/tokens';
+import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 import { refetchToday } from '@/lib/wheel/useToday';
 
 /**
@@ -26,10 +29,50 @@ import { refetchToday } from '@/lib/wheel/useToday';
  *  - Every file left in this folder becomes a tab by itself, so the folder holds exactly
  *    `today`, `board` and `profile`, each a folder with its own stack. The Board's stack
  *    (Phase 5) hides the bar on a post, your entry page and edit entry.
+ *  - "Report sent." shows over every page here for a moment (ReportNotice below), so it outlives
+ *    the post page and the person page, which close as they set it.
  */
 export const unstable_settings = {
   initialRouteName: 'today',
 };
+
+/**
+ * The one line after a report (lib/report/notice.ts), over whichever page is showing. It sits just
+ * under the top row, below any Back row and well clear of a post's comment bar at the bottom, on
+ * its own plain panel so it reads over a photo too. Taps go through it, it comes and goes at once
+ * (no fade), and a screen reader is told it rather than finding it. Its own component, so a notice
+ * never draws the tabs again.
+ */
+function ReportNotice() {
+  const insets = useSafeAreaInsets();
+  const notice = useReportNotice();
+  // Queued, so the page that just opened is still said in full first.
+  useEffect(() => {
+    if (notice !== '') AccessibilityInfo.announceForAccessibilityWithOptions(notice, { queue: true });
+  }, [notice]);
+  if (notice === '') return null;
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ position: 'absolute', top: insets.top + minTouchTarget + space.sm, left: space.lg, right: space.lg, alignItems: 'center' }}
+    >
+      <View
+        style={{
+          backgroundColor: color.dominant,
+          borderWidth: 1,
+          borderColor: color.divider,
+          borderRadius: radius.sm,
+          paddingHorizontal: space.md,
+          paddingVertical: space.sm,
+        }}
+      >
+        <AppText role="label">{notice}</AppText>
+      </View>
+    </View>
+  );
+}
 
 /** The bar is this tall above the bottom safe area. */
 const BAR_CONTENT_HEIGHT = 56;
@@ -73,68 +116,71 @@ export default function AppLayout() {
   const hiddenBarStyle = { display: 'none' as const };
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        sceneStyle: { backgroundColor: color.dominant },
-        // Tab screens swap at once. The cross-fade of Phase 2.2 D-02 looked wrong on the phone
-        // (developer, 2026-10-13); the bar's colours still glide. Options kept: 'fade' or 'shift'.
-        animation: 'none',
-        tabBarStyle: barStyle,
-        tabBarActiveTintColor: color.ink,
-        tabBarInactiveTintColor: color.muted,
-        tabBarAllowFontScaling: false,
-        // Label size, regular weight: the active tab differs by colour only.
-        tabBarLabelStyle: {
-          fontFamily: type.label.fontFamily,
-          fontSize: type.label.fontSize,
-          lineHeight: type.label.lineHeight,
-          fontWeight: '400',
-        },
-        tabBarItemStyle: { paddingTop: 6 },
-      }}
-    >
-      <Tabs.Screen
-        name="today"
-        options={({ route, navigation }) => {
-          // The Spin page: the wheel, the word, Log it and Skip it, the posted or skipped day, the
-          // countdown and the week, all on one page.
-          const selected = isSelectedTab(navigation, route);
-          return {
-            title: 'Spin',
-            tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Spin'),
-            tabBarIcon: () => <SpinTabIcon focused={selected} />,
-            tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
-            tabBarStyle: showsPage(route, BARLESS_TODAY_PAGES) ? hiddenBarStyle : barStyle,
-          };
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          sceneStyle: { backgroundColor: color.dominant },
+          // Tab screens swap at once. The cross-fade of Phase 2.2 D-02 looked wrong on the phone
+          // (developer, 2026-10-13); the bar's colours still glide. Options kept: 'fade' or 'shift'.
+          animation: 'none',
+          tabBarStyle: barStyle,
+          tabBarActiveTintColor: color.ink,
+          tabBarInactiveTintColor: color.muted,
+          tabBarAllowFontScaling: false,
+          // Label size, regular weight: the active tab differs by colour only.
+          tabBarLabelStyle: {
+            fontFamily: type.label.fontFamily,
+            fontSize: type.label.fontSize,
+            lineHeight: type.label.lineHeight,
+            fontWeight: '400',
+          },
+          tabBarItemStyle: { paddingTop: 6 },
         }}
-      />
-      <Tabs.Screen
-        name="board"
-        options={({ route, navigation }) => {
-          const selected = isSelectedTab(navigation, route);
-          return {
-            title: 'Board',
-            tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Board'),
-            tabBarIcon: () => <TabIcon name="people-outline" focused={selected} />,
-            tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
-            tabBarStyle: showsPage(route, BARLESS_BOARD_PAGES) ? hiddenBarStyle : barStyle,
-          };
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={({ route, navigation }) => {
-          const selected = isSelectedTab(navigation, route);
-          return {
-            title: 'Profile',
-            tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Profile'),
-            tabBarIcon: () => <TabIcon name="person-outline" focused={selected} />,
-            tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
-            tabBarStyle: extrasPending || showsPage(route, BARLESS_ENTRY_PAGES) ? hiddenBarStyle : barStyle,
-          };
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="today"
+          options={({ route, navigation }) => {
+            // The Spin page: the wheel, the word, Log it and Skip it, the posted or skipped day, the
+            // countdown and the week, all on one page.
+            const selected = isSelectedTab(navigation, route);
+            return {
+              title: 'Spin',
+              tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Spin'),
+              tabBarIcon: () => <SpinTabIcon focused={selected} />,
+              tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
+              tabBarStyle: showsPage(route, BARLESS_TODAY_PAGES) ? hiddenBarStyle : barStyle,
+            };
+          }}
+        />
+        <Tabs.Screen
+          name="board"
+          options={({ route, navigation }) => {
+            const selected = isSelectedTab(navigation, route);
+            return {
+              title: 'Board',
+              tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Board'),
+              tabBarIcon: () => <TabIcon name="people-outline" focused={selected} />,
+              tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
+              tabBarStyle: showsPage(route, BARLESS_BOARD_PAGES) ? hiddenBarStyle : barStyle,
+            };
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={({ route, navigation }) => {
+            const selected = isSelectedTab(navigation, route);
+            return {
+              title: 'Profile',
+              tabBarAccessibilityLabel: spokenTabLabel(navigation, route, 'Profile'),
+              tabBarIcon: () => <TabIcon name="person-outline" focused={selected} />,
+              tabBarLabel: ({ focused, children }) => <TabLabel title={children} focused={focused} />,
+              tabBarStyle: extrasPending || showsPage(route, BARLESS_ENTRY_PAGES) ? hiddenBarStyle : barStyle,
+            };
+          }}
+        />
+      </Tabs>
+      <ReportNotice />
+    </View>
   );
 }

@@ -16,6 +16,7 @@ import type { Entry } from '@/lib/api/entries';
 import { firstName } from '@/lib/api/social';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
 import { placementStep } from '@/lib/board/placement';
+import { UNDER_REVIEW } from '@/lib/board/text';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 
@@ -115,7 +116,8 @@ export function PostDetails({
  * Your posts as one scrolling list, opened from a picture in the Profile grid and placed at that
  * picture (developer, 2026-10-17: "how Instagram lets you see the pictures you posted"). Each post
  * has a top row with your photo, your username and its three dots (Edit, Archive, commenting,
- * Delete), the photos to swipe, and PostDetails under them. The diary sends each post's counts
+ * Delete), 'Hidden while we take a look.' while 3 or more reports wait for the admin, the photos to
+ * swipe, and PostDetails under them. The diary sends each post's counts
  * and newest comment, so the list makes no read per post. The list pages as the end comes into view.
  * A picture from past the list's first page has its pages read first, under the loading line, so
  * the list opens at it and never jumps later (lib/board/placement.ts).
@@ -211,6 +213,11 @@ export function PostsFeed({ startId }: { startId: string }) {
             <Ionicons name="ellipsis-horizontal" size={24} color={menu.busy ? color.muted : color.ink} />
           </Pressable>
         </View>
+        {entry.under_review === true ? (
+          <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+            <AppText role="label">{UNDER_REVIEW}</AppText>
+          </View>
+        ) : null}
         <Gallery photos={entry.photos} title={entry.title} aspect={POST_PHOTO_ASPECT} onPhotoError={onPhotoError} />
         <PostDetails
           entry={entry}

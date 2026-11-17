@@ -1,7 +1,7 @@
 /**
- * Where a comment the server saved goes in a post's list, and the count after it (the post page
- * and your own entry page, components/board/usePost.ts). Pure: no React and no imports, so a node
- * script can check it (scripts/check-social.ts).
+ * Where a comment the server saved goes in a post's list, what leaves it, and the count after it
+ * (the post page and your own entry page, components/board/usePost.ts). Pure: no React and no
+ * imports, so a node script can check it (scripts/check-social.ts).
  */
 
 type Placed = { id: string; parent_id: string | null };
@@ -27,6 +27,27 @@ export function placeComment<C extends Placed>(list: C[], saved: C): C[] {
 export function countAfterComment(list: Placed[], count: number | null | undefined, saved: Placed): number {
   const before = count ?? list.length;
   return list.some((item) => item.id === saved.id) ? before : before + 1;
+}
+
+/**
+ * `list` once the comment `id` leaves it: a top-level comment takes its replies, a reply goes
+ * alone, and an id not in the list changes nothing. `count` is the comment count after it (the
+ * server's, or the list's length when it sent none, less what left, never below 0), and `endReply`
+ * says reply mode ends because the comment being replied to (`replyToId`) is no longer in the list.
+ * Used after a delete, and after a report: the comment is gone for the reporter from then on.
+ */
+export function withoutComment<C extends Placed>(
+  list: C[],
+  count: number | null | undefined,
+  id: string,
+  replyToId: string | null
+): { list: C[]; count: number; endReply: boolean } {
+  const left = list.filter((item) => item.id !== id && item.parent_id !== id);
+  return {
+    list: left,
+    count: Math.max(0, (count ?? list.length) - (list.length - left.length)),
+    endReply: replyToId !== null && !left.some((item) => item.id === replyToId),
+  };
 }
 
 /**

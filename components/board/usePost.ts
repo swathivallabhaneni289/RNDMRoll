@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
 import { addComment, deleteComment, getPost, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
-import { countAfterComment, placeComment } from '@/lib/board/comments';
+import { countAfterComment, placeComment, withoutComment } from '@/lib/board/comments';
 import { isEntryId } from '@/lib/entry/rules';
 
 export type PostLoad = {
@@ -22,6 +22,11 @@ export type PostLoad = {
   comment: (text: string, photoKey?: string | null) => Promise<string | null>;
   /** Deletes a comment (and, for a top-level one, its replies); 'not found' counts as done. */
   remove: (commentId: string) => Promise<string | null>;
+  /**
+   * Takes a comment you reported (and, for a top-level one, its replies) off the post on screen,
+   * with no request: it is gone for you from then on.
+   */
+  drop: (commentId: string) => void;
   /** The comment the bar is replying to, or null for a plain comment. */
   replyTo: Comment | null;
   /** Puts the bar into reply mode for `comment` (each tap is a new choice, so the bar refills). */
@@ -140,30 +145,31 @@ export function usePost(id: string): PostLoad {
     [id, put, load, chooseReply]
   );
 
+  // A top-level comment goes with its replies, the count drops by all that left, and reply mode
+  // ends when the comment being replied to left (after a delete, and after a report).
+  const drop = useCallback(
+    (commentId: string) => {
+      const now = postRef.current;
+      if (!mountedRef.current || now === null) return;
+      const after = withoutComment(now.comments ?? [], now.card.comment_count, commentId, replyToRef.current?.id ?? null);
+      if (after.endReply) chooseReply(null);
+      put({ ...now, comments: after.list, card: { ...now.card, comment_count: after.count } });
+    },
+    [put, chooseReply]
+  );
+
   const remove = useCallback(
     async (commentId: string): Promise<string | null> => {
       try {
         await deleteComment(commentId);
-        const now = postRef.current;
-        if (mountedRef.current && now !== null) {
-          const list = now.comments ?? [];
-          // A top-level comment goes with its replies.
-          const left = list.filter((item) => item.id !== commentId && item.parent_id !== commentId);
-          const target = replyToRef.current;
-          if (target !== null && !left.some((item) => item.id === target.id)) chooseReply(null);
-          put({
-            ...now,
-            comments: left,
-            card: { ...now.card, comment_count: Math.max(0, (now.card.comment_count ?? list.length) - (list.length - left.length)) },
-          });
-        }
+        drop(commentId);
         return null;
       } catch (err) {
         return socialErrorMessage(err, 'other');
       }
     },
-    [put, chooseReply]
+    [drop]
   );
 
-  return { status, failure, post, reload: () => void load(), stale, comment, remove, replyTo, startReply, cancelReply };
+  return { status, failure, post, reload: () => void load(), stale, comment, remove, drop, replyTo, startReply, cancelReply };
 }

@@ -3,21 +3,34 @@
  * Throwaway checks for the social screens' fixes: a comment on a post that went away, a follow
  * request that went away, an invite link that leads to no one, where your posts list opens, the
  * two Settings pages when the first read fails, a profile photo that would not load, the comment
- * box's emoji row and reply prefix, and the report reasons on the phone, the server, the admin page
- * and the database. Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
+ * box's emoji row and reply prefix, the report reasons on the phone, the server, the admin page
+ * and the database, and the moderation build's phone side (2026-11-17): "Report sent." and the three
+ * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
+ * line, the bell's four decision kinds and the email that asks for a second look.
+ * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
  * imports and tsc, which scans every .ts file in the repo, would object to it.)
  * The pure rules are run; the hooks and screens have no React here, so the lines that matter are
  * pinned as written.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { POST_GONE_LINE, commentFailureLine } from '../lib/board/text.ts';
+import { POST_GONE_LINE, POST_REMOVED_LINE, REPORT_SENT, UNDER_REVIEW, commentFailureLine, reportOutcome } from '../lib/board/text.ts';
 import { placementStep } from '../lib/board/placement.ts';
-import { countAfterComment, placeComment, withEmoji, withReplyPrefix } from '../lib/board/comments.ts';
+import { countAfterComment, placeComment, withEmoji, withReplyPrefix, withoutComment } from '../lib/board/comments.ts';
 import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
 import { COMMENT_MAX } from '../lib/entry/rules.ts';
+import {
+  DECISION_KINDS,
+  SECOND_LOOK_HINT,
+  decisionLine,
+  isDecisionKind,
+  secondLookEmail,
+  secondLookFallback,
+  secondLookMailto,
+} from '../lib/notifications/moderation.ts';
+import { REPORT_NOTICE_MS, getReportNotice, setReportNotice, subscribeReportNotice } from '../lib/report/notice.ts';
 
 let checks = 0;
 let failures = 0;
@@ -378,6 +391,258 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   for (const [i, m] of tables.entries()) {
     eq(`report table ${i + 1} takes the same seven`, [...m[1].matchAll(/'([a-z]+)'/g)].map((k) => k[1]).join(','), keys.join(','));
   }
+}
+
+// ---- moderation: the words, word for word (2026-11-17) ---------------------------------------------
+{
+  eq('after any report', REPORT_SENT, 'Report sent.');
+  eq('under your own post or comment while 3 or more reports wait', UNDER_REVIEW, 'Hidden while we take a look.');
+  eq('the Spin page for a post an admin removed', POST_REMOVED_LINE, 'We removed this post. The day still counts.');
+  eq('the bell: your post removed', decisionLine('post_removed'), 'We removed your post. It broke our rules.');
+  eq('the bell: your comment removed', decisionLine('comment_removed'), 'We removed your comment. It broke our rules.');
+  eq('the bell: your post back', decisionLine('post_back'), 'Sorry, we got that wrong. Your post is back.');
+  eq('the bell: your comment back', decisionLine('comment_back'), 'Sorry, we got that wrong. Your comment is back.');
+  eq('the hint on a removed item that opens the email', SECOND_LOOK_HINT, 'Opens an email to ask for a second look.');
+  eq('no mail app: the line names the address', secondLookFallback(' help@example.com '), 'Email help@example.com to ask for a second look.');
+
+  eq('the four decision kinds, as the server names them', DECISION_KINDS.join(','), 'post_removed,comment_removed,post_back,comment_back');
+  check('each of them is a decision kind', DECISION_KINDS.every((kind) => isDecisionKind(kind)));
+  check(
+    'no other kind is one',
+    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', ''].some((kind) => isDecisionKind(kind))
+  );
+
+  const look = { kind: 'post_removed', contact: 'help@example.com', username: 'maya', text: 'Aftersun', ref: '1a2b3c4d' };
+  const post = secondLookEmail(look);
+  eq('the subject for a post', post.subject, 'Second look at my post');
+  eq('the body for a post', post.lines.join('\n'), 'Username: @maya\nPost: Aftersun\nRef: 1a2b3c4d\n\nWhy it should come back:');
+  const said = secondLookEmail({ ...look, kind: 'comment_removed', text: 'so good' });
+  eq('the subject for a comment', said.subject, 'Second look at my comment');
+  eq('the body for a comment', said.lines.join('\n'), 'Username: @maya\nComment: so good\nRef: 1a2b3c4d\n\nWhy it should come back:');
+
+  // Built from escapes so this file holds no dash of its own: the hyphen, U+2010 to U+2015, the minus.
+  const DASH = /[-‐-―−]/;
+  const sentences = [REPORT_SENT, UNDER_REVIEW, POST_REMOVED_LINE, SECOND_LOOK_HINT, secondLookFallback('help@example.com'), ...DECISION_KINDS.map(decisionLine)];
+  for (const line of [...sentences, post.subject, ...post.lines, said.subject, ...said.lines]) {
+    check('no dash of any kind in the new words', !DASH.test(line), line);
+  }
+  for (const line of sentences) {
+    check('a short plain sentence: a capital, a full stop, no exclamation mark', /^[A-Z][^!]*\.$/.test(line) && line.length <= 50, line);
+  }
+}
+
+// ---- moderation: the email link, how a report ends, and a comment leaving the list ----------------
+{
+  const look = { kind: 'post_removed', contact: 'help@example.com', username: 'maya', text: 'Aftersun', ref: '1a2b3c4d' };
+  const fields = (link: string) =>
+    Object.fromEntries(
+      link
+        .slice(link.indexOf('?') + 1)
+        .split('&')
+        .map((pair) => [pair.slice(0, pair.indexOf('=')), decodeURIComponent(pair.slice(pair.indexOf('=') + 1))])
+    );
+  const link = secondLookMailto(look) ?? '';
+  check('the link writes to the address', link.startsWith('mailto:help@example.com?'), link);
+  eq('the link carries the subject', fields(link).subject, 'Second look at my post');
+  eq('the link carries the body, its lines ending in CRLF', fields(link).body, secondLookEmail(look).lines.join('\r\n'));
+  const odd = secondLookMailto({ ...look, text: 'Fish & chips? #1 = best\nreally' }) ?? '';
+  check(
+    'a title with ? & # = and a line break stays inside the body',
+    (odd.match(/\?/g) ?? []).length === 1 && (odd.match(/&/g) ?? []).length === 1 && !/[#\s]/.test(odd),
+    odd
+  );
+  eq('and comes back word for word', fields(odd).body.split('\r\n')[1], 'Post: Fish & chips? #1 = best\nreally');
+  check('an address with spaces round it is trimmed', (secondLookMailto({ ...look, contact: '  help@example.com ' }) ?? '').startsWith('mailto:help@example.com?'));
+  for (const contact of ['', '   ', 'help', 'help@', '@example.com', 'a@b@c', 'help @example.com', 'help@example.com?cc=x', 'help@example.com#x']) {
+    eq(`no usable address, no link (the tap does nothing): ${JSON.stringify(contact)}`, secondLookMailto({ ...look, contact }), null);
+  }
+
+  // How a report ended: a 404 counts as sent; no connection and too many tries keep the client's words.
+  eq('a report answered 404 not_found is done', reportOutcome(404, 'not_found'), 'done');
+  eq('a 404 whose body did not read is done too', reportOutcome(404, 'server_error'), 'done');
+  eq('too many tries: the client words', reportOutcome(429, 'rate_limited'), 'client');
+  eq('a 429 with any code: the client words', reportOutcome(429, 'server_error'), 'client');
+  eq('no connection: the client words', reportOutcome(0, 'network_unavailable'), 'client');
+  eq('a server failure: the plain line', reportOutcome(500, 'server_error'), 'generic');
+  eq('a refused reason: the plain line', reportOutcome(400, 'validation_failed'), 'generic');
+
+  const a = { id: 'a', parent_id: null };
+  const a1 = { id: 'a1', parent_id: 'a' };
+  const a2 = { id: 'a2', parent_id: 'a' };
+  const b = { id: 'b', parent_id: null };
+  const all = [a, a1, a2, b];
+  const ids = (list: { id: string }[]) => list.map((item) => item.id).join(',');
+  const top = withoutComment(all, 4, 'a', null);
+  check('a top-level comment leaves with its replies, and the count with them', ids(top.list) === 'b' && top.count === 1, JSON.stringify(top));
+  const reply = withoutComment(all, 4, 'a1', null);
+  check('a reply leaves alone', ids(reply.list) === 'a,a2,b' && reply.count === 3, JSON.stringify(reply));
+  const none = withoutComment(all, 4, 'x', 'a1');
+  check('an id not in the list changes nothing', ids(none.list) === 'a,a1,a2,b' && none.count === 4 && !none.endReply, JSON.stringify(none));
+  eq('the count never goes below 0', withoutComment(all, 1, 'a', null).count, 0);
+  eq('with no count from the server, the list counts', withoutComment(all, null, 'b', null).count, 3);
+  check('reply mode ends when the reply being answered left with its thread', withoutComment(all, 4, 'a', 'a2').endReply);
+  check('reply mode ends when the comment being answered left', withoutComment(all, 4, 'b', 'b').endReply);
+  check('reply mode stays when another thread left', !withoutComment(all, 4, 'b', 'a1').endReply);
+  check('no reply mode: nothing to end', !withoutComment(all, 4, 'a', null).endReply);
+}
+
+// ---- moderation: the screens, pinned as written ---------------------------------------------------
+{
+  const tree = (dir: string): string[] =>
+    (readdirSync(fileURLToPath(new URL(`../${dir}`, import.meta.url)), { recursive: true }) as string[])
+      .filter((rel) => /\.tsx?$/.test(rel))
+      .map((rel) => `${dir}/${rel}`);
+  const stale = [...tree('app'), ...tree('components'), ...tree('lib')].filter((rel) => /REPORT_THANKS|Thanks for letting us know/.test(source(rel)));
+  check('the old thanks line is gone from the app', stale.length === 0, stale.join(', '));
+
+  const reports = source('lib/api/reports.ts');
+  check(
+    'every report flow reads its ending through reportOutcome',
+    /const outcome = reportOutcome\(err\.status, err\.code\);\s*if \(outcome === 'done'\) return null;\s*return outcome === 'client' \? err\.userMessage : GENERIC;/.test(reports)
+  );
+  const postView = source('components/board/PostView.tsx');
+  check(
+    'the post page: one report at a time, then "Report sent." and back while it is still the page showing',
+    /if \(reportingRef\.current\) return;\s*reportingRef\.current = true;/.test(postView) &&
+      /failure = reportFailureLine\(err\);/.test(postView) &&
+      /setReportNotice\(REPORT_SENT\);\s*if \(focusedRef\.current\) goBack\(\);/.test(postView)
+  );
+  check('the post page hands a reported comment to its list', /onReported=\{load\.drop\}/.test(postView) && /onReported=\{onReported\}/.test(postView));
+  check('your own entry page does too', /onReported=\{social\.drop\}/.test(source('components/entry/EntryView.tsx')));
+  const person = source('components/people/PersonScreen.tsx');
+  check(
+    'the person page: one action at a time, then "Report sent." and back, with no read first',
+    /async function sendReport\(reason: ReportReason\) \{\s*if \(busyRef\.current\) return;/.test(person) &&
+      /failure = reportFailureLine\(err\);/.test(person) &&
+      /setReportNotice\(REPORT_SENT\);\s*if \(focusedRef\.current\) goBack\(\);/.test(person) &&
+      /afterClose\(\(\) => void sendReport\(item\.reason\)\)/.test(person)
+  );
+  const list = source('components/board/Comments.tsx');
+  check(
+    'a comment report: one at a time, then it leaves the list and "Report sent." shows, and the page stays',
+    /if \(reportingRef\.current\) return;\s*reportingRef\.current = true;/.test(list) &&
+      /failure = reportFailureLine\(err\);/.test(list) &&
+      /onReported\?\.\(comment\.id\);\s*setReportNotice\(REPORT_SENT\);/.test(list)
+  );
+  check(
+    'the writer sees the review line under their comment, and a screen reader hears it',
+    /\{comment\.under_review \? \(/.test(list) &&
+      /<AppText role="label">\{UNDER_REVIEW\}<\/AppText>/.test(list) &&
+      /\$\{comment\.under_review \? `\. \$\{UNDER_REVIEW\}` : ''\}`\}/.test(list)
+  );
+  const hook = source('components/board/usePost.ts');
+  check(
+    'a reported comment leaves the list with no request, the same way a deleted one does',
+    /const after = withoutComment\(now\.comments \?\? \[\], now\.card\.comment_count, commentId, replyToRef\.current\?\.id \?\? null\);\s*if \(after\.endReply\) chooseReply\(null\);/.test(hook) &&
+      /comment_count: after\.count/.test(hook) &&
+      /await deleteComment\(commentId\);\s*drop\(commentId\);/.test(hook)
+  );
+
+  const layout = source('app/(app)/_layout.tsx');
+  const overlay = layout.slice(layout.indexOf('function ReportNotice('), layout.indexOf('export default function AppLayout('));
+  check(
+    'one overlay over every page: under the Back row, taps go through, on its own panel, told to a screen reader',
+    /useReportNotice\(\)/.test(overlay) &&
+      /top: insets\.top \+ minTouchTarget \+ space\.sm/.test(overlay) &&
+      /pointerEvents="none"/.test(overlay) &&
+      /backgroundColor: color\.dominant/.test(overlay) &&
+      /announceForAccessibility/.test(overlay) &&
+      /<ReportNotice \/>/.test(layout)
+  );
+  check('the overlay neither fades nor moves', overlay !== '' && !/Animated|FadeIn|FadeOut|withTiming|opacity/.test(overlay));
+
+  for (const [rel, shown] of [
+    ['components/entry/EntryView.tsx', /\{entry\.under_review === true \? \(/],
+    ['components/profile/PostsFeed.tsx', /\{entry\.under_review === true \? \(/],
+    ['components/today/SettledBlock.tsx', /\{entry\.under_review === true \? \(/],
+    ['components/board/PostCard.tsx', /\{card\.under_review \? \(/],
+  ] as const) {
+    const text = source(rel);
+    check(`${rel}: the review line, only on the server's word`, shown.test(text) && /<AppText role="label">\{UNDER_REVIEW\}<\/AppText>/.test(text));
+  }
+  check('your own card tells a screen reader too', /\$\{card\.under_review \? ` \$\{UNDER_REVIEW\}` : ''\}`\}/.test(source('components/board/PostCard.tsx')));
+  eq('a card and a comment read under_review only as true', (source('lib/api/board.ts').match(/under_review: raw\.under_review === true,/g) ?? []).length, 2);
+  const settled = source('components/today/SettledBlock.tsx');
+  check(
+    "the Spin page: a post an admin removed says so, not 'deleted'",
+    /\{removed \? POST_REMOVED_LINE : 'This entry was deleted\. The day still counts\.'\}/.test(settled) &&
+      /removed=\{today\.entry_removed === true\}/.test(settled)
+  );
+
+  const api = source('lib/api/notifications.ts');
+  check('the bell keeps the four decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
+  check(
+    'contact and ref are read as strings, empty when missing, and no key is named email',
+    /contact: typeof raw\.contact === 'string' \? raw\.contact : '',/.test(api) &&
+      /ref: typeof raw\.ref === 'string' \? raw\.ref : '',/.test(api) &&
+      !/email/.test(api)
+  );
+  const bell = source('components/today/NotificationsScreen.tsx');
+  check(
+    'the four kinds say their sentence and draw the wheel mark, not an empty face',
+    /case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind\);/.test(bell) &&
+      /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
+  );
+  check(
+    'a post back opens your entry page; a comment back opens the post it is on',
+    /if \(item\.kind === 'comment' \|\| item\.kind === 'post_back'\) \{\s*if \(item\.entry_id === null\) return;\s*openEntry\(item\.entry_id\);/.test(bell) &&
+      /if \(item\.kind === 'reply' \|\| item\.kind === 'comment_back'\) \{\s*if \(item\.entry_id === null\) return;\s*void openReply\(item\.entry_id\);/.test(bell)
+  );
+  check(
+    'a removed item opens the email only with an address, and names the address when no mail app opens',
+    /const link = secondLookLink\(item\);\s*if \(link !== null\) askSecondLook\(item, link\);/.test(bell) &&
+      /Linking\.openURL\(link\)\.catch\(\(\) => \{\s*setMailFailedId\(item\.id\);/.test(bell) &&
+      /\{secondLookFallback\(item\.contact\)\}/.test(bell)
+  );
+  check('the hint only where the email opens', /accessibilityHint=\{secondLookLink\(item\) !== null \? SECOND_LOOK_HINT : undefined\}/.test(bell));
+  check(
+    'a post back shows its picture; a removed item never does',
+    /\(item\.kind === 'comment' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back'\) && item\.photo_url !== ''/.test(bell)
+  );
+  check('no phone push for the decisions', !/post_removed|comment_removed|post_back|comment_back/.test(source('lib/notifications/pushTarget.ts')));
+
+  // Nothing red: only Log out is.
+  for (const rel of [
+    'app/(app)/_layout.tsx',
+    'components/board/Comments.tsx',
+    'components/board/PostView.tsx',
+    'components/board/PostCard.tsx',
+    'components/people/PersonScreen.tsx',
+    'components/entry/EntryView.tsx',
+    'components/profile/PostsFeed.tsx',
+    'components/today/SettledBlock.tsx',
+    'components/today/NotificationsScreen.tsx',
+  ]) {
+    check(`${rel}: nothing red`, !/destructive/.test(source(rel)));
+  }
+}
+
+// ---- moderation: the "Report sent." store (set, read, clear by its timer, restart, clear on '') ----
+{
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  let calls = 0;
+  const unsubscribe = subscribeReportNotice(() => {
+    calls += 1;
+  });
+  eq('the report notice starts empty', getReportNotice(), '');
+  eq('it shows for about 2.5 seconds', REPORT_NOTICE_MS, 2500);
+  setReportNotice(REPORT_SENT);
+  eq('it holds the line once set', getReportNotice(), REPORT_SENT);
+  await sleep(1500);
+  setReportNotice(REPORT_SENT);
+  await sleep(1500);
+  eq('a second report restarted the timer (3 s after the first, 1.5 s after the second)', getReportNotice(), REPORT_SENT);
+  await sleep(1200);
+  eq('it clears itself after its time', getReportNotice(), '');
+  eq('it told its listener on each set and on the clear', calls, 3);
+  setReportNotice(REPORT_SENT);
+  setReportNotice('');
+  eq('an empty text clears it at once', getReportNotice(), '');
+  unsubscribe();
+  const before = calls;
+  setReportNotice(REPORT_SENT);
+  setReportNotice('');
+  eq('an unsubscribed listener is not told', calls, before);
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);

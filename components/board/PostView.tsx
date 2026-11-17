@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
@@ -12,13 +12,13 @@ import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import type { Comment, Post } from '@/lib/api/board';
-import { ApiError } from '@/lib/api/client';
 import { REPORT_REASONS } from '@/lib/api/person';
-import { REPORT_THANKS, reportPost } from '@/lib/api/reports';
+import { reportFailureLine, reportPost } from '@/lib/api/reports';
 import { firstName } from '@/lib/api/social';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
-import { POST_GONE_LINE } from '@/lib/board/text';
+import { POST_GONE_LINE, REPORT_SENT } from '@/lib/board/text';
 import { useOpenPerson } from '@/lib/people/openPerson';
+import { setReportNotice } from '@/lib/report/notice';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
@@ -28,6 +28,7 @@ function Details({
   post,
   myId,
   onDelete,
+  onReported,
   onReply,
   onComment,
   onMore,
@@ -36,6 +37,7 @@ function Details({
   post: Post;
   myId: string | null;
   onDelete: (id: string) => Promise<string | null>;
+  onReported: (id: string) => void;
   onReply: (comment: Comment) => void;
   onComment?: () => void;
   /** Opens the three dots' menu (Report); none on your own post. */
@@ -100,6 +102,7 @@ function Details({
           comments={comments}
           myId={myId}
           onDelete={onDelete}
+          onReported={onReported}
           onReply={post.can_comment ? onReply : undefined}
           onPhotoError={onPhotoError}
         />
@@ -117,6 +120,8 @@ function Details({
  * with their replies under each (no count line; no reactions on posts), and
  * the comment bar at the bottom ('Reply' on a comment turns it into a reply). When the owner
  * switched commenting off the bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
+ * After a report of the post the page closes, with "Report sent." over the page it returns to: the
+ * post is gone for the reporter from then on (moderation, 2026-11-17).
  * The Spin stack mounts it too (`place` 'today', a reply notification on someone else's post).
  */
 export function PostView({ id, backName, place = 'board' }: { id: string; backName: string; place?: 'board' | 'today' }) {
@@ -135,29 +140,49 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
     if (router.canGoBack()) router.back();
     else router.replace(place === 'today' ? '/(app)/today' : '/(app)/board');
   }
+  // One report at a time. The page closes after it only while it is still the page showing: a
+  // report that answers after Back, or after a tap opened a profile, never goes back for them.
+  const reportingRef = useRef(false);
+  const focusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      return () => {
+        focusedRef.current = false;
+      };
+    }, [])
+  );
 
   const post = load.post;
   const ready = load.status === 'ready' && post !== null;
 
-  function sendReport(reason: (typeof REPORT_REASONS)[number]['reason']) {
+  /** Sent (a 404 counts too): "Report sent." and back. Otherwise the line, and the post stays. */
+  async function sendReport(reason: (typeof REPORT_REASONS)[number]['reason']) {
     setMenu(null);
+    if (reportingRef.current) return;
+    reportingRef.current = true;
     setNotice('');
-    void reportPost(id, reason)
-      .then(() => setNotice(REPORT_THANKS))
-      .catch((err: unknown) =>
-        setNotice(
-          err instanceof ApiError && err.code === 'network_unavailable'
-            ? err.userMessage
-            : 'Something went wrong. Please try again.',
-        ),
-      );
+    let failure: string | null = null;
+    try {
+      await reportPost(id, reason);
+    } catch (err) {
+      failure = reportFailureLine(err);
+    } finally {
+      reportingRef.current = false;
+    }
+    if (failure !== null) {
+      setNotice(failure);
+      return;
+    }
+    setReportNotice(REPORT_SENT);
+    if (focusedRef.current) goBack();
   }
 
   const menuItems: MenuItem[] =
     menu === 'more'
       ? [{ label: 'Report', onPress: () => setMenu('reasons') }]
       : menu === 'reasons'
-        ? REPORT_REASONS.map((item) => ({ label: item.label, onPress: () => sendReport(item.reason) }))
+        ? REPORT_REASONS.map((item) => ({ label: item.label, onPress: () => void sendReport(item.reason) }))
         : [];
 
   return (
@@ -191,6 +216,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
               post={post}
               myId={user?.id ?? null}
               onDelete={load.remove}
+              onReported={load.drop}
               onReply={load.startReply}
               onComment={post.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
               onMore={post.card.mine ? undefined : () => setMenu('more')}

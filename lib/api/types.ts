@@ -227,6 +227,11 @@ export interface TodayEntry {
   /** Archived by the owner: the day still counts, and the row says so instead of showing the entry. */
   archived: boolean;
   comments_off: boolean;
+  /**
+   * 3 or more reports wait for the admin, so no one else sees the entry until then. Left out
+   * otherwise, so read it with `=== true`.
+   */
+  under_review?: boolean;
 }
 
 export interface Today {
@@ -263,10 +268,15 @@ export interface Today {
    */
   missed_spin: boolean;
   /**
-   * Phase 3: the entry of the shown spin's date, or null (no entry, or it was deleted). A Phase 2
-   * server leaves the key out, so read it with `!today.entry`.
+   * Phase 3: the entry of the shown spin's date, or null (no entry, it was deleted, or an admin
+   * removed it: `entry_removed`). A Phase 2 server leaves the key out, so read it with `!today.entry`.
    */
   entry: TodayEntry | null;
+  /**
+   * An admin removed the shown spin's post: `entry` is null, and the day still counts. Left out
+   * otherwise, so read it with `=== true`.
+   */
+  entry_removed?: boolean;
   /** The spin's own wheel when a spin is shown, else the live wheel. */
   wheel: WheelEntry[];
   week: Week;

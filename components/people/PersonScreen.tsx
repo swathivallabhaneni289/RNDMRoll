@@ -27,11 +27,15 @@ import {
   reportPerson,
   unmutePerson,
   type PersonPage,
+  type ReportReason,
 } from '@/lib/api/person';
+import { reportFailureLine } from '@/lib/api/reports';
 import { firstName, follow, removeFollower, unfollow } from '@/lib/api/social';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { usePhotoReload } from '@/lib/api/usePhotoReload';
+import { REPORT_SENT } from '@/lib/board/text';
 import { personPeoplePathIn, postPathIn } from '@/lib/people/openPerson';
+import { setReportNotice } from '@/lib/report/notice';
 import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 const AVATAR_SIZE = 72;
@@ -48,7 +52,9 @@ const GENERIC = 'Something went wrong. Please try again.';
  * account is private."; an accepted follower sees their grid, only the days they posted too (the
  * Board rule). A tile opens the post page in the same stack. After Block the page stays, like
  * Instagram's (developer, 2026-10-18): who they are, zero figures, 'You blocked this account.' and
- * Unblock where Follow was. Someone who is gone, or who blocked you, shows one plain line.
+ * Unblock where Follow was. After Report the page closes, with "Report sent." over the page it
+ * returns to; a report never hides a person (moderation, 2026-11-17). Someone who is gone, or who
+ * blocked you, shows one plain line.
  */
 export function PersonScreen({ id }: { id: string }) {
   const router = useRouter();
@@ -93,6 +99,18 @@ export function PersonScreen({ id }: { id: string }) {
     useCallback(() => {
       void load();
     }, [load]),
+  );
+
+  // Whether this is the page showing: a report that answers after Back, or after a tap opened a
+  // post or a list, never goes back for them.
+  const focusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      return () => {
+        focusedRef.current = false;
+      };
+    }, []),
   );
 
   function goBack() {
@@ -157,6 +175,32 @@ export function PersonScreen({ id }: { id: string }) {
     };
   }
 
+  /**
+   * A report, one action at a time like the others. Sent (a 404 counts too): "Report sent." and the
+   * page closes, with no read first. Otherwise the line, and the page stays.
+   */
+  async function sendReport(reason: ReportReason) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage('');
+    let failure: string | null = null;
+    try {
+      await reportPerson(id, reason);
+    } catch (err) {
+      failure = reportFailureLine(err);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+    if (failure !== null) {
+      setMessage(failure);
+      return;
+    }
+    setReportNotice(REPORT_SENT);
+    if (focusedRef.current) goBack();
+  }
+
   function askBlock(name: string) {
     Alert.alert(
       `Block ${name}?`,
@@ -201,12 +245,7 @@ export function PersonScreen({ id }: { id: string }) {
           { label: 'Block', onPress: afterClose(() => askBlock(name)) },
         ]
       : menu === 'report'
-        ? REPORT_REASONS.map((item) => ({
-            label: item.label,
-            onPress: afterClose(
-              () => void act(() => reportPerson(id, item.reason), "Thanks for letting us know. They won't be told."),
-            ),
-          }))
+        ? REPORT_REASONS.map((item) => ({ label: item.label, onPress: afterClose(() => void sendReport(item.reason)) }))
       : menu === 'following'
         ? [{ label: 'Unfollow', onPress: afterClose(() => void act(async () => void (await unfollow(id)))) }]
         : [];
