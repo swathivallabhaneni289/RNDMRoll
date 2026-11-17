@@ -401,7 +401,8 @@ func (t *memTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
 	return out, nil
 }
 
-// ReadToday calls the methods it stands for, in its order.
+// ReadToday calls the methods it stands for, in its order. MemRepo cannot
+// remove an entry, so EntryRemoved and PrevEntryRemoved stay false.
 func (t *memTx) ReadToday(today, prev, from, to spin.Date) (spin.TodayReads, error) {
 	var r spin.TodayReads
 	var err error

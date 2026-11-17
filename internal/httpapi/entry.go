@@ -321,6 +321,9 @@ type entryView struct {
 	CommentsOff bool             `json:"comments_off"`
 	CreatedAt   spin.Instant     `json:"created_at"`
 	UpdatedAt   spin.Instant     `json:"updated_at"`
+	// UnderReview: the post is hidden from everyone but its owner while under
+	// review. Sent only when true; every entry read is the owner's own.
+	UnderReview bool `json:"under_review,omitempty"`
 }
 
 // newEntryView builds the phone's view of an entry. Links come from photoURL
@@ -348,6 +351,7 @@ func newEntryView(e spin.Entry, photoURL func(string) string) entryView {
 		CommentsOff: e.CommentsOff,
 		CreatedAt:   spin.Instant(e.CreatedAt),
 		UpdatedAt:   spin.Instant(e.UpdatedAt),
+		UnderReview: e.UnderReview,
 	}
 	if len(views) > 0 {
 		v.PhotoURL = views[0].URL

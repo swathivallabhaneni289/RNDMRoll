@@ -185,21 +185,23 @@ func (s *Service) todayIn(c *call) (Today, error) {
 	}
 
 	return BuildToday(TodayInput{
-		Now:             c.now,
-		Loc:             c.loc,
-		TZName:          c.tzName,
-		Spin:            spin,
-		YesterdaySpin:   yesterday,
-		Entry:           entry,
-		YesterdayEntry:  yesterdayEntry,
-		Settled:         settled,
-		LastDailySpunAt: r.LastDailySpunAt,
-		NeverSpun:       !r.AnySpin,
-		Wheel:           entriesOf(r.Categories),
-		BonusHeld:       r.State.BonusHeld == 1,
-		Goal:            r.State.WeeklyGoal,
-		PostedDates:     dates,
-		SkippedDates:    r.Skipped,
+		Now:                   c.now,
+		Loc:                   c.loc,
+		TZName:                c.tzName,
+		Spin:                  spin,
+		YesterdaySpin:         yesterday,
+		Entry:                 entry,
+		YesterdayEntry:        yesterdayEntry,
+		EntryRemoved:          r.EntryRemoved,
+		YesterdayEntryRemoved: r.PrevEntryRemoved,
+		Settled:               settled,
+		LastDailySpunAt:       r.LastDailySpunAt,
+		NeverSpun:             !r.AnySpin,
+		Wheel:                 entriesOf(r.Categories),
+		BonusHeld:             r.State.BonusHeld == 1,
+		Goal:                  r.State.WeeklyGoal,
+		PostedDates:           dates,
+		SkippedDates:          r.Skipped,
 	}), nil
 }
 

@@ -199,9 +199,10 @@ type EntryRef struct {
 	Late        bool   `json:"late"`
 	Archived    bool   `json:"archived"`
 	CommentsOff bool   `json:"comments_off"`
-	// UnderReview is Entry.UnderReview. It is not sent yet: the answer gains
-	// it with the app's line for it.
-	UnderReview bool    `json:"-"`
+	// UnderReview is Entry.UnderReview: the post is hidden from everyone but
+	// its owner while under review. Sent only when true, and Today is the
+	// owner's own.
+	UnderReview bool    `json:"under_review,omitempty"`
 	Title       string  `json:"title"`
 	Stars       int     `json:"stars"`
 	Reaction    *string `json:"reaction"`
@@ -234,7 +235,9 @@ type BonusView struct {
 // Today is everything the Today screen shows. NextOpenWeekday is written by
 // the server in the person's current zone ("Friday"). Entry is the summary of
 // the entry of the shown spin's date, and null when there is none (including
-// after the entry was deleted) and in every state but posted and skipped.
+// after the entry was deleted or an admin removed it) and in every state but
+// posted and skipped. EntryRemoved is true when Entry is null because an
+// admin removed that post: the day still counts. It is sent only when true.
 // FirstSpin is true only when the state is open because of the first spin
 // rule: the person has never spun and it is before 8:00 PM, so the phone can
 // say "Your first spin is ready." At 8:00 PM or later the normal rule opens
@@ -265,6 +268,7 @@ type Today struct {
 	Missed          *MissedView  `json:"missed"`
 	MissedSpin      bool         `json:"missed_spin"`
 	Entry           *EntryRef    `json:"entry"`
+	EntryRemoved    bool         `json:"entry_removed,omitempty"`
 	Wheel           []WheelEntry `json:"wheel"`
 	Week            WeekView     `json:"week"`
 	Bonus           BonusView    `json:"bonus"`
@@ -290,9 +294,13 @@ type TodayInput struct {
 
 	// Entry is the summary of the entry of the current local date, or nil.
 	// YesterdayEntry is the same for the date before it. Both are nil for a
-	// date with no entry, and a deleted entry is nil too.
+	// date with no entry, and a deleted or removed entry is nil too.
 	Entry          *EntryRef
 	YesterdayEntry *EntryRef
+	// EntryRemoved and YesterdayEntryRemoved say an admin removed the entry
+	// of the current local date and of the date before it.
+	EntryRemoved          bool
+	YesterdayEntryRemoved bool
 
 	// Settled is whether the current local date is settled (daySettled).
 	Settled bool
@@ -416,7 +424,8 @@ func postedOrSkipped(s *Spin) bool {
 //     had no spin at all and the person has spun before.
 //
 // The entry summary is shown only in posted and skipped, and is the one of
-// the shown spin's date.
+// the shown spin's date. entry_removed is set only there too, when that
+// date's entry is missing because an admin removed it.
 //
 // late_from and post_late are set only in result and late: late_from is the
 // LateFrom of the shown spin's date in the person's current zone, the same
@@ -438,12 +447,13 @@ func BuildToday(in TodayInput) Today {
 	firstSpin := false
 	var shown *Spin
 	var entry *EntryRef
+	entryRemoved := false
 	switch {
 	case in.Spin != nil:
 		shown = in.Spin
 		state = stateOfResult(in.Spin.Result)
 		if state != StateResult {
-			entry = in.Entry
+			entry, entryRemoved = in.Entry, in.EntryRemoved
 		}
 	case (in.NeverSpun || !in.Now.Before(win.OpensAt)) && gapAllowsSpin(in.Now, in.LastDailySpunAt):
 		state = StateOpen
@@ -455,8 +465,12 @@ func BuildToday(in TodayInput) Today {
 			state, shown = StateLate, y
 		case postedOrSkipped(y):
 			state, shown, entry = stateOfResult(y.Result), y, in.YesterdayEntry
+			entryRemoved = in.YesterdayEntryRemoved
 		}
 	}
+	// Only a missing entry is explained: one brought back between the reads
+	// is simply shown.
+	entryRemoved = entryRemoved && entry == nil
 
 	var lateFrom *Instant
 	postLate := false
@@ -550,6 +564,7 @@ func BuildToday(in TodayInput) Today {
 		Missed:          missed,
 		MissedSpin:      missedSpin,
 		Entry:           entry,
+		EntryRemoved:    entryRemoved,
 		Wheel:           wheel,
 		Week: WeekView{
 			Start:      weekStart,

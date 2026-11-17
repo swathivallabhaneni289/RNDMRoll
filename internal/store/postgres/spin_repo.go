@@ -508,7 +508,14 @@ func (t *pgTx) PostedDays(from, to spin.Date) ([]spin.PostedDay, error) {
 	return scanPostedDays(rows)
 }
 
-// ReadToday implements spin.Tx. It sends the eight reads as one batch, in
+// removedEntriesSQL says whether an admin removed the entry of each of two
+// dates (migration 0020): ReadToday sends it last, so Today can tell a
+// removed post from a deleted one at no extra round trip.
+const removedEntriesSQL = `
+	select exists (select 1 from entries where user_id = $1 and local_date = $2::date and removed_at is not null),
+	       exists (select 1 from entries where user_id = $1 and local_date = $3::date and removed_at is not null)`
+
+// ReadToday implements spin.Tx. It sends the nine reads as one batch, in
 // the documented order: one round trip, plus one on a connection that has
 // not prepared them yet (all of them are prepared together). The batch is
 // read to the end before the transaction is used again.
@@ -545,6 +552,9 @@ func (t *pgTx) ReadToday(today, prev, from, to spin.Date) (spin.TodayReads, erro
 	b.Queue(skippedDatesSQL, t.uid, from.String(), to.String()).Query(func(rows pgx.Rows) (err error) {
 		r.Skipped, err = scanDates(rows)
 		return err
+	})
+	b.Queue(removedEntriesSQL, t.uid, today.String(), prev.String()).QueryRow(func(row pgx.Row) error {
+		return row.Scan(&r.EntryRemoved, &r.PrevEntryRemoved)
 	})
 	if err := t.tx.SendBatch(t.ctx, b).Close(); err != nil {
 		return spin.TodayReads{}, err

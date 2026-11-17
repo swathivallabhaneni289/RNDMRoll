@@ -99,6 +99,12 @@ type TodayReads struct {
 	// Posted and Skipped are PostedDays and SkippedDates over the range.
 	Posted  []PostedDay
 	Skipped []Date
+	// EntryRemoved and PrevEntryRemoved say an admin removed the entry of
+	// the date and of the date before it (migration 0020), so Today can tell
+	// a removed post from a deleted one. No Tx method reads them alone, and
+	// MemRepo, which cannot remove an entry, leaves them false.
+	EntryRemoved     bool
+	PrevEntryRemoved bool
 }
 
 // Repository is the storage contract for the spin slice. It is separate from
@@ -198,11 +204,15 @@ type Tx interface {
 	// Storage keys are plain text, never links.
 	//
 	// In Postgres an admin can remove an entry (migration 0020). EntryOfDate,
-	// EntryByID, ArchivedEntries and the photo writes then treat it as gone,
-	// exactly like a deleted one: its posted day, spin result and goal weeks
-	// stay. Postgres also sets Entry.UnderReview when the entry is hidden
-	// from everyone else while under review. MemRepo can do neither, so the
-	// shared suite never sees them; the Postgres tests cover them.
+	// EntryByID, ArchivedEntries, the photo writes, UpdateEntry,
+	// SetEntryArchived and DeleteEntry then treat it as gone, exactly like a
+	// deleted one (ErrEntryNotFound where they name it), so its owner cannot
+	// change or delete it before an admin brings it back: its posted day,
+	// spin result and goal weeks stay. ReadToday says when the entry of
+	// today or of the date before was removed. Postgres also sets
+	// Entry.UnderReview when the entry is hidden from everyone else while
+	// under review. MemRepo can do none of this, so the shared suite never
+	// sees it; the Postgres tests cover it.
 
 	// EntryOfDate returns this person's entry for the local date d, or nil
 	// when there is none. The Entry is complete: Photos holds every photo row
@@ -311,7 +321,9 @@ type Tx interface {
 	// ReadToday reads, in this order, LatestSpinOfDate(today),
 	// LatestSpinOfDate(prev), LastDailySpunAt, HasAnySpin, LiveCategories,
 	// State, PostedDays(from, to) and SkippedDates(from, to), and returns
-	// what each returns. Postgres sends them as one batch: one round trip.
+	// what each returns. Postgres also reads whether an admin removed the
+	// entry of today or of prev (TodayReads.EntryRemoved). Postgres sends
+	// them as one batch: one round trip.
 	ReadToday(today, prev, from, to Date) (TodayReads, error)
 
 	// ClearTestData deletes this person's entries (their photo rows go with

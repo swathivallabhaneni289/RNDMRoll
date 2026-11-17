@@ -81,6 +81,9 @@ type cardView struct {
 	PostedLocalTime string           `json:"posted_local_time"`
 	CommentCount    int              `json:"comment_count"`
 	MyReaction      *string          `json:"my_reaction"`
+	// UnderReview: the viewer's own post is hidden from everyone else while
+	// under review. Sent only when true, so only ever to its owner.
+	UnderReview bool `json:"under_review,omitempty"`
 }
 
 func newCardView(c board.Card, link func(string) string) cardView {
@@ -99,6 +102,7 @@ func newCardView(c board.Card, link func(string) string) cardView {
 		PostedLocalTime: c.PostedLocalTime,
 		CommentCount:    c.CommentCount,
 		MyReaction:      c.MyReaction,
+		UnderReview:     c.UnderReview,
 	}
 }
 
@@ -118,13 +122,17 @@ type commentView struct {
 	// ParentID is the top-level comment of a reply, null for a top-level
 	// comment.
 	ParentID *string `json:"parent_id"`
+	// UnderReview: the viewer wrote it and it is hidden from everyone else
+	// while under review. Sent only when true, so only ever to its writer;
+	// unlike Hidden, the post's owner is never told.
+	UnderReview bool `json:"under_review,omitempty"`
 }
 
 func newCommentView(c board.Comment, link func(string) string) commentView {
 	v := commentView{
 		ID: c.ID.String(), Author: newPersonView(c.Author, link), Text: c.Text,
 		At: spin.Instant(c.At), AtLabel: c.AtLabel, CanDelete: c.CanDelete,
-		CanHide: c.CanHide, Hidden: c.Hidden, PhotoURL: c.PhotoURL,
+		CanHide: c.CanHide, Hidden: c.Hidden, PhotoURL: c.PhotoURL, UnderReview: c.UnderReview,
 	}
 	if c.ParentID != nil {
 		parent := c.ParentID.String()
