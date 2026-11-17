@@ -3,8 +3,9 @@
  * Throwaway checks for the Board's words and its Late marker (BRD-02, BRD-03, BRD-04, SPIN-06), the
  * 8 PM reminder and the morning note (SPIN-11, SPIN-14), the phone's request limit and who may end a
  * session (section 10, Reliability), the Spin page's fixed words and numbers (SPIN-02, SPIN-03,
- * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05), the photo settings (section 10, Performance) and
- * how a report ends (moderation, 2026-11-17).
+ * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05), the photo settings (section 10, Performance), how a
+ * report ends, and the server's moderation answers read through the app's own readers (moderation,
+ * 2026-11-17; the answers are internal/httpapi/testdata/moderation_contract.json).
  * Not part of the app bundle. Run from the repo root with:
  *   node --experimental-strip-types scripts/check-spinposts-extra.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
@@ -705,6 +706,130 @@ const { ApiError, api, isRetryable } = client;
   eq('a refused reason is the plain line', line(new ApiError(400, 'validation_failed')), 'Something went wrong. Please try again.');
   eq('anything but an answer is the plain line', line(new Error('lost')), 'Something went wrong. Please try again.');
   check('the old thanks line is gone', !('REPORT_THANKS' in reports));
+}
+
+// ---- the server's moderation answers, through the app's own readers (moderation, 2026-11-17) -----
+{
+  // The app's side was built from the spec, not from the server. This file is what the real server
+  // sends for each moderation key and kind, with ids, instants and photo links swapped for fixed
+  // placeholders; its Go test (TestModerationContractIntegration_TheAnswersTheAppReads) writes and
+  // checks it. Each answer is served here to the app's own call, through the real client, so a key
+  // or kind the readers would drop fails here.
+  let contract = null;
+  try {
+    contract = JSON.parse(source('internal/httpapi/testdata/moderation_contract.json'));
+  } catch (err) {
+    check("the server's moderation answers can be read", false, String(err));
+  }
+  if (contract !== null) {
+    const ids = contract.ids;
+    const realFetch = globalThis.fetch;
+    const asked: string[] = [];
+    // Answers the requests `run` makes with `body`, and keeps the paths they asked for.
+    const serve = async (body: unknown, run: () => Promise<any>) => {
+      globalThis.fetch = async (url) => {
+        asked.push(String(url));
+        return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+      try {
+        return await run();
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    };
+    const askedFor = (path: string) => asked.at(-1)?.endsWith(`/v1${path}`) === true;
+    const notifications = await load('lib/api/notifications.ts');
+    const boardApi = await load('lib/api/board.ts');
+    const spinApi = await load('lib/api/spin.ts');
+    const { loadToday } = await load('lib/wheel/loadToday.ts');
+    const { DECISION_KINDS, decisionLine, isDecisionKind, secondLookMailto } = await load('lib/notifications/moderation.ts');
+
+    // The bell: one item of each decision kind, none dropped, every key read as the server sent it.
+    const bell = await serve(contract.bell, () => notifications.getNotifications());
+    check('the bell reads GET /notifications', askedFor('/notifications'), asked.at(-1));
+    eq('the bell keeps every decision item the server sends', bell.items.length, contract.bell.items.length);
+    eq(
+      'the server sends one item of each decision kind the app knows',
+      JSON.stringify(contract.bell.items.map((item) => item.kind).sort()),
+      JSON.stringify([...DECISION_KINDS].sort())
+    );
+    eq('the decisions light the dot', bell.unread, true);
+    const firstPhoto = contract.post_page_owner.photos[0].url;
+    for (const sent of contract.bell.items) {
+      const read = bell.items.find((item) => item.id === sent.id);
+      check(`${sent.kind}: read`, read !== undefined);
+      if (read === undefined) continue;
+      for (const key of Object.keys(sent)) {
+        eq(`${sent.kind}: ${key} reads as sent`, JSON.stringify(read[key]), JSON.stringify(sent[key]));
+      }
+      const removed = sent.kind === 'post_removed' || sent.kind === 'comment_removed';
+      const decision = sent.id.slice(sent.kind.length + 1);
+      check(`${sent.kind}: a decision with its sentence`, isDecisionKind(read.kind) && decisionLine(read.kind) !== '');
+      eq(`${sent.kind}: no person`, read.actor, null);
+      eq(`${sent.kind}: the words are the title or the comment`, read.text, sent.kind.startsWith('post_') ? 'Dune' : 'Thanks for watching');
+      check(`${sent.kind}: the address only on a removal`, removed ? read.contact !== '' && read.contact === sent.contact : read.contact === '', read.contact);
+      eq(`${sent.kind}: the ref, on a removal only, is the start of its own decision`, read.ref, removed ? decision.slice(0, 8) : '');
+      eq(`${sent.kind}: a removal opens no post, a return opens the post`, read.entry_id, removed ? null : ids.post);
+      eq(`${sent.kind}: only a post that is back shows its first photo`, read.photo_url, sent.kind === 'post_back' ? firstPhoto : '');
+      if (removed) {
+        // What a tap on it opens, built as the bell screen builds it.
+        const link = secondLookMailto({ kind: read.kind, contact: read.contact, username: 'ct_olive', text: read.text ?? '', ref: read.ref });
+        check(`${sent.kind}: a tap opens the email to the server's address`, typeof link === 'string' && link.startsWith(`mailto:${sent.contact}?subject=`), String(link));
+        check(`${sent.kind}: the email names the ref`, typeof link === 'string' && decodeURIComponent(link).includes(`Ref: ${read.ref}`), String(link));
+      }
+    }
+
+    // The owner's own Board card under review.
+    const board = await serve(contract.board_owner, () => boardApi.getBoard());
+    check('the Board reads GET /board', askedFor('/board'), asked.at(-1));
+    const cards = board.days.flatMap((day) => day.cards);
+    eq('the Board keeps every card the server sends', cards.length, contract.board_owner.days.reduce((n, day) => n + day.cards.length, 0));
+    const own = cards.find((card) => card.entry_id === ids.post);
+    check("the owner's card reads as theirs and under review", own?.mine === true && own.under_review === true && own.author.id === ids.owner, JSON.stringify(own));
+
+    // The post page: under review for its owner, and for a writer on their own comment only.
+    const pages = [
+      ['the owner', contract.post_page_owner, true],
+      ['the writer', contract.post_page_writer, false],
+    ];
+    for (const [who, sent, owner] of pages) {
+      const page = await serve(sent, () => boardApi.getPost(ids.post));
+      check(`${who}'s post page reads GET /posts/{id}`, askedFor(`/posts/${ids.post}`), asked.at(-1));
+      eq(`${who}'s post page: the card under review only for the owner`, page.card.under_review, owner);
+      eq(`${who}'s post page keeps every comment`, page.comments?.length, sent.comments.length);
+      for (const comment of sent.comments) {
+        const read = page.comments?.find((item) => item.id === comment.id);
+        eq(`${who}'s post page: under_review on ${comment.text} reads as sent`, read?.under_review, comment.under_review === true);
+      }
+    }
+    const writerPage = contract.post_page_writer.comments;
+    eq("the writer's own comment is the one under review", writerPage.find((c) => c.under_review === true)?.id, ids.writer_comment);
+    check("someone else's comment beside it is not", writerPage.some((c) => c.id === ids.viewer_comment && c.under_review === undefined));
+
+    // The owner's entry page.
+    const entry = await serve(contract.entry_owner, () => entries.getEntry(ids.post));
+    check('the entry reads GET /entries/{id}', askedFor(`/entries/${ids.post}`), asked.at(-1));
+    eq("the owner's entry is under review", entry.under_review, true);
+
+    // Today, through the load the Spin page runs: under review, then removed.
+    const zone = contract.today_entry_removed.time_zone;
+    const requests = {
+      reportZone: async () => {
+        throw new Error('this check sends no report');
+      },
+      getToday: spinApi.getToday,
+      now: () => 0,
+    };
+    const review = await serve(contract.today_under_review, () => loadToday(zone, false, requests));
+    check('Today reads GET /today', askedFor('/today'), asked.at(-1));
+    check("under review: Today's entry says so", review.ok && review.today.entry?.under_review === true && review.today.entry_removed !== true, JSON.stringify(review.today?.entry));
+    const gone = await serve(contract.today_entry_removed, () => loadToday(zone, false, requests));
+    check(
+      'removed: Today says so, with no entry, and the day still posted',
+      gone.ok && gone.today.entry_removed === true && gone.today.entry === null && gone.today.state === 'posted',
+      JSON.stringify({ entry: gone.today?.entry, entry_removed: gone.today?.entry_removed, state: gone.today?.state })
+    );
+  }
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);
