@@ -261,11 +261,12 @@ type Tx interface {
 	// first, so these are bugs, not sentinels).
 	ReplacePhotos(entryID string, slots []PhotoSlot, now time.Time) (removedKeys []string, err error)
 
-	// PhotoKeysInUse says which of keys already belong to a photo row (a key
-	// can belong to one row only). The map holds a key only when it is in use;
-	// an empty list gives an empty map. Postgres answers across ALL people
-	// (the key is unique in the whole table). MemRepo answers from the calling
-	// person's own data only, because it never takes another person's lock.
+	// PhotoKeysInUse says which of keys already belong to a photo row or, in
+	// Postgres, to a comment's photo (a file belongs to one row only). The
+	// map holds a key only when it is in use; an empty list gives an empty
+	// map. Postgres answers across ALL people (the key is unique in the whole
+	// table). MemRepo answers from the calling person's own data only, because
+	// it never takes another person's lock, and it has no comments.
 	PhotoKeysInUse(keys []string) (map[string]bool, error)
 
 	// DeleteEntry removes this person's entry and, with it, its photo rows. It

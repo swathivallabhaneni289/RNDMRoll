@@ -76,14 +76,14 @@ func reportFields(rep *admin.Report) []any {
 }
 
 // OpenReports implements admin.Repository: every open report with whose it
-// is, newest first, at most admin.OpenReportsLimit.
+// is, newest first, at most admin.OpenReportsLimit+1.
 func (r *AdminRepo) OpenReports(ctx context.Context) ([]admin.OpenReport, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+adminPersonColumns+`, `+reportColumns+`
 		from (`+allReports+`) r join users u on u.id = r.owner
 		where r.resolved_at is null
 		order by r.created_at desc
-		limit $1`, admin.OpenReportsLimit)
+		limit $1`, admin.OpenReportsLimit+1)
 	if err != nil {
 		return nil, err
 	}

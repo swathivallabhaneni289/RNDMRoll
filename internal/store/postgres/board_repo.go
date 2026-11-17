@@ -404,11 +404,14 @@ func (r *BoardRepo) DeleteComment(ctx context.Context, id uuid.UUID) ([]string, 
 }
 
 // deleteCommentRows deletes a comment and its replies and returns their
-// photo keys. ErrNotFound when the comment was not there.
+// photo keys, leaving out a file that a photo row also names, since that
+// post still shows it (the same rule as commentPhotoKeysOf). ErrNotFound
+// when the comment was not there.
 func deleteCommentRows(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) ([]string, error) {
 	rows, err := pool.Query(ctx, `
-		delete from post_comments where id = $1 or parent_id = $1
-		returning id = $1, coalesce(photo_key, '')`, id)
+		delete from post_comments c where c.id = $1 or c.parent_id = $1
+		returning c.id = $1, coalesce(c.photo_key, ''),
+		          exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -416,13 +419,13 @@ func deleteCommentRows(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) ([
 	found := false
 	keys := []string{}
 	for rows.Next() {
-		var self bool
+		var self, onPost bool
 		var key string
-		if err := rows.Scan(&self, &key); err != nil {
+		if err := rows.Scan(&self, &key, &onPost); err != nil {
 			return nil, err
 		}
 		found = found || self
-		if key != "" {
+		if key != "" && !onPost {
 			keys = append(keys, key)
 		}
 	}

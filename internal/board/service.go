@@ -61,7 +61,8 @@ type Repository interface {
 	// missing.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
 	// DeleteComment deletes a comment and its replies and returns the photo
-	// keys they carried, for the caller to remove the files.
+	// keys they carried, for the caller to remove the files. A file that a
+	// post's photo also names is left out.
 	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
 	// SetCommentHidden hides (at set) or shows (at nil) a comment.
 	// ErrNotFound when it went away.

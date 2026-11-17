@@ -58,7 +58,9 @@ func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID
 	if c.Hidden && c.EntryOwner != viewer {
 		return ErrNotFound
 	}
-	if _, err := s.social.Profile(ctx, viewer, c.Author.ID); err != nil {
+	// Profile answers a writer the viewer blocked with RelationBlocked and no
+	// error (the blocker's own page of them), so that is refused here too.
+	if p, err := s.social.Profile(ctx, viewer, c.Author.ID); err != nil || p.Relation == social.RelationBlocked {
 		return ErrNotFound
 	}
 	if err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {

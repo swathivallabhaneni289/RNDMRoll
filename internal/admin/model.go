@@ -62,7 +62,8 @@ func Urgent(reason string) bool {
 	return ReasonRank(reason) <= 1
 }
 
-// OpenReportsLimit bounds OpenReports: the newest this many open reports.
+// OpenReportsLimit bounds the open reports the page shows: the newest this
+// many.
 const OpenReportsLimit = 500
 
 // Person is the reported or disabled person as the admin sees them. It has
@@ -121,7 +122,8 @@ type OpenReport struct {
 // Repository is the admin page's storage.
 type Repository interface {
 	// OpenReports is every open report with whose it is, newest first: at
-	// most OpenReportsLimit of them.
+	// most OpenReportsLimit+1 of them, so the page can tell when more are
+	// open than it shows.
 	OpenReports(ctx context.Context) ([]OpenReport, error)
 	// DisabledPeople is every disabled account, the most recently disabled
 	// first.
@@ -151,6 +153,6 @@ type Repository interface {
 	// password code and its push tokens.
 	SetDisabled(ctx context.Context, person uuid.UUID, at *time.Time) error
 	// DeleteComment deletes a comment and its replies and returns their
-	// photo keys.
+	// photo keys, leaving out a file that a post's photo also names.
 	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
 }

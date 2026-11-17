@@ -213,8 +213,9 @@ func (r *PurgeRepo) Purge(ctx context.Context, id uuid.UUID, deleteFiles func(ct
 // them. Their files are in their writers' own folders, which the purge
 // otherwise never touches; the account's own photos are in its own folders,
 // which it deletes whole. A file that one of the writer's own posts also
-// names is left alone: the comment insert refuses a post's key, but the post
-// side does not check comment keys, so a hand-made request could share one.
+// names is left alone: the comment insert refuses a post's key and the post
+// side a comment's, but the two checks are separate, so two hand-made
+// requests at the same moment could still share one.
 func commentPhotosGoingWith(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]purge.CommentPhoto, error) {
 	rows, err := tx.Query(ctx, `
 		select c.photo_key, c.user_id from post_comments c

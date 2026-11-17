@@ -14,6 +14,7 @@ import { REPORT_THANKS, reportComment } from '@/lib/api/reports';
 import { MenuSheet, type MenuItem } from '@/components/ui/MenuSheet';
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName } from '@/lib/api/social';
+import { withEmoji, withReplyPrefix } from '@/lib/board/comments';
 import { COMMENT_EMOJIS } from '@/lib/entry/reactions';
 import { COMMENT_MAX } from '@/lib/entry/rules';
 import { createUploadMemory, photoMessage, photoProblem } from '@/lib/entry/photo';
@@ -382,13 +383,13 @@ export function CommentBar({
   useEffect(() => {
     if (replyTo === null) return;
     const username = replyTo.author.username;
-    if (username !== '') setText((before) => `@${username} ${before.replace(/^@\S+\s*/, '')}`.slice(0, COMMENT_MAX));
+    if (username !== '') setText((before) => withReplyPrefix(before, username, COMMENT_MAX));
     inputRef.current?.focus();
   }, [replyTo]);
 
   // A tap on the quick row adds the character at the end, never past the limit.
   function addEmoji(char: string) {
-    setText((before) => (before.length + char.length > COMMENT_MAX ? before : before + char));
+    setText((before) => withEmoji(before, char, COMMENT_MAX));
     inputRef.current?.focus();
   }
 

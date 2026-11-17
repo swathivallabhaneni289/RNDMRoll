@@ -45,9 +45,11 @@ func (r *NotificationsRepo) Comments(ctx context.Context, owner uuid.UUID, since
 
 // Replies implements notifications.Repository: replies by someone else to a
 // top-level comment the viewer wrote, with no block between the viewer and
-// the reply's writer, on a post the viewer can still see (the rule of
-// social.CanView: the viewer's own, or a followed owner's with no block, not
-// archived, on a day the viewer posted).
+// the reply's writer, that the viewer may read (not hidden by the post's
+// owner, unless the viewer is that owner: shownComment, as on the post
+// page), on a post the viewer can still see (the rule of social.CanView: the
+// viewer's own, or a followed owner's with no block, not archived, on a day
+// the viewer posted).
 func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	return r.commentRows(ctx, notifications.KindReply, `
 		select c.id, c.entry_id, c.user_id, c.body, c.created_at, s.category_name,
@@ -57,7 +59,7 @@ func (r *NotificationsRepo) Replies(ctx context.Context, viewer uuid.UUID, since
 		join entries e on e.id = c.entry_id
 		join spins s on s.id = e.spin_id
 		where p.user_id = $1 and c.user_id <> $1 and c.created_at > $2
-		  and not `+blockedEither("$1::uuid", "c.user_id")+`
+		  and not `+blockedEither("$1::uuid", "c.user_id")+` and `+shownComment("c", "e")+`
 		  and (e.user_id = $1 or (
 		    e.archived_at is null
 		    and exists (select 1 from follows f where f.follower_id = $1 and f.followee_id = e.user_id and f.status = 'accepted')

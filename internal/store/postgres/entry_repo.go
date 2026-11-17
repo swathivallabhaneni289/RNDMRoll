@@ -16,9 +16,9 @@ import (
 // This file holds the entry and photo methods of the spin transaction. The
 // layer knows storage keys only (folder and file name): it never builds a
 // link. Every statement carries the person's id, except PhotoKeysInUse, which
-// answers across all people because a file belongs to one photo row only (the
-// photo rows commentPhotoKeysOf checks are read across all people for the
-// same reason).
+// answers across all people because a file belongs to one photo row or one
+// comment only (the photo rows commentPhotoKeysOf checks are read across all
+// people for the same reason).
 
 // parseID turns an id the service passes into a typed uuid. The service sends
 // canonical ids only, so a failure here is a bug and comes back as a plain
@@ -322,8 +322,13 @@ func (t *pgTx) PhotoKeysInUse(keys []string) (map[string]bool, error) {
 	if len(keys) == 0 {
 		return used, nil
 	}
-	// Across all people: a file belongs to one photo row in the whole table.
-	rows, err := t.tx.Query(t.ctx, `select storage_key from entry_photos where storage_key = any($1::text[])`, keys)
+	// Across all people: a file belongs to one photo row in the whole table,
+	// and a comment's file is refused too, as the comment insert refuses a
+	// photo row's file.
+	rows, err := t.tx.Query(t.ctx, `
+		select storage_key from entry_photos where storage_key = any($1::text[])
+		union
+		select photo_key from post_comments where photo_key = any($1::text[])`, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -367,8 +372,9 @@ func (t *pgTx) photoKeysOf(entryID uuid.UUID) ([]string, error) {
 // account purge does (commentPhotosGoingWith), a key is kept only when it is
 // an entry photo key in its writer's own folder, since the database's word
 // alone is not enough to delete a file, and a file that a photo row also
-// names is left alone: the comment insert refuses a post's key, but the post
-// side does not check comment keys, so a hand-made request could share one.
+// names is left alone: the comment insert refuses a post's key and the post
+// side a comment's, but the two checks are separate, so two hand-made
+// requests at the same moment could still share one.
 func (t *pgTx) commentPhotoKeysOf(entryID uuid.UUID) ([]string, error) {
 	rows, err := t.tx.Query(t.ctx, `
 		select c.photo_key, c.user_id from post_comments c

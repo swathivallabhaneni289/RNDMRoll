@@ -625,15 +625,18 @@ func (h *AdminHandler) disabledPage(c *gin.Context) {
 }
 
 // openItems is every open report put together by what it is about, in the
-// order the admin works through them (sortOpen). capped says the read hit
-// admin.OpenReportsLimit, so the oldest are not among them.
+// order the admin works through them (sortOpen). capped says more than
+// admin.OpenReportsLimit are open, so the oldest are not among them.
 func (h *AdminHandler) openItems(ctx context.Context) (items []adminItem, capped bool, err error) {
 	open, err := h.repo.OpenReports(ctx)
 	if err != nil {
 		return nil, false, err
 	}
-	if capped = len(open) >= admin.OpenReportsLimit; capped {
-		log.Printf("httpapi: admin: %d open reports or more; the page shows the newest", admin.OpenReportsLimit)
+	// The read holds one more than the page shows, so exactly a full page is
+	// told apart from a cut one.
+	if capped = len(open) > admin.OpenReportsLimit; capped {
+		open = open[:admin.OpenReportsLimit]
+		log.Printf("httpapi: admin: more than %d open reports; the page shows the newest", admin.OpenReportsLimit)
 	}
 	var owners []admin.Person
 	byOwner := map[uuid.UUID][]admin.Report{}
