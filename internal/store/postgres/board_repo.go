@@ -403,12 +403,18 @@ func shownComment(c, e string) string {
 	return `(` + c + `.hidden_at is null or ` + c + `.user_id = $1 or ` + e + `.user_id = $1)`
 }
 
-// CommentByID implements board.Repository.
+// CommentByID implements board.Repository. A removed comment, a reply under a
+// removed comment and a comment on a removed post are not found: the writer's
+// and the post owner's delete and hide must not reach what an admin may
+// still bring back. The cleanup reads (deleteCommentRows) do not go through
+// here.
 func (r *BoardRepo) CommentByID(ctx context.Context, id uuid.UUID) (board.CommentRow, error) {
 	c, err := scanComment(r.pool.QueryRow(ctx, `
 		select `+commentColumns+`
 		from post_comments c join users u on u.id = c.user_id join entries e on e.id = c.entry_id
-		where c.id = $1`, id))
+		left join post_comments p on p.id = c.parent_id
+		where c.id = $1 and c.removed_at is null and e.removed_at is null
+		  and (c.parent_id is null or p.removed_at is null)`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return board.CommentRow{}, board.ErrNotFound
 	}
@@ -455,9 +461,10 @@ func deleteCommentRows(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) ([
 	return keys, nil
 }
 
-// SetCommentHidden implements board.Repository.
+// SetCommentHidden implements board.Repository. A comment removed after
+// CommentByID read it is left as it is.
 func (r *BoardRepo) SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error {
-	tag, err := r.pool.Exec(ctx, `update post_comments set hidden_at = $2 where id = $1`, id, at)
+	tag, err := r.pool.Exec(ctx, `update post_comments set hidden_at = $2 where id = $1 and removed_at is null`, id, at)
 	if err != nil {
 		return err
 	}

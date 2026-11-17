@@ -201,10 +201,12 @@ func (t *pgTx) UpdateEntry(id string, u spin.EntryUpdate, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// A removed entry is not found, as in EntryByID: the edit reads it first,
+	// and this keeps one removed in between as it was.
 	tag, err := t.tx.Exec(t.ctx, `
 		update entries set title = $3, stars = $4, reaction = $5, comment = $6, updated_at = $7,
 		       comments_off = $8
-		where id = $1 and user_id = $2`,
+		where id = $1 and user_id = $2 and removed_at is null`,
 		eid, t.uid, u.Title, u.Stars, u.Reaction, u.Comment, now.UTC(), u.CommentsOff)
 	if err != nil {
 		return err
@@ -418,9 +420,11 @@ func (t *pgTx) DeleteEntry(id string) ([]string, error) {
 	}
 	// The entry is held first, so no comment can be added between reading
 	// the comment photos and the delete: a comment insert waits on this lock
-	// through its foreign key, then finds the entry gone.
+	// through its foreign key, then finds the entry gone. A removed entry is
+	// not found: its owner cannot delete what an admin may still bring back,
+	// and holding it keeps a removal from landing in between.
 	var held uuid.UUID
-	err = t.tx.QueryRow(t.ctx, `select id from entries where id = $1 and user_id = $2 for update`, eid, t.uid).Scan(&held)
+	err = t.tx.QueryRow(t.ctx, `select id from entries where id = $1 and user_id = $2 and removed_at is null for update`, eid, t.uid).Scan(&held)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, spin.ErrEntryNotFound
 	}
@@ -514,16 +518,18 @@ func (t *pgTx) SetEntryArchived(id string, archived bool, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// A removed entry is not found either way, and its archived_at stays as
+	// it was, so Bring it back returns it where it was.
 	var tag pgconn.CommandTag
 	if archived {
 		// An archived entry keeps its first archive time.
 		tag, err = t.tx.Exec(t.ctx, `
 			update entries set archived_at = coalesce(archived_at, $3)
-			where id = $1 and user_id = $2`, eid, t.uid, now.UTC())
+			where id = $1 and user_id = $2 and removed_at is null`, eid, t.uid, now.UTC())
 	} else {
 		tag, err = t.tx.Exec(t.ctx, `
 			update entries set archived_at = null
-			where id = $1 and user_id = $2`, eid, t.uid)
+			where id = $1 and user_id = $2 and removed_at is null`, eid, t.uid)
 	}
 	if err != nil {
 		return err

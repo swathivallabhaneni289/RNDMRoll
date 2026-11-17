@@ -112,7 +112,9 @@ func (s *Service) PersonPostCount(ctx context.Context, viewer, owner uuid.UUID) 
 
 // SetCommentHidden hides or shows a comment on the viewer's own post. Only
 // the post's owner may, and never on their own comment (they delete it
-// instead); anything else is ErrNotFound, the same as a missing comment.
+// instead); anything else is ErrNotFound, the same as a missing comment. So is
+// a comment an admin removed (CommentByID); one under review may still be
+// hidden.
 func (s *Service) SetCommentHidden(ctx context.Context, viewer, commentID uuid.UUID, hidden bool) error {
 	c, err := s.repo.CommentByID(ctx, commentID)
 	if err != nil {

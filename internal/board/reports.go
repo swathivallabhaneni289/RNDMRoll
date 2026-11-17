@@ -18,8 +18,10 @@ func validReason(reason string) bool {
 }
 
 // ReportPost keeps the viewer's report of a post they can see (the same rule
-// as the post page). Your own post, and one you cannot see, are ErrNotFound;
-// an unknown reason is social.ErrBadReason. The owner is never told.
+// as the post page). Your own post, one you cannot see and one you already
+// reported (it is gone for you) are ErrNotFound; an unknown reason is
+// social.ErrBadReason. The owner is never told. The report notifier hears
+// only a report that was kept.
 func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, reason string) error {
 	if !validReason(reason) {
 		return social.ErrBadReason
@@ -38,9 +40,12 @@ func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, rea
 	return nil
 }
 
-// ReportComment keeps the viewer's report of a comment they can read on a
-// post they can see. Your own comment, a hidden one you may not read, and a
-// writer with a block either way are ErrNotFound.
+// ReportComment keeps the viewer's report of a comment that the post page
+// lists for them (visibleComment), on a post they can see. Your own comment
+// is ErrNotFound, and so is any comment the page leaves out: a writer with a
+// block either way, one the post's author hid (unless you are that author),
+// one you already reported, one under review or removed, and a reply whose
+// top-level comment is left out for any of these reasons.
 func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID, reason string) error {
 	if !validReason(reason) {
 		return social.ErrBadReason
@@ -55,13 +60,8 @@ func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID
 	if _, _, err := s.visible(ctx, viewer, c.EntryID); err != nil {
 		return err
 	}
-	if c.Hidden && c.EntryOwner != viewer {
-		return ErrNotFound
-	}
-	// Profile answers a writer the viewer blocked with RelationBlocked and no
-	// error (the blocker's own page of them), so that is refused here too.
-	if p, err := s.social.Profile(ctx, viewer, c.Author.ID); err != nil || p.Relation == social.RelationBlocked {
-		return ErrNotFound
+	if _, err := s.visibleComment(ctx, viewer, c.EntryID, c.ID); err != nil {
+		return err
 	}
 	if err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC()); err != nil {
 		return err

@@ -69,18 +69,21 @@ type Repository interface {
 	// use of a file already taken is FieldProblem photo invalid.
 	InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (id uuid.UUID, createdAt time.Time, made bool, err error)
 	// CommentByID reads a comment with its entry's owner. ErrNotFound when
-	// missing.
+	// missing, and when an admin removed it, the comment it answers or its
+	// post: those are gone for everyone, their writer and the post's owner
+	// included, so no delete, hide or report reaches them.
 	CommentByID(ctx context.Context, id uuid.UUID) (CommentRow, error)
 	// DeleteComment deletes a comment and its replies and returns the photo
 	// keys they carried, for the caller to remove the files. A file that a
 	// post's photo also names is left out.
 	DeleteComment(ctx context.Context, id uuid.UUID) ([]string, error)
 	// SetCommentHidden hides (at set) or shows (at nil) a comment.
-	// ErrNotFound when it went away.
+	// ErrNotFound when it went away or an admin removed it.
 	SetCommentHidden(ctx context.Context, id uuid.UUID, at *time.Time) error
-	// ReportPost and ReportComment keep a report (one per reporter and post
-	// or comment; a new one replaces the reason, and a post's title kept
-	// with it, and opens it again).
+	// ReportPost and ReportComment keep a report: one per reporter and post
+	// or comment. A second one is ErrNotFound and changes nothing: the first
+	// reason, and a post's title kept with it, stay, and a closed report is
+	// not opened again. So of two that race, one is kept and one is a miss.
 	ReportPost(ctx context.Context, reporter, entryID, owner uuid.UUID, title, reason string, at time.Time) error
 	ReportComment(ctx context.Context, reporter, commentID, author uuid.UUID, body, reason string, at time.Time) error
 }
@@ -446,30 +449,41 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 		viewer, row.Owner.ID, now, zone), nil
 }
 
-// replyParent finds the comment a reply answers among the comments of the
-// entry the viewer can see (the same list as the post page) and returns the
-// top-level comment the reply is stored under. ErrNotFound when it is not
-// there: missing, on another post, or hidden by a block.
-func (s *Service) replyParent(ctx context.Context, viewer, entryID, parentID uuid.UUID) (*uuid.UUID, error) {
+// visibleComment finds a comment among the comments of the entry the viewer
+// can see (the same list as the post page). ErrNotFound when it is not
+// there: missing, on another post, or kept from the viewer by a block, the
+// post's owner's hide or moderation, on it or on the comment it answers.
+func (s *Service) visibleComment(ctx context.Context, viewer, entryID, id uuid.UUID) (CommentRow, error) {
 	rows, err := s.visibleComments(ctx, viewer, entryID)
+	if err != nil {
+		return CommentRow{}, err
+	}
+	for _, c := range rows {
+		if c.ID == id {
+			return c, nil
+		}
+	}
+	return CommentRow{}, ErrNotFound
+}
+
+// replyParent finds the comment a reply answers (visibleComment) and returns
+// the top-level comment the reply is stored under.
+func (s *Service) replyParent(ctx context.Context, viewer, entryID, parentID uuid.UUID) (*uuid.UUID, error) {
+	c, err := s.visibleComment(ctx, viewer, entryID, parentID)
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range rows {
-		if c.ID != parentID {
-			continue
-		}
-		top := c.ID
-		if c.ParentID != nil {
-			top = *c.ParentID
-		}
-		return &top, nil
+	top := c.ID
+	if c.ParentID != nil {
+		top = *c.ParentID
 	}
-	return nil, ErrNotFound
+	return &top, nil
 }
 
 // DeleteComment deletes a comment for its writer or the post's owner.
 // Deleting a top-level comment deletes its replies (the database cascades).
+// One an admin removed is ErrNotFound (CommentByID), so it stays for its 30
+// days; one under review may still be deleted.
 func (s *Service) DeleteComment(ctx context.Context, viewer, commentID uuid.UUID) ([]string, error) {
 	c, err := s.repo.CommentByID(ctx, commentID)
 	if err != nil {
