@@ -149,11 +149,12 @@ type Repository interface {
 	// Accepted: the viewer's requests that the other person accepted.
 	Accepted(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	Bonuses(ctx context.Context, viewer uuid.UUID, since time.Time) ([]Bonus, error)
-	// Decisions: the admin's removals and returns of the viewer's own posts
-	// and comments, dated by the viewer's own clock. Decisions about the
-	// account are not among them.
-	Decisions(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Decision, error)
-	Seen(ctx context.Context, viewer uuid.UUID) (time.Time, bool, error)
+	// DecisionsAndSeen reads the two things every list needs whatever the
+	// switches, together: the admin's removals and returns of the viewer's
+	// own posts and comments, dated by the viewer's own clock (decisions
+	// about the account are not among them), and the viewer's seen time
+	// (haveSeen is false while there is none).
+	DecisionsAndSeen(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) (decisions []Decision, seen time.Time, haveSeen bool, err error)
 	// MarkSeen moves the seen time forward only.
 	MarkSeen(ctx context.Context, viewer uuid.UUID, at time.Time) error
 }
@@ -294,8 +295,9 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 
 	// The admin's decisions about the viewer's own posts and comments have
 	// no actor, and no switch turns them off: they are the only word the
-	// owner gets that something of theirs was removed or is back.
-	decisions, err := s.repo.Decisions(ctx, viewer, since, MaxItems)
+	// owner gets that something of theirs was removed or is back. The seen
+	// time comes with them, in the same read.
+	decisions, seen, haveSeen, err := s.repo.DecisionsAndSeen(ctx, viewer, since, MaxItems)
 	if err != nil {
 		return List{}, err
 	}
@@ -315,10 +317,6 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		items = items[:MaxItems]
 	}
 
-	seen, haveSeen, err := s.repo.Seen(ctx, viewer)
-	if err != nil {
-		return List{}, err
-	}
 	out := List{Items: items}
 	for i := range out.Items {
 		it := &out.Items[i]

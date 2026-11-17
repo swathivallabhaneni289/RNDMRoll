@@ -56,12 +56,8 @@ func (*fakeNotes) Bonuses(context.Context, uuid.UUID, time.Time) ([]Bonus, error
 	return nil, nil
 }
 
-func (*fakeNotes) Decisions(context.Context, uuid.UUID, time.Time, int) ([]Decision, error) {
-	return nil, nil
-}
-
-func (f *fakeNotes) Seen(context.Context, uuid.UUID) (time.Time, bool, error) {
-	return f.seen, f.haveSeen, nil
+func (f *fakeNotes) DecisionsAndSeen(context.Context, uuid.UUID, time.Time, int) ([]Decision, time.Time, bool, error) {
+	return nil, f.seen, f.haveSeen, nil
 }
 
 func (f *fakeNotes) MarkSeen(_ context.Context, _ uuid.UUID, at time.Time) error {

@@ -88,13 +88,9 @@ func (n *socialNotes) Bonuses(_ context.Context, _ uuid.UUID, since time.Time) (
 	return n.bonuses, nil
 }
 
-func (n *socialNotes) Decisions(_ context.Context, _ uuid.UUID, since time.Time, limit int) ([]Decision, error) {
+func (n *socialNotes) DecisionsAndSeen(_ context.Context, _ uuid.UUID, since time.Time, limit int) ([]Decision, time.Time, bool, error) {
 	n.read("decisions", since, limit)
-	return n.decisions, nil
-}
-
-func (n *socialNotes) Seen(context.Context, uuid.UUID) (time.Time, bool, error) {
-	return n.seen, n.haveSeen, nil
+	return n.decisions, n.seen, n.haveSeen, nil
 }
 
 func (n *socialNotes) MarkSeen(context.Context, uuid.UUID, time.Time) error { return nil }

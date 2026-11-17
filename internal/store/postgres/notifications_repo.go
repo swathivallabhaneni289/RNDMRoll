@@ -189,33 +189,35 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 	return out, rows.Err()
 }
 
-// Decisions implements notifications.Repository: the decision log's rows
-// about the viewer's own posts and comments (removed, restored and shown
-// again; never an account's), newest first by the viewer's own clock. Each
-// carries its post while that is in the database, whether the viewer can see
-// it now (postVisibleTo, the whole of social.CanView), and the post's first
-// photo, read only for a post that is back and that the viewer can see. A
-// post deleted since leaves no row to join, so the check says so outright
-// rather than trust a NULL to fall through the fragments.
-func (r *NotificationsRepo) Decisions(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Decision, error) {
-	rows, err := r.pool.Query(ctx, `
-		select x.id, x.item, x.action, x.at, x.snapshot, x.entry, x.visible,
-		  case when x.visible and x.item = 'post' and x.action <> 'removed' then
-		    (select ep.storage_key from entry_photos ep where ep.entry_id = x.entry order by ep.position limit 1) end
-		from (
-		  select me.id, me.item, me.action, me.at, me.snapshot, e.id as entry,
-		    (e.id is not null and `+postVisibleTo("$1::uuid", "e")+`) as visible
-		  from moderation_events me
-		  left join entries e on e.id = me.entry_id
-		  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again')
-		    and me.at > $2
-		  order by me.at desc, me.id desc
-		  limit $3
-		) x
-		order by x.at desc, x.id desc`, viewer, since, limit)
-	if err != nil {
-		return nil, err
-	}
+// decisionsSQL is the decision log's rows about the viewer's ($1) own posts
+// and comments (removed, restored and shown again; never an account's) after
+// $2, at most $3, newest first by the viewer's own clock. Each carries its
+// post while that is in the database, whether the viewer can see it now
+// (postVisibleTo, the whole of social.CanView), and the post's first photo,
+// read only for a post that is back and that the viewer can see. A post
+// deleted since leaves no row to join, so the check says so outright rather
+// than trust a NULL to fall through the fragments.
+var decisionsSQL = `
+	select x.id, x.item, x.action, x.at, x.snapshot, x.entry, x.visible,
+	  case when x.visible and x.item = 'post' and x.action <> 'removed' then
+	    (select ep.storage_key from entry_photos ep where ep.entry_id = x.entry order by ep.position limit 1) end
+	from (
+	  select me.id, me.item, me.action, me.at, me.snapshot, e.id as entry,
+	    (e.id is not null and ` + postVisibleTo("$1::uuid", "e") + `) as visible
+	  from moderation_events me
+	  left join entries e on e.id = me.entry_id
+	  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again')
+	    and me.at > $2
+	  order by me.at desc, me.id desc
+	  limit $3
+	) x
+	order by x.at desc, x.id desc`
+
+// seenSQL is the viewer's ($1) seen time.
+const seenSQL = `select seen_at from notification_seen where user_id = $1`
+
+// scanDecisions reads decisionsSQL's rows and closes them.
+func scanDecisions(rows pgx.Rows) ([]notifications.Decision, error) {
 	defer rows.Close()
 	out := []notifications.Decision{}
 	for rows.Next() {
@@ -229,10 +231,10 @@ func (r *NotificationsRepo) Decisions(ctx context.Context, viewer uuid.UUID, sin
 	return out, rows.Err()
 }
 
-// Seen implements notifications.Repository.
-func (r *NotificationsRepo) Seen(ctx context.Context, viewer uuid.UUID) (time.Time, bool, error) {
+// scanSeen reads seenSQL's row. No row is no seen time yet, not an error.
+func scanSeen(row pgx.Row) (time.Time, bool, error) {
 	var at time.Time
-	err := r.pool.QueryRow(ctx, `select seen_at from notification_seen where user_id = $1`, viewer).Scan(&at)
+	err := row.Scan(&at)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
@@ -240,6 +242,39 @@ func (r *NotificationsRepo) Seen(ctx context.Context, viewer uuid.UUID) (time.Ti
 		return time.Time{}, false, err
 	}
 	return at.UTC(), true, nil
+}
+
+// Decisions is DecisionsAndSeen's decision log read on its own
+// (decisionsSQL).
+func (r *NotificationsRepo) Decisions(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Decision, error) {
+	rows, err := r.pool.Query(ctx, decisionsSQL, viewer, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanDecisions(rows)
+}
+
+// DecisionsAndSeen implements notifications.Repository. Every list makes
+// both reads whatever the switches, so they go as one batch: one round trip,
+// plus one on a connection that has not prepared them yet (both are
+// prepared together). The batch is read to the end before it returns.
+func (r *NotificationsRepo) DecisionsAndSeen(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]notifications.Decision, time.Time, bool, error) {
+	var decisions []notifications.Decision
+	var seen time.Time
+	var haveSeen bool
+	b := &pgx.Batch{}
+	b.Queue(decisionsSQL, viewer, since, limit).Query(func(rows pgx.Rows) (err error) {
+		decisions, err = scanDecisions(rows)
+		return err
+	})
+	b.Queue(seenSQL, viewer).QueryRow(func(row pgx.Row) (err error) {
+		seen, haveSeen, err = scanSeen(row)
+		return err
+	})
+	if err := r.pool.SendBatch(ctx, b).Close(); err != nil {
+		return nil, time.Time{}, false, err
+	}
+	return decisions, seen, haveSeen, nil
 }
 
 // MarkSeen implements notifications.Repository.
