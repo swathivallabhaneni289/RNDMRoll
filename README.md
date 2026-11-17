@@ -79,7 +79,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **Board.** Posts from the people you follow, locked until you've posted that day. Comments, replies and photos in comments.
 - **Profile.** Every post you've made, your spins, your week streak and your followers.
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
-- **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page where an admin can remove content or disable an account.
+- **Safety.** Block, mute, and report a person, post or comment. Reports go to an admin web page, one card per reported thing, where an admin can remove content or disable an account, and the admin gets an email about new reports.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies and follow requests (built, off for now).
 - **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
 

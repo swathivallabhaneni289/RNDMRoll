@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 16, 2026 |
+| **Last updated** | November 17, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -513,29 +513,43 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ID | Requirement | Priority | Status |
 |---|---|---|---|
 | ADM-01 | A web page at /admin, for admin accounts only | P0 | Built, off unless admin emails are set |
-| ADM-02 | A list of open reports, grouped by person, and a list of disabled accounts | P0 | Built |
+| ADM-02 | A Reports tab with one card per reported post, comment or account, and a Disabled tab | P0 | Built |
 | ADM-03 | A person page with their details and their reports, open ones first (up to 200), only for people someone reported and disabled accounts | P0 | Built |
-| ADM-04 | Dismiss a report, remove a post or comment, disable or enable an account | P0 | Built |
+| ADM-04 | Dismiss a card's reports, remove a post or comment, disable or enable an account | P0 | Built |
 | ADM-05 | A record of which admin took each action | P2 | Later |
+| ADM-06 | An email to the admins about new reports | P1 | Built, sent for real once email is on |
 
 **Acceptance criteria and rules**
 
 - **ADM-01 who is an admin.** Admins are the accounts listed in the server's settings when it starts. Their email can't be used to sign up.
 - **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours, or until their password changes.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
+- **ADM-02 the Reports tab.** Every report on the same post, comment or account is one card: why it was reported, who reported it (up to three usernames, then how many more), when, the thing itself and whose it is, with Remove, Dismiss and Open account.
+  - Order: violence and nudity first, then bullying and hate, then the rest; within those, the most reported, then the longest waiting.
+  - The tabs and the browser tab show how many cards are open, like "(3) Reports", and the Reports tab refreshes itself every minute.
+  - The newest 500 open reports show; past that the page says so.
+- **ADM-02 the Disabled tab.** Each disabled account with its photo, username, name and when, with Enable right there.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
   - The person: name, username, profile photo, bio and join date.
   - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone shows only the title it had when it was reported, and says so.
   - A comment report: the comment's text from when it was reported, and its photo.
+  - The person page puts open cards first. Closed ones fold away under "Closed reports", one card for each action that closed them.
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment) and disabled accounts. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
   - The page never shows an email address or a birthday.
+- **ADM-04 dismissing.** Dismiss closes every report on the card, and only those: a report that came in after the page was drawn stays open.
 - **ADM-04 removing.** Removing content closes its reports and deletes it with its photos.
 - **ADM-04 disabling.**
   - Disabling closes the person's reports and ends every session at once.
   - It also deletes their reset code and push tokens.
   - It hides their profile, posts and comments from everyone else in the app.
   - Enabling brings it all back. An admin can't disable themselves.
+- **Reporting again.** A second report of the same post, comment or account by the same person replaces the reason and opens it again, even after an admin closed it.
+- **ADM-06 the email.** When someone reports a person, post or comment, the admins get an email: at once for violence or nudity (at most one a minute), otherwise at most one an hour, counting everything that came in.
+  - It says how many reports came in and why, and links to the admin page. It never names anyone or shows what was reported.
+  - The link opens the page through a short hop, so an admin who is logged in stays logged in when they click it from their mail.
+  - Waiting reports are kept in memory and sent when the server stops.
+  - It uses the same sender as the Forgot password code: printed to the server log for now, sent with Resend once email is on.
 
 ### 8.12 Settings and legal
 
