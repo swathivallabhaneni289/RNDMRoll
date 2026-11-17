@@ -554,6 +554,14 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       /comment_count: after\.count/.test(hook) &&
       /await deleteComment\(commentId\);\s*drop\(commentId\);/.test(hook)
   );
+  // A read already on its way (a photo reload, a return from the background) may have begun before
+  // the report or the delete, and would answer with the comment: drop moves the read count on, so
+  // that answer is dropped.
+  check(
+    'a read that began before a comment left cannot bring it back',
+    /const drop = useCallback\(\s*\(commentId: string\) => \{[\s\S]{0,400}?\+\+seqRef\.current;[\s\S]{0,400}?put\(\{ \.\.\.now, comments: after\.list/.test(hook) &&
+      /const next = await getPost\(id\);\s*if \(!mountedRef\.current \|\| seq !== seqRef\.current\) return;\s*put\(next\);/.test(hook)
+  );
 
   const layout = source('app/(app)/_layout.tsx');
   const overlay = layout.slice(layout.indexOf('function ReportNotice('), layout.indexOf('export default function AppLayout('));

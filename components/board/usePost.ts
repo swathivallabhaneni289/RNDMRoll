@@ -24,7 +24,8 @@ export type PostLoad = {
   remove: (commentId: string) => Promise<string | null>;
   /**
    * Takes a comment you reported (and, for a top-level one, its replies) off the post on screen,
-   * with no request: it is gone for you from then on.
+   * with no request: it is gone for you from then on. A read already on its way is dropped, so it
+   * can't bring the comment back; the next read leaves it out.
    */
   drop: (commentId: string) => void;
   /** The comment the bar is replying to, or null for a plain comment. */
@@ -151,6 +152,9 @@ export function usePost(id: string): PostLoad {
     (commentId: string) => {
       const now = postRef.current;
       if (!mountedRef.current || now === null) return;
+      // A read on its way may have begun before the comment left (a photo reload, a return from
+      // the background); its answer would bring the comment back, so it is dropped.
+      ++seqRef.current;
       const after = withoutComment(now.comments ?? [], now.card.comment_count, commentId, replyToRef.current?.id ?? null);
       if (after.endReply) chooseReply(null);
       put({ ...now, comments: after.list, card: { ...now.card, comment_count: after.count } });
