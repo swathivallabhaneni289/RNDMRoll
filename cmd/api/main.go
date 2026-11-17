@@ -229,6 +229,10 @@ func main() {
 	purgeCtx, stopPurge := context.WithCancel(context.Background())
 	defer stopPurge()
 	purger := purge.New(postgres.NewPurgeRepo(pool), accountFiles, logger)
+	// Each run then deletes, with their photos, the posts and comments an
+	// admin removed once admin.RemovalGrace has passed: in the same loop,
+	// after the accounts, so the two never hold rows of one account at once.
+	purger.SetRemoved(postgres.NewRemovedPurgeRepo(pool))
 	purger.Start(purgeCtx)
 
 	httpServer := &http.Server{
