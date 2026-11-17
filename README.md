@@ -122,7 +122,7 @@ A few things that took real care:
 
 - **Time zones.** Every person's day, 8 PM opening and late window follow their own zone, including the days clocks jump for daylight saving (`internal/spin/window.go`).
 - **One source of time.** The server writes every time label ("8:41 PM", "Mon", "Oct 3") so the app never guesses.
-- **Tests.** More than 700 Go test functions, and more than 180 of them run against a real PostgreSQL database. Together they run about 85% of the server's code. Twelve check scripts cover the app's logic and the legal text.
+- **Tests.** More than 750 Go test functions, and more than 210 of them run against a real PostgreSQL database. Together they run about 85% of the server's code. Twelve check scripts cover the app's logic and the legal text.
 
 <details>
 <summary><b>Run it locally</b></summary>

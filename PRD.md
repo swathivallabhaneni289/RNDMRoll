@@ -57,7 +57,7 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
-| Quality | More than 700 Go test functions (more than 180 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
+| Quality | More than 750 Go test functions (more than 210 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
@@ -692,7 +692,7 @@ These rules decide what counts. The server owns all of them.
 
 ### Quality
 
-- More than 700 Go test functions; more than 180 of them run against a real PostgreSQL database.
+- More than 750 Go test functions; more than 210 of them run against a real PostgreSQL database.
 - The Go tests run about 85% of the server's code (statement coverage).
 - 12 check scripts: eleven for app logic and one for the legal text.
 - Strict TypeScript.
