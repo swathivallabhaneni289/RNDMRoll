@@ -516,7 +516,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - You can't report your own post or comment.
   - Limit: 10 a minute for each kind (people, posts, comments).
 - **SAFE-05 hidden while we take a look.**
-  - A post or comment with 3 or more open reports, from people whose accounts aren't disabled or being deleted, is hidden from everyone but its owner and the admin page. It is worked out from the open reports on every read and never stored, so it shows again once fewer than 3 are open.
+  - A post or comment with 3 or more open reports, from people whose accounts aren't disabled or being deleted, is hidden from everyone but its owner and the admin page. It is worked out from the open reports on every read and never stored, so it shows again once fewer than 3 are open. The log only notes the report that hid it, for the owner's bell.
   - The owner sees it with the line "Hidden while we take a look." and keeps every action, delete included. For a comment, the owner is its writer.
   - Replies under a hidden comment go with it, except for its writer, who still sees the replies under it that they can see.
   - The report that hides it tells the owner in the bell, "Your post is hidden while we take a look." (NOT-01), and the admin page's History lists it as "Post hidden by reports" ("Comment" for a comment). Removed before doesn't count it.
@@ -624,7 +624,7 @@ These rules decide what counts. The server owns all of them.
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who made a first spin today or has never spun |
 | Who sees a post | Nobody in the app once an admin removed it, the author included. Otherwise the author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, they haven't reported it, it isn't hidden under review, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo, and a removed post until it is deleted. |
 | Who sees a comment | Anyone who can see the post, except: a comment by someone they blocked or who blocked them, or whose account is disabled or being deleted; a comment they reported; a comment the post's author hid, seen only by its writer and the post's author; a comment hidden under review, seen only by its writer; and a removed comment, seen by nobody in the app. A reply shows only with the comment it answers. |
-| Hidden under review | 3 or more open reports on a post or comment from people whose accounts aren't disabled or being deleted. Worked out live from the open reports, never stored. |
+| Hidden under review | 3 or more open reports on a post or comment from people whose accounts aren't disabled or being deleted. Worked out live from the open reports, never stored. The log only notes the report that hid it, for the owner's bell. |
 | Removed | An admin's Remove: hidden from everyone at once, kept 30 days so it can be brought back, then deleted with its photos. One 30-day rule, on the database clock. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
 | Deleted account | Hidden from everyone at once, like a disabled account, and logged out. Deleted for good 30 days later; logging in or resetting the password before then cancels it. One 30-day rule, on the database clock, decides both. |
