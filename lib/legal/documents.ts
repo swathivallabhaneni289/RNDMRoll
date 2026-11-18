@@ -137,7 +137,7 @@ export const TERMS: LegalDocument = {
       heading: 'Leaving RNDMRoll',
       blocks: [
         paragraph(
-          `You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. To remove any other comment of yours, email us at ${CONTACT_EMAIL}. You can remove a follower whenever you like.`,
+          `You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. A post or comment we removed is deleted for good 30 days later. To remove any other comment of yours, email us at ${CONTACT_EMAIL}. You can remove a follower whenever you like.`,
         ),
         paragraph(
           "To delete your whole account, go to Settings, then Delete account, and enter your password. Your account is hidden from everyone right away and deleted for good after 30 days, with everything in it. If you log back in before then, it won't be deleted. The Privacy Policy explains the few copies that take longer to clear.",
@@ -312,7 +312,7 @@ export const PRIVACY: LegalDocument = {
       blocks: [
         list(
           'Change your photo, name, username and bio on your profile, and your password in Settings. You can replace your profile photo but not remove it yourself; email us to remove it.',
-          'Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app.',
+          'Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app. A post or comment we removed is deleted for good 30 days later.',
           'Remove a follower, unfollow, mute or block anyone.',
           "In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.",
           `Ask for a copy of your information, or ask us to correct it, by emailing ${CONTACT_EMAIL} from the address on your account. We'll answer within 30 days.`,

@@ -100,7 +100,7 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 ## Your choices
 
 - Change your photo, name, username and bio on your profile, and your password in Settings. You can replace your profile photo but not remove it yourself; email us to remove it.
-- Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app.
+- Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app. A post or comment we removed is deleted for good 30 days later.
 - Remove a follower, unfollow, mute or block anyone.
 - In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.
 - Ask for a copy of your information, or ask us to correct it, by emailing  from the address on your account. We'll answer within 30 days.
