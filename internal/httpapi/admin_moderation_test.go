@@ -157,6 +157,15 @@ func TestAdminRestore_BringsItBackAndGoesBackToTheTab(t *testing.T) {
 	if got := restore(form(admin.KindPost)); got != "/admin/removed?n=gone" {
 		t.Fatalf("past the 30 days or back already: %q", got)
 	}
+	for err, words := range map[error]string{admin.ErrPostRemoved: "Bring back its post first.",
+		admin.ErrParentRemoved: "Bring back the comment it answers first."} {
+		r.repo.restoreErr = err
+		got := restore(form(admin.KindComment))
+		if page := adminDo(t, r.w, http.MethodGet, got, cookie, nil, "").Body.String(); !strings.HasPrefix(got, "/admin/removed?n=") ||
+			!strings.Contains(page, `<div class="note">`+words+`</div>`) {
+			t.Fatalf("a comment under something still removed (%v): %q, want the tab saying %q", err, got, words)
+		}
+	}
 	r.repo.restoreErr = errors.New("conn closed")
 	if got := restore(form(admin.KindPost)); got != "/admin/removed?n=failed" {
 		t.Fatalf("a failure: %q", got)

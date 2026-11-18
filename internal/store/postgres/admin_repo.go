@@ -50,10 +50,10 @@ func insideRemovalGrace(col string) string { return "(" + col + " > " + removalC
 // admin.RemovalGrace: the purge's line.
 func pastRemovalGrace(col string) string { return "(" + col + " <= " + removalCutoff + ")" }
 
-// daysLeft is the whole days, rounded up, from now until the removed_at
-// column col leaves admin.RemovalGrace.
+// daysLeft is the whole days, rounded up and never below 0, from now until
+// the removed_at column col leaves admin.RemovalGrace.
 func daysLeft(col string) string {
-	return "ceil(extract(epoch from (" + col + " + " + removalInterval + " - now())) / 86400)::int"
+	return "greatest(ceil(extract(epoch from (" + col + " + " + removalInterval + " - now())) / 86400), 0)::int"
 }
 
 // adminPersonColumns are a person's columns as the admin page reads them (users
@@ -238,20 +238,25 @@ func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event
 
 // Removed implements admin.Repository. Each item carries its newest removal
 // in the log, for its reasons and its Ref; an item removed with no log row
-// (straight in the database) has neither.
+// (straight in the database) has neither. A comment's days left run from
+// the earliest removal of it, its post and the comment it answers (least
+// skips the nulls): the purge of a post takes its comments, and of a
+// comment its replies.
 func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+adminPersonColumns+`, x.kind, x.id, x.title, x.local_date, x.note, x.photo_keys, x.body, x.photo_key,
-		       x.removed_at, `+daysLeft("x.removed_at")+`, ev.id, coalesce(ev.reasons, array[]::text[])
+		       x.removed_at, `+daysLeft("x.goes_from")+`, ev.id, coalesce(ev.reasons, array[]::text[])
 		from (
 			select 'post' as kind, e.id, e.user_id, e.title, e.local_date::text as local_date,
 			       coalesce(e.comment, '') as note,
 			       coalesce((select array_agg(ph.storage_key order by ph.position) from entry_photos ph
 			                 where ph.entry_id = e.id), array[]::text[]) as photo_keys,
-			       '' as body, '' as photo_key, e.removed_at
+			       '' as body, '' as photo_key, e.removed_at, e.removed_at as goes_from
 			from entries e where `+insideRemovalGrace("e.removed_at")+`
 			union all
-			select 'comment', c.id, c.user_id, '', '', '', array[]::text[], c.body, coalesce(c.photo_key, ''), c.removed_at
+			select 'comment', c.id, c.user_id, '', '', '', array[]::text[], c.body, coalesce(c.photo_key, ''), c.removed_at,
+			       least(c.removed_at, (select mge.removed_at from entries mge where mge.id = c.entry_id),
+			             (select mgp.removed_at from post_comments mgp where mgp.id = c.parent_id))
 			from post_comments c where `+insideRemovalGrace("c.removed_at")+`
 		) x
 		join users u on u.id = x.user_id
@@ -308,10 +313,19 @@ var moderatedItems = map[string]moderatedItem{
 	admin.KindComment: {table: "post_comments", reports: "comment_reports", column: "comment_id", snapshot: "body", entry: "entry_id",
 		underReview: commentUnderReview,
 		removed: func(x string) string {
-			return "(" + x + ".removed_at is not null" +
-				" or exists (select 1 from entries mde where mde.id = " + x + ".entry_id and mde.removed_at is not null)" +
-				" or exists (select 1 from post_comments mdp where mdp.id = " + x + ".parent_id and mdp.removed_at is not null))"
+			return "(" + x + ".removed_at is not null or " + postOfCommentRemoved(x) + " or " + parentRemoved(x) + ")"
 		}},
+}
+
+// postOfCommentRemoved is true when the post of the comment under alias x
+// was removed, and parentRemoved when the comment it answers was: either
+// keeps the comment from everyone too.
+func postOfCommentRemoved(x string) string {
+	return "exists (select 1 from entries mde where mde.id = " + x + ".entry_id and mde.removed_at is not null)"
+}
+
+func parentRemoved(x string) string {
+	return "exists (select 1 from post_comments mdp where mdp.id = " + x + ".parent_id and mdp.removed_at is not null)"
 }
 
 // decision is one row of the decision log.
@@ -514,7 +528,10 @@ func mostSeriousFirst(reasons []string) []string {
 
 // RestoreItem implements admin.Repository. The line is read in the update
 // itself, and the purge holds the row while it deletes it, so of a Bring it
-// back and the purge at the line only one wins.
+// back and the purge at the line only one wins. A comment is brought back
+// only while its post and the comment it answers are not removed, read in
+// that update too: back under a removed one, it would still be gone for
+// everyone, though its writer was told it is back.
 func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
 	m, ok := moderatedItems[kind]
 	if !ok {
@@ -526,13 +543,19 @@ func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
+	// In the fragments, which alias their own tables, the table's bare name
+	// is the row being updated.
+	above := ""
+	if kind == admin.KindComment {
+		above = ` and not ` + postOfCommentRemoved(m.table) + ` and not ` + parentRemoved(m.table)
+	}
 	var snapshot string
 	var entry uuid.UUID
 	err = tx.QueryRow(ctx, `update `+m.table+` set removed_at = null
-		where id = $1 and user_id = $2 and `+insideRemovalGrace("removed_at")+`
+		where id = $1 and user_id = $2 and `+insideRemovalGrace("removed_at")+above+`
 		returning `+m.snapshot+`, `+m.entry, target, person).Scan(&snapshot, &entry)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return admin.ErrNotFound
+		return whyNotBack(ctx, tx, m, kind, target, person)
 	}
 	if err != nil {
 		return err
@@ -541,6 +564,32 @@ func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// whyNotBack says why Bring it back brought nothing back: a comment inside
+// the grace whose post (admin.ErrPostRemoved, named first) or the comment it
+// answers (admin.ErrParentRemoved) is still removed, or else
+// admin.ErrNotFound.
+func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, target, person uuid.UUID) error {
+	post, parent := "false", "false"
+	if kind == admin.KindComment {
+		post, parent = postOfCommentRemoved("x"), parentRemoved("x")
+	}
+	var inside, postGone, parentGone bool
+	err := tx.QueryRow(ctx, `
+		select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+`, `+post+`, `+parent+`
+		from `+m.table+` x where x.id = $1 and x.user_id = $2`, target, person).Scan(&inside, &postGone, &parentGone)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return admin.ErrNotFound
+	case err != nil:
+		return err
+	case inside && postGone:
+		return admin.ErrPostRemoved
+	case inside && parentGone:
+		return admin.ErrParentRemoved
+	}
+	return admin.ErrNotFound
 }
 
 // ResolvePerson implements admin.Repository.

@@ -19,6 +19,15 @@ import (
 // or past RemovalGrace.
 var ErrNotFound = errors.New("admin: not found")
 
+// ErrPostRemoved and ErrParentRemoved are a Bring it back of a comment that
+// would still be gone for everyone: its post, or the comment it answers, is
+// removed too. Nothing changes, and nothing is logged: that one must come
+// back first. With both removed, it is ErrPostRemoved.
+var (
+	ErrPostRemoved   = errors.New("admin: its post is removed")
+	ErrParentRemoved = errors.New("admin: the comment it answers is removed")
+)
+
 // Report kinds.
 const (
 	KindPerson  = "person"
@@ -175,7 +184,9 @@ type RemovedItem struct {
 	Body     string
 	PhotoKey string
 	// RemovedAt is when it was removed and DaysLeft the whole days (rounded
-	// up) until RemovalGrace ends, both on the database's clock.
+	// up) until RemovalGrace ends, both on the database's clock. For a
+	// comment, an earlier removal of its post or of the comment it answers
+	// ends it sooner, as that one's purge takes it too.
 	RemovedAt time.Time
 	DaysLeft  int
 	// Reasons and Ref come from its removal in the decision log: the reasons
@@ -241,8 +252,10 @@ type Repository interface {
 	// RemovalGrace. ErrNotFound when it is not there or removed already.
 	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error
 	// RestoreItem brings person's removed post or comment back while it is
-	// inside RemovalGrace, and logs it. Its reports stay closed. ErrNotFound
-	// when it is not removed, or past the grace.
+	// inside RemovalGrace, and logs it. Its reports stay closed. A comment
+	// whose post or the comment it answers is still removed stays removed:
+	// ErrPostRemoved or ErrParentRemoved. ErrNotFound when it is not
+	// removed, or past the grace.
 	RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error

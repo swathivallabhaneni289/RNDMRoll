@@ -76,6 +76,8 @@ var adminNotices = map[string]string{
 	"removed":     "Removed. It's on the Removed tab for 30 days.",
 	"restored":    "Brought back. They were told.",
 	"gone":        "That post or comment is already gone.",
+	"postfirst":   "Bring back its post first.",
+	"parentfirst": "Bring back the comment it answers first.",
 	"disabled":    "Account disabled. They are logged out and hidden from everyone.",
 	"enabled":     "Account enabled again.",
 	"self":        "You can't disable your own account.",
@@ -955,8 +957,10 @@ func (h *AdminHandler) remove(c *gin.Context) {
 
 // restore is Bring it back on the Removed tab: the post or comment shows
 // again, and its owner is told, while it is inside admin.RemovalGrace. Its
-// reports stay closed, so its reporters still never see it. Past the grace,
-// back already or deleted, it is gone.
+// reports stay closed, so its reporters still never see it. A comment whose
+// post or the comment it answers is still removed stays removed, and the
+// notice says which to bring back first. Past the grace, back already or
+// deleted, it is gone.
 func (h *AdminHandler) restore(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -965,16 +969,19 @@ func (h *AdminHandler) restore(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	err := h.repo.RestoreItem(ctx, kind, id, person, h.ownerNow(ctx, person))
-	if errors.Is(err, admin.ErrNotFound) {
+	switch {
+	case errors.Is(err, admin.ErrPostRemoved):
+		backTo(c, person, "postfirst")
+	case errors.Is(err, admin.ErrParentRemoved):
+		backTo(c, person, "parentfirst")
+	case errors.Is(err, admin.ErrNotFound):
 		backTo(c, person, "gone")
-		return
-	}
-	if err != nil {
+	case err != nil:
 		log.Printf("httpapi: admin restore %s: %v", kind, err)
 		backTo(c, person, "failed")
-		return
+	default:
+		backTo(c, person, "restored")
 	}
-	backTo(c, person, "restored")
 }
 
 func (h *AdminHandler) disable(c *gin.Context) {

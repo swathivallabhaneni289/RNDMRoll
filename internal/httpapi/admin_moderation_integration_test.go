@@ -417,6 +417,95 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	}
 }
 
+// Bring it back on a comment whose post, or the comment it answers, is still
+// removed would leave it gone for everyone, so it is refused: nothing is
+// logged, its writer hears nothing, and it stays on the Removed tab. With
+// both removed, the notice names the post. Once both are back, so is it.
+// Meanwhile the tab gives it the days left of the earliest removal above it.
+func TestAdminModerationIntegration_ACommentComesBackOnlyAfterWhatItIsUnder(t *testing.T) {
+	w := newAdminModWorld(t)
+	ps := w.people("aw_bob", "aw_quin", "aw_wren", "aw_vera", "aw_rhea", "aw_remy", "aw_rory")
+	b, qw, cw, v, r1, r2, r3 := ps[0], ps[1], ps[2], ps[3], ps[4], ps[5], ps[6]
+	for _, p := range ps[1:] {
+		w.followAccepted(p, b)
+	}
+	const day = "2026-10-08"
+	post := w.post(b, day)
+	for _, p := range ps[1:] {
+		w.post(p, day)
+	}
+	parent := w.reply(qw, post, "First words", "")["id"].(string)
+	reply := w.reply(cw, post, "Rude words", parent)["id"].(string)
+	// A reporter loses what they report and all under it: the reply first,
+	// then the comment it answers, then the post.
+	w.ok(r1, http.MethodPost, "/v1/comments/"+reply+"/report", map[string]any{"reason": "harassment"})
+	w.ok(r2, http.MethodPost, "/v1/comments/"+parent+"/report", map[string]any{"reason": "spam"})
+	w.ok(r3, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "hate"})
+	for _, rm := range []struct {
+		kind  string
+		owner feedPerson
+		mark  string
+	}{{"comment", cw, "Bullying or harassment"}, {"comment", qw, "Spam"}, {"post", b, "Hate speech"}} {
+		if got := w.act("remove", rm.kind, rm.owner, rm.mark); got != "/admin/people/"+rm.owner.id+"?n=removed" {
+			t.Fatalf("remove the %s of %s: %q", rm.kind, rm.owner.name, got)
+		}
+	}
+	removal := w.lastLogged(cw)
+
+	// The purge of a post takes its comments, and of a comment its replies,
+	// so a comment's days left run from the earliest removal above it.
+	w.exec(`update entries set removed_at = now() - interval '25 days' where id = $1`, post)
+	w.exec(`update post_comments set removed_at = now() - interval '20 days' where id = $1`, parent)
+	left := func(mark, want string) {
+		t.Helper()
+		if card := adminReportOf(t, w.page("/admin/removed"), mark); !strings.Contains(card, "</span> · "+want+" · Ref: ") {
+			t.Fatalf("the Removed tab's card holding %q, want %s: %s", mark, want, card)
+		}
+	}
+	for _, mark := range []string{"<h3>Dune</h3>", "First words", "Rude words"} {
+		left(mark, "5 days left")
+	}
+
+	refused := func(notice, words string) {
+		t.Helper()
+		if got := w.restore("comment", reply, cw); got != "/admin/removed?n="+notice {
+			t.Fatalf("bring the reply back: %q, want %s", got, notice)
+		}
+		if tab := w.page("/admin/removed?n=" + notice); !strings.Contains(tab, `<div class="note">`+words+`</div>`) ||
+			!strings.Contains(tab, `<p class="text quote">Rude words</p>`) {
+			t.Fatalf("the Removed tab, want %q and the reply still on it: %s", words, tab)
+		}
+		if w.one(`select (removed_at is not null)::text from post_comments where id = $1`, reply) != "true" {
+			t.Fatal("a refused Bring it back brought the reply back")
+		}
+		if got := loggedActions(t, w.pool, cw.id); !slices.Equal(got, []string{"removed comment " + reply}) {
+			t.Fatalf("a refused Bring it back logged: %v", got)
+		}
+		if got := w.decisionIDs(cw); !slices.Equal(got, []string{"comment_removed:" + removal.ID}) {
+			t.Fatalf("a refused Bring it back reached the writer's bell: %v", got)
+		}
+	}
+	refused("postfirst", "Bring back its post first.")
+	if got := w.restore("post", post, b); got != "/admin/removed?n=restored" {
+		t.Fatalf("bring the post back: %q", got)
+	}
+	left("First words", "10 days left")
+	left("Rude words", "10 days left")
+	refused("parentfirst", "Bring back the comment it answers first.")
+	if got := w.restore("comment", parent, qw); got != "/admin/removed?n=restored" {
+		t.Fatalf("bring the comment it answers back: %q", got)
+	}
+	if got := w.restore("comment", reply, cw); got != "/admin/removed?n=restored" {
+		t.Fatalf("bring the reply back last: %q", got)
+	}
+	if ids, _ := w.commentIDs(v, post); !slices.Equal(ids, []string{parent, reply}) {
+		t.Fatalf("with all three back, the post's comments: %v", ids)
+	}
+	if got := loggedActions(t, w.pool, cw.id); !slices.Equal(got, []string{"removed comment " + reply, "restored comment " + reply}) {
+		t.Fatalf("the writer's log: %v", got)
+	}
+}
+
 // Dismiss of a hidden post shows it again for everyone but its reporters,
 // logs it once on the owner's clock and says so; the Reports tab put the
 // hidden card first, with its tag, even ahead of violence. One that was
