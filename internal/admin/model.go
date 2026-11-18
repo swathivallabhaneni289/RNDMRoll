@@ -56,7 +56,9 @@ const RemovalGrace = 30 * 24 * time.Hour
 
 // The decision log (migration 0020's moderation_events): what an admin
 // decided about a post, a comment or an account. Item is KindPost,
-// KindComment or ItemAccount.
+// KindComment or ItemAccount. LogHidden is the one row no admin writes: the
+// report that hides a post or comment logs it, so its owner hears of it
+// (developer, 2026-11-18).
 const (
 	ItemAccount = "account"
 
@@ -65,6 +67,7 @@ const (
 	LogShownAgain = "shown_again"
 	LogDisabled   = "disabled"
 	LogEnabled    = "enabled"
+	LogHidden     = "hidden"
 )
 
 // Ref is the short reference of a decision: the first 8 hex characters of

@@ -7,9 +7,9 @@ import { DECISION_KINDS, type DecisionKind } from '@/lib/notifications/moderatio
  * it into sections, writes each time label and says what is unread; the phone prints it. The
  * notification settings already filter it on the server. Every field the app reads is read here.
  * There are no reaction items (reactions on posts were removed, developer, 2026-10-18); a stray one
- * from an older server is dropped like any unknown kind. An admin's decisions about your own post
- * or comment come as four kinds with no person, whatever the settings say (moderation, 2026-11-17;
- * lib/notifications/moderation.ts).
+ * from an older server is dropped like any unknown kind. What moderation did to your own post or
+ * comment (removed, back, or hidden while we take a look) comes as six kinds with no person,
+ * whatever the settings say (moderation, 2026-11-17 and 2026-11-18; lib/notifications/moderation.ts).
  *
  * The paths have no `/v1`: the client adds it.
  */
@@ -46,8 +46,8 @@ export type NotificationItem = {
   /** Set on `follow_request` items (they exist only while the request is pending). */
   request_id: string | null;
   /**
-   * The post's first photo for a comment or reply, and for `post_back` while you can see the post;
-   * '' when there is none.
+   * The post's first photo for a comment or reply, and for `post_back` and `post_hidden` while you
+   * can see the post; '' when there is none.
    */
   photo_url: string;
   /** On `post_removed` and `comment_removed`: where to write for a second look, '' when none is set. */

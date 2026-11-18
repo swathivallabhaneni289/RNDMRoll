@@ -9,9 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// The admin's decisions about the viewer's own posts and comments (the
-// decision log, migration 0020) in the bell: system items with no actor that
-// no switch turns off, one per decision, by the rules of their kind.
+// The admin's decisions about the viewer's own posts and comments, and the
+// hides by reports (the decision log, migration 0020), in the bell: system
+// items with no actor that no switch turns off, one per row, by the rules of
+// their kind.
 
 // decisionAt is a decision of item and action on the post entry (nil for
 // one deleted since), at, with the snapshot text.
@@ -29,9 +30,9 @@ func itemByID(list List, id string) *Item {
 	return nil
 }
 
-// NOT-01: the four kinds show with both switches off, with no actor, each
-// decision once as kind:<log row>, unread, and they light the dot. A
-// decision about the account, or one the bell does not know, makes no item.
+// NOT-01: the six kinds show with both switches off, with no actor, each
+// row once as kind:<log row>, unread, and they light the dot. A decision
+// about the account, or one the bell does not know, makes no item.
 func TestModeration_TheAdminsDecisionsShowWhateverTheSwitches(t *testing.T) {
 	bell, notes, people, now, _ := socialBell(t)
 	people.settings.Comments, people.settings.Milestones = false, false
@@ -44,16 +45,19 @@ func TestModeration_TheAdminsDecisionsShowWhateverTheSwitches(t *testing.T) {
 		decisionAt("comment", "shown_again", at(4), "Rude words", &entry),
 		decisionAt("post", "shown_again", at(5), "Dune", &entry),
 		decisionAt("comment", "restored", at(6), "Rude words", &entry),
-		decisionAt("account", "disabled", at(7), "", nil),
-		decisionAt("account", "enabled", at(8), "", nil),
-		decisionAt("post", "edited", at(9), "Dune", &entry),
+		decisionAt("post", "hidden", at(7), "Dune", &entry),
+		decisionAt("comment", "hidden", at(8), "Rude words", &entry),
+		decisionAt("account", "disabled", at(9), "", nil),
+		decisionAt("account", "enabled", at(10), "", nil),
+		decisionAt("post", "edited", at(11), "Dune", &entry),
 	}
 
 	list, err := bell.List(context.Background(), uuid.New())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"post_removed", "comment_removed", "post_back", "comment_back", "post_back", "comment_back"}
+	want := []string{"post_removed", "comment_removed", "post_back", "comment_back", "post_back", "comment_back",
+		"post_hidden", "comment_hidden"}
 	got := []string{}
 	for i, it := range list.Items {
 		got = append(got, it.Kind)
@@ -138,10 +142,10 @@ func TestModeration_ARemovalCarriesItsRefAndTheAddressAndNoWayBack(t *testing.T)
 	}
 }
 
-// A post that is back opens the post, and shows its first photo only while
-// the viewer can see it; once the post is deleted it opens nothing. A
-// comment that is back opens its post only while the viewer can see that
-// post, and never shows a photo.
+// A post that is back or hidden opens the post, and shows its first photo
+// only while the viewer can see it; once the post is deleted it opens
+// nothing. A comment that is back or hidden opens its post only while the
+// viewer can see that post, and never shows a photo.
 func TestModeration_BackOpensOnlyWhatTheViewerCanSee(t *testing.T) {
 	bell, notes, _, now, _ := socialBell(t)
 	entry, other := uuid.New(), uuid.New()
@@ -155,7 +159,14 @@ func TestModeration_BackOpensOnlyWhatTheViewerCanSee(t *testing.T) {
 	onSeen := decisionAt("comment", "restored", at(4), "Nice", &other)
 	onSeen.Visible, onSeen.PhotoKey = true, &photo
 	onUnseen := decisionAt("comment", "shown_again", at(5), "Nice", &other)
-	notes.decisions = []Decision{seen, unseen, deleted, onSeen, onUnseen}
+	hidSeen := decisionAt("post", "hidden", at(6), "Dune", &entry)
+	hidSeen.Visible, hidSeen.PhotoKey = true, &photo
+	hidUnseen := decisionAt("post", "hidden", at(7), "Dune", &entry)
+	hidUnseen.PhotoKey = &photo
+	hidOnSeen := decisionAt("comment", "hidden", at(8), "Nice", &other)
+	hidOnSeen.Visible, hidOnSeen.PhotoKey = true, &photo
+	hidOnUnseen := decisionAt("comment", "hidden", at(9), "Nice", &other)
+	notes.decisions = []Decision{seen, unseen, deleted, onSeen, onUnseen, hidSeen, hidUnseen, hidOnSeen, hidOnUnseen}
 
 	list, err := bell.List(context.Background(), uuid.New())
 	if err != nil {
@@ -163,20 +174,22 @@ func TestModeration_BackOpensOnlyWhatTheViewerCanSee(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name  string
+		kind  string
 		d     Decision
 		entry *uuid.UUID
 		photo bool
 	}{
-		{"a post the viewer can see", seen, &entry, true},
-		{"a post the viewer cannot see", unseen, &entry, false},
-		{"a post deleted since", deleted, nil, false},
-		{"a comment on a post the viewer can see", onSeen, &other, false},
-		{"a comment on a post the viewer cannot see", onUnseen, nil, false},
+		{"a post the viewer can see", KindPostBack, seen, &entry, true},
+		{"a post the viewer cannot see", KindPostBack, unseen, &entry, false},
+		{"a post deleted since", KindPostBack, deleted, nil, false},
+		{"a comment on a post the viewer can see", KindCommentBack, onSeen, &other, false},
+		{"a comment on a post the viewer cannot see", KindCommentBack, onUnseen, nil, false},
+		{"a hidden post the viewer can see", KindPostHidden, hidSeen, &entry, true},
+		{"a hidden post the viewer cannot see", KindPostHidden, hidUnseen, &entry, false},
+		{"a hidden comment on a post the viewer can see", KindCommentHidden, hidOnSeen, &other, false},
+		{"a hidden comment on a post the viewer cannot see", KindCommentHidden, hidOnUnseen, nil, false},
 	} {
-		kind := KindPostBack
-		if c.d.Item == "comment" {
-			kind = KindCommentBack
-		}
+		kind := c.kind
 		it := itemByID(list, kind+":"+c.d.ID.String())
 		if it == nil {
 			t.Fatalf("%s: no %s item in %+v", c.name, kind, list.Items)

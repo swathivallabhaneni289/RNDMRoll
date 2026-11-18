@@ -483,7 +483,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Comments on your posts, replies to your comments, new followers and accepted requests.
   - "Your spin is open." from 8 PM to midnight, on evenings the wheel opens. It is not shown after a first spin made earlier that day, and after a time zone change it comes when the 12-hour gap ends.
   - "You hit your goal this week. One bonus spin added."
-  - Admin decisions about your own posts and comments:
+  - Moderation of your own posts and comments:
+    - "Your post is hidden while we take a look." ("Your comment is hidden while we take a look." for a comment). This comes from the report that hides it (SAFE-05). Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
     - "We removed your post. It broke our rules." ("your comment" for a comment). Tapping it opens an email to the contact address asking for a second look.
     - "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment). This comes after Bring it back, or after a Dismiss that shows a hidden item again. Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
 - **NOT-01 how it shows.**
@@ -518,13 +519,12 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A post or comment with 3 or more open reports, from people whose accounts aren't disabled or being deleted, is hidden from everyone but its owner and the admin page. It is worked out from the open reports on every read and never stored, so it shows again once fewer than 3 are open.
   - The owner sees it with the line "Hidden while we take a look." and keeps every action, delete included. For a comment, the owner is its writer.
   - Replies under a hidden comment go with it, except for its writer, who still sees the replies under it that they can see.
-  - The owner gets no bell item when it's hidden; they see the line on it instead.
+  - The report that hides it tells the owner in the bell, "Your post is hidden while we take a look." (NOT-01), and the admin page's History lists it as "Post hidden by reports" ("Comment" for a comment). Removed before doesn't count it.
   - The report that makes it hidden is emailed to the admins at once (ADM-06).
 - **SAFE-05 second looks.** The removal message in the bell opens an email to the contact address, with the subject "Second look at my post" (or "my comment"), the username, the title or text, a short ref and a line for why it should come back. If the mail app can't open, the app says "Email {address} to ask for a second look." The address is a server setting (CONTACT_EMAIL). Without it, the message still shows and a tap does nothing.
 - **Moderation, left out on purpose.**
   - An "ask for a second look" button in the app. Second looks are by email.
-  - Phone pushes for the admin's decisions.
-  - A bell item when something becomes hidden. The owner sees the line on it.
+  - Phone pushes for the admin's decisions or a hide. They show in the bell only.
   - Anything sent on Disable, or when the 30-day job deletes removed content.
   - An undo for a reporter.
   - A message for people whose comments were under a removed post. Those comments just go with it.
@@ -862,7 +862,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 | Harm to younger users | Medium | High | 13 and over only; every account private; report people, posts and comments; block from a person's page, search and the follow lists; mute from a person's page; admin page; a lawyer review before launch |
 | Photo privacy: a link already given out keeps working for a while after access ends, and some files keep metadata | Low | Medium | Private bucket and links that stop working within an hour; disclosed in the Privacy Policy; metadata removal is on the launch checklist |
 | Moderation load on one admin | Low at first | Medium | One card per reported thing; disable in one step; email alerts; a post or comment 3 people report is hidden until an admin looks |
-| Three people hide a post that breaks no rule, until an admin looks | Low | Medium | The admin is emailed at once when something is hidden; Dismiss shows it again and tells the owner; the owner sees the line on it meanwhile |
+| Three people hide a post that breaks no rule, until an admin looks | Low | Medium | The admin is emailed at once when something is hidden; Dismiss shows it again and tells the owner; the owner is told in the bell and sees the line on it meanwhile |
 | One developer: data loss or downtime | Medium | High | Backups and monitoring on the launch checklist; strong test suite. The Supabase free plan has no backups, so lost data and deleted photos can't be restored |
 | Name clash with an existing app called "Roll: Fresh film daily" | Low | Medium | Check the name before launch (an open question in section 16) |
 
@@ -892,6 +892,7 @@ Some were found while writing this document; others were already in the planning
 18. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
 19. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
 20. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
+21. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 18), or a comment under a hidden post (issue 19). The same way, a reporter's account that comes back can hide it again with no note.
 
 ### Open questions
 
@@ -958,6 +959,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 16 | The Spin page shows a whole blank wheel while it loads, and starts loading during sign-up | A bare circle looked broken, and the first Spin page after sign-up was slow | None recorded |
 | Nov 17 | A reported post or comment is gone for the reporter for good, and 3 open reports hide it from everyone but its owner until an admin looks | None recorded | Any 3 people who can see a post can hide it until an admin looks |
 | Nov 17 | Remove keeps a post or comment for 30 days, with Bring it back; every decision goes in a log; second looks are by email | "We need to have this stored somewhere": the log is what lets me answer an email | Removed content stays 30 more days; no appeal button in the app |
+| Nov 18 | The owner is told in the bell when 3 reports hide their post or comment | The owner should know it's under review, and "Sorry, we got that wrong" shouldn't come out of nowhere | One more bell item, in the bell only |
 
 ## 18. Out of scope and future ideas
 

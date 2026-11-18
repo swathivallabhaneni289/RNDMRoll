@@ -17,22 +17,33 @@ import (
 // The bell tells the owner what the admin decided about their post or
 // comment (spec section 6): "We removed your post." with the address to ask
 // for a second look and the removal's ref, and "Your post is back." after
-// Bring it back or a Dismiss that showed it again. These are system items:
-// no actor, no switch turns them off, and they light the dot. A removal
-// never gives a way back to what was removed.
+// Bring it back or a Dismiss that showed it again; and from the report that
+// hides one, "Your post is hidden while we take a look." (2026-11-18). These
+// are system items: no actor, no switch turns them off, and they light the
+// dot. A removal never gives a way back to what was removed.
 
 // bellContact is the address the test server gives as CONTACT_EMAIL.
 const bellContact = "second.look@example.com"
 
-// decisionKinds are the bell's kinds for the admin's decisions.
-var decisionKinds = []string{"post_removed", "comment_removed", "post_back", "comment_back"}
+// decisionKinds are the bell's kinds for the admin's decisions, and
+// hiddenKinds for a post or comment that reports hid.
+var (
+	decisionKinds = []string{"post_removed", "comment_removed", "post_back", "comment_back"}
+	hiddenKinds   = []string{"post_hidden", "comment_hidden"}
+)
 
 // decisionIDs lists the ids of the decision items in p's bell, in order.
 func (w *adminModWorld) decisionIDs(p feedPerson) []string {
 	w.t.Helper()
+	return w.kindIDs(p, decisionKinds)
+}
+
+// kindIDs lists the ids of p's bell items of kinds, in order.
+func (w *adminModWorld) kindIDs(p feedPerson, kinds []string) []string {
+	w.t.Helper()
 	out := []string{}
 	for _, v := range w.notes(p)["items"].([]any) {
-		if m := v.(map[string]any); slices.Contains(decisionKinds, m["kind"].(string)) {
+		if m := v.(map[string]any); slices.Contains(kinds, m["kind"].(string)) {
 			out = append(out, m["id"].(string))
 		}
 	}
@@ -232,7 +243,8 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 
 // A Dismiss that shows a hidden post or comment again tells its owner it is
 // back, with the post and its photo (for a comment, the post only). Being
-// hidden tells nobody, and a Dismiss of something never hidden tells nobody.
+// hidden is told as a hide, not as a decision (TheOwnerHearsItIsHidden), and
+// a Dismiss of something never hidden tells nobody.
 func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testing.T) {
 	w := newAdminModWorldWith(t, bellContact)
 	ps := w.people("md_bob", "md_wren", "md_vera", "md_r1", "md_r2", "md_r3")
@@ -261,8 +273,8 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 		w.ok(p, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
 	}
 	for _, p := range []feedPerson{b, cw} {
-		if got := w.decisionIDs(p); len(got) != 0 || w.dot(p) {
-			t.Fatalf("hidden, %s hears of it: %v", p.name, got)
+		if got, hides := w.decisionIDs(p), w.kindIDs(p, hiddenKinds); len(got) != 0 || len(hides) != 1 {
+			t.Fatalf("hidden, %s is told of decisions %v and hides %v, want the one hide", p.name, got, hides)
 		}
 	}
 
@@ -287,6 +299,98 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 	}
 	if got := w.decisionIDs(v); len(got) != 0 || w.dot(v) {
 		t.Fatalf("a Dismiss of a comment never hidden tells its writer: %v", got)
+	}
+}
+
+// SAFE-05 and NOT-01 (developer, 2026-11-18): the report that hides a post
+// or comment tells its owner, "Your post is hidden while we take a look.": a
+// system item with no ref or address that lights the dot and opens the post,
+// with its first photo while they can see it (a comment's opens its post,
+// with none). Two reports say nothing. The item stays once the admin
+// decides; a post hidden again after a Dismiss, by people who had not
+// reported it, is told again; once it is removed, its hides show no photo.
+// The admin's History lists each hide, and Removed before never counts one.
+func TestModerationBellIntegration_TheOwnerHearsItIsHidden(t *testing.T) {
+	w := newAdminModWorldWith(t, bellContact)
+	ps := w.people("mh_bob", "mh_wren", "mh_r1", "mh_r2", "mh_r3", "mh_n1", "mh_n2", "mh_n3")
+	b, cw, first, later := ps[0], ps[1], ps[2:5], ps[5:]
+	for _, p := range ps[1:] {
+		w.followAccepted(p, b)
+	}
+	const day = "2026-10-08"
+	post := w.post(b, day)
+	for _, p := range ps[1:] {
+		w.post(p, day)
+	}
+	photos := postPhotoKeys(t, w.pool, post)
+	comment := w.reply(cw, post, "Rude words", "")["id"].(string)
+	for _, p := range []feedPerson{b, cw} {
+		w.ok(p, http.MethodPost, "/v1/notifications/seen", map[string]any{})
+	}
+
+	// A post a reporter reported is gone for them, so each reports the
+	// comment first.
+	w.clk.Advance(time.Minute)
+	for _, p := range first[:2] {
+		w.ok(p, http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "spam"})
+		w.ok(p, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
+	}
+	for _, p := range []feedPerson{b, cw} {
+		if got := w.kindIDs(p, hiddenKinds); len(got) != 0 || w.dot(p) {
+			t.Fatalf("two reports, and %s hears of it: %v", p.name, got)
+		}
+	}
+	w.ok(first[2], http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "spam"})
+	hid := w.lastLogged(cw)
+	item, _ := w.bellItem(cw, "comment_hidden:"+hid.ID)
+	wantItem(t, "the comment hidden", item, map[string]any{"kind": "comment_hidden", "actor": nil, "text": "Rude words",
+		"entry_id": post, "photo_url": "", "unread": true, "at": instant(hid.At)}, "contact", "ref")
+	w.clk.Advance(time.Minute)
+	w.ok(first[2], http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
+	hid = w.lastLogged(b)
+	item, _ = w.bellItem(b, "post_hidden:"+hid.ID)
+	wantItem(t, "the post hidden", item, map[string]any{"kind": "post_hidden", "actor": nil, "text": "Dune",
+		"entry_id": post, "photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(hid.At)}, "contact", "ref")
+	for _, p := range []feedPerson{b, cw} {
+		if !w.dot(p) {
+			t.Fatalf("hidden, and %s's dot is off", p.name)
+		}
+	}
+
+	// The item stays once the admin decides. Shown again, the post is hidden
+	// again by people who had not reported it, and that is told again.
+	if got := w.act("dismiss", "post", b, "Spam"); got != "/admin/people/"+b.id+"?n=shownagain" {
+		t.Fatalf("dismiss the post: %q", got)
+	}
+	w.clk.Advance(time.Minute)
+	for _, p := range later {
+		w.ok(p, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "hate"})
+	}
+	if got := hiddenLogged(t, w.pool, b.id); !slices.Equal(got, []string{"post " + post + " on " + post, "post " + post + " on " + post}) {
+		t.Fatalf("the post's hides: %v, want two", got)
+	}
+	hides := w.kindIDs(b, hiddenKinds)
+	if got := w.decisionIDs(b); len(hides) != 2 || len(got) != 1 || !strings.HasPrefix(got[0], "post_back:") {
+		t.Fatalf("the bell: hides %v and decisions %v, want two hides and the post back", hides, got)
+	}
+
+	// Removed, the hides still open the post but show no photo.
+	if got := w.act("remove", "post", b, "Hate speech"); got != "/admin/people/"+b.id+"?n=removed" {
+		t.Fatalf("remove the post: %q", got)
+	}
+	for _, id := range hides {
+		item, _ := w.bellItem(b, id)
+		wantItem(t, "a hide of the removed post", item, map[string]any{"kind": "post_hidden", "entry_id": post, "photo_url": ""})
+	}
+
+	// The admin's History lists each hide; Removed before counts the removal.
+	if page := w.page("/admin/people/" + b.id); strings.Count(page, "<strong>Post hidden by reports</strong>") != 2 ||
+		strings.Count(page, "Removed before: 1") != 1 {
+		t.Fatalf("Bob's page, want two hides in the History and Removed before: 1: %s", page)
+	}
+	if page := w.page("/admin/people/" + cw.id); strings.Count(page, "<strong>Comment hidden by reports</strong>") != 1 ||
+		strings.Contains(page, "Removed before") {
+		t.Fatalf("Wren's page, want the comment's hide in the History and nothing removed: %s", page)
 	}
 }
 

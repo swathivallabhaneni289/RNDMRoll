@@ -605,8 +605,9 @@ func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person
 // the grace whose post (admin.ErrPostRemoved, named first) or the comment it
 // answers (admin.ErrParentRemoved) is still removed; one that is back, with
 // a Bring it back as the newest decision about it (admin.ErrAlreadyDone: the
-// second click of a double click); or else admin.ErrNotFound. Newest is by
-// created_at, the database's clock, as adminPersonColumns reads the log.
+// second click of a double click; a hide by reports since is no decision);
+// or else admin.ErrNotFound. Newest is by created_at, the database's clock,
+// as adminPersonColumns reads the log.
 func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, target, person uuid.UUID) error {
 	post, parent := "false", "false"
 	if kind == admin.KindComment {
@@ -617,6 +618,7 @@ func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, ta
 		select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+`, `+post+`, `+parent+`,
 		       x.removed_at is null and coalesce((select me.action = '`+admin.LogRestored+`' from moderation_events me
 		                                          where me.owner_id = x.user_id and me.item_id = x.id
+		                                            and me.action <> '`+admin.LogHidden+`'
 		                                          order by me.created_at desc limit 1), false)
 		from `+m.table+` x where x.id = $1 and x.user_id = $2`, target, person).Scan(&inside, &postGone, &parentGone, &back)
 	switch {

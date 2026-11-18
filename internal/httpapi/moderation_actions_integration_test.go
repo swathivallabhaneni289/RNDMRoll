@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
@@ -194,20 +195,109 @@ func TestModerationIntegration_TwoReportsThatRaceAreKeptOnce(t *testing.T) {
 	w.sql(`update post_reports set resolved_at = now(), resolution = 'dismissed' where reporter_id = $1`, r.id)
 	w.sql(`update comment_reports set resolved_at = now(), resolution = 'dismissed' where reporter_id = $1`, r.id)
 	owner, writer := uuid.MustParse(o.id), uuid.MustParse(cw.id)
-	if _, err := repo.ReportPost(ctx, viewer, eid, owner, "Another title", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportPost(ctx, viewer, eid, owner, "Another title", "hate", time.Now(), time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("the store's repeat post report: %v, want ErrNotFound", err)
 	}
-	if _, err := repo.ReportComment(ctx, viewer, cid, writer, "Other words", "hate", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportComment(ctx, viewer, cid, writer, "Other words", "hate", time.Now(), time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("the store's repeat comment report: %v, want ErrNotFound", err)
 	}
 	if got := reports(); got != "spam dismissed | harassment Rude dismissed" {
 		t.Fatalf("the reports after the store's repeats: %s", got)
 	}
-	if _, err := repo.ReportPost(ctx, viewer, uuid.New(), owner, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportPost(ctx, viewer, uuid.New(), owner, "Gone", "spam", time.Now(), time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("a report of a post that is gone: %v, want ErrNotFound", err)
 	}
-	if _, err := repo.ReportComment(ctx, viewer, uuid.New(), writer, "Gone", "spam", time.Now()); !errors.Is(err, board.ErrNotFound) {
+	if _, err := repo.ReportComment(ctx, viewer, uuid.New(), writer, "Gone", "spam", time.Now(), time.Now()); !errors.Is(err, board.ErrNotFound) {
 		t.Fatalf("a report of a comment that is gone: %v, want ErrNotFound", err)
+	}
+}
+
+// ownClocks is a clock on which the accounts in own read their own time and
+// every other account reads base's.
+type ownClocks struct {
+	base clock.Clock
+	own  map[string]time.Time
+}
+
+func (c ownClocks) NowFor(id string) time.Time {
+	if t, ok := c.own[id]; ok {
+		return t
+	}
+	return c.base.NowFor(id)
+}
+
+// The report that hides a post or comment logs it for its owner (the bell's
+// "hidden while we take a look"), on the owner's own clock and not the
+// reporter's, since the bell reads the log by the owner's clock. The row
+// names the post, for a comment its post, and keeps the title or the words.
+// Fewer reports log nothing, and so does one past the line: a report that
+// raced the third, here the store alone.
+func TestModerationIntegration_TheReportThatHidesItIsLoggedOnTheOwnersClock(t *testing.T) {
+	w := newModWorld(t)
+	o := w.person("mo_olive", "Olive Owner")
+	cw := w.person("mo_wren", "Wren Writer")
+	rs := []feedPerson{w.person("mo_rhea", "Rhea One"), w.person("mo_remy", "Remy Two"), w.person("mo_rose", "Rose Three"),
+		w.person("mo_rory", "Rory Four")}
+	const day = "2026-10-08"
+	entry := w.post(o, day)
+	for _, p := range append([]feedPerson{cw}, rs...) {
+		w.followAccepted(p, o)
+		w.post(p, day)
+	}
+	comment := w.reply(cw, entry, "Rude words", "")["id"].(string)
+
+	ctx := context.Background()
+	repo := postgres.NewBoardRepo(w.pool)
+	oliveNow := time.Date(2026, 10, 9, 9, 30, 0, 0, time.UTC)
+	wrenNow := time.Date(2026, 10, 10, 21, 15, 0, 0, time.UTC)
+	svc := board.NewService(repo, social.NewService(postgres.NewSocialRepo(w.pool), w.clk), w.spinSvc,
+		ownClocks{base: w.clk, own: map[string]time.Time{o.id: oliveNow, cw.id: wrenNow}}, nil)
+	hides := func() string {
+		t.Helper()
+		return w.stored(`select coalesce(string_agg(item || ' ' || item_id || ' on ' || coalesce(entry_id::text, '-') || ' ' ||
+			coalesce(comment_id::text, '-') || ' ' || snapshot || ' ' || cardinality(reasons) || ' ' ||
+			to_char(at at time zone 'UTC', 'YYYY-MM-DD HH24:MI'), ' | ' order by created_at, id), '')
+			from moderation_events where action = 'hidden' and owner_id in ($1, $2)`, o.id, cw.id)
+	}
+	eid, cid := uuid.MustParse(entry), uuid.MustParse(comment)
+	for _, r := range rs[:2] {
+		if err := svc.ReportComment(ctx, uuid.MustParse(r.id), cid, "spam"); err != nil {
+			t.Fatalf("a comment report: %v", err)
+		}
+		if err := svc.ReportPost(ctx, uuid.MustParse(r.id), eid, "spam"); err != nil {
+			t.Fatalf("a post report: %v", err)
+		}
+	}
+	if got := hides(); got != "" {
+		t.Fatalf("two reports each logged %q, want nothing", got)
+	}
+	third := uuid.MustParse(rs[2].id)
+	if err := svc.ReportComment(ctx, third, cid, "spam"); err != nil {
+		t.Fatalf("the third comment report: %v", err)
+	}
+	if err := svc.ReportPost(ctx, third, eid, "spam"); err != nil {
+		t.Fatalf("the third post report: %v", err)
+	}
+	want := "comment " + comment + " on " + entry + " " + comment + " Rude words 0 2026-10-10 21:15 | " +
+		"post " + entry + " on " + entry + " - Dune 0 2026-10-09 09:30"
+	if got := hides(); got != want {
+		t.Fatalf("the hides logged:\n%s\nwant\n%s", got, want)
+	}
+	reportersNow := w.clk.NowFor("").UTC().Format("2006-01-02 15:04")
+	if got := w.stored(`select to_char(max(created_at) at time zone 'UTC', 'YYYY-MM-DD HH24:MI') from post_reports where entry_id = $1`, entry); got != reportersNow {
+		t.Fatalf("the reports were made at %s, want the reporters' own clock (%s)", got, reportersNow)
+	}
+
+	// One past the line, as a report that raced the third would land.
+	fourth := uuid.MustParse(rs[3].id)
+	if hid, err := repo.ReportPost(ctx, fourth, eid, uuid.MustParse(o.id), "Dune", "spam", time.Now(), time.Now()); err != nil || hid {
+		t.Fatalf("a fourth post report: hid %v, %v", hid, err)
+	}
+	if hid, err := repo.ReportComment(ctx, fourth, cid, uuid.MustParse(cw.id), "Rude words", "spam", time.Now(), time.Now()); err != nil || hid {
+		t.Fatalf("a fourth comment report: hid %v, %v", hid, err)
+	}
+	if got := hides(); got != want {
+		t.Fatalf("after a fourth report each:\n%s\nwant\n%s", got, want)
 	}
 }
 

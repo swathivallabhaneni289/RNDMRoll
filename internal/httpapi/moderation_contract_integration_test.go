@@ -157,11 +157,12 @@ func firstDifference(want, got []byte) string {
 
 // The answers the app reads for moderation, from the real server, equal the
 // golden file, and they follow the spec: a removal carries the address and
-// its ref but no post and no photo; a post that is back opens the post with
-// its first photo, a comment that is back opens its post with no photo;
-// Today says the post was removed, with no entry; the owner is told their
-// post is under review on their Board card, post page, entry and Today; and
-// only the writer is told their comment is.
+// its ref but no post and no photo; a post that is back or hidden opens the
+// post with its first photo, a comment that is back or hidden opens its post
+// with no photo; Today says the post was removed, with no entry; the owner is
+// told their post is under review on their Board card, post page, entry and
+// Today, and their own comment on their post page; and only the writer is
+// told their comment is.
 func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 	w, rnd := newContractWorld(t)
 	o := w.person("ct_olive", "Olive Owner")
@@ -190,15 +191,21 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 	answers := map[string]map[string]any{}
 
 	// A post someone reported is gone for them, so the comments are
-	// reported first. Three reports put Wren's comment under review.
+	// reported first. Three reports put Wren's comment under review, and
+	// then Olive's.
 	w.clk.Advance(time.Minute)
 	w.ok(reporters[0], http.MethodPost, "/v1/comments/"+oc+"/report", map[string]any{"reason": "harassment"})
 	for _, p := range reporters {
 		w.ok(p, http.MethodPost, "/v1/comments/"+wc+"/report", map[string]any{"reason": "spam"})
 	}
 	answers["post_page_writer"] = w.ok(cw, http.MethodGet, "/v1/posts/"+post, nil)
+	for _, p := range reporters[1:] {
+		w.ok(p, http.MethodPost, "/v1/comments/"+oc+"/report", map[string]any{"reason": "harassment"})
+	}
 
-	// Three reports put Olive's post under review.
+	// Three reports put Olive's post under review, a minute later, so the
+	// bell's order never rests on ids.
+	w.clk.Advance(time.Minute)
 	for _, p := range reporters {
 		w.ok(p, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "hate"})
 	}
@@ -227,12 +234,13 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		t.Fatalf("bring the comment back: %q", got)
 	}
 	bell := w.notes(o)
+	bellKinds := slices.Concat(decisionKinds, hiddenKinds)
 	decisions := []any{}
 	events := map[string]string{}
 	for _, it := range bell["items"].([]any) {
 		item := it.(map[string]any)
 		kind := item["kind"].(string)
-		if slices.Contains(decisionKinds, kind) {
+		if slices.Contains(bellKinds, kind) {
 			if _, twice := events[kind]; twice {
 				t.Fatalf("two %s items: %v", kind, bell["items"])
 			}
@@ -243,7 +251,7 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 	answers["bell"] = map[string]any{"unread": bell["unread"], "items": decisions}
 
 	// The spec, on the answers themselves.
-	for _, kind := range decisionKinds {
+	for _, kind := range bellKinds {
 		if events[kind] == "" {
 			t.Fatalf("no %s item in Olive's bell: %v", kind, bell["items"])
 		}
@@ -260,10 +268,10 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		case "post_removed", "comment_removed":
 			common["entry_id"], common["photo_url"], common["contact"], common["ref"] = nil, "", bellContact, events[kind][:8]
 			wantItem(t, kind, item, common)
-		case "post_back":
+		case "post_back", "post_hidden":
 			common["entry_id"], common["photo_url"] = post, fakePhotoLink(photos[0])
 			wantItem(t, kind, item, common, "contact", "ref")
-		case "comment_back":
+		case "comment_back", "comment_hidden":
 			common["entry_id"], common["photo_url"] = post, ""
 			wantItem(t, kind, item, common, "contact", "ref")
 		}
@@ -291,7 +299,7 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		}
 		return out
 	}
-	if got, want := flags(answers["post_page_owner"]), map[string]any{vc: "absent", oc: "absent"}; !reflect.DeepEqual(got, want) {
+	if got, want := flags(answers["post_page_owner"]), map[string]any{vc: "absent", oc: true}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("the comments as the post's owner: %v, want %v", got, want)
 	}
 	if got, want := flags(answers["post_page_writer"]), map[string]any{wc: true, vc: "absent", oc: "absent"}; !reflect.DeepEqual(got, want) {
@@ -312,7 +320,7 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		{"owner", o.id}, {"writer", cw.id}, {"viewer", v.id}, {"post", post},
 		{"writer_comment", wc}, {"viewer_comment", vc}, {"owner_comment", oc},
 	}
-	for _, kind := range decisionKinds {
+	for _, kind := range bellKinds {
 		roles = append(roles, struct{ name, id string }{kind, events[kind]})
 	}
 	legend := map[string]any{}

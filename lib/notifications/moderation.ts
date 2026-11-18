@@ -1,13 +1,21 @@
 /**
- * The bell's items about an admin's decision on your own post or comment (moderation, 2026-11-17),
- * and the email a removed one opens to ask for a second look: second looks are by email, with no
- * button for them in the app. The address is the server's setting (CONTACT_EMAIL), sent on the two
- * removed kinds as `contact`; the app never holds one of its own. None of these items has a person.
+ * The bell's items about your own post or comment under moderation: an admin's decision
+ * (2026-11-17), or the reports that hid it while we take a look (2026-11-18). And the email a
+ * removed one opens to ask for a second look: second looks are by email, with no button for them in
+ * the app. The address is the server's setting (CONTACT_EMAIL), sent on the two removed kinds as
+ * `contact`; the app never holds one of its own. None of these items has a person.
  * Pure: no imports, so a node script can check it (scripts/check-social.ts).
  */
 
-/** The four kinds, as the server names them. */
-export const DECISION_KINDS = ['post_removed', 'comment_removed', 'post_back', 'comment_back'] as const;
+/** The six kinds, as the server names them. */
+export const DECISION_KINDS = [
+  'post_removed',
+  'comment_removed',
+  'post_back',
+  'comment_back',
+  'post_hidden',
+  'comment_hidden',
+] as const;
 
 export type DecisionKind = (typeof DECISION_KINDS)[number];
 
@@ -17,13 +25,23 @@ export function isDecisionKind(kind: string): kind is DecisionKind {
 
 /**
  * The row's sentence. Removed: it broke the rules. Back: the admin brought it back, or dismissed
- * the reports that had hidden it.
+ * the reports that had hidden it. Hidden: 3 reports hid it until the admin looks.
  */
 export function decisionLine(kind: DecisionKind): string {
-  const what = kind === 'post_removed' || kind === 'post_back' ? 'post' : 'comment';
-  return kind === 'post_removed' || kind === 'comment_removed'
-    ? `We removed your ${what}. It broke our rules.`
-    : `Sorry, we got that wrong. Your ${what} is back.`;
+  switch (kind) {
+    case 'post_removed':
+      return 'We removed your post. It broke our rules.';
+    case 'comment_removed':
+      return 'We removed your comment. It broke our rules.';
+    case 'post_back':
+      return 'Sorry, we got that wrong. Your post is back.';
+    case 'comment_back':
+      return 'Sorry, we got that wrong. Your comment is back.';
+    case 'post_hidden':
+      return 'Your post is hidden while we take a look.';
+    case 'comment_hidden':
+      return 'Your comment is hidden while we take a look.';
+  }
 }
 
 /** What a second look's email needs: the removed item, and who is asking. */

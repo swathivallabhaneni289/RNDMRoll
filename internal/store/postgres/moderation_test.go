@@ -97,6 +97,8 @@ func TestMigrations_0020IsReversible(t *testing.T) {
 				values ($1, 'comment', 'restored', $2, $3, $3, 'Gone soon', now())`, []any{b.ID, entry, gone}},
 			{`insert into moderation_events (owner_id, item, action, item_id, at)
 				values ($1, 'account', 'disabled', $1, now())`, []any{b.ID}},
+			{`insert into moderation_events (owner_id, item, action, entry_id, item_id, snapshot, at)
+				values ($1, 'post', 'hidden', $2, $2, 'Dune', now())`, []any{a.ID, entry}},
 		} {
 			if _, err := pool.Exec(ctx, s.q, s.args...); err != nil {
 				t.Fatalf("insert: %v", err)

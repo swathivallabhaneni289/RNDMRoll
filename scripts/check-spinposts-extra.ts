@@ -769,8 +769,12 @@ const { ApiError, api, isRetryable } = client;
       eq(`${sent.kind}: the words are the title or the comment`, read.text, sent.kind.startsWith('post_') ? 'Dune' : 'Thanks for watching');
       check(`${sent.kind}: the address only on a removal`, removed ? read.contact !== '' && read.contact === sent.contact : read.contact === '', read.contact);
       eq(`${sent.kind}: the ref, on a removal only, is the start of its own decision`, read.ref, removed ? decision.slice(0, 8) : '');
-      eq(`${sent.kind}: a removal opens no post, a return opens the post`, read.entry_id, removed ? null : ids.post);
-      eq(`${sent.kind}: only a post that is back shows its first photo`, read.photo_url, sent.kind === 'post_back' ? firstPhoto : '');
+      eq(`${sent.kind}: a removal opens no post, the others open the post`, read.entry_id, removed ? null : ids.post);
+      eq(
+        `${sent.kind}: only a post that is back or hidden shows its first photo`,
+        read.photo_url,
+        sent.kind === 'post_back' || sent.kind === 'post_hidden' ? firstPhoto : ''
+      );
       if (removed) {
         // What a tap on it opens, built as the bell screen builds it.
         const link = secondLookMailto({ kind: read.kind, contact: read.contact, username: 'ct_olive', text: read.text ?? '', ref: read.ref });

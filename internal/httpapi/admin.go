@@ -206,6 +206,8 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 				return what + " disabled"
 			case admin.LogEnabled:
 				return what + " enabled"
+			case admin.LogHidden:
+				return what + " hidden by reports"
 			}
 			return what + " " + e.Action
 		},

@@ -942,12 +942,29 @@ func TestAdminIntegration_ANewPasswordEndsTheAdminSession(t *testing.T) {
 	login(setTo)
 }
 
-// loggedActions is the decision log about owner, oldest first, a row as its
-// action, item and item id.
+// hiddenLogged is the hides by reports of owner's posts and comments in the
+// log, oldest first, a row as its item, item id and post.
+func hiddenLogged(t *testing.T, pool *pgxpool.Pool, owner string) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), `select item || ' ' || item_id::text || ' on ' || coalesce(entry_id::text, '-')
+		from moderation_events where owner_id = $1 and action = 'hidden' order by created_at, id`, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// loggedActions is the admin's decisions about owner in the log, oldest
+// first, a row as its action, item and item id. The hides by reports are left
+// out: hiddenLogged reads those.
 func loggedActions(t *testing.T, pool *pgxpool.Pool, owner string) []string {
 	t.Helper()
 	rows, err := pool.Query(context.Background(), `select action || ' ' || item || ' ' || item_id::text
-		from moderation_events where owner_id = $1 order by created_at, id`, owner)
+		from moderation_events where owner_id = $1 and action <> 'hidden' order by created_at, id`, owner)
 	if err != nil {
 		t.Fatal(err)
 	}

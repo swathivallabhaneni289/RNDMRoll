@@ -11,6 +11,7 @@
 -- Hidden while under review is never stored. Every read works it out from the
 -- open reports (social.ReviewThreshold of them, from accounts that are not
 -- gone), so a dismissed report or a reporter who goes stops counting at once.
+-- The log below only notes the report that hid one, for its owner's bell.
 alter table entries add column removed_at timestamptz;
 alter table post_comments add column removed_at timestamptz;
 
@@ -25,13 +26,15 @@ create index comment_reports_comment_idx on comment_reports (comment_id, resolve
 
 -- moderation_events: the decision log. One row for each thing the admin
 -- decided about a post, a comment or an account, kept while the owner's
--- account exists, so the admin can answer an email about it later.
+-- account exists, so the admin can answer an email about it later. The report
+-- that hides a post or comment adds a row too (hidden), so its owner hears of
+-- it (developer, 2026-11-18).
 create table moderation_events (
     id uuid primary key default gen_random_uuid(),
     -- Whose post, comment or account it is.
     owner_id uuid not null references users(id) on delete cascade,
     item text not null check (item in ('post', 'comment', 'account')),
-    action text not null check (action in ('removed', 'restored', 'shown_again', 'disabled', 'enabled')),
+    action text not null check (action in ('removed', 'restored', 'shown_again', 'disabled', 'enabled', 'hidden')),
     -- The post, or for a comment its post. Null once it is deleted.
     entry_id uuid references entries(id) on delete set null,
     comment_id uuid references post_comments(id) on delete set null,

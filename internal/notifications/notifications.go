@@ -1,10 +1,10 @@
 // Package notifications builds the bell's list from data that already exists
 // (comments, replies, follows, requests, the spin window and the person's
-// spins, goal weeks, and the admin's decisions about the person's own posts
-// and comments in the decision log). No notification is stored and no job
-// runs; the only state is one seen time per person. The notification
-// settings filter the list and the unread flag, except for the admin's
-// decisions, which always show.
+// spins, goal weeks, and the decision log's rows about the person's own posts
+// and comments: the admin's decisions, and the hides by reports). No
+// notification is stored and no job runs; the only state is one seen time per
+// person. The notification settings filter the list and the unread flag,
+// except for the decision log's rows, which always show.
 // Reactions on posts make no items (developer, 2026-10-18: reactions were
 // removed from the app; the stored "reactions" switch no longer changes the
 // list).
@@ -45,6 +45,12 @@ const (
 	KindCommentRemoved = "comment_removed"
 	KindPostBack       = "post_back"
 	KindCommentBack    = "comment_back"
+
+	// Reports hid the viewer's own post or comment until an admin looks
+	// (developer, 2026-11-18): "Your post is hidden while we take a look.",
+	// and the same for a comment.
+	KindPostHidden    = "post_hidden"
+	KindCommentHidden = "comment_hidden"
 )
 
 // Sections.
@@ -90,9 +96,9 @@ type Decision struct {
 	// ID is the log row's. The item's id and the removal's ref come from it.
 	ID uuid.UUID
 	// Item is admin.KindPost or admin.KindComment; Action is admin.LogRemoved,
-	// admin.LogRestored or admin.LogShownAgain.
+	// admin.LogRestored, admin.LogShownAgain or admin.LogHidden.
 	Item, Action string
-	// At is the owner's own clock when it was decided.
+	// At is the owner's own clock when it was decided, or hidden.
 	At time.Time
 	// Snapshot is the title or the comment text when it was decided.
 	Snapshot string
@@ -293,10 +299,10 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		}
 	}
 
-	// The admin's decisions about the viewer's own posts and comments have
-	// no actor, and no switch turns them off: they are the only word the
-	// owner gets that something of theirs was removed or is back. The seen
-	// time comes with them, in the same read.
+	// The admin's decisions about the viewer's own posts and comments, and
+	// the hides by reports, have no actor, and no switch turns them off: they
+	// are the only word the owner gets that something of theirs was hidden,
+	// removed or is back. The seen time comes with them, in the same read.
 	decisions, seen, haveSeen, err := s.repo.DecisionsAndSeen(ctx, viewer, since, MaxItems)
 	if err != nil {
 		return List{}, err
@@ -335,6 +341,7 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 func decisionKind(item, action string) string {
 	removed := action == admin.LogRemoved
 	back := action == admin.LogRestored || action == admin.LogShownAgain
+	hidden := action == admin.LogHidden
 	switch {
 	case item == admin.KindPost && removed:
 		return KindPostRemoved
@@ -344,6 +351,10 @@ func decisionKind(item, action string) string {
 		return KindPostBack
 	case item == admin.KindComment && back:
 		return KindCommentBack
+	case item == admin.KindPost && hidden:
+		return KindPostHidden
+	case item == admin.KindComment && hidden:
+		return KindCommentHidden
 	}
 	return ""
 }
@@ -353,10 +364,10 @@ func decisionKind(item, action string) string {
 // then (whole, on one line, as the email asking for a second look quotes
 // it). A removal carries no way back to what was removed, not even while it
 // is still kept for Bring it back: no post and no photo, only its ref and
-// the address to ask at. A post that is back opens the post, and shows its
-// first photo while the viewer can see it; a comment that is back opens its
-// post only while the viewer can see that post, which may be someone
-// else's, and shows no photo.
+// the address to ask at. A post that is back or hidden opens the post, and
+// shows its first photo while the viewer can see it; a comment that is back
+// or hidden opens its post only while the viewer can see that post, which
+// may be someone else's, and shows no photo.
 func (s *Service) decisionItem(d Decision) (Item, bool) {
 	kind := decisionKind(d.Item, d.Action)
 	if kind == "" {
@@ -371,12 +382,12 @@ func (s *Service) decisionItem(d Decision) (Item, bool) {
 	case KindPostRemoved, KindCommentRemoved:
 		it.Ref = admin.Ref(d.ID)
 		it.Contact = s.contact
-	case KindPostBack:
+	case KindPostBack, KindPostHidden:
 		it.EntryID = d.EntryID
 		if d.Visible {
 			it.PhotoKey = d.PhotoKey
 		}
-	case KindCommentBack:
+	case KindCommentBack, KindCommentHidden:
 		if d.Visible {
 			it.EntryID = d.EntryID
 		}

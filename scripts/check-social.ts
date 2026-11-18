@@ -6,7 +6,8 @@
  * box's emoji row and reply prefix, the report reasons on the phone, the server, the admin page
  * and the database, and the moderation build's phone side (2026-11-17): "Report sent." and the three
  * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
- * line, the bell's four decision kinds and the email that asks for a second look.
+ * line, the bell's decision kinds (with the two hidden ones of 2026-11-18) and the email that asks
+ * for a second look.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -419,14 +420,22 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq('the bell: your comment removed', decisionLine('comment_removed'), 'We removed your comment. It broke our rules.');
   eq('the bell: your post back', decisionLine('post_back'), 'Sorry, we got that wrong. Your post is back.');
   eq('the bell: your comment back', decisionLine('comment_back'), 'Sorry, we got that wrong. Your comment is back.');
+  eq('the bell: 3 reports hid your post', decisionLine('post_hidden'), 'Your post is hidden while we take a look.');
+  eq('the bell: 3 reports hid your comment', decisionLine('comment_hidden'), 'Your comment is hidden while we take a look.');
   eq('the hint on a removed item that opens the email', SECOND_LOOK_HINT, 'Opens an email to ask for a second look.');
   eq('no mail app: the line names the address', secondLookFallback(' help@example.com '), 'Email help@example.com to ask for a second look.');
 
-  eq('the four decision kinds, as the server names them', DECISION_KINDS.join(','), 'post_removed,comment_removed,post_back,comment_back');
+  eq(
+    'the six decision kinds, as the server names them',
+    DECISION_KINDS.join(','),
+    'post_removed,comment_removed,post_back,comment_back,post_hidden,comment_hidden'
+  );
   check('each of them is a decision kind', DECISION_KINDS.every((kind) => isDecisionKind(kind)));
   check(
     'no other kind is one',
-    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', ''].some((kind) => isDecisionKind(kind))
+    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', 'hidden', ''].some((kind) =>
+      isDecisionKind(kind)
+    )
   );
 
   const look = { kind: 'post_removed', contact: 'help@example.com', username: 'maya', text: 'Aftersun', ref: '1a2b3c4d' };
@@ -598,7 +607,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
 
   const api = source('lib/api/notifications.ts');
-  check('the bell keeps the four decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
+  check('the bell keeps the six decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
   check(
     'contact and ref are read as strings, empty when missing, and no key is named email',
     /contact: typeof raw\.contact === 'string' \? raw\.contact : '',/.test(api) &&
@@ -607,14 +616,14 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
   const bell = source('components/today/NotificationsScreen.tsx');
   check(
-    'the four kinds say their sentence and draw the wheel mark, not an empty face',
-    /case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind\);/.test(bell) &&
+    'the six kinds say their sentence and draw the wheel mark, not an empty face',
+    /case 'post_hidden':\s*case 'comment_hidden':\s*case 'post_removed':\s*case 'comment_removed':\s*case 'post_back':\s*case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind\);/.test(bell) &&
       /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
   );
   check(
-    'a post back opens your entry page; a comment back opens the post it is on',
-    /if \(item\.kind === 'comment' \|\| item\.kind === 'post_back'\) \{\s*if \(item\.entry_id === null\) return;\s*openEntry\(item\.entry_id\);/.test(bell) &&
-      /if \(item\.kind === 'reply' \|\| item\.kind === 'comment_back'\) \{\s*if \(item\.entry_id === null\) return;\s*void openReply\(item\.entry_id\);/.test(bell)
+    'a post back or hidden opens your entry page; a comment back or hidden opens the post it is on',
+    /if \(item\.kind === 'comment' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*openEntry\(item\.entry_id\);/.test(bell) &&
+      /if \(item\.kind === 'reply' \|\| item\.kind === 'comment_back' \|\| item\.kind === 'comment_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*void openReply\(item\.entry_id\);/.test(bell)
   );
   check(
     'a removed item opens the email only with an address, and names the address when no mail app opens',
@@ -624,10 +633,13 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
   check('the hint only where the email opens', /accessibilityHint=\{secondLookLink\(item\) !== null \? SECOND_LOOK_HINT : undefined\}/.test(bell));
   check(
-    'a post back shows its picture; a removed item never does',
-    /\(item\.kind === 'comment' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back'\) && item\.photo_url !== ''/.test(bell)
+    'a post back or hidden shows its picture; a removed item never does',
+    /\(item\.kind === 'comment' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) &&\s*item\.photo_url !== ''/.test(bell)
   );
-  check('no phone push for the decisions', !/post_removed|comment_removed|post_back|comment_back/.test(source('lib/notifications/pushTarget.ts')));
+  check(
+    'no phone push for the decisions',
+    !/post_removed|comment_removed|post_back|comment_back|post_hidden|comment_hidden/.test(source('lib/notifications/pushTarget.ts'))
+  );
 
   // Nothing red: only Log out is.
   for (const rel of [

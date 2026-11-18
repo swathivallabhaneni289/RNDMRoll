@@ -81,11 +81,13 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
         rest: 'You hit your goal this week. One bonus spin added.',
         spoken: 'You hit your goal this week. One bonus spin added.',
       };
+    case 'post_hidden':
+    case 'comment_hidden':
     case 'post_removed':
     case 'comment_removed':
     case 'post_back':
     case 'comment_back': {
-      // An admin's decision about your own post or comment: no person, like the spin items.
+      // Moderation of your own post or comment: no person, like the spin items.
       const line = decisionLine(item.kind);
       return { name: '', rest: line, spoken: line };
     }
@@ -94,7 +96,7 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
 
 /**
  * The round mark at the left of a row: the person, the wheel mark (the app's own items: your spin
- * is open, an admin's decision), or a solid dot for a bonus.
+ * is open, moderation of your post or comment), or a solid dot for a bonus.
  */
 function RowMark({ item }: { item: NotificationItem }) {
   if (item.kind === 'spin_open' || isDecisionKind(item.kind)) {
@@ -290,12 +292,12 @@ export function NotificationsScreen() {
   }
 
   function open(item: NotificationItem) {
-    if (item.kind === 'comment' || item.kind === 'post_back') {
+    if (item.kind === 'comment' || item.kind === 'post_back' || item.kind === 'post_hidden') {
       if (item.entry_id === null) return;
       openEntry(item.entry_id);
       return;
     }
-    if (item.kind === 'reply' || item.kind === 'comment_back') {
+    if (item.kind === 'reply' || item.kind === 'comment_back' || item.kind === 'comment_hidden') {
       if (item.entry_id === null) return;
       void openReply(item.entry_id);
       return;
@@ -328,11 +330,15 @@ export function NotificationsScreen() {
   }
 
   /**
-   * What sits at the right of a row: the post's picture (a comment, a reply, your post back while
-   * you can see it), a follow button, or nothing. A removed item never shows its picture.
+   * What sits at the right of a row: the post's picture (a comment, a reply, your post back or
+   * hidden while you can see it), a follow button, or nothing. A removed item never shows its
+   * picture.
    */
   function rowEnd(item: NotificationItem) {
-    if ((item.kind === 'comment' || item.kind === 'reply' || item.kind === 'post_back') && item.photo_url !== '') {
+    if (
+      (item.kind === 'comment' || item.kind === 'reply' || item.kind === 'post_back' || item.kind === 'post_hidden') &&
+      item.photo_url !== ''
+    ) {
       return (
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Thumb item={item} />

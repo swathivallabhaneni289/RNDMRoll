@@ -20,8 +20,9 @@ func validReason(reason string) bool {
 // ReportPost keeps the viewer's report of a post they can see (the same rule
 // as the post page). Your own post, one you cannot see and one you already
 // reported (it is gone for you) are ErrNotFound; an unknown reason is
-// social.ErrBadReason. The owner is never told. The report notifier hears
-// only a report that was kept.
+// social.ErrBadReason. The owner is never told who reported it, and hears of
+// reports only from the one that hides the post (the bell). The report
+// notifier hears only a report that was kept.
 func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, reason string) error {
 	if !validReason(reason) {
 		return social.ErrBadReason
@@ -33,7 +34,8 @@ func (s *Service) ReportPost(ctx context.Context, viewer, entryID uuid.UUID, rea
 	if row.Owner.ID == viewer {
 		return ErrNotFound
 	}
-	hid, err := s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason, s.clk.NowFor(viewer.String()).UTC())
+	hid, err := s.repo.ReportPost(ctx, viewer, row.ID, row.Owner.ID, row.Title, reason,
+		s.clk.NowFor(viewer.String()).UTC(), s.clk.NowFor(row.Owner.ID.String()).UTC())
 	if err != nil {
 		return err
 	}
@@ -64,7 +66,8 @@ func (s *Service) ReportComment(ctx context.Context, viewer, commentID uuid.UUID
 	if _, err := s.visibleComment(ctx, viewer, c.EntryID, c.ID); err != nil {
 		return err
 	}
-	hid, err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason, s.clk.NowFor(viewer.String()).UTC())
+	hid, err := s.repo.ReportComment(ctx, viewer, c.ID, c.Author.ID, c.Body, reason,
+		s.clk.NowFor(viewer.String()).UTC(), s.clk.NowFor(c.Author.ID.String()).UTC())
 	if err != nil {
 		return err
 	}

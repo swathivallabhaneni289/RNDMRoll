@@ -190,13 +190,14 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 }
 
 // decisionsSQL is the decision log's rows about the viewer's ($1) own posts
-// and comments (removed, restored and shown again; never an account's) after
-// $2, at most $3, newest first by the viewer's own clock. Each carries its
-// post while that is in the database, whether the viewer can see it now
-// (postVisibleTo, the whole of social.CanView), and the post's first photo,
-// read only for a post that is back and that the viewer can see. A post
-// deleted since leaves no row to join, so the check says so outright rather
-// than trust a NULL to fall through the fragments.
+// and comments (removed, restored, shown again and hidden by reports; never
+// an account's) after $2, at most $3, newest first by the viewer's own clock.
+// Each carries its post while that is in the database, whether the viewer
+// can see it now (postVisibleTo, the whole of social.CanView), and the
+// post's first photo, read only for a post that is back or hidden and that
+// the viewer can see. A post deleted since leaves no row to join, so the
+// check says so outright rather than trust a NULL to fall through the
+// fragments.
 var decisionsSQL = `
 	select x.id, x.item, x.action, x.at, x.snapshot, x.entry, x.visible,
 	  case when x.visible and x.item = 'post' and x.action <> 'removed' then
@@ -206,7 +207,7 @@ var decisionsSQL = `
 	    (e.id is not null and ` + postVisibleTo("$1::uuid", "e") + `) as visible
 	  from moderation_events me
 	  left join entries e on e.id = me.entry_id
-	  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again')
+	  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again', 'hidden')
 	    and me.at > $2
 	  order by me.at desc, me.id desc
 	  limit $3

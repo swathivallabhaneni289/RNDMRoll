@@ -86,9 +86,11 @@ type Repository interface {
 	// not opened again. So of two that race, one is kept and one is a miss.
 	// A post or comment removed meanwhile is ErrNotFound too. hid is true
 	// for the one report that made it hidden while under review (the
-	// social.ReviewThreshold-th open one), false for every other.
-	ReportPost(ctx context.Context, reporter, entryID, owner uuid.UUID, title, reason string, at time.Time) (hid bool, err error)
-	ReportComment(ctx context.Context, reporter, commentID, author uuid.UUID, body, reason string, at time.Time) (hid bool, err error)
+	// social.ReviewThreshold-th open one), false for every other. That one
+	// also logs it for the owner's bell at ownerAt, the owner's own clock,
+	// which the bell reads the log by; at is the reporter's.
+	ReportPost(ctx context.Context, reporter, entryID, owner uuid.UUID, title, reason string, at, ownerAt time.Time) (hid bool, err error)
+	ReportComment(ctx context.Context, reporter, commentID, author uuid.UUID, body, reason string, at, ownerAt time.Time) (hid bool, err error)
 }
 
 // Facts is the spin slice's view of the viewer (spin.Service).
