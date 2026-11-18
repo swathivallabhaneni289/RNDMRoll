@@ -436,11 +436,14 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   const said = secondLookEmail({ ...look, kind: 'comment_removed', text: 'so good' });
   eq('the subject for a comment', said.subject, 'Second look at my comment');
   eq('the body for a comment', said.lines.join('\n'), 'Username: @maya\nComment: so good\nRef: 1a2b3c4d\n\nWhy it should come back:');
+  const photo = secondLookEmail({ ...look, kind: 'comment_removed', text: '' });
+  eq('the body for a comment that was only a photo', photo.lines.join('\n'), 'Username: @maya\nComment: a photo\nRef: 1a2b3c4d\n\nWhy it should come back:');
+  eq('a comment of only spaces reads as a photo too', secondLookEmail({ ...look, kind: 'comment_removed', text: '   ' }).lines[1], 'Comment: a photo');
 
   // Built from escapes so this file holds no dash of its own: the hyphen, U+2010 to U+2015, the minus.
   const DASH = /[-‐-―−]/;
   const sentences = [REPORT_SENT, UNDER_REVIEW, POST_REMOVED_LINE, SECOND_LOOK_HINT, secondLookFallback('help@example.com'), ...DECISION_KINDS.map(decisionLine)];
-  for (const line of [...sentences, post.subject, ...post.lines, said.subject, ...said.lines]) {
+  for (const line of [...sentences, post.subject, ...post.lines, said.subject, ...said.lines, ...photo.lines]) {
     check('no dash of any kind in the new words', !DASH.test(line), line);
   }
   for (const line of sentences) {

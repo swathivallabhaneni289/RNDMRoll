@@ -39,14 +39,18 @@ export type SecondLook = {
   ref: string;
 };
 
-/** The email's subject and body lines; the body ends on the line they write under. */
+/**
+ * The email's subject and body lines; the body ends on the line they write under. A comment that
+ * was only a photo has no words, so its line says so.
+ */
 export function secondLookEmail(look: SecondLook): { subject: string; lines: string[] } {
   const post = look.kind === 'post_removed';
+  const what = post || look.text.trim() !== '' ? look.text : 'a photo';
   return {
     subject: post ? 'Second look at my post' : 'Second look at my comment',
     lines: [
       `Username: @${look.username}`,
-      `${post ? 'Post' : 'Comment'}: ${look.text}`,
+      `${post ? 'Post' : 'Comment'}: ${what}`,
       `Ref: ${look.ref}`,
       '',
       'Why it should come back:',
