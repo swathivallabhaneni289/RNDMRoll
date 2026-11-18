@@ -142,6 +142,50 @@ func TestModeration_ARemovalCarriesItsRefAndTheAddressAndNoWayBack(t *testing.T)
 	}
 }
 
+// A removal carries the reason the admin gave, as the log keeps it (the
+// report reason's key: the app words it), and one with none carries none
+// (developer, 2026-11-18). Nothing else carries a reason, even from a row
+// that has one.
+func TestModeration_OnlyARemovalCarriesTheReason(t *testing.T) {
+	bell, notes, _, now, _ := socialBell(t)
+	entry := uuid.New()
+	at := func(h int) time.Time { return now.Add(-time.Duration(h) * time.Hour).UTC() }
+	post := decisionAt("post", "removed", at(1), "Dune", &entry)
+	post.Reason = "hate"
+	comment := decisionAt("comment", "removed", at(2), "Rude words", &entry)
+	comment.Reason = "harassment"
+	none := decisionAt("post", "removed", at(3), "Dune", &entry)
+	others := []Decision{
+		decisionAt("post", "restored", at(4), "Dune", &entry),
+		decisionAt("comment", "restored", at(5), "Rude words", &entry),
+		decisionAt("post", "shown_again", at(6), "Dune", &entry),
+		decisionAt("comment", "shown_again", at(7), "Rude words", &entry),
+		decisionAt("post", "hidden", at(8), "Dune", &entry),
+		decisionAt("comment", "hidden", at(9), "Rude words", &entry),
+	}
+	for i := range others {
+		others[i].Reason = "spam"
+	}
+	notes.decisions = append([]Decision{post, comment, none}, others...)
+
+	list, err := bell.List(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Items) != len(notes.decisions) {
+		t.Fatalf("%d items, want one for each of the %d rows: %+v", len(list.Items), len(notes.decisions), list.Items)
+	}
+	want := map[string]string{
+		KindPostRemoved + ":" + post.ID.String():       "hate",
+		KindCommentRemoved + ":" + comment.ID.String(): "harassment",
+	}
+	for _, it := range list.Items {
+		if it.Reason != want[it.ID] {
+			t.Fatalf("%s: the reason %q, want %q", it.ID, it.Reason, want[it.ID])
+		}
+	}
+}
+
 // A post that is back or hidden opens the post, and shows its first photo
 // only while the viewer can see it; once the post is deleted it opens
 // nothing. A comment that is back or hidden opens its post only while the

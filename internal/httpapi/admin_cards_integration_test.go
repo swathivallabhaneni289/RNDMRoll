@@ -119,7 +119,9 @@ func TestAdminIntegration_TheReportsTabHasOneCardPerReportedThing(t *testing.T) 
 		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	list = adminDo(t, w, http.MethodGet, "/admin?n=dismissed", cookie, nil, "").Body.String()
-	if strings.Count(list, `<article class="card`) != 1 || strings.Contains(list, "Bullying or harassment") ||
+	// The post card's Reason list names every reason, so the account card is
+	// looked for by its reasons line.
+	if strings.Count(list, `<article class="card`) != 1 || strings.Contains(list, `<p class="reasons">Bullying or harassment`) ||
 		!strings.Contains(list, "Dismissed. Its reports are closed.") {
 		t.Fatalf("after the dismissal: %s", list)
 	}

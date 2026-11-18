@@ -1,9 +1,10 @@
 /**
  * The bell's items about your own post or comment under moderation: an admin's decision
- * (2026-11-17), or the reports that hid it while we take a look (2026-11-18). And the email a
- * removed one opens to ask for a second look: second looks are by email, with no button for them in
- * the app. The address is the server's setting (CONTACT_EMAIL), sent on the two removed kinds as
- * `contact`; the app never holds one of its own. None of these items has a person.
+ * (2026-11-17), or the reports that hid it while we take a look (2026-11-18). A removal names the
+ * reason the admin gave (2026-11-18), which the server sends as a report reason's key. And the
+ * email a removed one opens to ask for a second look: second looks are by email, with no button for
+ * them in the app. The address is the server's setting (CONTACT_EMAIL), sent on the two removed
+ * kinds as `contact`; the app never holds one of its own. None of these items has a person.
  * Pure: no imports, so a node script can check it (scripts/check-social.ts).
  */
 
@@ -24,15 +25,37 @@ export function isDecisionKind(kind: string): kind is DecisionKind {
 }
 
 /**
- * The row's sentence. Removed: it broke the rules. Back: the admin brought it back, or dismissed
- * the reports that had hidden it. Hidden: 3 reports hid it until the admin looks.
+ * A removal's reason in its sentence, by the report reason's key the server sends: the words the
+ * report list shows (lib/api/person.ts), lowercased. Something else (`other`) has none here, so its
+ * removal keeps the plain sentence.
  */
-export function decisionLine(kind: DecisionKind): string {
+export const REASON_WORDS: Readonly<Record<string, string>> = {
+  spam: 'spam',
+  nudity: 'nudity or sexual content',
+  harassment: 'bullying or harassment',
+  hate: 'hate speech',
+  violence: 'violence or threats',
+  impersonation: 'pretending to be someone else',
+};
+
+/** The words of a reason, '' for Something else, none, or a key this app doesn't know. */
+function reasonWords(reason: string): string {
+  return Object.prototype.hasOwnProperty.call(REASON_WORDS, reason) ? REASON_WORDS[reason] : '';
+}
+
+/**
+ * The row's sentence. Removed: the reason the admin gave (`reason`, a report reason's key), or for
+ * Something else or none, that it broke the rules. Back: the admin brought it back, or dismissed
+ * the reports that had hidden it. Hidden: 3 reports hid it until the admin looks. Only a removal
+ * reads `reason`.
+ */
+export function decisionLine(kind: DecisionKind, reason = ''): string {
+  const words = reasonWords(reason);
   switch (kind) {
     case 'post_removed':
-      return 'We removed your post. It broke our rules.';
+      return words ? `We removed your post for ${words}.` : 'We removed your post. It broke our rules.';
     case 'comment_removed':
-      return 'We removed your comment. It broke our rules.';
+      return words ? `We removed your comment for ${words}.` : 'We removed your comment. It broke our rules.';
     case 'post_back':
       return 'Sorry, we got that wrong. Your post is back.';
     case 'comment_back':

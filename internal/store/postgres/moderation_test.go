@@ -11,7 +11,8 @@ import (
 
 // TestMigrations_0020IsReversible: at the latest version a post and a comment
 // can be removed, the reports are indexed by what they are about, and the
-// decision log keeps its events, whose item id outlives the post or comment.
+// decision log keeps its events (a removal with the reason it was given, a
+// report reason's key or none), whose item id outlives the post or comment.
 // Going down to 19 with all of that stored drops exactly what 0020 added and
 // keeps the posts, comments and reports; going up again adds it back, with
 // nothing removed and an empty log.
@@ -91,8 +92,8 @@ func TestMigrations_0020IsReversible(t *testing.T) {
 				values ($1, $2, 'spam', now(), $3, 'Dune')`, []any{b.ID, entry, a.ID}},
 			{`insert into comment_reports (reporter_id, comment_id, reason, created_at, owner_id, body)
 				values ($1, $2, 'harassment', now(), $3, 'Rude')`, []any{a.ID, rude, b.ID}},
-			{`insert into moderation_events (owner_id, item, action, entry_id, item_id, snapshot, reasons, at)
-				values ($1, 'post', 'removed', $2, $2, 'Dune', '{spam}', now())`, []any{a.ID, entry}},
+			{`insert into moderation_events (owner_id, item, action, entry_id, item_id, snapshot, reasons, reason, at)
+				values ($1, 'post', 'removed', $2, $2, 'Dune', '{spam}', 'hate', now())`, []any{a.ID, entry}},
 			{`insert into moderation_events (owner_id, item, action, entry_id, comment_id, item_id, snapshot, at)
 				values ($1, 'comment', 'restored', $2, $3, $3, 'Gone soon', now())`, []any{b.ID, entry, gone}},
 			{`insert into moderation_events (owner_id, item, action, item_id, at)
@@ -107,10 +108,20 @@ func TestMigrations_0020IsReversible(t *testing.T) {
 		for _, bad := range []string{
 			`insert into moderation_events (owner_id, item, action, item_id, at) values ($1, 'person', 'removed', $1, now())`,
 			`insert into moderation_events (owner_id, item, action, item_id, at) values ($1, 'post', 'deleted', $1, now())`,
+			// The reason the admin gives is a report reason's key, or none.
+			`insert into moderation_events (owner_id, item, action, item_id, reason, at) values ($1, 'post', 'removed', $1, 'rude', now())`,
 		} {
 			if _, err := pool.Exec(ctx, bad, a.ID); err == nil {
 				t.Fatalf("the log took an event its checks refuse: %s", bad)
 			}
+		}
+		// The removal keeps the reason it was given, and every other row has
+		// none.
+		if n := count(pool, `select count(*) from moderation_events where action = 'removed' and reason = 'hate'`); n != 1 {
+			t.Fatalf("%d removals keep the reason hate, want 1", n)
+		}
+		if n := count(pool, `select count(*) from moderation_events where action <> 'removed' and reason = ''`); n != 3 {
+			t.Fatalf("%d other rows have no reason, want all 3", n)
 		}
 		// A deleted comment leaves its event, which still names it by item id.
 		if _, err := pool.Exec(ctx, `delete from post_comments where id = $1`, gone); err != nil {

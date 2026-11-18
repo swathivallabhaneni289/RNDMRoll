@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,10 +20,11 @@ func adminWhen(t time.Time) string { return t.Local().Format("Jan 2, 2006 3:04 P
 
 // The Removed tab lists what was removed in the last 30 days as the store
 // reads it, each card with what it was (the post's title, day, text and
-// photos, signed; the comment's text, escaped, and photo), why, when, the
-// days left, the removal's ref and Bring it back, which comes back to this
-// tab. It does not refresh itself, never shows Removed before, and every
-// tab carries its count.
+// photos, signed; the comment's text, escaped, and photo), why (the reason
+// the admin gave, or for a removal from before the Reason list, the
+// reports' reasons), when, the days left, the removal's ref and Bring it
+// back, which comes back to this tab. It does not refresh itself, never
+// shows Removed before, and every tab carries its count.
 func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
@@ -33,7 +35,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	removedAt := cardAt(9, 30)
 	r.repo.removed = []admin.RemovedItem{
 		{Kind: admin.KindComment, ID: comment, Owner: dev, Body: "<b>rude</b>", PhotoKey: "c1", RemovedAt: removedAt,
-			DaysLeft: 1, Reasons: []string{"harassment"}, Ref: "0a1b2c3d"},
+			DaysLeft: 1, Reasons: []string{"harassment"}, Reason: "hate", Ref: "0a1b2c3d"},
 		{Kind: admin.KindPost, ID: post, Owner: mira, Title: "Ramen", LocalDate: "2026-11-15", Note: "Slurp", PhotoKeys: []string{"k1", "k2"},
 			RemovedAt: removedAt, DaysLeft: 29, Reasons: []string{"violence", "spam"}, Ref: "9f8e7d6c"},
 	}
@@ -61,7 +63,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 			`<a class="button push" href="/admin/people/` + mira.ID.String() + `">Open account</a>`,
 		},
 		commentCard: {
-			`Bullying or harassment</p><p class="kind">Comment</p>`,
+			`<p class="reasons">Hate speech</p><p class="kind">Comment</p>`,
 			` · 1 day left · Ref: 0a1b2c3d</p>`,
 			`<p class="text quote">&lt;b&gt;rude&lt;/b&gt;</p>`,
 			`<img class="thumb" src="` + fakePhotoLink("c1") + `"`,
@@ -86,6 +88,9 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	}
 	if strings.Contains(page, "Removed before") || strings.Index(page, "rude") > strings.Index(page, "Ramen") {
 		t.Errorf("the Removed tab shows Removed before, or not in the store's order")
+	}
+	if strings.Contains(commentCard, "Bullying or harassment") {
+		t.Errorf("the comment's card shows the reports' reason beside the one the admin gave")
 	}
 	if t.Failed() {
 		t.Log(page)
@@ -299,15 +304,18 @@ func TestAdminCards_RemovedBeforeShowsOnlyWhenThereIsSome(t *testing.T) {
 // The person page lists every decision in the log in the store's order (the
 // newest first), with when, on its own list ahead of the reports: no new
 // card, no form, nothing a card's check could match. A removal says its ref
-// and the reasons, and what was decided about shows as it was then, escaped.
-// With no decision, no History.
+// and the reason the admin gave (for one from before the Reason list, the
+// reports' reasons), and what was decided about shows as it was then,
+// escaped. With no decision, no History.
 func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
 	person := uuid.New()
+	picked := uuid.MustParse("9c8d7e6f-0000-4000-8000-000000000003")
 	removal := uuid.MustParse("1a2b3c4d-0000-4000-8000-000000000001")
 	photoOnly := uuid.MustParse("5e6f7a8b-0000-4000-8000-000000000002")
 	r.repo.events = []admin.Event{
+		{ID: picked, Item: admin.KindPost, Action: admin.LogRemoved, Snapshot: "Pho", Reasons: []string{"spam"}, Reason: "hate", At: cardAt(16, 0)},
 		{ID: uuid.New(), Item: admin.ItemAccount, Action: admin.LogEnabled, ItemID: person, At: cardAt(15, 0)},
 		{ID: uuid.New(), Item: admin.ItemAccount, Action: admin.LogDisabled, ItemID: person, At: cardAt(14, 0)},
 		{ID: uuid.New(), Item: admin.KindComment, Action: admin.LogShownAgain, Snapshot: "<i>fine</i>", At: cardAt(13, 0)},
@@ -323,6 +331,7 @@ func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 	}
 	log := page[start:end]
 	want := `<h2>History</h2>` + "\n" + `<ol class="history">` +
+		`<li><p><strong>Post removed</strong> <span class="muted when">` + adminWhen(cardAt(16, 0)) + `</span></p><p class="by">Ref: 9c8d7e6f · Hate speech</p><p class="text quote">Pho</p></li>` +
 		`<li><p><strong>Account enabled</strong> <span class="muted when">` + adminWhen(cardAt(15, 0)) + `</span></p></li>` +
 		`<li><p><strong>Account disabled</strong> <span class="muted when">` + adminWhen(cardAt(14, 0)) + `</span></p></li>` +
 		`<li><p><strong>Comment shown again</strong> <span class="muted when">` + adminWhen(cardAt(13, 0)) + `</span></p><p class="text quote">&lt;i&gt;fine&lt;/i&gt;</p></li>` +
@@ -338,5 +347,28 @@ func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 	r.repo.events = nil
 	if page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+person.String(), cookie, nil, "").Body.String(); strings.Contains(page, "History") {
 		t.Fatalf("no decision, yet a History: %s", page)
+	}
+}
+
+// Remove's Reason list is the seven report reasons, the most serious first,
+// and a card's list starts on the most serious reason it was reported for:
+// Something else for a card with none the list has (developer, 2026-11-18).
+func TestAdminCards_RemoveStartsOnTheMostSeriousReason(t *testing.T) {
+	if want := []string{"violence", "nudity", "harassment", "hate", "impersonation", "spam", "other"}; !slices.Equal(removeReasons, want) {
+		t.Fatalf("the Reason list: %v, want %v", removeReasons, want)
+	}
+	for _, c := range []struct {
+		reasons []string
+		want    string
+	}{
+		{[]string{"violence", "spam"}, "violence"},
+		{[]string{"hate"}, "hate"},
+		{[]string{"other"}, "other"},
+		{nil, "other"},
+		{[]string{"no_such_reason"}, "other"},
+	} {
+		if got := (adminItem{Reasons: c.reasons}).RemoveReason(); got != c.want {
+			t.Errorf("reported for %v: the list starts on %q, want %q", c.reasons, got, c.want)
+		}
 	}
 }

@@ -742,7 +742,7 @@ const { ApiError, api, isRetryable } = client;
     const boardApi = await load('lib/api/board.ts');
     const spinApi = await load('lib/api/spin.ts');
     const { loadToday } = await load('lib/wheel/loadToday.ts');
-    const { DECISION_KINDS, decisionLine, isDecisionKind, secondLookMailto } = await load('lib/notifications/moderation.ts');
+    const { DECISION_KINDS, REASON_WORDS, decisionLine, isDecisionKind, secondLookMailto } = await load('lib/notifications/moderation.ts');
 
     // The bell: one item of each decision kind, none dropped, every key read as the server sent it.
     const bell = await serve(contract.bell, () => notifications.getNotifications());
@@ -764,7 +764,19 @@ const { ApiError, api, isRetryable } = client;
       }
       const removed = sent.kind === 'post_removed' || sent.kind === 'comment_removed';
       const decision = sent.id.slice(sent.kind.length + 1);
-      check(`${sent.kind}: a decision with its sentence`, isDecisionKind(read.kind) && decisionLine(read.kind) !== '');
+      check(`${sent.kind}: a decision with its sentence`, isDecisionKind(read.kind) && decisionLine(read.kind, read.reason) !== '');
+      // A removal names the reason the admin gave, sent as its key (2026-11-18); nothing else has one.
+      if (removed) {
+        const words = Object.hasOwn(REASON_WORDS, read.reason) ? REASON_WORDS[read.reason] : '';
+        check(`${sent.kind}: the server sends a reason the app has words for`, words !== '', read.reason);
+        eq(
+          `${sent.kind}: the sentence names the reason's words`,
+          decisionLine(read.kind, read.reason),
+          `We removed your ${sent.kind === 'post_removed' ? 'post' : 'comment'} for ${words}.`
+        );
+      } else {
+        eq(`${sent.kind}: no reason`, read.reason, '');
+      }
       eq(`${sent.kind}: no person`, read.actor, null);
       eq(`${sent.kind}: the words are the title or the comment`, read.text, sent.kind.startsWith('post_') ? 'Dune' : 'Thanks for watching');
       check(`${sent.kind}: the address only on a removal`, removed ? read.contact !== '' && read.contact === sent.contact : read.contact === '', read.contact);

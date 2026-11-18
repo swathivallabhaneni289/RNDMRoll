@@ -205,7 +205,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 
 1. A comment breaks the rules. They press and hold it, tap Report and pick a reason.
 2. The app says "Report sent." The comment and its replies are gone for them for good.
-3. An admin sees the report on the admin page and removes the comment. Its writer gets "We removed your comment. It broke our rules." in the bell. The comment is kept for 30 days in case the admin got it wrong, then deleted.
+3. An admin sees the report on the admin page and removes the comment. Its writer gets "We removed your comment for bullying or harassment." in the bell. The comment is kept for 30 days in case the admin got it wrong, then deleted.
 4. If the writer disagrees, tapping that message opens an email asking for a second look. Within the 30 days the admin can bring the comment back, and the writer gets "Sorry, we got that wrong. Your comment is back."
 
 ## 8. Functional requirements
@@ -485,7 +485,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - "You hit your goal this week. One bonus spin added."
   - Moderation of your own posts and comments:
     - "Your post is hidden while we take a look." ("Your comment is hidden while we take a look." for a comment). This comes from the report that hides it (SAFE-05). Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
-    - "We removed your post. It broke our rules." ("your comment" for a comment). Tapping it opens an email to the contact address asking for a second look.
+    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens an email to the contact address asking for a second look.
     - "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment). This comes after Bring it back, or after a Dismiss that shows a hidden item again. Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
 - **NOT-01 how it shows.**
   - Sections: Today, This week and Earlier.
@@ -528,6 +528,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Anything sent on Disable, or when the 30-day job deletes removed content.
   - An undo for a reporter.
   - A message for people whose comments were under a removed post. Those comments just go with it.
+  - A typed note with a removal. The reason is one of the 7 report reasons.
+  - The reason on the Spin page's removed line and in the second-look email.
 
 ### 8.11 The admin page
 
@@ -552,7 +554,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The tabs and the browser tab show how many cards are open, like "(3) Reports", and the Reports tab refreshes itself every minute.
   - The newest 500 open reports show; past that the page says so.
 - **ADM-02 the Disabled tab.** Each disabled account with its photo, username, name and when, with Enable right there.
-- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reasons, a short ref and Bring it back. The ref is the one in the owner's second-look email. This tab doesn't refresh itself.
+- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reason picked at Remove, a short ref and Bring it back. The ref is the one in the owner's second-look email. This tab doesn't refresh itself.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
   - The person: name, username, profile photo, bio and join date.
   - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone (deleted by its author, or 30 days after a removal) shows only the title it had when it was reported, and says so.
@@ -568,7 +570,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ADM-04 removing.**
   - Remove hides the post or comment from everyone at once, its owner included, and closes its reports. Nothing is deleted yet: no files and no rows.
   - After 30 days an hourly job deletes it for good with its photos, and with the comments or replies under it and their photos.
-  - The owner gets "We removed your post. It broke our rules." ("your comment" for a comment) in the bell.
+  - Remove has a Reason list of the 7 report reasons, set to the reporters' most serious one. The admin can pick another.
+  - The owner's message in the bell names that reason, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." The History and the Removed tab show the reason too.
   - A removed post still counts for its day, like a post its author deleted: the posted day, the late flag, the week toward the bonus, the streak and the Board's unlock stay, and no new post is allowed that day. The Spin page says "We removed this post. The day still counts."
   - Edit, archive, delete, hide and delete comment answer 404 on a removed post or comment.
 - **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back, and a comment can't come back while its post or the comment it answers is still removed.
@@ -578,7 +581,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - It hides their profile, posts and comments from everyone else in the app.
   - Enabling brings it all back. An admin can't disable themselves.
   - Disable and Enable go in the decision log. Nothing is sent to the person.
-- **The decision log.** Every Remove, Bring it back, Dismiss that shows something again, Disable and Enable is saved with whose post, comment or account it was and when. One about a post or comment keeps its title or text at the time, and a removal also keeps the report reasons.
+- **The decision log.** Every Remove, Bring it back, Dismiss that shows something again, Disable and Enable, and each report that hides something, is saved with whose post, comment or account it was and when. One about a post or comment keeps its title or text at the time, and a removal also keeps the report reasons and the reason picked at Remove.
   - It feeds the person page's History, "Removed before" and the owner's bell messages, so a second-look email can be answered.
   - "Removed before: N" counts the person's removed posts and comments that were not brought back.
   - It doesn't record which admin acted (ADM-05).
@@ -648,7 +651,7 @@ These rules decide what counts. The server owns all of them.
 
 - No ads, analytics, crash reporting or tracking tools in the app or the server.
 - Other people in the app never see your email or birthday, and search never matches email. Admins don't either, and the admin page opens only accounts someone reported, that are disabled, or that have a decision in the log (ADM-03).
-- The decision log keeps, for each Remove, Bring it back, Dismiss that shows something again, Disable and Enable: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
+- The decision log keeps, for each Remove, Bring it back, Dismiss that shows something again, Disable and Enable, and each report that hides something: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons and the reason picked at Remove. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
 - The app asks for the camera, the photo library and notifications only, and never for location or contacts.
 - Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any reset code, is printed to the server log.
 - Photos are in a private bucket. The server gives a signed photo link only to someone allowed to see that photo, and each link stops working within an hour. A link already given out works until it runs out.
@@ -960,6 +963,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 17 | A reported post or comment is gone for the reporter for good, and 3 open reports hide it from everyone but its owner until an admin looks | None recorded | Any 3 people who can see a post can hide it until an admin looks |
 | Nov 17 | Remove keeps a post or comment for 30 days, with Bring it back; every decision goes in a log; second looks are by email | "We need to have this stored somewhere": the log is what lets me answer an email | Removed content stays 30 more days; no appeal button in the app |
 | Nov 18 | The owner is told in the bell when 3 reports hide their post or comment | The owner should know it's under review, and "Sorry, we got that wrong" shouldn't come out of nowhere | One more bell item, in the bell only |
+| Nov 18 | Remove asks for a reason, and the owner's message names it | "It would be reasonable if we actually answer them why we are removing it" | One more choice at Remove; the reason is one of the 7 report reasons, with no typed note |
 
 ## 18. Out of scope and future ideas
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -399,13 +400,19 @@ func adminPost(w *feedWorld, p feedPerson, date string, keys ...string) string {
 	return entryObject(w.t, w.call(p, http.MethodPost, "/v1/entries", body, http.StatusCreated)["entry"])["id"].(string)
 }
 
+// reasonList is the Reason list beside Remove, which names all seven report
+// reasons on every open post and comment card.
+var reasonList = regexp.MustCompile(`(?s)<label class="reason">.*?</label>`)
+
 // adminReportOf returns the one report card on an admin page that holds
-// mark: from its opening tag to the next card's (or the page's end).
+// mark: from its opening tag to the next card's (or the page's end). The
+// mark is looked for outside the card's Reason list, which is the same on
+// every card, so a reason's words find the card reported for it.
 func adminReportOf(t *testing.T, page, mark string) string {
 	t.Helper()
 	var found []string
 	for _, part := range strings.Split(page, `<article class="card`)[1:] {
-		if strings.Contains(part, mark) {
+		if strings.Contains(reasonList.ReplaceAllString(part, ""), mark) {
 			found = append(found, part)
 		}
 	}
@@ -505,7 +512,9 @@ func TestAdminIntegration_AReportAfterAnEditSavesTheNewTitle(t *testing.T) {
 		t.Fatalf("the page, want one card for the post: %d %s", page.Code, page.Body.String())
 	}
 	report := adminReportOf(t, page.Body.String(), "Bullying or harassment · Spam")
-	if !strings.Contains(report, `<h3>Dune, again</h3>`) || strings.Contains(report, "Violence") ||
+	// The Reason list beside Remove names every reason, so A's is looked for
+	// outside it.
+	if !strings.Contains(report, `<h3>Dune, again</h3>`) || strings.Contains(reasonList.ReplaceAllString(report, ""), "Violence") ||
 		strings.Contains(report, "Title now") || strings.Contains(report, "Title when reported") {
 		t.Fatalf("the card, want the new title once, no label, and no second reason from A: %s", report)
 	}
@@ -986,6 +995,26 @@ func adminReportID(t *testing.T, report string) string {
 	return report[i+len(mark) : i+len(mark)+36]
 }
 
+// selectedReason is a Reason list's selected option.
+var selectedReason = regexp.MustCompile(`<option value="([a-z]+)" selected>`)
+
+// adminRemoveReason is the reason an open report card's Remove form sends:
+// the one its Reason list has selected. The test fails unless the card has
+// a Remove form with exactly one reason selected.
+func adminRemoveReason(t *testing.T, report string) string {
+	t.Helper()
+	start := strings.Index(report, `action="/admin/reports/remove"`)
+	if start < 0 {
+		t.Fatalf("the report has no Remove form: %s", report)
+	}
+	form, _, _ := strings.Cut(report[start:], "</form>")
+	picked := selectedReason.FindAllStringSubmatch(form, -1)
+	if len(picked) != 1 {
+		t.Fatalf("the Remove form has %d reasons selected, want 1: %s", len(picked), report)
+	}
+	return picked[0][1]
+}
+
 // Remove closes every report still open on the post or comment, whoever made
 // it, and leaves a report already dismissed as it was. With nothing left
 // open, the person leaves the open reports. The post's three reports hid it,
@@ -1021,8 +1050,8 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 		t.Helper()
 		return adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
 	}
-	// act sends a card's own form: Remove with the id it carries, Dismiss
-	// with every id on the card.
+	// act sends a card's own form: Remove with the id it carries and the
+	// reason it has selected, Dismiss with every id on the card.
 	act := func(action, kind, mark, notice string) {
 		t.Helper()
 		page := personPage()
@@ -1034,6 +1063,7 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 			}
 		} else {
 			form.Set("id", adminReportID(t, card))
+			form.Set("reason", adminRemoveReason(t, card))
 		}
 		rec := adminDo(t, w, http.MethodPost, "/admin/reports/"+action, cookie, form, "")
 		if rec.Header().Get("Location") != "/admin/people/"+b.id+"?n="+notice {

@@ -54,6 +54,11 @@ export type NotificationItem = {
   contact: string;
   /** On an admin's decision: the short ref the admin page shows for it, '' when none. */
   ref: string;
+  /**
+   * On `post_removed` and `comment_removed`: the reason the admin gave, as a report reason's key
+   * ('hate'); '' when none.
+   */
+  reason: string;
 };
 
 const KINDS: readonly NotificationKind[] = [
@@ -89,6 +94,7 @@ function readItem(raw: Record<string, unknown>): NotificationItem | null {
     photo_url: typeof raw.photo_url === 'string' ? raw.photo_url : '',
     contact: typeof raw.contact === 'string' ? raw.contact : '',
     ref: typeof raw.ref === 'string' ? raw.ref : '',
+    reason: typeof raw.reason === 'string' ? raw.reason : '',
   };
 }
 

@@ -6,8 +6,8 @@
  * box's emoji row and reply prefix, the report reasons on the phone, the server, the admin page
  * and the database, and the moderation build's phone side (2026-11-17): "Report sent." and the three
  * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
- * line, the bell's decision kinds (with the two hidden ones of 2026-11-18) and the email that asks
- * for a second look.
+ * line, the bell's decision kinds (with the two hidden ones of 2026-11-18, and the reason a removal
+ * names, also 2026-11-18) and the email that asks for a second look.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -24,6 +24,7 @@ import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
 import { COMMENT_MAX } from '../lib/entry/rules.ts';
 import {
   DECISION_KINDS,
+  REASON_WORDS,
   SECOND_LOOK_HINT,
   decisionLine,
   isDecisionKind,
@@ -425,6 +426,39 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq('the hint on a removed item that opens the email', SECOND_LOOK_HINT, 'Opens an email to ask for a second look.');
   eq('no mail app: the line names the address', secondLookFallback(' help@example.com '), 'Email help@example.com to ask for a second look.');
 
+  // A removal names the reason the admin gave, sent as its key (2026-11-18).
+  for (const [reason, postLine, commentLine] of [
+    ['spam', 'We removed your post for spam.', 'We removed your comment for spam.'],
+    ['nudity', 'We removed your post for nudity or sexual content.', 'We removed your comment for nudity or sexual content.'],
+    ['harassment', 'We removed your post for bullying or harassment.', 'We removed your comment for bullying or harassment.'],
+    ['hate', 'We removed your post for hate speech.', 'We removed your comment for hate speech.'],
+    ['violence', 'We removed your post for violence or threats.', 'We removed your comment for violence or threats.'],
+    ['impersonation', 'We removed your post for pretending to be someone else.', 'We removed your comment for pretending to be someone else.'],
+  ]) {
+    eq(`the bell: your post removed for ${reason}`, decisionLine('post_removed', reason), postLine);
+    eq(`the bell: your comment removed for ${reason}`, decisionLine('comment_removed', reason), commentLine);
+  }
+  // Something else, none, or a key the app doesn't know (an object's own names among them): the plain line.
+  for (const reason of ['other', '', 'rude', 'Hate speech', 'HATE', 'constructor', 'toString', '__proto__']) {
+    eq(`the bell: your post removed, reason ${JSON.stringify(reason)}`, decisionLine('post_removed', reason), 'We removed your post. It broke our rules.');
+    eq(`the bell: your comment removed, reason ${JSON.stringify(reason)}`, decisionLine('comment_removed', reason), 'We removed your comment. It broke our rules.');
+  }
+  for (const kind of ['post_back', 'comment_back', 'post_hidden', 'comment_hidden']) {
+    eq(`the bell: ${kind} never reads a reason`, decisionLine(kind, 'hate'), decisionLine(kind));
+  }
+  // The words are the report list's own (lib/api/person.ts imports the API client, so it is read as text), lowercased.
+  const reportList = source('lib/api/person.ts').match(/export const REPORT_REASONS = \[([\s\S]*?)\] as const;/)?.[1] ?? '';
+  const labels = Object.fromEntries([...reportList.matchAll(/\{ reason: '([a-z]+)', label: '([^']+)' \}/g)].map((m) => [m[1], m[2]]));
+  eq('the report list has its seven reasons', Object.keys(labels).length, 7);
+  eq(
+    'a removal names every report reason but Something else',
+    Object.keys(REASON_WORDS).sort().join(','),
+    Object.keys(labels).filter((reason) => reason !== 'other').sort().join(',')
+  );
+  for (const [reason, words] of Object.entries(REASON_WORDS)) {
+    eq(`a removal's words for ${reason} are the report list's, lowercased`, words, labels[reason]?.toLowerCase());
+  }
+
   eq(
     'the six decision kinds, as the server names them',
     DECISION_KINDS.join(','),
@@ -451,12 +485,26 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
 
   // Built from escapes so this file holds no dash of its own: the hyphen, U+2010 to U+2015, the minus.
   const DASH = /[-‐-―−]/;
-  const sentences = [REPORT_SENT, UNDER_REVIEW, POST_REMOVED_LINE, SECOND_LOOK_HINT, secondLookFallback('help@example.com'), ...DECISION_KINDS.map(decisionLine)];
-  for (const line of [...sentences, post.subject, ...post.lines, said.subject, ...said.lines, ...photo.lines]) {
+  const sentences = [
+    REPORT_SENT,
+    UNDER_REVIEW,
+    POST_REMOVED_LINE,
+    SECOND_LOOK_HINT,
+    secondLookFallback('help@example.com'),
+    ...DECISION_KINDS.map((kind) => decisionLine(kind)),
+  ];
+  // A removal with its reason, for a post and a comment: their own bound, as the longest, "We removed
+  // your comment for pretending to be someone else.", is 58 characters.
+  const reasonSentences = Object.keys(REASON_WORDS).flatMap((reason) => [decisionLine('post_removed', reason), decisionLine('comment_removed', reason)]);
+  eq('a removal names each of the six reasons, for a post and for a comment', reasonSentences.length, 12);
+  for (const line of [...sentences, ...reasonSentences, post.subject, ...post.lines, said.subject, ...said.lines, ...photo.lines]) {
     check('no dash of any kind in the new words', !DASH.test(line), line);
   }
   for (const line of sentences) {
     check('a short plain sentence: a capital, a full stop, no exclamation mark', /^[A-Z][^!]*\.$/.test(line) && line.length <= 50, line);
+  }
+  for (const line of reasonSentences) {
+    check('a removal with its reason: a plain sentence of at most 60 characters', /^[A-Z][^!]*\.$/.test(line) && line.length <= 60, line);
   }
 }
 
@@ -614,11 +662,13 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       /ref: typeof raw\.ref === 'string' \? raw\.ref : '',/.test(api) &&
       !/email/.test(api)
   );
+  check("a removal's reason is read as a string, empty when missing", /reason: typeof raw\.reason === 'string' \? raw\.reason : '',/.test(api));
   const bell = source('components/today/NotificationsScreen.tsx');
   check(
-    'the six kinds say their sentence and draw the wheel mark, not an empty face',
-    /case 'post_hidden':\s*case 'comment_hidden':\s*case 'post_removed':\s*case 'comment_removed':\s*case 'post_back':\s*case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind\);/.test(bell) &&
-      /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
+    'the six kinds say their sentence (a removal with its reason), spoken the same, and draw the wheel mark, not an empty face',
+    /case 'post_hidden':\s*case 'comment_hidden':\s*case 'post_removed':\s*case 'comment_removed':\s*case 'post_back':\s*case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind, item\.reason\);\s*return \{ name: '', rest: line, spoken: line \};/.test(
+      bell
+    ) && /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
   );
   check(
     'a post back or hidden opens your entry page; a comment back or hidden opens the post it is on',

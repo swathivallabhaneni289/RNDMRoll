@@ -156,8 +156,9 @@ func firstDifference(want, got []byte) string {
 }
 
 // The answers the app reads for moderation, from the real server, equal the
-// golden file, and they follow the spec: a removal carries the address and
-// its ref but no post and no photo; a post that is back or hidden opens the
+// golden file, and they follow the spec: a removal carries the address, its
+// ref and the reason the admin gave (its key) but no post and no photo, and
+// nothing else carries a reason; a post that is back or hidden opens the
 // post with its first photo, a comment that is back or hidden opens its post
 // with no photo; Today says the post was removed, with no entry; the owner is
 // told their post is under review on their Board card, post page, entry and
@@ -267,13 +268,16 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		switch kind {
 		case "post_removed", "comment_removed":
 			common["entry_id"], common["photo_url"], common["contact"], common["ref"] = nil, "", bellContact, events[kind][:8]
+			// The reason Remove's list started on, the reporters' own, as
+			// its key.
+			common["reason"] = map[string]string{"post_removed": "hate", "comment_removed": "harassment"}[kind]
 			wantItem(t, kind, item, common)
 		case "post_back", "post_hidden":
 			common["entry_id"], common["photo_url"] = post, fakePhotoLink(photos[0])
-			wantItem(t, kind, item, common, "contact", "ref")
+			wantItem(t, kind, item, common, "contact", "ref", "reason")
 		case "comment_back", "comment_hidden":
 			common["entry_id"], common["photo_url"] = post, ""
-			wantItem(t, kind, item, common, "contact", "ref")
+			wantItem(t, kind, item, common, "contact", "ref", "reason")
 		}
 	}
 	if removed := answers["today_entry_removed"]; removed["state"] != "posted" || removed["entry"] != nil || removed["entry_removed"] != true {

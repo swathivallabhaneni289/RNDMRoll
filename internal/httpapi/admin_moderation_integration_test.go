@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -75,7 +76,8 @@ func (w *adminModWorld) page(path string) string {
 
 // cardForm is the Remove or Dismiss form ("remove" or "dismiss") of the one
 // card on owner's page that holds mark, as the page draws it: Remove with
-// the report id it carries, Dismiss with every id on the card.
+// the report id it carries and the reason its Reason list has selected,
+// Dismiss with every id on the card.
 func (w *adminModWorld) cardForm(action, kind string, owner feedPerson, mark string) url.Values {
 	w.t.Helper()
 	page := w.page("/admin/people/" + owner.id)
@@ -87,6 +89,7 @@ func (w *adminModWorld) cardForm(action, kind string, owner feedPerson, mark str
 		}
 	} else {
 		form.Set("id", adminReportID(w.t, card))
+		form.Set("reason", adminRemoveReason(w.t, card))
 	}
 	return form
 }
@@ -161,7 +164,9 @@ func (w *adminModWorld) exec(q string, args ...any) {
 type loggedRow struct {
 	ID, Entry, Comment, Snapshot string
 	Reasons                      []string
-	At                           time.Time
+	// Reason is the reason the admin gave at a removal, "" for none.
+	Reason string
+	At     time.Time
 }
 
 // lastLogged is the newest row of the log about owner.
@@ -169,8 +174,8 @@ func (w *adminModWorld) lastLogged(owner feedPerson) loggedRow {
 	w.t.Helper()
 	var r loggedRow
 	if err := w.pool.QueryRow(context.Background(), `select id::text, coalesce(entry_id::text, ''), coalesce(comment_id::text, ''),
-		snapshot, reasons, at from moderation_events where owner_id = $1 order by created_at desc, id limit 1`, owner.id).Scan(
-		&r.ID, &r.Entry, &r.Comment, &r.Snapshot, &r.Reasons, &r.At); err != nil {
+		snapshot, reasons, reason, at from moderation_events where owner_id = $1 order by created_at desc, id limit 1`, owner.id).Scan(
+		&r.ID, &r.Entry, &r.Comment, &r.Snapshot, &r.Reasons, &r.Reason, &r.At); err != nil {
 		w.t.Fatal(err)
 	}
 	return r
@@ -190,11 +195,12 @@ func (w *adminModWorld) people(usernames ...string) []feedPerson {
 // for everyone, its writer and the post's owner too. Nothing is deleted:
 // the rows, the photos and their files stay. Every report open on it is
 // closed as removed and nothing else, and the removal is logged once, on
-// the owner's own clock, with the title or the text and the reasons of the
-// reports it closed, the most serious first. The same Remove again (a double
-// click) says what the first said, and logs and tells nothing more. The
-// Removed tab lists both, the newest first, with the days left, the ref of
-// the removal and the photos signed.
+// the owner's own clock, with the title or the text, the reasons of the
+// reports it closed, the most serious first, and the reason the admin
+// picked (the Reason list starts on the most serious). The same Remove
+// again (a double click) says what the first said, and logs and tells
+// nothing more. The Removed tab lists both, the newest first, with the
+// reason, the days left, the ref of the removal and the photos signed.
 func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *testing.T) {
 	w := newAdminModWorld(t)
 	ps := w.people("am_bob", "am_vera", "am_wren", "am_rhea", "am_remy")
@@ -248,8 +254,8 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 	}
 	removal := w.lastLogged(b)
 	if removal.Entry != post || removal.Comment != "" || removal.Snapshot != "Dune" ||
-		!slices.Equal(removal.Reasons, []string{"hate", "spam"}) || !removal.At.Equal(ownersNow) {
-		t.Fatalf("the removal logged: %+v, want the post, its title, hate then spam, at %v", removal, ownersNow)
+		!slices.Equal(removal.Reasons, []string{"hate", "spam"}) || removal.Reason != "hate" || !removal.At.Equal(ownersNow) {
+		t.Fatalf("the removal logged: %+v, want the post, its title, hate then spam, the reason hate, at %v", removal, ownersNow)
 	}
 
 	// The same Remove again: removed, nothing more logged or told.
@@ -266,7 +272,7 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 	tab := w.page("/admin/removed")
 	card := adminReportOf(t, tab, "<h3>Dune</h3>")
 	for _, want := range []string{
-		`Hate speech · Spam</p><p class="kind">Post</p>`,
+		`<p class="reasons">Hate speech</p><p class="kind">Post</p>`,
 		` · 30 days left · Ref: ` + removal.ID[:8] + `</p>`,
 		`<a href="` + fakePhotoLink(photos[0]) + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink(photos[0]) + `"`,
 		`<strong>@am_bob</strong>`,
@@ -293,7 +299,7 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 		t.Fatalf("the writer's log: %v", got)
 	}
 	if got := w.lastLogged(cw); got.Entry != vPost || got.Comment != comment || got.Snapshot != "Rude words" ||
-		!slices.Equal(got.Reasons, []string{"harassment"}) || !got.At.Equal(ownersNow) {
+		!slices.Equal(got.Reasons, []string{"harassment"}) || got.Reason != "harassment" || !got.At.Equal(ownersNow) {
 		t.Fatalf("the comment's removal logged: %+v", got)
 	}
 	tab = w.page("/admin/removed")
@@ -309,6 +315,194 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 	if len(w.photos.deletes()) != 0 {
 		t.Fatalf("a removal deleted files: %v", w.photos.deletes())
 	}
+}
+
+// reasonListOf is Remove's Reason list as the page draws it, with selected
+// picked: the seven report reasons, the most serious first.
+func reasonListOf(selected string) string {
+	var b strings.Builder
+	b.WriteString(`<label class="reason">Reason <select name="reason">`)
+	for _, r := range [][2]string{{"violence", "Violence or threats"}, {"nudity", "Nudity or sexual content"},
+		{"harassment", "Bullying or harassment"}, {"hate", "Hate speech"}, {"impersonation", "Pretending to be someone else"},
+		{"spam", "Spam"}, {"other", "Something else"}} {
+		b.WriteString(`<option value="` + r[0] + `"`)
+		if r[0] == selected {
+			b.WriteString(" selected")
+		}
+		b.WriteString(">" + r[1] + "</option>")
+	}
+	b.WriteString(`</select></label>`)
+	return b.String()
+}
+
+// Every Remove form, on the Reports tab and on the person page, for a post
+// and for a comment, has the Reason list (developer, 2026-11-18): the seven
+// report reasons, the most serious first, with exactly one selected, the
+// most serious reason the card was reported for. A post reported for spam
+// and violence starts on violence, a comment reported for hate and bullying
+// on bullying, and a post reported only for Something else on it. A card
+// about an account has no Remove, and so no list.
+func TestAdminModerationIntegration_RemoveListsTheReasonsMostSeriousFirst(t *testing.T) {
+	w := newAdminModWorld(t)
+	ps := w.people("rl_bob", "rl_cleo", "rl_vera", "rl_r1", "rl_r2")
+	b, c, v, r1, r2 := ps[0], ps[1], ps[2], ps[3], ps[4]
+	for _, p := range []feedPerson{v, r1, r2} {
+		w.followAccepted(p, b)
+		w.followAccepted(p, c)
+	}
+	const day = "2026-10-08"
+	post, cPost := w.post(b, day), w.post(c, day)
+	for _, p := range []feedPerson{v, r1, r2} {
+		w.post(p, day)
+	}
+	comment := w.reply(v, cPost, "Rude words", "")["id"].(string)
+	report := func(p feedPerson, what, id, reason string) {
+		t.Helper()
+		w.ok(p, http.MethodPost, "/v1/"+what+"/"+id+"/report", map[string]any{"reason": reason})
+	}
+	report(r1, "posts", post, "spam")
+	report(r2, "posts", post, "violence")
+	// A post a reporter reported is gone for them, with its comments, so the
+	// comment is reported first.
+	report(r1, "comments", comment, "hate")
+	report(r2, "comments", comment, "harassment")
+	report(r1, "posts", cPost, "other")
+	report(r2, "people", b.id, "impersonation")
+
+	list := w.page("/admin")
+	for _, want := range []struct {
+		owner                  feedPerson
+		mark, selected, button string
+	}{
+		{b, "Violence or threats · Spam", "violence", "Remove post"},
+		{v, "Bullying or harassment · Hate speech", "harassment", "Remove comment"},
+		{c, `<p class="reasons">Something else</p>`, "other", "Remove post"},
+	} {
+		for _, page := range []string{list, w.page("/admin/people/" + want.owner.id)} {
+			card := adminReportOf(t, page, want.mark)
+			if !strings.Contains(card, reasonListOf(want.selected)+`<button class="strong">`+want.button+`</button></form>`) ||
+				strings.Count(card, "<select") != 1 || strings.Count(card, " selected>") != 1 {
+				t.Fatalf("the card holding %q, want one Reason list, on %s, beside %s: %s", want.mark, want.selected, want.button, card)
+			}
+		}
+	}
+	if account := adminReportOf(t, list, "Pretending to be someone else"); strings.Contains(account, "<select") {
+		t.Fatalf("the account's card has a Reason list: %s", account)
+	}
+	if n := strings.Count(list, `<label class="reason">`); n != 3 {
+		t.Fatalf("%d Reason lists on the Reports tab, want one for each Remove: %s", n, list)
+	}
+}
+
+// The admin can give another reason than the reporters did, and the one
+// given is what the owner hears and what the page keeps (developer,
+// 2026-11-18): a post reported for spam and removed for hate speech is
+// "hate" in its owner's bell, the log keeps hate and still the reports'
+// spam, and the History and the Removed tab say Hate speech. A second click
+// with another reason changes nothing, its reason included. A reason that is
+// not a report reason's key goes back to the list, and removes, closes and
+// logs nothing. A form with no reason takes the most serious reason of the
+// reports it closes, and a removal that closes none keeps no reason, so the
+// bell sends none.
+func TestAdminModerationIntegration_RemoveKeepsTheReasonTheAdminGave(t *testing.T) {
+	w := newAdminModWorldWith(t, bellContact)
+	ps := w.people("rg_bob", "rg_vera", "rg_wren", "rg_r1", "rg_r2")
+	b, v, cw, r1, r2 := ps[0], ps[1], ps[2], ps[3], ps[4]
+	for _, p := range []feedPerson{cw, r1, r2} {
+		w.followAccepted(p, b)
+		w.followAccepted(p, v)
+	}
+	const day = "2026-10-08"
+	post, vPost, cwPost := w.post(b, day), w.post(v, day), w.post(cw, day)
+	for _, p := range []feedPerson{r1, r2} {
+		w.post(p, day)
+	}
+	comment := w.reply(cw, vPost, "Rude words", "")["id"].(string)
+	w.ok(r1, http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "spam"})
+	w.ok(r2, http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "nudity"})
+	w.ok(r1, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
+
+	// The list starts on the reporters' spam. Any other word is refused.
+	form := w.cardForm("remove", "post", b, `<p class="reasons">Spam</p>`)
+	if got := form.Get("reason"); got != "spam" {
+		t.Fatalf("the Reason list starts on %q, want spam", got)
+	}
+	for _, bad := range []string{"rude", "Hate speech", "HATE", " hate"} {
+		refused := maps.Clone(form)
+		refused.Set("reason", bad)
+		if got := w.send("remove", refused); got != "/admin" {
+			t.Fatalf("the reason %q: %q, want the list", bad, got)
+		}
+	}
+	if !w.sees(cw, post) || len(loggedActions(t, w.pool, b.id)) != 0 ||
+		w.one(`select coalesce(resolution, 'open') from post_reports where entry_id = $1`, post) != "open" {
+		t.Fatal("a reason that is not a report reason's key removed, logged or closed something")
+	}
+
+	// Removed for hate speech.
+	form.Set("reason", "hate")
+	if got := w.send("remove", form); got != "/admin/people/"+b.id+"?n=removed" {
+		t.Fatalf("remove for hate speech: %q", got)
+	}
+	removal := w.lastLogged(b)
+	if removal.Reason != "hate" || !slices.Equal(removal.Reasons, []string{"spam"}) {
+		t.Fatalf("the removal logged: %+v, want the reason hate, and spam from the reports", removal)
+	}
+	item, _ := w.bellItem(b, "post_removed:"+removal.ID)
+	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "reason": "hate", "ref": removal.ID[:8], "contact": bellContact})
+	page := w.page("/admin/people/" + b.id)
+	history := page[strings.Index(page, "<h2>History</h2>"):strings.Index(page, "<h2>Open reports</h2>")]
+	if !strings.Contains(history, `<p class="by">Ref: `+removal.ID[:8]+` · Hate speech</p><p class="text quote">Dune</p>`) ||
+		strings.Contains(history, "Spam") {
+		t.Fatalf("the History, want the removal with Hate speech alone: %s", history)
+	}
+	if card := adminReportOf(t, w.page("/admin/removed"), "<h3>Dune</h3>"); !strings.Contains(card, `<p class="reasons">Hate speech</p><p class="kind">Post</p>`) ||
+		strings.Contains(card, "Spam") {
+		t.Fatalf("the Removed tab's card, want Hate speech alone: %s", card)
+	}
+
+	// A second click with another reason says removed, and the first reason
+	// stays.
+	form.Set("reason", "violence")
+	if got := w.send("remove", form); got != "/admin/people/"+b.id+"?n=removed" {
+		t.Fatalf("remove again: %q", got)
+	}
+	if got, logged := w.lastLogged(b), loggedActions(t, w.pool, b.id); len(logged) != 1 || got.ID != removal.ID || got.Reason != "hate" {
+		t.Fatalf("after a second click the log is %v, its newest %+v, want the first removal and its hate", logged, got)
+	}
+	if item, _ := w.bellItem(b, "post_removed:"+removal.ID); item["reason"] != "hate" {
+		t.Fatalf("after a second click the bell's removal: %v, want hate", item)
+	}
+
+	// No reason: the most serious of the reports it closes.
+	bare := w.cardForm("remove", "comment", cw, "Nudity or sexual content · Spam")
+	if got := bare.Get("reason"); got != "nudity" {
+		t.Fatalf("the comment's Reason list starts on %q, want nudity", got)
+	}
+	bare.Del("reason")
+	if got := w.send("remove", bare); got != "/admin/people/"+cw.id+"?n=removed" {
+		t.Fatalf("remove with no reason: %q", got)
+	}
+	gone := w.lastLogged(cw)
+	if gone.Reason != "nudity" || !slices.Equal(gone.Reasons, []string{"nudity", "spam"}) {
+		t.Fatalf("the comment removed with no reason: %+v, want nudity, the most serious", gone)
+	}
+	if item, _ := w.bellItem(cw, "comment_removed:"+gone.ID); item["reason"] != "nudity" {
+		t.Fatalf("the writer's bell: %v, want nudity", item)
+	}
+
+	// A removal that closes no report, with no reason (straight through the
+	// store), keeps none, and the bell sends none.
+	if err := postgres.NewAdminRepo(w.pool).RemoveItem(context.Background(), "post", uuid.MustParse(cwPost), uuid.MustParse(cw.id), "",
+		time.Now().UTC(), w.clk.NowFor(cw.id)); err != nil {
+		t.Fatalf("remove a post nobody reported: %v", err)
+	}
+	quiet := w.lastLogged(cw)
+	if quiet.Entry != cwPost || quiet.Reason != "" || len(quiet.Reasons) != 0 {
+		t.Fatalf("a removal that closed no report: %+v, want no reason", quiet)
+	}
+	item, _ = w.bellItem(cw, "post_removed:"+quiet.ID)
+	wantItem(t, "a removal with no reason", item, map[string]any{"kind": "post_removed", "ref": quiet.ID[:8]}, "reason")
 }
 
 // Bring it back on the Removed tab shows a removed post or comment again for

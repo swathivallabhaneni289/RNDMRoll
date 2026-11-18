@@ -69,6 +69,34 @@ func (it adminItem) tier() int {
 	return 2
 }
 
+// removeReasons are the report reasons in admin.ReasonRank order, the most
+// serious first: the Reason list beside Remove (developer, 2026-11-18).
+var removeReasons = func() []string {
+	keys := make([]string, 0, len(admin.ReasonWords))
+	for k := range admin.ReasonWords {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		if d := admin.ReasonRank(a) - admin.ReasonRank(b); d != 0 {
+			return d
+		}
+		return strings.Compare(a, b)
+	})
+	return keys
+}()
+
+// RemoveReason is the reason Remove's list starts on: the most serious one
+// it was reported for, or Something else ("other") for a group with no
+// reason the list has.
+func (it adminItem) RemoveReason() string {
+	if len(it.Reasons) > 0 {
+		if _, ok := admin.ReasonWords[it.Reasons[0]]; ok {
+			return it.Reasons[0]
+		}
+	}
+	return "other"
+}
+
 // ReportedBy names who reported it: up to three usernames, then how many
 // more.
 func (it adminItem) ReportedBy() string {

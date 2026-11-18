@@ -45,6 +45,9 @@ create table moderation_events (
     snapshot text not null default '',
     -- The report reasons at a removal.
     reasons text[] not null default '{}',
+    -- The reason the admin gave at a removal: a report reason (developer,
+    -- 2026-11-18). '' on every other row, and on a removal with none.
+    reason text not null default '' check (reason in ('', 'spam', 'nudity', 'harassment', 'hate', 'violence', 'impersonation', 'other')),
     -- When it happened on the owner's own clock: the bell and the history
     -- read it.
     at timestamptz not null,

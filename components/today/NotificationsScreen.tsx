@@ -88,7 +88,7 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
     case 'post_back':
     case 'comment_back': {
       // Moderation of your own post or comment: no person, like the spin items.
-      const line = decisionLine(item.kind);
+      const line = decisionLine(item.kind, item.reason);
       return { name: '', rest: line, spoken: line };
     }
   }

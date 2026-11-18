@@ -37,10 +37,12 @@ const (
 	KindBonusSpin      = "bonus_spin"
 
 	// The admin's decisions about the viewer's own post or comment
-	// (developer, 2026-11-17): "We removed your post. It broke our rules."
-	// and "Sorry, we got that wrong. Your post is back.", and the same for a
-	// comment. Back is a Bring it back, or a Dismiss that showed a hidden
-	// one again.
+	// (developer, 2026-11-17): "We removed your post for hate speech." (the
+	// reason the admin gave, 2026-11-18; "We removed your post. It broke our
+	// rules." with Something else or none) and "Sorry, we got that wrong.
+	// Your post is back.", and the same for a comment. Back is a Bring it
+	// back, or a Dismiss that showed a hidden one again. The app words the
+	// reason: the server sends its key.
 	KindPostRemoved    = "post_removed"
 	KindCommentRemoved = "comment_removed"
 	KindPostBack       = "post_back"
@@ -102,6 +104,9 @@ type Decision struct {
 	At time.Time
 	// Snapshot is the title or the comment text when it was decided.
 	Snapshot string
+	// Reason is the reason the admin gave at a removal, a report reason's
+	// key: "" on every other row, and on a removal with none.
+	Reason string
 	// EntryID is the post (for a comment, its post) while it is still in the
 	// database: nil once it is deleted.
 	EntryID *uuid.UUID
@@ -125,11 +130,13 @@ type Item struct {
 	Text         *string
 	RequestID    *uuid.UUID
 	PhotoKey     *string
-	// Ref and Contact are on a removal only: its short reference
-	// (admin.Ref), and the address to email for a second look ("" while
-	// none is set).
+	// Ref, Contact and Reason are on a removal only: its short reference
+	// (admin.Ref), the address to email for a second look ("" while none is
+	// set), and the reason the admin gave, as a report reason's key ("" for
+	// none).
 	Ref     string
 	Contact string
+	Reason  string
 }
 
 // List is the list and its unread flag.
@@ -363,11 +370,11 @@ func decisionKind(item, action string) string {
 // the decision's own time and with the title or the comment text as it was
 // then (whole, on one line, as the email asking for a second look quotes
 // it). A removal carries no way back to what was removed, not even while it
-// is still kept for Bring it back: no post and no photo, only its ref and
-// the address to ask at. A post that is back or hidden opens the post, and
-// shows its first photo while the viewer can see it; a comment that is back
-// or hidden opens its post only while the viewer can see that post, which
-// may be someone else's, and shows no photo.
+// is still kept for Bring it back: no post and no photo, only its ref, the
+// address to ask at and the reason the admin gave. A post that is back or
+// hidden opens the post, and shows its first photo while the viewer can see
+// it; a comment that is back or hidden opens its post only while the viewer
+// can see that post, which may be someone else's, and shows no photo.
 func (s *Service) decisionItem(d Decision) (Item, bool) {
 	kind := decisionKind(d.Item, d.Action)
 	if kind == "" {
@@ -382,6 +389,7 @@ func (s *Service) decisionItem(d Decision) (Item, bool) {
 	case KindPostRemoved, KindCommentRemoved:
 		it.Ref = admin.Ref(d.ID)
 		it.Contact = s.contact
+		it.Reason = d.Reason
 	case KindPostBack, KindPostHidden:
 		it.EntryID = d.EntryID
 		if d.Visible {

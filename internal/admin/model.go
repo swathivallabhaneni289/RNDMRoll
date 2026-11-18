@@ -198,10 +198,12 @@ type RemovedItem struct {
 	// ends it sooner, as that one's purge takes it too.
 	RemovedAt time.Time
 	DaysLeft  int
-	// Reasons and Ref come from its removal in the decision log: the reasons
-	// of the reports Remove closed (the most serious first) and the
-	// removal's Ref. Both are empty when the log has no removal for it.
+	// Reasons, Reason and Ref come from its removal in the decision log: the
+	// reasons of the reports Remove closed (the most serious first), the
+	// reason the admin gave (a report reason's key, "" for none) and the
+	// removal's Ref. All are empty when the log has no removal for it.
 	Reasons []string
+	Reason  string
 	Ref     string
 }
 
@@ -217,9 +219,12 @@ type Event struct {
 	// the purge.
 	ItemID uuid.UUID
 	// Snapshot is the title or the comment's text when it was decided, and
-	// Reasons the reasons of the reports a removal closed.
+	// Reasons the reasons of the reports a removal closed. Reason is the
+	// reason the admin gave at a removal, a report reason's key: "" on every
+	// other row, and on a removal with none.
 	Snapshot string
 	Reasons  []string
+	Reason   string
 	// At is when, on the owner's own clock.
 	At time.Time
 }
@@ -258,11 +263,14 @@ type Repository interface {
 	// RemoveItem removes person's post or comment (kind KindPost or
 	// KindComment): it is gone for everyone, its owner too, from now on the
 	// database's clock. Every report still open on it is closed as Removed,
-	// and the removal is logged with its title or text and the reasons of
-	// those reports. Nothing is deleted: the purge does that after
-	// RemovalGrace. ErrAlreadyDone when it is removed already inside the
-	// grace, ErrNotFound when it is not there or removed past it.
-	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error
+	// and the removal is logged with its title or text, the reasons of
+	// those reports and reason. Reason is the report reason the admin
+	// picked (developer, 2026-11-18); "" takes the most serious reason of
+	// the reports it closes, and stays "" when it closes none. Nothing is
+	// deleted: the purge does that after RemovalGrace. ErrAlreadyDone when
+	// it is removed already inside the grace (the first reason stays),
+	// ErrNotFound when it is not there or removed past it.
+	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, reason string, at, loggedAt time.Time) error
 	// RestoreItem brings person's removed post or comment back while it is
 	// inside RemovalGrace, and logs it. Its reports stay closed. A comment
 	// whose post or the comment it answers is still removed stays removed:

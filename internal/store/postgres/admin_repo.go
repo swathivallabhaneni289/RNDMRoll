@@ -218,7 +218,7 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 // their own clock, the database's breaking a tie.
 func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event, error) {
 	rows, err := r.pool.Query(ctx, `
-		select id, item, action, item_id, snapshot, reasons, at
+		select id, item, action, item_id, snapshot, reasons, reason, at
 		from moderation_events where owner_id = $1
 		order by at desc, created_at desc`, person)
 	if err != nil {
@@ -228,7 +228,7 @@ func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event
 	out := []admin.Event{}
 	for rows.Next() {
 		var e admin.Event
-		if err := rows.Scan(&e.ID, &e.Item, &e.Action, &e.ItemID, &e.Snapshot, &e.Reasons, &e.At); err != nil {
+		if err := rows.Scan(&e.ID, &e.Item, &e.Action, &e.ItemID, &e.Snapshot, &e.Reasons, &e.Reason, &e.At); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -237,15 +237,15 @@ func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event
 }
 
 // Removed implements admin.Repository. Each item carries its newest removal
-// in the log, for its reasons and its Ref; an item removed with no log row
-// (straight in the database) has neither. A comment's days left run from
-// the earliest removal of it, its post and the comment it answers (least
-// skips the nulls): the purge of a post takes its comments, and of a
-// comment its replies.
+// in the log, for its reasons, the reason the admin gave and its Ref; an
+// item removed with no log row (straight in the database) has none of them.
+// A comment's days left run from the earliest removal of it, its post and
+// the comment it answers (least skips the nulls): the purge of a post takes
+// its comments, and of a comment its replies.
 func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+adminPersonColumns+`, x.kind, x.id, x.title, x.local_date, x.note, x.photo_keys, x.body, x.photo_key,
-		       x.removed_at, `+daysLeft("x.goes_from")+`, ev.id, coalesce(ev.reasons, array[]::text[])
+		       x.removed_at, `+daysLeft("x.goes_from")+`, ev.id, coalesce(ev.reasons, array[]::text[]), coalesce(ev.reason, '')
 		from (
 			select 'post' as kind, e.id, e.user_id, e.title, e.local_date::text as local_date,
 			       coalesce(e.comment, '') as note,
@@ -261,7 +261,7 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 		) x
 		join users u on u.id = x.user_id
 		left join lateral (
-			select me.id, me.reasons from moderation_events me
+			select me.id, me.reasons, me.reason from moderation_events me
 			where me.owner_id = x.user_id and me.item_id = x.id and me.action = 'removed'
 			order by me.created_at desc limit 1) ev on true
 		order by x.removed_at desc, x.id`)
@@ -274,7 +274,7 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 		var it admin.RemovedItem
 		var event *uuid.UUID
 		if err := scanAdminPerson(rows, &it.Owner, &it.Kind, &it.ID, &it.Title, &it.LocalDate, &it.Note, &it.PhotoKeys,
-			&it.Body, &it.PhotoKey, &it.RemovedAt, &it.DaysLeft, &event, &it.Reasons); err != nil {
+			&it.Body, &it.PhotoKey, &it.RemovedAt, &it.DaysLeft, &event, &it.Reasons, &it.Reason); err != nil {
 			return nil, err
 		}
 		if event != nil {
@@ -337,7 +337,8 @@ func parentRemoved(x string) string {
 	return "exists (select 1 from post_comments mdp where mdp.id = " + x + ".parent_id and mdp.removed_at is not null)"
 }
 
-// decision is one row of the decision log.
+// decision is one row of the decision log. reason is the reason the admin
+// gave at a removal (a report reason's key), "" on every other row.
 type decision struct {
 	owner          uuid.UUID
 	item, action   string
@@ -345,6 +346,7 @@ type decision struct {
 	itemID         uuid.UUID
 	snapshot       string
 	reasons        []string
+	reason         string
 	at             time.Time
 }
 
@@ -365,9 +367,9 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 		reasons = []string{}
 	}
 	_, err := tx.Exec(ctx, `
-		insert into moderation_events (owner_id, item, action, entry_id, comment_id, item_id, snapshot, reasons, at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.owner, d.item, d.action, d.entry, d.comment, d.itemID, d.snapshot, reasons, d.at)
+		insert into moderation_events (owner_id, item, action, entry_id, comment_id, item_id, snapshot, reasons, reason, at)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		d.owner, d.item, d.action, d.entry, d.comment, d.itemID, d.snapshot, reasons, d.reason, d.at)
 	return err
 }
 
@@ -498,8 +500,10 @@ func collect[T any](rows pgx.Rows, err error) ([]T, error) {
 // changes nothing: inside the grace that is admin.ErrAlreadyDone (the second
 // click of a double click), past it admin.ErrNotFound. The reasons kept in
 // the log are those of the reports this closes, each once, the most serious
-// first.
-func (r *AdminRepo) RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error {
+// first. The reason kept is the one the admin picked, or with none the most
+// serious of those reasons (none when it closes no report). A double click
+// returns before anything is logged, so the first click's reason stays.
+func (r *AdminRepo) RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, reason string, at, loggedAt time.Time) error {
 	m, ok := moderatedItems[kind]
 	if !ok {
 		return admin.ErrNotFound
@@ -538,6 +542,10 @@ func (r *AdminRepo) RemoveItem(ctx context.Context, kind string, target, person 
 	}
 	d := itemDecision(kind, admin.LogRemoved, person, target, entry, snapshot, loggedAt)
 	d.reasons = mostSeriousFirst(reasons)
+	d.reason = reason
+	if d.reason == "" && len(d.reasons) > 0 {
+		d.reason = d.reasons[0]
+	}
 	if err := d.log(ctx, tx); err != nil {
 		return err
 	}

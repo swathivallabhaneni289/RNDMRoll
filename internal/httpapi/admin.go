@@ -221,6 +221,9 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 		},
 		// ref is the short reference of a log row.
 		"ref": admin.Ref,
+		// reasonKeys are the report reasons, the most serious first: the
+		// Reason list beside Remove.
+		"reasonKeys": func() []string { return removeReasons },
 		"closed": func(resolution string) string {
 			switch resolution {
 			case admin.Dismissed:
@@ -927,10 +930,17 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 // photos after. The card names a report of it, whose target and owner come
 // from the database, so a card for someone else changes nothing. A second
 // Remove inside the grace (a double click) says what the first said, and
-// changes nothing.
+// changes nothing, its reason included.
+//
+// The form's reason is the one the admin picked from the report reasons
+// (developer, 2026-11-18: "answer them why we are removing it"), and the
+// owner's bell names it. A form with none takes the most serious reason of
+// the reports it closes; one with any other word is malformed and removes
+// nothing.
 func (h *AdminHandler) remove(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
-	if !ok || kind == admin.KindPerson {
+	reason := c.PostForm("reason")
+	if _, known := admin.ReasonWords[reason]; !ok || kind == admin.KindPerson || (reason != "" && !known) {
 		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}
@@ -944,7 +954,7 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		backTo(c, person, "gone")
 		return
 	}
-	err = h.repo.RemoveItem(ctx, kind, *target, owner, time.Now().UTC(), h.ownerNow(ctx, owner))
+	err = h.repo.RemoveItem(ctx, kind, *target, owner, reason, time.Now().UTC(), h.ownerNow(ctx, owner))
 	switch {
 	case err == nil, errors.Is(err, admin.ErrAlreadyDone):
 		backTo(c, person, "removed")

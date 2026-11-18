@@ -191,7 +191,8 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 
 // decisionsSQL is the decision log's rows about the viewer's ($1) own posts
 // and comments (removed, restored, shown again and hidden by reports; never
-// an account's) after $2, at most $3, newest first by the viewer's own clock.
+// an account's) after $2, at most $3, newest first by the viewer's own clock,
+// with the reason the admin gave at a removal ("" on every other row).
 // Each carries its post while that is in the database, whether the viewer
 // can see it now (postVisibleTo, the whole of social.CanView), and the
 // post's first photo, read only for a post that is back or hidden and that
@@ -199,11 +200,11 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 // check says so outright rather than trust a NULL to fall through the
 // fragments.
 var decisionsSQL = `
-	select x.id, x.item, x.action, x.at, x.snapshot, x.entry, x.visible,
+	select x.id, x.item, x.action, x.at, x.snapshot, x.reason, x.entry, x.visible,
 	  case when x.visible and x.item = 'post' and x.action <> 'removed' then
 	    (select ep.storage_key from entry_photos ep where ep.entry_id = x.entry order by ep.position limit 1) end
 	from (
-	  select me.id, me.item, me.action, me.at, me.snapshot, e.id as entry,
+	  select me.id, me.item, me.action, me.at, me.snapshot, me.reason, e.id as entry,
 	    (e.id is not null and ` + postVisibleTo("$1::uuid", "e") + `) as visible
 	  from moderation_events me
 	  left join entries e on e.id = me.entry_id
@@ -223,7 +224,7 @@ func scanDecisions(rows pgx.Rows) ([]notifications.Decision, error) {
 	out := []notifications.Decision{}
 	for rows.Next() {
 		var d notifications.Decision
-		if err := rows.Scan(&d.ID, &d.Item, &d.Action, &d.At, &d.Snapshot, &d.EntryID, &d.Visible, &d.PhotoKey); err != nil {
+		if err := rows.Scan(&d.ID, &d.Item, &d.Action, &d.At, &d.Snapshot, &d.Reason, &d.EntryID, &d.Visible, &d.PhotoKey); err != nil {
 			return nil, err
 		}
 		d.At = d.At.UTC()

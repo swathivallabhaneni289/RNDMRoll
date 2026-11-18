@@ -63,6 +63,9 @@ a.button { display: inline-block; }
 button:hover, a.button:hover { background: var(--soft); }
 button.strong { background: var(--ink); color: var(--page); }
 button.strong:hover { background: #333333; }
+/* Remove's Reason list: in the row with the buttons, and drawn like them. */
+label.reason { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 0 0; }
+label.reason select { font: inherit; padding: 6px 10px; border: 1px solid var(--ink); border-radius: 6px; background: var(--card); color: var(--ink); cursor: pointer; }
 
 /* Disabled accounts: one row each, with Enable right there. */
 .lede { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
@@ -100,4 +103,10 @@ code { font: 14px/1.5 ui-monospace, Menlo, monospace; }
   .strip img { width: 100%; height: auto; aspect-ratio: 4 / 5; }
   .row { grid-template-columns: 1fr; gap: 8px; }
   .actions .push { margin-left: 0; }
+  /* The Reason list takes a line of its own above Remove, and its longest
+     reason never pushes past the card: Remove's form may shrink to the row,
+     and the list with it. */
+  .actions form { min-width: 0; }
+  label.reason { display: flex; margin: 0 0 8px; }
+  label.reason select { flex: 1 1 auto; min-width: 0; max-width: 100%; }
 }

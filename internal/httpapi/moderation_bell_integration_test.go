@@ -125,7 +125,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 	item, body := w.bellItem(b, "post_removed:"+removal.ID)
 	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "actor": nil, "text": "Dune", "entry_id": nil,
 		"photo_url": "", "category_name": nil, "request_id": nil, "contact": bellContact, "ref": removal.ID[:8],
-		"unread": true, "at": instant(removal.At)})
+		"reason": "spam", "unread": true, "at": instant(removal.At)})
 	for _, s := range append([]string{post}, photos...) {
 		if strings.Contains(body, s) {
 			t.Fatalf("the bell names %s of the removed post: %s", s, body)
@@ -154,7 +154,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 	back := w.lastLogged(b)
 	item, _ = w.bellItem(b, "post_back:"+back.ID)
 	wantItem(t, "back", item, map[string]any{"kind": "post_back", "actor": nil, "text": "Dune", "entry_id": post,
-		"photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(back.At)}, "contact", "ref")
+		"photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(back.At)}, "contact", "ref", "reason")
 	if got := w.restoreAnyway("post", post, b); got != "/admin/removed?n=restored" {
 		t.Fatalf("bring it back again: %q", got)
 	}
@@ -176,12 +176,12 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 		t.Fatalf("the decisions in the bell: %v, want %v", got, want)
 	}
 	item, body = w.bellItem(b, "post_removed:"+again.ID)
-	if item["ref"] != again.ID[:8] || item["ref"] == removal.ID[:8] || item["entry_id"] != nil || item["photo_url"] != "" ||
-		item["unread"] != true || !w.dot(b) {
-		t.Fatalf("the second removal: %v, want its own ref %s, no post or photo, and unread", item, again.ID[:8])
+	if item["ref"] != again.ID[:8] || item["ref"] == removal.ID[:8] || item["reason"] != "hate" || item["entry_id"] != nil ||
+		item["photo_url"] != "" || item["unread"] != true || !w.dot(b) {
+		t.Fatalf("the second removal: %v, want its own ref %s and reason, no post or photo, and unread", item, again.ID[:8])
 	}
 	item, _ = w.bellItem(b, "post_back:"+back.ID)
-	wantItem(t, "back, once removed again", item, map[string]any{"entry_id": post, "photo_url": "", "unread": false}, "contact", "ref")
+	wantItem(t, "back, once removed again", item, map[string]any{"entry_id": post, "photo_url": "", "unread": false}, "contact", "ref", "reason")
 	for _, k := range photos {
 		if strings.Contains(body, k) {
 			t.Fatalf("the bell carries the removed post's photo %s: %s", k, body)
@@ -214,7 +214,8 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 	removal := w.lastLogged(cw)
 	item, body := w.bellItem(cw, "comment_removed:"+removal.ID)
 	wantItem(t, "the removal", item, map[string]any{"kind": "comment_removed", "actor": nil, "text": "Rude words",
-		"entry_id": nil, "photo_url": "", "contact": bellContact, "ref": removal.ID[:8], "unread": true, "at": instant(removal.At)})
+		"entry_id": nil, "photo_url": "", "contact": bellContact, "ref": removal.ID[:8], "reason": "harassment", "unread": true,
+		"at": instant(removal.At)})
 	if strings.Contains(body, post) || strings.Contains(body, comment) {
 		t.Fatalf("the writer's bell names the removed comment or its post: %s", body)
 	}
@@ -234,11 +235,11 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 	back := w.lastLogged(cw)
 	item, _ = w.bellItem(cw, "comment_back:"+back.ID)
 	wantItem(t, "back", item, map[string]any{"kind": "comment_back", "actor": nil, "text": "Rude words", "entry_id": post,
-		"photo_url": "", "unread": true, "at": instant(back.At)}, "contact", "ref")
+		"photo_url": "", "unread": true, "at": instant(back.At)}, "contact", "ref", "reason")
 
 	w.ok(v, http.MethodPost, "/v1/entries/"+post+"/archive", map[string]any{})
 	item, _ = w.bellItem(cw, "comment_back:"+back.ID)
-	wantItem(t, "back, on a post the writer can no longer see", item, map[string]any{"entry_id": nil, "photo_url": ""}, "contact", "ref")
+	wantItem(t, "back, on a post the writer can no longer see", item, map[string]any{"entry_id": nil, "photo_url": ""}, "contact", "ref", "reason")
 }
 
 // A Dismiss that shows a hidden post or comment again tells its owner it is
@@ -284,7 +285,7 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 	shown := w.lastLogged(b)
 	item, _ := w.bellItem(b, "post_back:"+shown.ID)
 	wantItem(t, "the post back", item, map[string]any{"kind": "post_back", "actor": nil, "text": "Dune", "entry_id": post,
-		"photo_url": fakePhotoLink(photos[0]), "unread": true}, "contact", "ref")
+		"photo_url": fakePhotoLink(photos[0]), "unread": true}, "contact", "ref", "reason")
 
 	if got := w.act("dismiss", "comment", cw, "Spam"); got != "/admin/people/"+cw.id+"?n=shownagain" {
 		t.Fatalf("dismiss the comment: %q", got)
@@ -292,7 +293,7 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 	shown = w.lastLogged(cw)
 	item, _ = w.bellItem(cw, "comment_back:"+shown.ID)
 	wantItem(t, "the comment back", item, map[string]any{"kind": "comment_back", "actor": nil, "text": "Rude words",
-		"entry_id": post, "photo_url": "", "unread": true}, "contact", "ref")
+		"entry_id": post, "photo_url": "", "unread": true}, "contact", "ref", "reason")
 
 	if got := w.act("dismiss", "comment", v, "Spam"); got != "/admin/people/"+v.id+"?n=dismissed" {
 		t.Fatalf("dismiss the comment never hidden: %q", got)
@@ -344,13 +345,13 @@ func TestModerationBellIntegration_TheOwnerHearsItIsHidden(t *testing.T) {
 	hid := w.lastLogged(cw)
 	item, _ := w.bellItem(cw, "comment_hidden:"+hid.ID)
 	wantItem(t, "the comment hidden", item, map[string]any{"kind": "comment_hidden", "actor": nil, "text": "Rude words",
-		"entry_id": post, "photo_url": "", "unread": true, "at": instant(hid.At)}, "contact", "ref")
+		"entry_id": post, "photo_url": "", "unread": true, "at": instant(hid.At)}, "contact", "ref", "reason")
 	w.clk.Advance(time.Minute)
 	w.ok(first[2], http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
 	hid = w.lastLogged(b)
 	item, _ = w.bellItem(b, "post_hidden:"+hid.ID)
 	wantItem(t, "the post hidden", item, map[string]any{"kind": "post_hidden", "actor": nil, "text": "Dune",
-		"entry_id": post, "photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(hid.At)}, "contact", "ref")
+		"entry_id": post, "photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(hid.At)}, "contact", "ref", "reason")
 	for _, p := range []feedPerson{b, cw} {
 		if !w.dot(p) {
 			t.Fatalf("hidden, and %s's dot is off", p.name)
@@ -425,7 +426,7 @@ func TestModerationBellIntegration_NoAddressAndNoAccountItems(t *testing.T) {
 		t.Fatalf("the decisions in the bell: %v, want only the removal", got)
 	}
 	item, _ := w.bellItem(b, "post_removed:"+removal.ID)
-	wantItem(t, "the removal with no address", item, map[string]any{"ref": removal.ID[:8], "entry_id": nil, "photo_url": ""}, "contact")
+	wantItem(t, "the removal with no address", item, map[string]any{"ref": removal.ID[:8], "reason": "spam", "entry_id": nil, "photo_url": ""}, "contact")
 
 	// The read itself leaves the account's rows out.
 	rows, err := postgres.NewNotificationsRepo(w.pool).Decisions(context.Background(), uuid.MustParse(b.id), time.Time{}, 50)

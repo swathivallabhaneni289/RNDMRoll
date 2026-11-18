@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,6 +57,7 @@ type fakeAdminRepo struct {
 	notOpen       map[uuid.UUID]bool
 
 	reads      int            // OpenReports, DisabledPeople, Person, Reports, Events, Removed and RemovedCount
+	targets    int            // ReportTarget
 	resolved   int            // DismissItem
 	dismissals []adminDismiss // each DismissItem call
 	removes    []adminAction  // each RemoveItem call
@@ -71,10 +73,12 @@ type adminDismiss struct {
 	loggedAt time.Time
 }
 
-// adminAction is one RemoveItem or RestoreItem call.
+// adminAction is one RemoveItem or RestoreItem call. reason is the one a
+// removal was given; a Bring it back has none.
 type adminAction struct {
 	kind           string
 	target, person uuid.UUID
+	reason         string
 	loggedAt       time.Time
 }
 
@@ -137,8 +141,8 @@ func (f *fakeAdminRepo) DismissItem(_ context.Context, kind string, ids []uuid.U
 	return closed, closed > 0 && f.shownAgain, nil
 }
 
-func (f *fakeAdminRepo) RemoveItem(_ context.Context, kind string, target, person uuid.UUID, _, loggedAt time.Time) error {
-	f.removes = append(f.removes, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
+func (f *fakeAdminRepo) RemoveItem(_ context.Context, kind string, target, person uuid.UUID, reason string, _, loggedAt time.Time) error {
+	f.removes = append(f.removes, adminAction{kind: kind, target: target, person: person, reason: reason, loggedAt: loggedAt})
 	return f.removeErr
 }
 
@@ -152,6 +156,7 @@ func (f *fakeAdminRepo) ResolvePerson(context.Context, uuid.UUID, string, time.T
 }
 
 func (f *fakeAdminRepo) ReportTarget(context.Context, string, uuid.UUID) (*uuid.UUID, uuid.UUID, error) {
+	f.targets++
 	return f.target, f.owner, nil
 }
 
@@ -351,8 +356,9 @@ func TestAdminRemove_IsOneCallThatDeletesNothing(t *testing.T) {
 			t.Fatalf("remove a %s: %q", kind, got)
 		}
 		got := r.repo.removes[i]
-		if got.kind != kind || got.target != target || got.person != owner || time.Since(got.loggedAt) < 0 || time.Since(got.loggedAt) > time.Minute {
-			t.Fatalf("the %s's removal: %+v, want the target, its owner and now (no clock of theirs)", kind, got)
+		if got.kind != kind || got.target != target || got.person != owner || got.reason != "" ||
+			time.Since(got.loggedAt) < 0 || time.Since(got.loggedAt) > time.Minute {
+			t.Fatalf("the %s's removal: %+v, want the target, its owner, no reason (none was sent) and now (no clock of theirs)", kind, got)
 		}
 	}
 	if len(r.photos.deletes()) != 0 {
@@ -393,6 +399,51 @@ func TestAdminRemove_IsOneCallThatDeletesNothing(t *testing.T) {
 	}
 	if len(r.repo.removes) != calls || len(r.photos.deletes()) != 0 {
 		t.Fatalf("%d removals and files %v after the refusals", len(r.repo.removes)-calls, r.photos.deletes())
+	}
+}
+
+// The reason the admin picked beside Remove goes to the one call as it came,
+// a report reason's key, and a form with none passes none (the store then
+// takes the most serious reason of the reports). Any other word is
+// malformed: the form goes back to the list before the report is read, and
+// removes nothing (developer, 2026-11-18).
+func TestAdminRemove_PassesOnTheReasonTheAdminPicked(t *testing.T) {
+	r := newAdminRig(t, true)
+	cookie := r.session(time.Now())
+	owner, target := uuid.New(), uuid.New()
+	r.repo.target, r.repo.owner = &target, owner
+	remove := func(form url.Values) string {
+		t.Helper()
+		form.Set("csrf", r.h.sign("csrf", cookie))
+		form.Set("kind", admin.KindPost)
+		form.Set("id", uuid.NewString())
+		form.Set("person", owner.String())
+		rec := adminDo(t, r.w, http.MethodPost, "/admin/reports/remove", cookie, form, "")
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("remove with %v: %d %s", form, rec.Code, rec.Body.String())
+		}
+		return rec.Header().Get("Location")
+	}
+	removed := "/admin/people/" + owner.String() + "?n=removed"
+	for _, reason := range append(slices.Sorted(maps.Keys(admin.ReasonWords)), "") {
+		calls := len(r.repo.removes)
+		if got := remove(url.Values{"reason": {reason}}); got != removed || len(r.repo.removes) != calls+1 || r.repo.removes[calls].reason != reason {
+			t.Fatalf("remove for %q: %q, calls %+v, want one with that reason", reason, got, r.repo.removes[calls:])
+		}
+	}
+	if got := remove(url.Values{}); got != removed || r.repo.removes[len(r.repo.removes)-1].reason != "" {
+		t.Fatalf("a form with no reason: %q, the call %+v, want it passed none", got, r.repo.removes[len(r.repo.removes)-1])
+	}
+
+	calls, targets := len(r.repo.removes), r.repo.targets
+	for _, bad := range []string{"rude", "Hate speech", "HATE", " spam", "spam "} {
+		if got := remove(url.Values{"reason": {bad}}); got != "/admin" {
+			t.Errorf("the reason %q: %q, want the list", bad, got)
+		}
+	}
+	if len(r.repo.removes) != calls || r.repo.targets != targets {
+		t.Fatalf("a reason that is not a report reason's key ran %d removals and read %d reports, want none",
+			len(r.repo.removes)-calls, r.repo.targets-targets)
 	}
 }
 
