@@ -9,11 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
 
 // The admin page's moderation on the database (migration 0020). Remove takes
@@ -724,6 +726,82 @@ func TestAdminModerationIntegration_ACommentUnderSomethingHiddenIsNotShownAgain(
 	}
 	if got := w.decisionIDs(cw); len(got) != 0 {
 		t.Fatalf("the comment came back with its post, and its writer heard: %v", got)
+	}
+}
+
+// closeAsDisabledQ is a Disable's own close of the post reports about the
+// person (AdminRepo.ResolvePerson).
+const closeAsDisabledQ = `update post_reports set resolved_at = $3, resolution = $2 where owner_id = $1 and resolved_at is null`
+
+// A Disable closes the reports about a person without waiting for a Dismiss
+// that holds their post, so its close can land between the Dismiss's read of
+// whether the post is hidden and the Dismiss's own close. That Dismiss
+// closed nothing, so it logs nothing and tells nobody the post is back. The
+// test holds the Disable's close in a transaction of its own, lets the
+// Dismiss wait on those reports, and then lets the close land.
+func TestAdminModerationIntegration_ADismissThatADisableBeatLogsNothing(t *testing.T) {
+	w := newAdminModWorld(t)
+	ctx := context.Background()
+	ps := w.people("dr_bob", "dr_r1", "dr_r2", "dr_r3")
+	b, r := ps[0], ps[1:]
+	for _, p := range r {
+		w.followAccepted(p, b)
+	}
+	const day = "2026-10-08"
+	post := w.post(b, day)
+	for _, p := range r {
+		w.post(p, day)
+	}
+	for _, p := range r {
+		w.ok(p, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
+	}
+	var ids []uuid.UUID
+	for _, s := range w.cardForm("dismiss", "post", b, "Spam")["id"] {
+		ids = append(ids, uuid.MustParse(s))
+	}
+	if len(ids) != 3 {
+		t.Fatalf("the card's ids: %v, want its three reports", ids)
+	}
+
+	tx, err := w.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	if tag, err := tx.Exec(ctx, closeAsDisabledQ, b.id, "disabled", time.Now().UTC()); err != nil || tag.RowsAffected() != 3 {
+		t.Fatalf("the Disable's close: %v, %v", tag, err)
+	}
+	type outcome struct {
+		closed int
+		shown  bool
+		err    error
+	}
+	dismissed := make(chan outcome, 1)
+	go func() {
+		closed, shown, err := postgres.NewAdminRepo(w.pool).DismissItem(ctx, "post", ids, uuid.MustParse(b.id), time.Now().UTC(), w.clk.NowFor(b.id))
+		dismissed <- outcome{closed, shown, err}
+	}()
+	waitForARowLock(t, w.pool)
+	var waiting string
+	if err := w.pool.QueryRow(ctx, `select query from pg_stat_activity
+		where datname = current_database() and wait_event_type = 'Lock'`).Scan(&waiting); err != nil ||
+		!strings.Contains(waiting, "update post_reports set resolved_at = $3, resolution = 'dismissed'") {
+		t.Fatalf("the statement waiting: %q (%v), want the Dismiss's close", waiting, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-dismissed; got.closed != 0 || got.shown || got.err != nil {
+		t.Fatalf("the Dismiss the Disable beat: %+v, want nothing closed and nothing shown again", got)
+	}
+	if got := loggedActions(t, w.pool, b.id); len(got) != 0 {
+		t.Fatalf("the Dismiss that closed nothing logged: %v", got)
+	}
+	if got := w.decisionIDs(b); len(got) != 0 {
+		t.Fatalf("the owner heard their post is back: %v", got)
+	}
+	if got := w.one(`select string_agg(resolution, ' ') from post_reports where entry_id = $1`, post); got != "disabled disabled disabled" {
+		t.Fatalf("the reports: %s, want all three closed by the Disable", got)
 	}
 }
 

@@ -379,11 +379,11 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 //     its foreign key (and keepReport for no key update), so none lands until
 //     this is done;
 //  2. which of them are hidden while under review is read;
-//  3. the reports are closed;
-//  4. each that was hidden, is not now and is not removed shows again for
-//     everyone but its reporters, and that is logged for its owner (the
-//     bell tells them). A comment shows again only when its post and the
-//     comment it answers are not hidden under review either.
+//  3. the reports are closed, and which of them this closed reports on;
+//  4. each of those that was hidden, is not now and is not removed shows
+//     again for everyone but its reporters, and that is logged for its
+//     owner (the bell tells them). A comment shows again only when its post
+//     and the comment it answers are not hidden under review either.
 //
 // So a card drawn before more reports came in follows the same rule: what
 // counts is whether it was hidden just before and is not just after. A
@@ -432,10 +432,22 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 	if err := rows.Err(); err != nil {
 		return 0, false, err
 	}
-	tag, err := tx.Exec(ctx, `update `+m.reports+` set resolved_at = $3, resolution = 'dismissed'
-		where id = any($1::uuid[]) and owner_id = $2 and resolved_at is null`, ids, person, at)
+	closed, err := collect[*uuid.UUID](tx.Query(ctx, `update `+m.reports+` set resolved_at = $3, resolution = 'dismissed'
+		where id = any($1::uuid[]) and owner_id = $2 and resolved_at is null
+		returning `+m.column, ids, person, at))
 	if err != nil {
 		return 0, false, err
+	}
+	// Only what this closed reports on can show again by it. A Disable
+	// closes the reports about the person (ResolvePerson) without waiting
+	// for the hold above, so it can close the card's reports between the
+	// read and this: the item is no longer hidden then, but this Dismiss
+	// closed nothing, and it says nothing.
+	closedOn := map[uuid.UUID]bool{}
+	for _, id := range closed {
+		if id != nil {
+			closedOn[*id] = true
+		}
 	}
 	rows, err = tx.Query(ctx, `
 		select x.id, x.user_id, x.`+m.snapshot+`, x.`+m.entry+`
@@ -453,7 +465,7 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 			rows.Close()
 			return 0, false, err
 		}
-		if before[id] {
+		if before[id] && closedOn[id] {
 			shown = append(shown, itemDecision(kind, admin.LogShownAgain, owner, id, entry, snapshot, loggedAt))
 		}
 	}
@@ -469,7 +481,7 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 	if err := tx.Commit(ctx); err != nil {
 		return 0, false, err
 	}
-	return int(tag.RowsAffected()), len(shown) > 0, nil
+	return len(closed), len(shown) > 0, nil
 }
 
 // collect reads a query's one column, closing its rows.
