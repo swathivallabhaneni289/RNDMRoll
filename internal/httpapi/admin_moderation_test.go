@@ -60,7 +60,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 			`<a href="` + fakePhotoLink("k1") + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink("k1") + `"`,
 			`<img class="thumb" src="` + fakePhotoLink("k2") + `"`,
 			restoreForm(admin.KindPost, post, mira),
-			`<a class="button push" href="/admin/people/` + mira.ID.String() + `">Open account</a>`,
+			`<a class="button push" href="/admin/people/` + mira.ID.String() + `?from=removed">Open profile</a>`,
 		},
 		commentCard: {
 			`<p class="reasons">Hate speech</p><p class="kind">Comment</p>`,
@@ -290,7 +290,7 @@ func TestAdminCards_RemovedBeforeShowsOnlyWhenThereIsSome(t *testing.T) {
 	r.repo.removedBefore = 3
 	page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+mira.ID.String(), cookie, nil, "").Body.String()
 	if strings.Count(page, "Removed before") != 1 ||
-		!strings.Contains(page, `</p></div>`+"\n"+`<p class="by">Joined <span class="when">`) ||
+		!strings.Contains(page, `</p></div></div>`+"\n"+`<p class="by">Joined <span class="when">`) ||
 		!strings.Contains(page, `</span></p>`+"\n"+`<p class="by">Removed before: 3</p>`) ||
 		strings.Index(page, "Removed before: 3") > strings.Index(page, "</section>") {
 		t.Fatalf("the person page, want Removed before: 3 once, in the profile card: %s", page)
@@ -302,8 +302,8 @@ func TestAdminCards_RemovedBeforeShowsOnlyWhenThereIsSome(t *testing.T) {
 }
 
 // The person page lists every decision in the log in the store's order (the
-// newest first), with when, on its own list ahead of the reports: no new
-// card, no form, nothing a card's check could match. A removal says its ref
+// newest first), with when, on its own list after the open reports and the
+// posts: no new card, no form, nothing a card's check could match. A removal says its ref
 // and the reason the admin gave (for one from before the Reason list, the
 // reports' reasons), and what was decided about shows as it was then,
 // escaped. With no decision, no History.
@@ -325,11 +325,12 @@ func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 	}
 	r.repo.reports = []admin.Report{{Kind: admin.KindPerson, ID: uuid.New(), Reporter: "tess_r", Reason: "spam", CreatedAt: cardAt(9, 0)}}
 	page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+person.String(), cookie, nil, "").Body.String()
-	start, end := strings.Index(page, "<h2>History</h2>"), strings.Index(page, "<h2>Open reports</h2>")
-	if start < 0 || end < start || strings.Index(page, "</section>") > start || strings.Count(page, `<article class="card`) != 1 {
-		t.Fatalf("want the History after the profile card and before the one report: %s", page)
+	start := strings.Index(page, "<h2>History</h2>")
+	if start < 0 || strings.Index(page, "<h2>Posts</h2>") > start || strings.Index(page, `<article class="card`) > start ||
+		strings.Count(page, `<article class="card`) != 1 || !strings.Contains(page[start:], "</ol>\n") {
+		t.Fatalf("want the History after the one open report and the posts: %s", page)
 	}
-	log := page[start:end]
+	log := page[start : start+strings.Index(page[start:], "</ol>\n")+len("</ol>\n")]
 	want := `<h2>History</h2>` + "\n" + `<ol class="history">` +
 		`<li><p><strong>Post removed</strong> <span class="muted when">` + adminWhen(cardAt(16, 0)) + `</span></p><p class="by">Ref: 9c8d7e6f · Hate speech</p><p class="text quote">Pho</p></li>` +
 		`<li><p><strong>Account enabled</strong> <span class="muted when">` + adminWhen(cardAt(15, 0)) + `</span></p></li>` +

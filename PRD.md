@@ -530,6 +530,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A message for people whose comments were under a removed post. Those comments just go with it.
   - A typed note with a removal. The reason is one of the 7 report reasons.
   - The reason on the Spin page's removed line and in the second-look email.
+  - Remove on a post nobody reported. The posts on a person page are for looking only.
 
 ### 8.11 The admin page
 
@@ -537,7 +538,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 |---|---|---|---|
 | ADM-01 | A web page at /admin, for admin accounts only | P0 | Built, off unless admin emails are set |
 | ADM-02 | A Reports tab with one card per reported post, comment or account, a Disabled tab and a Removed tab | P0 | Built |
-| ADM-03 | A person page with their details, their reports, open ones first (up to 200), and the history of decisions about them, only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
+| ADM-03 | A person page laid out like a profile, with their details, their reports, open ones first (up to 200), their posts while a report about the account is open or it is disabled, and the history of decisions about them, only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
 | ADM-04 | Dismiss a card's reports, remove a post or comment, bring it back within 30 days, disable or enable an account | P0 | Built |
 | ADM-05 | A record of which admin took each action | P2 | Later (the decision log says what was decided and when, not by whom) |
 | ADM-06 | An email to the admins about new reports | P1 | Built, sent for real once email is on |
@@ -547,7 +548,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ADM-01 who is an admin.** Admins are the accounts listed in the server's settings when it starts. Their email can't be used to sign up.
 - **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours, or until their password changes.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
-- **ADM-02 the Reports tab.** Every report on the same post, comment or account is one card: why it was reported, who reported it (up to three usernames, then how many more), when, the thing itself and whose it is, with Remove, Dismiss and Open account.
+- **ADM-02 the Reports tab.** Every report on the same post, comment or account is one card: why it was reported, who reported it (up to three usernames, then how many more), when, the thing itself and whose it is, with Remove, Dismiss and Open profile.
+  - The cards sit side by side, as many as fit across the screen, and one under another on a phone. The Removed tab and the person page lay out their cards the same way.
   - A post or comment card that is hidden under review (SAFE-05) has a "Hidden" tag. This is not the author's Hide (CMT-04).
   - Order: hidden cards first, then violence and nudity, then bullying and hate, then the rest; within those, the most reported, then the longest waiting.
   - The owner row says "Removed before: N" when N is more than 0.
@@ -559,10 +561,13 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The person: name, username, profile photo, bio and join date.
   - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone (deleted by its author, or 30 days after a removal) shows only the title it had when it was reported, and says so.
   - A comment report: the comment's text from when it was reported, and its photo.
+  - The person page reads like a profile. A back arrow on top goes to the tab it was opened from (Reports, Disabled or Removed). Then come their photo, name, username, bio and join date with Disable or Enable, the open cards, their posts, the History and the closed cards.
   - The person page puts open cards first. Closed ones fold away under "Closed reports", one card for each action that closed them.
+  - Their posts show while a report about the account is open, or while it's disabled, since Disable closes those reports and Enable is decided on them. The newest 60 show, newest first, each with every photo (the first one large), its category and day, its title and text, and a tag when it's removed, hidden or reported. Otherwise the page says when they show.
   - The person page's History lists every decision about the person, newest first: removed, brought back, shown again, disabled and enabled, each with when. Their profile card says "Removed before: N" once, when N is more than 0.
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment), disabled accounts and people with a decision in the log. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
+  - Their posts show only while a report about the account is open or it's disabled. A report about one post or comment shows only that one. Archived posts, and posts past the 30 days after a removal, never show.
   - The page never shows an email address or a birthday.
 - **ADM-04 dismissing.** Dismiss closes every report on the card, and only those: a report that came in after the page was drawn stays open.
   - If the post or comment was hidden (SAFE-05) and no longer is, it shows again for everyone except the people who reported it. Its owner gets "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment).
@@ -964,6 +969,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 17 | Remove keeps a post or comment for 30 days, with Bring it back; every decision goes in a log; second looks are by email | "We need to have this stored somewhere": the log is what lets me answer an email | Removed content stays 30 more days; no appeal button in the app |
 | Nov 18 | The owner is told in the bell when 3 reports hide their post or comment | The owner should know it's under review, and "Sorry, we got that wrong" shouldn't come out of nowhere | One more bell item, in the bell only |
 | Nov 18 | Remove asks for a reason, and the owner's message names it | "It would be reasonable if we actually answer them why we are removing it" | One more choice at Remove; the reason is one of the 7 report reasons, with no typed note |
+| Nov 18 | The person page reads like a profile, with a back arrow and their posts while their account is reported or disabled; the admin page uses the width of the screen | "When there's like an open account thing, I should be able to see that person's profile page" | Admins see more of a reported account than the reported posts |
 
 ## 18. Out of scope and future ideas
 

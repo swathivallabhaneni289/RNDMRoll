@@ -89,7 +89,7 @@ export const TERMS: LegalDocument = {
       heading: 'Who sees your posts',
       blocks: [
         paragraph(
-          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.',
+          'Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and the posts of an account while a report about it is open. Someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.',
         ),
         paragraph(
           'People who are signed in can find your account by your name or username, so friends can find you and send a request. What they see before you accept is described in the Privacy Policy.',
@@ -176,7 +176,7 @@ export const PRIVACY: LegalDocument = {
   effective: PRIVACY_EFFECTIVE,
   intro: [
     'This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").',
-    "In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and when someone loses access to a photo, a link they already have stops working within an hour, not at once.",
+    "In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and the posts of a reported account, and when someone loses access to a photo, a link they already have stops working within an hour, not at once.",
   ],
   sections: [
     {
@@ -245,7 +245,7 @@ export const PRIVACY: LegalDocument = {
           'Your posts show the time you posted, in your own time zone, and say Late when you posted late.',
           'Archived posts and their photos are hidden from everyone else in the app. A photo link someone already had stops working within an hour.',
           "If you block someone, they can't find you or see your profile, posts or comments, and you don't see their posts or comments. Photo links they already had stop working within an hour. You still see their name, username and profile photo in your Blocked accounts list and on their page, so you can unblock them.",
-          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. They can see a post or comment they removed, with its photos, for 30 days, and the record of decisions about an account, including how many of its posts and comments were removed before. They can open only accounts that someone reported, that are disabled, or that have such a record.",
+          "Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. While a report about an account is open, or while it is disabled, they can also see its posts and their photos, but not the ones its owner archived. They can see a post or comment they removed, with its photos, for 30 days, and the record of decisions about an account, including how many of its posts and comments were removed before. They can open only accounts that someone reported, that are disabled, or that have such a record.",
           "We run RNDMRoll's server, so we can reach everything it stores, in our database and in our photo storage at Supabase. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.",
         ),
         paragraph('Other users and admins never see your email address or your birthday.'),

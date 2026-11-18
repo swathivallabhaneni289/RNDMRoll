@@ -515,6 +515,29 @@ type adminPage struct {
 	Removed []admin.RemovedItem
 	// History is the person's decision log, newest first (their page).
 	History []admin.Event
+	// Back and BackLabel are where their page's back arrow goes and that
+	// tab's name (backArrow). Posts are their posts when admin.ShowsPosts
+	// (PostsShown), the newest admin.PostsLimit, and PostsCapped says they
+	// have more.
+	Back        string
+	BackLabel   string
+	PostsShown  bool
+	Posts       []admin.Post
+	PostsCapped bool
+}
+
+// backArrow is where the back arrow on a person's page goes, and that tab's
+// name: the tab whose Open profile link opened it (?from=removed or
+// disabled), else Reports. Like backTo, only these fixed paths come out,
+// never the parameter.
+func backArrow(from string) (path, label string) {
+	switch from {
+	case "removed":
+		return "/admin/removed", "Removed"
+	case "disabled":
+		return "/admin/disabled", "Disabled"
+	}
+	return "/admin", "Reports"
 }
 
 func (h *AdminHandler) render(c *gin.Context, name string, p adminPage) {
@@ -789,8 +812,21 @@ func (h *AdminHandler) person(c *gin.Context) {
 		return
 	}
 	open, closed := groupReports(p, reports)
-	h.render(c, "person", adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open, Closed: closed,
-		History: history, Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed})
+	page := adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open, Closed: closed,
+		History: history, Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed}
+	page.Back, page.BackLabel = backArrow(c.Query("from"))
+	if admin.ShowsPosts(p, reports) {
+		posts, err := h.repo.Posts(ctx, id)
+		if err != nil {
+			h.fail(c, err)
+			return
+		}
+		if len(posts) > admin.PostsLimit {
+			posts, page.PostsCapped = posts[:admin.PostsLimit], true
+		}
+		page.PostsShown, page.Posts = true, posts
+	}
+	h.render(c, "person", page)
 }
 
 func (h *AdminHandler) fail(c *gin.Context, err error) {

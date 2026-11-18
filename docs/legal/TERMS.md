@@ -33,7 +33,7 @@ Only post things you have the right to share. A photo of your own dinner is fine
 
 ## Who sees your posts
 
-Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.
+Every account on RNDMRoll is private, and every follow is a request you can accept or decline. In the app, your posts are shown only to you and to the people whose request you accepted, and they see a day of your posts only after posting their own for that day. Admins can see a post or comment that someone reports, and the posts of an account while a report about it is open. Someone who reports a post of yours stops seeing it. Photo links stop working within an hour, as the Privacy Policy explains.
 
 People who are signed in can find your account by your name or username, so friends can find you and send a request. What they see before you accept is described in the Privacy Policy.
 

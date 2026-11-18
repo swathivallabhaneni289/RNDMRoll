@@ -55,8 +55,13 @@ type fakeAdminRepo struct {
 	events        []admin.Event
 	removedBefore int
 	notOpen       map[uuid.UUID]bool
+	// posts are what Posts answers, and disabledAt is the DisabledAt of the
+	// person Person answers.
+	posts      []admin.Post
+	disabledAt *time.Time
 
 	reads      int            // OpenReports, DisabledPeople, Person, Reports, Events, Removed and RemovedCount
+	postReads  int            // Posts
 	targets    int            // ReportTarget
 	resolved   int            // DismissItem
 	dismissals []adminDismiss // each DismissItem call
@@ -103,7 +108,12 @@ func (f *fakeAdminRepo) DisabledPeople(context.Context) ([]admin.Person, error) 
 
 func (f *fakeAdminRepo) Person(_ context.Context, id uuid.UUID) (admin.Person, error) {
 	f.reads++
-	return admin.Person{ID: id, Username: "someone", RemovedBefore: f.removedBefore}, nil
+	return admin.Person{ID: id, Username: "someone", RemovedBefore: f.removedBefore, DisabledAt: f.disabledAt}, nil
+}
+
+func (f *fakeAdminRepo) Posts(context.Context, uuid.UUID) ([]admin.Post, error) {
+	f.postReads++
+	return f.posts, nil
 }
 
 func (f *fakeAdminRepo) Reports(context.Context, uuid.UUID) ([]admin.Report, error) {

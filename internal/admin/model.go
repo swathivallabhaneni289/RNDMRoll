@@ -113,6 +113,9 @@ func Urgent(reason string) bool {
 // many.
 const OpenReportsLimit = 500
 
+// PostsLimit bounds the posts a person's page shows: the newest this many.
+const PostsLimit = 60
+
 // Person is the reported or disabled person as the admin sees them. It has
 // no email address: the page never shows one.
 type Person struct {
@@ -174,6 +177,42 @@ type Report struct {
 type OpenReport struct {
 	Owner Person
 	Report
+}
+
+// Post is one of a person's posts as their page shows it, as it is now.
+type Post struct {
+	ID    uuid.UUID
+	Title string
+	// Category is the wheel category its spin landed on, LocalDate its day
+	// (YYYY-MM-DD), Note its text ("" for none) and PhotoKeys every photo's
+	// key, in order.
+	Category  string
+	LocalDate string
+	Note      string
+	PhotoKeys []string
+	// Removed says an admin removed it inside RemovalGrace; Hidden says it
+	// is hidden while under review now (never with Removed); Reported says
+	// a report on it is open.
+	Removed  bool
+	Hidden   bool
+	Reported bool
+}
+
+// ShowsPosts reports whether a person's page shows their posts: while a
+// report about the account itself is open, or while the account is disabled,
+// as Disable closes those reports and Enable is decided on what they posted
+// (developer, 2026-11-18). A report about one post or comment shows that one
+// only, on its card.
+func ShowsPosts(p Person, reports []Report) bool {
+	if p.DisabledAt != nil {
+		return true
+	}
+	for _, r := range reports {
+		if r.Kind == KindPerson && r.ResolvedAt == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // RemovedItem is a post or comment an admin removed inside RemovalGrace, as
@@ -248,6 +287,11 @@ type Repository interface {
 	Reports(ctx context.Context, person uuid.UUID) ([]Report, error)
 	// Events is the person's decision log, newest first.
 	Events(ctx context.Context, person uuid.UUID) ([]Event, error)
+	// Posts is the person's posts, newest first: at most PostsLimit+1 of
+	// them, so the page can tell when there are more than it shows. A post
+	// they archived is left out, as only they see it, and so is one removed
+	// past RemovalGrace. The page reads them only when ShowsPosts.
+	Posts(ctx context.Context, person uuid.UUID) ([]Post, error)
 	// Removed is every post and comment removed inside RemovalGrace, the
 	// most recently removed first, and RemovedCount how many there are.
 	Removed(ctx context.Context) ([]RemovedItem, error)

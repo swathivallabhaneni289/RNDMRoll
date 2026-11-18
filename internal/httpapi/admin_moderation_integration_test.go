@@ -181,6 +181,21 @@ func (w *adminModWorld) lastLogged(owner feedPerson) loggedRow {
 	return r
 }
 
+// historyOf is the History on a person page: its heading to the end of
+// its list.
+func historyOf(t *testing.T, page string) string {
+	t.Helper()
+	start := strings.Index(page, "<h2>History</h2>")
+	if start < 0 {
+		t.Fatalf("no History: %s", page)
+	}
+	end := strings.Index(page[start:], "</ol>")
+	if end < 0 {
+		t.Fatalf("the History has no end: %s", page)
+	}
+	return page[start : start+end+len("</ol>")]
+}
+
 // people signs up one finished account per username.
 func (w *adminModWorld) people(usernames ...string) []feedPerson {
 	w.t.Helper()
@@ -276,7 +291,7 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 		` · 30 days left · Ref: ` + removal.ID[:8] + `</p>`,
 		`<a href="` + fakePhotoLink(photos[0]) + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink(photos[0]) + `"`,
 		`<strong>@am_bob</strong>`,
-		`<a class="button push" href="/admin/people/` + b.id + `">Open account</a>`,
+		`<a class="button push" href="/admin/people/` + b.id + `?from=removed">Open profile</a>`,
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the Removed tab's card lacks %q: %s", want, card)
@@ -451,7 +466,7 @@ func TestAdminModerationIntegration_RemoveKeepsTheReasonTheAdminGave(t *testing.
 	item, _ := w.bellItem(b, "post_removed:"+removal.ID)
 	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "reason": "hate", "ref": removal.ID[:8], "contact": bellContact})
 	page := w.page("/admin/people/" + b.id)
-	history := page[strings.Index(page, "<h2>History</h2>"):strings.Index(page, "<h2>Open reports</h2>")]
+	history := historyOf(t, page)
 	if !strings.Contains(history, `<p class="by">Ref: `+removal.ID[:8]+` · Hate speech</p><p class="text quote">Dune</p>`) ||
 		strings.Contains(history, "Spam") {
 		t.Fatalf("the History, want the removal with Hate speech alone: %s", history)
@@ -1092,7 +1107,7 @@ func TestAdminModerationIntegration_RemovedBeforeCountsWhatWasNotBroughtBack(t *
 		strings.Index(page, "Removed before: 2") > strings.Index(page, "</section>") {
 		t.Fatalf("B's page, want Removed before: 2 once, in the profile card: %s", page)
 	}
-	log := page[strings.Index(page, "<h2>History</h2>"):strings.Index(page, "<h2>Open reports</h2>")]
+	log := historyOf(t, page)
 	var labels []string
 	for _, part := range strings.Split(log, "<strong>")[1:] {
 		labels = append(labels, part[:strings.Index(part, "</strong>")])
@@ -1167,5 +1182,87 @@ func TestAdminModerationIntegration_TheReportThatHidesItIsUrgent(t *testing.T) {
 	report(r[3], "comments", comment, "violence")
 	if got := w.heard.hiding(); !slices.Equal(got, []string{"hate", "nudity", "violence"}) {
 		t.Fatalf("the comment's hiding report: %v, want the fourth, with one reporter gone", got)
+	}
+}
+
+// The person page shows a person's posts from the database while a report
+// about their account is open, or while it is disabled, as they are now: the
+// newest first, each with its spin's category, its day and every photo in
+// order, and a tag when it is reported, hidden or removed. Never one they
+// archived. A report about one post shows none of the others, and a Dismiss
+// of the account report hides them again (developer, 2026-11-18).
+func TestAdminModerationIntegration_AnAccountReportShowsTheirPosts(t *testing.T) {
+	w := newAdminModWorld(t)
+	ps := w.people("ap_bob", "ap_r1", "ap_r2", "ap_r3")
+	b, r1, r2, r3 := ps[0], ps[1], ps[2], ps[3]
+	for _, p := range []feedPerson{r1, r2, r3} {
+		w.followAccepted(p, b)
+	}
+	older := w.post(b, "2026-10-06")
+	archived := w.post(b, "2026-10-07")
+	const day = "2026-10-08"
+	newest := w.post(b, day)
+	for _, p := range []feedPerson{r1, r2, r3} {
+		w.post(p, day)
+	}
+	w.ok(b, http.MethodPost, "/v1/entries/"+archived+"/archive", nil)
+	category := func(entry string) string {
+		return w.one(`select s.category_name from entries e join spins s on s.id = e.spin_id where e.id = $1`, entry)
+	}
+	// shown is each post on B's page as its day line and its tag ("" for
+	// none), the page's order.
+	shown := func() []string {
+		t.Helper()
+		var out []string
+		for _, post := range postsOf(t, w.page("/admin/people/"+b.id)) {
+			line := post[strings.Index(post, `<p class="day">`):]
+			line = line[len(`<p class="day">`):strings.Index(line, "</p>")]
+			if at := strings.Index(post, `<span class="tag">`); at >= 0 {
+				tag := post[at+len(`<span class="tag">`):]
+				line += " " + tag[:strings.Index(tag, "</span>")]
+			}
+			out = append(out, line)
+		}
+		return out
+	}
+
+	w.ok(r1, http.MethodPost, "/v1/posts/"+newest+"/report", map[string]any{"reason": "spam"})
+	if page := w.page("/admin/people/" + b.id); postsOf(t, page) != nil || !strings.Contains(page, "Their posts show here while a report about the account is open") {
+		t.Fatalf("a post report alone shows their posts: %s", page)
+	}
+
+	w.ok(r2, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "impersonation"})
+	newestLine, olderLine := category(newest)+" · Oct 8, 2026", category(older)+" · Oct 6, 2026"
+	if got := shown(); !slices.Equal(got, []string{newestLine + " Reported", olderLine}) {
+		t.Fatalf("with the account reported: %v, want the newest (reported), then the older, never the archived", got)
+	}
+	cover := postsOf(t, w.page("/admin/people/"+b.id))[0]
+	for _, key := range postPhotoKeys(t, w.pool, newest) {
+		if !strings.Contains(cover, `<img src="`+fakePhotoLink(key)+`"`) {
+			t.Fatalf("the newest post lacks its photo %s: %s", key, cover)
+		}
+	}
+
+	w.ok(r2, http.MethodPost, "/v1/posts/"+newest+"/report", map[string]any{"reason": "spam"})
+	w.ok(r3, http.MethodPost, "/v1/posts/"+newest+"/report", map[string]any{"reason": "spam"})
+	if got := shown(); !slices.Equal(got, []string{newestLine + " Hidden", olderLine}) {
+		t.Fatalf("with 3 reports on the newest: %v", got)
+	}
+	w.act("remove", "post", b, "Spam")
+	if got := shown(); !slices.Equal(got, []string{newestLine + " Removed", olderLine}) {
+		t.Fatalf("with the newest removed: %v", got)
+	}
+
+	w.act("dismiss", "person", b, "Pretending to be someone else")
+	if got := shown(); got != nil {
+		t.Fatalf("after the account report's Dismiss: %v, want none", got)
+	}
+	page := w.page("/admin/people/" + b.id)
+	if rec := adminDo(t, w.feedWorld, http.MethodPost, "/admin/people/"+b.id+"/disable", w.cookie,
+		url.Values{"csrf": {csrfOf(t, page)}}, ""); rec.Header().Get("Location") != "/admin/people/"+b.id+"?n=disabled" {
+		t.Fatalf("disable: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got := shown(); !slices.Equal(got, []string{newestLine + " Removed", olderLine}) {
+		t.Fatalf("disabled: %v", got)
 	}
 }

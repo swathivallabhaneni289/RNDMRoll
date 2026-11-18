@@ -1,7 +1,7 @@
 :root { --ink: #141414; --muted: #6b6b6b; --line: #dedbd5; --page: #f6f4f0; --card: #ffffff; --soft: #ecebe7; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
-main { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 24px 64px; }
 header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 16px; }
 h1 { font: 600 24px/1.2 Georgia, serif; margin: 0; }
 h2 { font: 600 18px/1.3 Georgia, serif; margin: 32px 0 12px; }
@@ -20,8 +20,12 @@ p, .note, .text { text-wrap: pretty; }
 .tabs .n, details.past .n { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tabs a.on .n { color: var(--line); }
 
-/* One card per reported post, comment or account. */
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+/* One card per reported post, comment or account. Cards sit side by side,
+   as many as fit at 380px or more, one on a phone. Each card is the
+   container its own narrow rules (at the end) are measured against. */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 16px; align-items: start; margin-bottom: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; container-type: inline-size; }
+.cards .card { margin-bottom: 0; }
 .card p { margin: 0; }
 .card.closed { opacity: 0.75; }
 .why { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -48,10 +52,34 @@ p, .note, .text { text-wrap: pretty; }
 .who a { display: block; flex: none; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; display: block; background: var(--soft); }
 .avatar.blank { display: inline-flex; align-items: center; justify-content: center; font: 600 15px/1 Georgia, serif; color: var(--muted); }
-.body .avatar, .profile .avatar { width: 56px; height: 56px; }
-.body .avatar.blank, .profile .avatar.blank { font-size: 22px; }
+.body .avatar { width: 56px; height: 56px; }
+.body .avatar.blank { font-size: 22px; }
+
+/* A person's page: the back arrow, then their profile, as the app draws one. */
+.back { margin: 0 0 16px; }
+.profile { padding: 24px; }
+.face { display: flex; align-items: center; gap: 16px; }
+.face p { margin: 0; }
+.face a { display: block; flex: none; }
+.face .avatar { width: 88px; height: 88px; }
+.face .avatar.blank { font-size: 34px; }
+.face .name { font: 600 26px/1.2 Georgia, serif; }
+.profile .quote { margin-top: 16px; }
 .profile .by { margin-top: 10px; }
 .profile .status { margin-top: 6px; }
+
+/* Their posts, newest first: the first photo large, the rest small. */
+.posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: 16px; align-items: start; }
+.post { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.post p { margin: 0; }
+.post h3 { font-size: 17px; }
+.post .cover { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.post .cover a { display: block; }
+.post .cover a:first-child { flex: 1 1 100%; }
+.post .cover img { display: block; width: 44px; height: 55px; object-fit: cover; border-radius: 4px; background: var(--soft); }
+.post .cover a:first-child img { width: 100%; height: auto; aspect-ratio: 4 / 5; }
+.post .text { font-size: 14px; }
+.post .flag { margin-top: 8px; }
 .tag { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--ink); border-radius: 4px; padding: 0 6px; }
 
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
@@ -94,18 +122,26 @@ input[type=email], input[type=password] { width: 100%; max-width: 360px; padding
 code { font: 14px/1.5 ui-monospace, Menlo, monospace; }
 
 @media (max-width: 600px) {
+  main { padding: 24px 16px 64px; }
   /* The three tabs share the width of a phone. */
   .tabs { display: flex; }
   .tabs a { flex: 1 1 0; min-width: 0; padding: 6px 4px; text-align: center; font-size: 14px; white-space: nowrap; }
   .tabs .n { margin-left: 4px; }
   .card { padding: 14px 16px; }
+  .row { grid-template-columns: 1fr; gap: 8px; }
+  .posts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .face .avatar { width: 64px; height: 64px; }
+  .face .name { font-size: 22px; }
+}
+
+/* A narrow card, on a phone or beside others: two photos a row, and the
+   Reason list takes a line of its own above Remove, its longest reason never
+   pushing past the card (Remove's form may shrink to the row, and the list
+   with it). */
+@container (max-width: 480px) {
   .strip a { flex: 0 0 calc(50% - 4px); }
   .strip img { width: 100%; height: auto; aspect-ratio: 4 / 5; }
-  .row { grid-template-columns: 1fr; gap: 8px; }
   .actions .push { margin-left: 0; }
-  /* The Reason list takes a line of its own above Remove, and its longest
-     reason never pushes past the card: Remove's form may shrink to the row,
-     and the list with it. */
   .actions form { min-width: 0; }
   label.reason { display: flex; margin: 0 0 8px; }
   label.reason select { flex: 1 1 auto; min-width: 0; max-width: 100%; }

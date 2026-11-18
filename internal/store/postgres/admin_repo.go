@@ -236,6 +236,38 @@ func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event
 	return out, rows.Err()
 }
 
+// Posts implements admin.Repository: the person's posts as they are now,
+// newest first, with whether each is removed (inside the grace: one past it
+// is left out), hidden while under review or reported, by the same fragments
+// as the cards. An archived post is left out, as only its owner sees it.
+func (r *AdminRepo) Posts(ctx context.Context, person uuid.UUID) ([]admin.Post, error) {
+	post := moderatedItems[admin.KindPost]
+	rows, err := r.pool.Query(ctx, `
+		select e.id, e.title, coalesce(s.category_name, ''), e.local_date::text, coalesce(e.comment, ''),
+		       coalesce((select array_agg(ph.storage_key order by ph.position) from entry_photos ph
+		                 where ph.entry_id = e.id), array[]::text[]),
+		       `+post.removed("e")+`, not `+post.removed("e")+` and `+postUnderReview("e")+`,
+		       exists (select 1 from post_reports pr where pr.entry_id = e.id and pr.resolved_at is null)
+		from entries e left join spins s on s.id = e.spin_id
+		where e.user_id = $1 and e.archived_at is null and (e.removed_at is null or `+insideRemovalGrace("e.removed_at")+`)
+		order by e.local_date desc, e.created_at desc, e.id
+		limit $2`, person, admin.PostsLimit+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []admin.Post{}
+	for rows.Next() {
+		var p admin.Post
+		if err := rows.Scan(&p.ID, &p.Title, &p.Category, &p.LocalDate, &p.Note, &p.PhotoKeys,
+			&p.Removed, &p.Hidden, &p.Reported); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // Removed implements admin.Repository. Each item carries its newest removal
 // in the log, for its reasons, the reason the admin gave and its Ref; an
 // item removed with no log row (straight in the database) has none of them.

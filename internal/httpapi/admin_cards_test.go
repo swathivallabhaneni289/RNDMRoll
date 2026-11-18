@@ -80,7 +80,7 @@ func TestReportedBy_NamesUpToThree(t *testing.T) {
 }
 
 // The Reports tab: a card for each reported thing across people, the most
-// urgent first, with the owner and Open account; the counts in the tabs and
+// urgent first, with the owner and Open profile; the counts in the tabs and
 // in the window title; and a refresh each minute.
 func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 	r := newAdminRig(t, true)
@@ -112,7 +112,7 @@ func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 		`class="on" aria-current="page">Reports<span class="n">2</span>`,
 		`Disabled<span class="n">1</span>`,
 		`<strong>@mira_cooks</strong>`,
-		`<a class="button push" href="/admin/people/` + mira.ID.String() + `">Open account</a>`,
+		`<a class="button push" href="/admin/people/` + mira.ID.String() + `">Open profile</a>`,
 		// The card's Dismiss closes both of its reports, then comes back here.
 		`<input type="hidden" name="id" value="` + spam1.String() + `"><input type="hidden" name="id" value="` + spam2.String() + `">`,
 		`<input type="hidden" name="from" value="list"><button>Dismiss</button>`,

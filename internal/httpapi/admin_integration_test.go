@@ -364,7 +364,7 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), `delete from user_reports where reported_id = $1`, gone.id); err != nil {
 		t.Fatal(err)
 	}
-	if list := adminDo(t, w, http.MethodGet, "/admin/disabled", cookie, nil, "").Body.String(); !strings.Contains(list, `href="/admin/people/`+gone.id+`"`) {
+	if list := adminDo(t, w, http.MethodGet, "/admin/disabled", cookie, nil, "").Body.String(); !strings.Contains(list, `href="/admin/people/`+gone.id+`?from=disabled"`) {
 		t.Fatalf("the Disabled tab lacks them: %s", list)
 	}
 	if page := adminDo(t, w, http.MethodGet, "/admin/people/"+gone.id, cookie, nil, ""); page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Enable account") {
@@ -405,13 +405,18 @@ func adminPost(w *feedWorld, p feedPerson, date string, keys ...string) string {
 var reasonList = regexp.MustCompile(`(?s)<label class="reason">.*?</label>`)
 
 // adminReportOf returns the one report card on an admin page that holds
-// mark: from its opening tag to the next card's (or the page's end). The
+// mark: from its opening tag to its closing one. The
 // mark is looked for outside the card's Reason list, which is the same on
 // every card, so a reason's words find the card reported for it.
 func adminReportOf(t *testing.T, page, mark string) string {
 	t.Helper()
 	var found []string
 	for _, part := range strings.Split(page, `<article class="card`)[1:] {
+		// A card ends at its </article>: what follows it on a person page
+		// (their posts, the History) is not the card's.
+		if end := strings.Index(part, "</article>"); end >= 0 {
+			part = part[:end+len("</article>")]
+		}
 		if strings.Contains(reasonList.ReplaceAllString(part, ""), mark) {
 			found = append(found, part)
 		}
