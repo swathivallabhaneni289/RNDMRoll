@@ -242,7 +242,9 @@ type Repository interface {
 	// about person, and says how many it closed. For a post or a comment it
 	// holds the item meanwhile, so no report lands in between, and when the
 	// item was hidden while under review before and is not after (and is
-	// not removed), it logs that it shows again: shownAgain.
+	// not removed, and for a comment its post and the comment it answers are
+	// neither hidden under review nor removed), it logs that it shows
+	// again: shownAgain.
 	DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (closed int, shownAgain bool, err error)
 	// RemoveItem removes person's post or comment (kind KindPost or
 	// KindComment): it is gone for everyone, its owner too, from now on the

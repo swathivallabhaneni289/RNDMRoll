@@ -304,16 +304,25 @@ type moderatedItem struct {
 	// removed is true when an admin's removal keeps it from everyone: it
 	// was removed, or for a comment its post or the comment it answers was.
 	removed func(alias string) string
+	// aboveUnderReview is true when what it sits under is hidden while under
+	// review, which keeps it from everyone but that one's owner: for a
+	// comment, its post or the comment it answers. A post sits under nothing.
+	aboveUnderReview func(alias string) string
 }
 
 var moderatedItems = map[string]moderatedItem{
 	admin.KindPost: {table: "entries", reports: "post_reports", column: "entry_id", snapshot: "title", entry: "id",
-		underReview: postUnderReview,
-		removed:     func(x string) string { return "(" + x + ".removed_at is not null)" }},
+		underReview:      postUnderReview,
+		removed:          func(x string) string { return "(" + x + ".removed_at is not null)" },
+		aboveUnderReview: func(string) string { return "false" }},
 	admin.KindComment: {table: "post_comments", reports: "comment_reports", column: "comment_id", snapshot: "body", entry: "entry_id",
 		underReview: commentUnderReview,
 		removed: func(x string) string {
 			return "(" + x + ".removed_at is not null or " + postOfCommentRemoved(x) + " or " + parentRemoved(x) + ")"
+		},
+		aboveUnderReview: func(x string) string {
+			return "(exists (select 1 from entries mue where mue.id = " + x + ".entry_id and " + postUnderReview("mue") + ")" +
+				" or exists (select 1 from post_comments mup where mup.id = " + x + ".parent_id and " + commentUnderReview("mup") + "))"
 		}},
 }
 
@@ -373,10 +382,13 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 //  3. the reports are closed;
 //  4. each that was hidden, is not now and is not removed shows again for
 //     everyone but its reporters, and that is logged for its owner (the
-//     bell tells them).
+//     bell tells them). A comment shows again only when its post and the
+//     comment it answers are not hidden under review either.
 //
 // So a card drawn before more reports came in follows the same rule: what
-// counts is whether it was hidden just before and is not just after.
+// counts is whether it was hidden just before and is not just after. A
+// comment that stayed hidden under its post shows again, unlogged, when the
+// post's own reports are dismissed later: its writer is not told.
 func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (int, bool, error) {
 	if kind == admin.KindPerson {
 		tag, err := r.pool.Exec(ctx, `update user_reports set resolved_at = $3, resolution = 'dismissed'
@@ -428,7 +440,8 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 	rows, err = tx.Query(ctx, `
 		select x.id, x.user_id, x.`+m.snapshot+`, x.`+m.entry+`
 		from `+m.table+` x
-		where x.id = any($1::uuid[]) and not `+m.underReview("x")+` and not `+m.removed("x"), targets)
+		where x.id = any($1::uuid[]) and not `+m.underReview("x")+` and not `+m.removed("x")+`
+		  and not `+m.aboveUnderReview("x"), targets)
 	if err != nil {
 		return 0, false, err
 	}

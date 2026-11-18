@@ -633,6 +633,71 @@ func TestAdminModerationIntegration_DismissShowsAHiddenItemAgainOnce(t *testing.
 	}
 }
 
+// A comment counts as shown again only when nothing above it still keeps it
+// from everyone. Dismissing its reports while its post, or the comment it
+// answers, is hidden under review closes them and says only that: nothing is
+// logged and its writer hears nothing. Once the post's own reports are
+// dismissed, the comment shows again with it, and only the post's owner is
+// told (accepted, 2026-11-18).
+func TestAdminModerationIntegration_ACommentUnderSomethingHiddenIsNotShownAgain(t *testing.T) {
+	w := newAdminModWorld(t)
+	owners := w.people("ah_bob", "ah_olga")
+	b, o := owners[0], owners[1]
+	others := w.people("ah_wren", "ah_quin", "ah_rory", "ah_vera", "ah_r1", "ah_r2", "ah_r3")
+	cw, qw, rw, v, r := others[0], others[1], others[2], others[3], others[4:]
+	for _, p := range others {
+		w.followAccepted(p, b)
+		w.followAccepted(p, o)
+	}
+	const day = "2026-10-08"
+	post, oPost := w.post(b, day), w.post(o, day)
+	for _, p := range others {
+		w.post(p, day)
+	}
+	comment := w.reply(cw, post, "Rude words", "")["id"].(string)
+	parent := w.reply(qw, oPost, "First words", "")["id"].(string)
+	reply := w.reply(rw, oPost, "Other words", parent)["id"].(string)
+	// A reporter loses what they report and all under it, so each reports
+	// from the bottom up.
+	for _, p := range r {
+		for _, rep := range [][3]string{{"comments", comment, "spam"}, {"posts", post, "hate"},
+			{"comments", reply, "harassment"}, {"comments", parent, "other"}} {
+			w.ok(p, http.MethodPost, "/v1/"+rep[0]+"/"+rep[1]+"/report", map[string]any{"reason": rep[2]})
+		}
+	}
+	if w.sees(v, post) {
+		t.Fatal("three reports did not hide the post")
+	}
+
+	for _, d := range []struct {
+		writer feedPerson
+		mark   string
+	}{{cw, "Spam"}, {rw, "Bullying or harassment"}} {
+		if got := w.act("dismiss", "comment", d.writer, d.mark); got != "/admin/people/"+d.writer.id+"?n=dismissed" {
+			t.Fatalf("dismiss the comment of %s: %q", d.writer.name, got)
+		}
+		if got := loggedActions(t, w.pool, d.writer.id); len(got) != 0 {
+			t.Fatalf("the comment of %s, still under something hidden, logged: %v", d.writer.name, got)
+		}
+		if got := w.decisionIDs(d.writer); len(got) != 0 {
+			t.Fatalf("%s heard their comment is back: %v", d.writer.name, got)
+		}
+	}
+	if ids, _ := w.commentIDs(v, oPost); len(ids) != 0 {
+		t.Fatalf("the reply under the hidden comment shows: %v", ids)
+	}
+
+	if got := w.act("dismiss", "post", b, "Hate speech"); got != "/admin/people/"+b.id+"?n=shownagain" {
+		t.Fatalf("dismiss the post: %q", got)
+	}
+	if ids, _ := w.commentIDs(v, post); !slices.Equal(ids, []string{comment}) {
+		t.Fatalf("with the post back, its comments: %v", ids)
+	}
+	if got := w.decisionIDs(cw); len(got) != 0 {
+		t.Fatalf("the comment came back with its post, and its writer heard: %v", got)
+	}
+}
+
 // Disable and Enable are logged, each once per change of the account and
 // on its own clock, and its page's History lists them, the newest first.
 func TestAdminModerationIntegration_DisableAndEnableAreLogged(t *testing.T) {
