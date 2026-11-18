@@ -6,7 +6,7 @@ Effective November 17, 2026
 
 This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").
 
-In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see posts and comments that are reported, and the posts of a reported account, and when someone loses access to a photo, a link they already have stops working within an hour, not at once.
+In short: we collect what the app needs to work, the app shows your posts only to you and the followers you accept, and we don't sell your information. RNDMRoll has no ads and no analytics or tracking tools. Two limits are explained below: admins can see what is reported, including a reported account's posts, and when someone loses access to a photo, a link they already have stops working within an hour, not at once.
 
 ## What you give us
 
