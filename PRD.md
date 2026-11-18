@@ -890,6 +890,8 @@ Some were found while writing this document; others were already in the planning
 16. **The words outlive a removal.** After the 30 days, a removed post's title or a comment's text stays in its reports until the reporter's or the owner's account is deleted, and in the decision log until the owner's account is deleted.
 17. **The address in the second-look email is a server setting.** It comes from the server's CONTACT_EMAIL, apart from the address in the Terms and the Privacy Policy, so the two must be set to match. Until it is set, the removal message still shows, but tapping it does nothing.
 18. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
+19. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
+20. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
 
 ### Open questions
 
