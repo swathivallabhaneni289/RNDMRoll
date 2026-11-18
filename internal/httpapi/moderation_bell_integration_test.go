@@ -144,6 +144,12 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 	item, _ = w.bellItem(b, "post_back:"+back.ID)
 	wantItem(t, "back", item, map[string]any{"kind": "post_back", "actor": nil, "text": "Dune", "entry_id": post,
 		"photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(back.At)}, "contact", "ref")
+	if got := w.restoreAnyway("post", post, b); got != "/admin/removed?n=restored" {
+		t.Fatalf("bring it back again: %q", got)
+	}
+	if got, want := w.decisionIDs(b), []string{"post_back:" + back.ID, "post_removed:" + removal.ID}; !slices.Equal(got, want) {
+		t.Fatalf("after a second Bring it back, the decisions in the bell: %v, want %v", got, want)
+	}
 	if item, _ = w.bellItem(b, "post_removed:"+removal.ID); item["unread"] != false || !w.dot(b) {
 		t.Fatalf("after Bring it back: the removal %v, the dot %v; want the removal read and the dot lit", item, w.dot(b))
 	}

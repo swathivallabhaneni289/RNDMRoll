@@ -923,7 +923,9 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 // the removal (RemoveItem). Nothing is deleted: Bring it back on the Removed
 // tab undoes it for admin.RemovalGrace, and the purge deletes it and its
 // photos after. The card names a report of it, whose target and owner come
-// from the database, so a card for someone else changes nothing.
+// from the database, so a card for someone else changes nothing. A second
+// Remove inside the grace (a double click) says what the first said, and
+// changes nothing.
 func (h *AdminHandler) remove(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -941,26 +943,26 @@ func (h *AdminHandler) remove(c *gin.Context) {
 		return
 	}
 	err = h.repo.RemoveItem(ctx, kind, *target, owner, time.Now().UTC(), h.ownerNow(ctx, owner))
-	if errors.Is(err, admin.ErrNotFound) {
-		// Deleted by its owner meanwhile, or removed already: this changes
-		// nothing.
+	switch {
+	case err == nil, errors.Is(err, admin.ErrAlreadyDone):
+		backTo(c, person, "removed")
+	case errors.Is(err, admin.ErrNotFound):
+		// Deleted by its owner meanwhile, or removed past the grace: this
+		// changes nothing.
 		backTo(c, person, "gone")
-		return
-	}
-	if err != nil {
+	default:
 		log.Printf("httpapi: admin remove %s: %v", kind, err)
 		backTo(c, person, "failed")
-		return
 	}
-	backTo(c, person, "removed")
 }
 
 // restore is Bring it back on the Removed tab: the post or comment shows
 // again, and its owner is told, while it is inside admin.RemovalGrace. Its
 // reports stay closed, so its reporters still never see it. A comment whose
 // post or the comment it answers is still removed stays removed, and the
-// notice says which to bring back first. Past the grace, back already or
-// deleted, it is gone.
+// notice says which to bring back first. A second Bring it back of one it
+// brought back (a double click) says what the first said, and changes
+// nothing. Past the grace, never removed or deleted, it is gone.
 func (h *AdminHandler) restore(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -970,17 +972,17 @@ func (h *AdminHandler) restore(c *gin.Context) {
 	ctx := c.Request.Context()
 	err := h.repo.RestoreItem(ctx, kind, id, person, h.ownerNow(ctx, person))
 	switch {
+	case err == nil, errors.Is(err, admin.ErrAlreadyDone):
+		backTo(c, person, "restored")
 	case errors.Is(err, admin.ErrPostRemoved):
 		backTo(c, person, "postfirst")
 	case errors.Is(err, admin.ErrParentRemoved):
 		backTo(c, person, "parentfirst")
 	case errors.Is(err, admin.ErrNotFound):
 		backTo(c, person, "gone")
-	case err != nil:
+	default:
 		log.Printf("httpapi: admin restore %s: %v", kind, err)
 		backTo(c, person, "failed")
-	default:
-		backTo(c, person, "restored")
 	}
 }
 

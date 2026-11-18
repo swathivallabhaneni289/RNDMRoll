@@ -366,9 +366,13 @@ func TestAdminRemove_IsOneCallThatDeletesNothing(t *testing.T) {
 		t.Fatalf("logged at %v, want the owner's own %v", got, adminRigNow)
 	}
 
+	r.repo.removeErr = admin.ErrAlreadyDone
+	if got := remove(admin.KindPost, owner.String()); got != back("removed") {
+		t.Fatalf("removed already, inside the 30 days (a double click): %q", got)
+	}
 	r.repo.removeErr = admin.ErrNotFound
 	if got := remove(admin.KindPost, owner.String()); got != back("gone") {
-		t.Fatalf("removed already: %q", got)
+		t.Fatalf("deleted, or removed past the 30 days: %q", got)
 	}
 	r.repo.removeErr = errors.New("conn closed")
 	if got := remove(admin.KindComment, owner.String()); got != back("failed") {

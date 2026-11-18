@@ -482,7 +482,9 @@ func collect[T any](rows pgx.Rows, err error) ([]T, error) {
 
 // RemoveItem implements admin.Repository, in one transaction. The post or
 // comment is held for update first, as DismissItem holds it, so a report of
-// it that is under way lands before and is closed here. The reasons kept in
+// it that is under way lands before and is closed here. One removed already
+// changes nothing: inside the grace that is admin.ErrAlreadyDone (the second
+// click of a double click), past it admin.ErrNotFound. The reasons kept in
 // the log are those of the reports this closes, each once, the most serious
 // first.
 func (r *AdminRepo) RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error {
@@ -498,13 +500,21 @@ func (r *AdminRepo) RemoveItem(ctx context.Context, kind string, target, person 
 
 	var snapshot string
 	var entry uuid.UUID
-	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+` from `+m.table+`
-		where id = $1 and user_id = $2 and removed_at is null for update`, target, person).Scan(&snapshot, &entry)
+	var removed, inside bool
+	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null,
+		removed_at is not null and `+insideRemovalGrace("removed_at")+`
+		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &removed, &inside)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.ErrNotFound
 	}
 	if err != nil {
 		return err
+	}
+	switch {
+	case inside:
+		return admin.ErrAlreadyDone
+	case removed:
+		return admin.ErrNotFound
 	}
 	if _, err := tx.Exec(ctx, `update `+m.table+` set removed_at = now() where id = $1`, target); err != nil {
 		return err
@@ -581,17 +591,22 @@ func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person
 
 // whyNotBack says why Bring it back brought nothing back: a comment inside
 // the grace whose post (admin.ErrPostRemoved, named first) or the comment it
-// answers (admin.ErrParentRemoved) is still removed, or else
-// admin.ErrNotFound.
+// answers (admin.ErrParentRemoved) is still removed; one that is back, with
+// a Bring it back as the newest decision about it (admin.ErrAlreadyDone: the
+// second click of a double click); or else admin.ErrNotFound. Newest is by
+// created_at, the database's clock, as adminPersonColumns reads the log.
 func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, target, person uuid.UUID) error {
 	post, parent := "false", "false"
 	if kind == admin.KindComment {
 		post, parent = postOfCommentRemoved("x"), parentRemoved("x")
 	}
-	var inside, postGone, parentGone bool
+	var inside, postGone, parentGone, back bool
 	err := tx.QueryRow(ctx, `
-		select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+`, `+post+`, `+parent+`
-		from `+m.table+` x where x.id = $1 and x.user_id = $2`, target, person).Scan(&inside, &postGone, &parentGone)
+		select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+`, `+post+`, `+parent+`,
+		       x.removed_at is null and coalesce((select me.action = '`+admin.LogRestored+`' from moderation_events me
+		                                          where me.owner_id = x.user_id and me.item_id = x.id
+		                                          order by me.created_at desc limit 1), false)
+		from `+m.table+` x where x.id = $1 and x.user_id = $2`, target, person).Scan(&inside, &postGone, &parentGone, &back)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return admin.ErrNotFound
@@ -601,6 +616,8 @@ func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, ta
 		return admin.ErrPostRemoved
 	case inside && parentGone:
 		return admin.ErrParentRemoved
+	case back:
+		return admin.ErrAlreadyDone
 	}
 	return admin.ErrNotFound
 }

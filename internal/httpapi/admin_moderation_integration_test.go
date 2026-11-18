@@ -189,9 +189,10 @@ func (w *adminModWorld) people(usernames ...string) []feedPerson {
 // the rows, the photos and their files stay. Every report open on it is
 // closed as removed and nothing else, and the removal is logged once, on
 // the owner's own clock, with the title or the text and the reasons of the
-// reports it closed, the most serious first. The same Remove again is gone
-// and logs nothing more. The Removed tab lists both, the newest first, with
-// the days left, the ref of the removal and the photos signed.
+// reports it closed, the most serious first. The same Remove again (a double
+// click) says what the first said, and logs and tells nothing more. The
+// Removed tab lists both, the newest first, with the days left, the ref of
+// the removal and the photos signed.
 func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *testing.T) {
 	w := newAdminModWorld(t)
 	ps := w.people("am_bob", "am_vera", "am_wren", "am_rhea", "am_remy")
@@ -249,12 +250,15 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 		t.Fatalf("the removal logged: %+v, want the post, its title, hate then spam, at %v", removal, ownersNow)
 	}
 
-	// The same Remove again: gone, nothing more logged.
-	if got := w.send("remove", form); got != "/admin/people/"+b.id+"?n=gone" {
+	// The same Remove again: removed, nothing more logged or told.
+	if got := w.send("remove", form); got != "/admin/people/"+b.id+"?n=removed" {
 		t.Fatalf("Remove again: %q", got)
 	}
 	if got := loggedActions(t, w.pool, b.id); len(got) != 1 {
 		t.Fatalf("Remove again logged more: %v", got)
+	}
+	if got := w.decisionIDs(b); !slices.Equal(got, []string{"post_removed:" + removal.ID}) {
+		t.Fatalf("Remove again reached the owner's bell: %v", got)
 	}
 
 	tab := w.page("/admin/removed")
@@ -307,9 +311,11 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 
 // Bring it back on the Removed tab shows a removed post or comment again for
 // its owner and everyone, never for its reporter, logs it, and takes it off
-// the tab and off Removed before. Removed again, it stays on the tab up to
-// the 30 days on the database's clock; at them it is off the tab and Bring
-// it back is refused, logging nothing.
+// the tab and off Removed before. The same again (a double click) says what
+// the first said and logs nothing; for something never removed, for someone
+// else, or for something decided about since, it is gone. Removed again, it
+// stays on the tab up to the 30 days on the database's clock; at them it is
+// off the tab, and Bring it back and Remove are refused, logging nothing.
 func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	w := newAdminModWorld(t)
 	ps := w.people("ab_bob", "ab_vera", "ab_wren", "ab_rhea", "ab_remy", "ab_rory")
@@ -327,6 +333,9 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	w.ok(r3, http.MethodPost, "/v1/comments/"+comment+"/report", map[string]any{"reason": "harassment"})
 	ownersNow := w.clk.NowFor(b.id)
 
+	if got := w.restoreAnyway("post", post, b); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on a post never removed: %q", got)
+	}
 	if got := w.act("remove", "post", b, "Spam"); got != "/admin/people/"+b.id+"?n=removed" {
 		t.Fatalf("remove: %q", got)
 	}
@@ -339,6 +348,12 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	}
 	if got := w.restore("post", post, b); got != "/admin/removed?n=restored" {
 		t.Fatalf("bring it back: %q", got)
+	}
+	if got := w.restoreAnyway("post", post, b); got != "/admin/removed?n=restored" {
+		t.Fatalf("Bring it back again: %q", got)
+	}
+	if got := w.restoreAnyway("post", post, v); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back again for the wrong owner: %q", got)
 	}
 	if tab := w.page("/admin/removed?n=restored"); !strings.Contains(tab, "Brought back. They were told.") ||
 		!strings.Contains(tab, "Nothing removed in the last 30 days.") || !strings.Contains(tab, `Removed<span class="n">0</span>`) {
@@ -383,11 +398,22 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	if got := w.lastLogged(cw); got.Entry != post || got.Comment != comment || got.Snapshot != "Rude words" {
 		t.Fatalf("the comment brought back, logged: %+v", got)
 	}
+	// Again, it is back. Once something else was decided about it since (a
+	// Dismiss that showed it again, straight in the log), it is gone.
+	if got := w.restoreAnyway("comment", comment, cw); got != "/admin/removed?n=restored" || len(loggedActions(t, w.pool, cw.id)) != 2 {
+		t.Fatalf("Bring the comment back again: %q, log %v", got, loggedActions(t, w.pool, cw.id))
+	}
+	w.exec(`insert into moderation_events (owner_id, item, action, entry_id, comment_id, item_id, at)
+		values ($1, 'comment', 'shown_again', $2, $3, $3, now())`, cw.id, post, comment)
+	if got := w.restoreAnyway("comment", comment, cw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on a comment shown again since: %q", got)
+	}
 
 	// Removed again on a new report, then moved to an hour short of the 30
 	// days, then to the 30 days.
 	w.ok(r2, http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "hate"})
-	if got := w.act("remove", "post", b, "Hate speech"); got != "/admin/people/"+b.id+"?n=removed" {
+	removeAgain := w.cardForm("remove", "post", b, "Hate speech")
+	if got := w.send("remove", removeAgain); got != "/admin/people/"+b.id+"?n=removed" {
 		t.Fatalf("remove again: %q", got)
 	}
 	if page := w.page("/admin/people/" + b.id); strings.Count(page, "Removed before: 1") != 1 {
@@ -412,8 +438,11 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	if w.sees(b, post) || w.one(`select (removed_at is not null)::text from entries where id = $1`, post) != "true" {
 		t.Fatal("a refused Bring it back brought it back")
 	}
+	if got := w.send("remove", removeAgain); got != "/admin/people/"+b.id+"?n=gone" {
+		t.Fatalf("Remove again at the 30 days: %q", got)
+	}
 	if got := loggedActions(t, w.pool, b.id); len(got) != 3 {
-		t.Fatalf("a refused Bring it back logged: %v", got)
+		t.Fatalf("a refused Bring it back or Remove logged: %v", got)
 	}
 }
 

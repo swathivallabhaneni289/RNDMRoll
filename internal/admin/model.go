@@ -15,9 +15,15 @@ import (
 
 // ErrNotFound is a person, report, post or comment that is not there. For an
 // action on a post or comment it is also one the action cannot reach: Remove
-// finds it removed already, and Bring it back finds it brought back already
-// or past RemovalGrace.
+// finds it removed past RemovalGrace, and Bring it back finds it past the
+// grace, or not removed (unless ErrAlreadyDone).
 var ErrNotFound = errors.New("admin: not found")
+
+// ErrAlreadyDone is a Remove or a Bring it back that finds its own work done,
+// as the second click of a double click does: the post or comment is removed
+// already inside RemovalGrace, or back already by a Bring it back (the newest
+// decision about it). Nothing changes and nothing is logged.
+var ErrAlreadyDone = errors.New("admin: already done")
 
 // ErrPostRemoved and ErrParentRemoved are a Bring it back of a comment that
 // would still be gone for everyone: its post, or the comment it answers, is
@@ -251,13 +257,15 @@ type Repository interface {
 	// database's clock. Every report still open on it is closed as Removed,
 	// and the removal is logged with its title or text and the reasons of
 	// those reports. Nothing is deleted: the purge does that after
-	// RemovalGrace. ErrNotFound when it is not there or removed already.
+	// RemovalGrace. ErrAlreadyDone when it is removed already inside the
+	// grace, ErrNotFound when it is not there or removed past it.
 	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, at, loggedAt time.Time) error
 	// RestoreItem brings person's removed post or comment back while it is
 	// inside RemovalGrace, and logs it. Its reports stay closed. A comment
 	// whose post or the comment it answers is still removed stays removed:
-	// ErrPostRemoved or ErrParentRemoved. ErrNotFound when it is not
-	// removed, or past the grace.
+	// ErrPostRemoved or ErrParentRemoved. ErrAlreadyDone when a Bring it back
+	// brought it back already, ErrNotFound when it is not removed otherwise,
+	// or past the grace.
 	RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error

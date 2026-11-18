@@ -153,9 +153,13 @@ func TestAdminRestore_BringsItBackAndGoesBackToTheTab(t *testing.T) {
 		t.Fatalf("from no tab: %q, want the person's page", got)
 	}
 
+	r.repo.restoreErr = admin.ErrAlreadyDone
+	if got := restore(form(admin.KindPost)); got != "/admin/removed?n=restored" {
+		t.Fatalf("brought back already (a double click): %q", got)
+	}
 	r.repo.restoreErr = admin.ErrNotFound
 	if got := restore(form(admin.KindPost)); got != "/admin/removed?n=gone" {
-		t.Fatalf("past the 30 days or back already: %q", got)
+		t.Fatalf("past the 30 days, never removed or deleted: %q", got)
 	}
 	for err, words := range map[error]string{admin.ErrPostRemoved: "Bring back its post first.",
 		admin.ErrParentRemoved: "Bring back the comment it answers first."} {
