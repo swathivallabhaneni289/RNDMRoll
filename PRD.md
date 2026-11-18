@@ -564,14 +564,14 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The page never shows an email address or a birthday.
 - **ADM-04 dismissing.** Dismiss closes every report on the card, and only those: a report that came in after the page was drawn stays open.
   - If the post or comment was hidden (SAFE-05) and no longer is, it shows again for everyone except the people who reported it. Its owner gets "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment).
-  - Nothing is sent when it was never hidden, or when newer reports keep it hidden.
+  - Nothing is sent when it was never hidden, when newer reports keep it hidden, or when a comment's post or the comment it answers is still hidden or removed.
 - **ADM-04 removing.**
   - Remove hides the post or comment from everyone at once, its owner included, and closes its reports. Nothing is deleted yet: no files and no rows.
   - After 30 days an hourly job deletes it for good with its photos, and with the comments or replies under it and their photos.
   - The owner gets "We removed your post. It broke our rules." ("your comment" for a comment) in the bell.
   - A removed post still counts for its day, like a post its author deleted: the posted day, the late flag, the week toward the bonus, the streak and the Board's unlock stay, and no new post is allowed that day. The Spin page says "We removed this post. The day still counts."
   - Edit, archive, delete, hide and delete comment answer 404 on a removed post or comment.
-- **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back.
+- **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back, and a comment can't come back while its post or the comment it answers is still removed.
 - **ADM-04 disabling.**
   - Disabling closes the person's reports and ends every session at once.
   - It also deletes their reset code and push tokens.
