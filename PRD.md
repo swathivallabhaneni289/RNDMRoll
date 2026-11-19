@@ -525,7 +525,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SAFE-05 second looks.** Tapping a removal in the bell opens "Ask for a second look": "Your post:" with its title ("Your comment:" with its words), a box for "Tell us why it should come back", Add photos and Send.
   - Only the owner can ask, once per removal and within its 30 days. A comment whose post was also removed can ask too.
   - The words are needed: 1 to 500 characters once trimmed. Up to 3 photos from the camera or the library, screenshots too. They upload at Send.
-  - A problem says what is wrong in a few words, such as "Tell us why first.", "Keep it under 500 characters.", "You already asked for a second look." or "It's too late to ask. It's been 30 days."
+  - A problem says what is wrong in a few words, such as "Tell us why first.", "At most 500 characters.", "You already asked for a second look." or "It's too late to ask. It's been 30 days."
   - After Send the app says "Sent. We'll take another look." and the line in the bell has "Second look asked." under it. The owner doesn't see their words or photos again.
   - The admins get an email (ADM-06), and the Removed tab lists the request first (ADM-02). Bring it back or Keep it removed answers it (ADM-04), and the bell says which.
   - The words stay with the decision log while the owner's account exists. The photos are deleted 30 days after the removal, whatever the answer (section 12).

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -31,7 +31,7 @@ import {
   isSecondLookAsked,
   type RemovalKind,
 } from '@/lib/notifications/moderation';
-import { chooseSecondLook } from '@/lib/notifications/secondLookItem';
+import { chooseSecondLook, onSecondLookSent } from '@/lib/notifications/secondLookItem';
 import { setUnread } from '@/lib/notifications/unreadStore';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -169,10 +169,12 @@ function Thumb({ item }: { item: NotificationItem }) {
  * A tap opens your own entry page (a comment, or your post back after an admin's look), the post a
  * reply or your comment that is back is on (your entry page when it is yours), People on Followers
  * (a new follower) or Following (an accepted request), or the Spin page (your spin is open, a bonus
- * spin). A removed post or comment opens the page to ask for a second look (developer, 2026-11-19)
- * until one is asked; then "Second look asked." shows under its line, and a tap on it, or on a kept
- * one, does nothing. The list is read again when the page comes back into view, so the state is
- * the server's. No bottom bar, so the page keeps all four safe-area edges.
+ * spin). A removed post or comment opens the page to ask for a second look (developer, 2026-11-19),
+ * one page per tap, while one can be asked; once one is, "Second look asked." shows under its line,
+ * and a tap on it, on one that can't be asked any more, or on a kept one, does nothing. The list is
+ * read again when the page comes back into view, and again when a second look sent after the
+ * person came back here goes through, so the state is the server's. No bottom bar, so the page
+ * keeps all four safe-area edges.
  */
 export function NotificationsScreen() {
   const router = useRouter();
@@ -184,6 +186,11 @@ export function NotificationsScreen() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
   const itemsRef = useRef<NotificationItem[] | null>(null);
+  // Only the newest read is used. Back from a second look's page while it sent, the read begun then
+  // can answer after the one asked for once the send went through, and would undo its line.
+  const seqRef = useRef(0);
+  // A tap that opens a page: another tap does nothing until a reply's read answers, or until this
+  // page is back in view after a removal's page.
   const openingRef = useRef(false);
   const busyRef = useRef(false);
 
@@ -205,9 +212,11 @@ export function NotificationsScreen() {
 
   const load = useCallback(async () => {
     if (userId === null) return;
+    const seq = ++seqRef.current;
     void loadRelations();
     try {
       const answer = await getNotifications();
+      if (seq !== seqRef.current) return;
       // The dots the page opened with stay while it is open, even after the seen call below.
       const shown = new Set((itemsRef.current ?? []).filter((item) => item.unread).map((item) => item.id));
       const next = answer.items.map((item) => (shown.has(item.id) ? { ...item, unread: true } : item));
@@ -222,7 +231,7 @@ export function NotificationsScreen() {
         // Nothing is shown; the next open tries again.
       }
     } catch (err) {
-      if (itemsRef.current !== null) return;
+      if (seq !== seqRef.current || itemsRef.current !== null) return;
       setFailure(err instanceof ApiError && err.code === 'network_unavailable' ? 'network' : 'generic');
       setStatus('offline');
     }
@@ -230,9 +239,14 @@ export function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Back in view: a removal's line opens its page again.
+      openingRef.current = false;
       void load();
     }, [load])
   );
+
+  // A second look that went through after the person came back here: its line says so.
+  useEffect(() => onSecondLookSent(() => void load()), [load]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -277,9 +291,12 @@ export function NotificationsScreen() {
 
   /**
    * The page to ask for a second look at a removal, in this stack. The route carries only the
-   * removal's id; the item waits for the page in lib/notifications/secondLookItem.ts.
+   * removal's id; the item waits for the page in lib/notifications/secondLookItem.ts. One tap opens
+   * one page: a second tap before it shows does nothing, until this page is back in view.
    */
   function openSecondLook(item: NotificationItem & { kind: RemovalKind }) {
+    if (openingRef.current) return;
+    openingRef.current = true;
     chooseSecondLook({ removal: item.removal, kind: item.kind, text: item.text ?? '' });
     router.push({
       pathname: '/(app)/today/second-look',
@@ -299,7 +316,7 @@ export function NotificationsScreen() {
       return;
     }
     if (item.kind === 'post_removed' || item.kind === 'comment_removed') {
-      // Only until a second look is asked: then, and once it is answered, a tap does nothing.
+      // Only while one can be asked: once asked, answered or closed, a tap does nothing.
       if (canAskSecondLook(item)) openSecondLook(item);
       return;
     }

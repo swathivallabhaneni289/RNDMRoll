@@ -65,8 +65,9 @@ export type NotificationItem = {
   removal: string;
   /**
    * On `post_removed` and `comment_removed`: the second look on it, 'asked', 'kept' or 'restored'
-   * ('restored' also when a Bring it back came with none asked); '' while none was asked
-   * (canAskSecondLook in lib/notifications/moderation.ts).
+   * ('restored' also when a Bring it back came with none asked), or 'closed' when none was asked
+   * and none can be any more (the item was deleted, isn't removed any more, or is past its 30
+   * days); '' while one can be asked (canAskSecondLook in lib/notifications/moderation.ts).
    */
   second_look: string;
 };

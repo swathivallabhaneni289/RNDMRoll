@@ -8,7 +8,7 @@
  * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
  * line, the bell's decision kinds (with the two hidden ones of 2026-11-18, and the reason a removal
  * names, also 2026-11-18), and the second look a removal opens in the app (2026-11-19): who can ask,
- * its words, its page and its refusals.
+ * its words, its page, its refusals, and a send that ends after the person left the page.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -31,6 +31,7 @@ import {
   SECOND_LOOK_LABEL,
   SECOND_LOOK_MAX_CHARS,
   SECOND_LOOK_MAX_PHOTOS,
+  SECOND_LOOK_NOT_SENT,
   SECOND_LOOK_PHOTOS,
   SECOND_LOOK_SENT,
   SECOND_LOOK_TITLE,
@@ -41,9 +42,10 @@ import {
   isSecondLookAsked,
   secondLookFailure,
   secondLookItemLine,
+  secondLookStateLine,
   secondLookTextProblem,
 } from '../lib/notifications/moderation.ts';
-import { chooseSecondLook, chosenSecondLook } from '../lib/notifications/secondLookItem.ts';
+import { chooseSecondLook, chosenSecondLook, onSecondLookSent, secondLookSent } from '../lib/notifications/secondLookItem.ts';
 import { REPORT_NOTICE_MS, getReportNotice, setReportNotice, subscribeReportNotice } from '../lib/report/notice.ts';
 
 let checks = 0;
@@ -443,6 +445,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq("the second look's box", SECOND_LOOK_LABEL, 'Tell us why it should come back');
   eq("the second look's photos", SECOND_LOOK_PHOTOS, 'Add photos');
   eq('after a second look is sent', SECOND_LOOK_SENT, "Sent. We'll take another look.");
+  eq('a second look that failed after the person left its page', SECOND_LOOK_NOT_SENT, 'Second look not sent. Please try again.');
   eq('a second look takes up to 500 characters', SECOND_LOOK_MAX_CHARS, 500);
   eq('and up to 3 photos', SECOND_LOOK_MAX_PHOTOS, 3);
 
@@ -530,8 +533,11 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     SECOND_LOOK_ASKED,
     SECOND_LOOK_HINT,
     SECOND_LOOK_SENT,
+    SECOND_LOOK_NOT_SENT,
     secondLookTextProblem(''),
     secondLookTextProblem('x'.repeat(501)),
+    secondLookFailure('post_removed', 500, 'photo_upload_failed', '', '', 3).line,
+    ...['asked', 'kept', 'closed'].map((state) => secondLookStateLine(state)),
     ...lookLines,
     ...DECISION_KINDS.map((kind) => decisionLine(kind)),
   ];
@@ -561,7 +567,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   const removal = { kind: 'post_removed', removal: '00000008-0000-4000-8000-000000000008', second_look: '' };
   check('a removed post can ask', canAskSecondLook(removal));
   check('a removed comment can ask', canAskSecondLook({ ...removal, kind: 'comment_removed' }));
-  for (const state of ['asked', 'kept', 'restored', 'expired', 'ASKED', ' ']) {
+  for (const state of ['asked', 'kept', 'restored', 'closed', 'expired', 'ASKED', ' ']) {
     check(`not once its second look is ${JSON.stringify(state)}`, !canAskSecondLook({ ...removal, second_look: state }));
   }
   check('not without the removal id', !canAskSecondLook({ ...removal, removal: '' }));
@@ -573,10 +579,19 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   // "Second look asked." only while the admin has not answered.
   check('asked: the line shows', isSecondLookAsked({ ...removal, second_look: 'asked' }));
   check('on a removed comment too', isSecondLookAsked({ ...removal, kind: 'comment_removed', second_look: 'asked' }));
-  for (const state of ['', 'kept', 'restored', 'expired']) {
+  for (const state of ['', 'kept', 'restored', 'closed', 'expired']) {
     check(`no line while it is ${JSON.stringify(state)}`, !isSecondLookAsked({ ...removal, second_look: state }));
   }
   check('never on a kept item', !isSecondLookAsked({ ...removal, kind: 'post_kept', second_look: 'asked' }));
+
+  // A page opened without the bell's item, for a removal that can't ask: a plain line instead of the form.
+  eq('asked: the page says so', secondLookStateLine('asked'), 'Second look asked.');
+  eq('kept: the page says it was answered', secondLookStateLine('kept'), 'We already took another look.');
+  eq('restored: answered too', secondLookStateLine('restored'), 'We already took another look.');
+  eq('the answered line is the 409 second_look_back one', secondLookStateLine('kept'), secondLookFailure('post_removed', 409, 'second_look_back').line);
+  for (const state of ['closed', '', 'expired', 'ASKED', 'Kept', ' ']) {
+    eq(`${JSON.stringify(state)}: the page says it isn't here`, secondLookStateLine(state), "This isn't here any more.");
+  }
 
   // The box at Send, counted as the server counts: trimmed, a line break as \n, in characters.
   const emoji = '\u{1F600}';
@@ -584,23 +599,30 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq('only spaces and line breaks', secondLookTextProblem('  \n\t \r\n '), 'Tell us why first.');
   eq('one character', secondLookTextProblem('x'), '');
   eq('500 characters', secondLookTextProblem('x'.repeat(500)), '');
-  eq('501 characters', secondLookTextProblem('x'.repeat(501)), 'Keep it under 500 characters.');
+  eq('501 characters', secondLookTextProblem('x'.repeat(501)), 'At most 500 characters.');
   eq('the spaces round 500 characters are not counted', secondLookTextProblem(`  ${'x'.repeat(500)}\n `), '');
   eq('an emoji counts once: 500 of them', secondLookTextProblem(emoji.repeat(500)), '');
-  eq('501 emoji', secondLookTextProblem(emoji.repeat(501)), 'Keep it under 500 characters.');
+  eq('501 emoji', secondLookTextProblem(emoji.repeat(501)), 'At most 500 characters.');
   eq('a CRLF line break counts once', secondLookTextProblem(`${'x'.repeat(249)}\r\n${'x'.repeat(250)}`), '');
 
   // A refusal, where its line shows and the line (null: the client's own words).
-  const fail = (kind: string, status: number, code: string, field?: string, reason?: string) =>
-    JSON.stringify(secondLookFailure(kind, status, code, field, reason));
+  const fail = (kind: string, status: number, code: string, field?: string, reason?: string, photo?: number) =>
+    JSON.stringify(secondLookFailure(kind, status, code, field, reason, photo));
   const at = (where: string, line: string | null) => JSON.stringify({ at: where, line });
   for (const kind of ['post_removed', 'comment_removed']) {
     eq(`${kind}: nothing written, said by the server`, fail(kind, 400, 'validation_failed', 'text', 'required'), at('text', 'Tell us why first.'));
-    eq(`${kind}: too long`, fail(kind, 400, 'validation_failed', 'text', 'too_long'), at('text', 'Keep it under 500 characters.'));
+    eq(`${kind}: too long`, fail(kind, 400, 'validation_failed', 'text', 'too_long'), at('text', 'At most 500 characters.'));
     eq(`${kind}: a character the server refuses`, fail(kind, 400, 'validation_failed', 'text', 'invalid'), at('text', "That has a character we can't use."));
     eq(`${kind}: a photo the server refuses`, fail(kind, 400, 'validation_failed', 'photo_keys', 'invalid'), at('photos', "Couldn't use those photos. Please try again."));
     eq(`${kind}: a file storage refused`, fail(kind, 400, 'photo_rejected'), at('photos', null));
     eq(`${kind}: a photo that would not upload`, fail(kind, 500, 'photo_upload_failed'), at('photos', null));
+    // At Send the page knows which photo was uploading, and names it by its place.
+    const named = (n: number) => `Photo ${n} couldn't upload. Remove it or try again.`;
+    eq(`${kind}: the second photo would not upload`, fail(kind, 500, 'photo_upload_failed', '', '', 2), at('photos', named(2)));
+    eq(`${kind}: storage refused the first photo`, fail(kind, 400, 'photo_rejected', undefined, undefined, 1), at('photos', named(1)));
+    eq(`${kind}: the third photo`, fail(kind, 500, 'photo_upload_failed', '', '', 3), at('photos', named(3)));
+    eq(`${kind}: no connection while a photo uploads keeps the connection line`, fail(kind, 0, 'network_unavailable', '', '', 2), at('form', null));
+    eq(`${kind}: a place names only a photo that would not upload`, fail(kind, 409, 'second_look_asked', '', '', 2), at('form', 'You already asked for a second look.'));
     eq(`${kind}: asked already`, fail(kind, 409, 'second_look_asked'), at('form', 'You already asked for a second look.'));
     eq(`${kind}: past the 30 days`, fail(kind, 409, 'second_look_too_late'), at('form', "It's too late to ask. It's been 30 days."));
     eq(`${kind}: answered by a Bring it back, never saying it is back`, fail(kind, 409, 'second_look_back'), at('form', 'We already took another look.'));
@@ -626,6 +648,17 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   chooseSecondLook({ removal: second, kind: 'comment_removed', text: '' });
   eq('a newer tap takes its place', chosenSecondLook(first), null);
   eq('with its own item', chosenSecondLook(second)?.kind, 'comment_removed');
+
+  // A send that went through after the person left the page: the bell, while open, reads its list again.
+  let told = 0;
+  const stop = onSecondLookSent(() => {
+    told += 1;
+  });
+  secondLookSent();
+  eq('the open bell is told once', told, 1);
+  stop();
+  secondLookSent();
+  eq('a bell that has closed is not told', told, 1);
 
   // How a report ended: a 404 counts as sent; no connection and too many tries keep the client's words.
   eq('a report answered 404 not_found is done', reportOutcome(404, 'not_found'), 'done');
@@ -782,6 +815,18 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       bell
     )
   );
+  check(
+    'one tap opens one page: another tap before it shows does nothing, until Notifications is back in view',
+    /function openSecondLook\(item: NotificationItem & \{ kind: RemovalKind \}\) \{\s*if \(openingRef\.current\) return;\s*openingRef\.current = true;\s*chooseSecondLook\(/.test(bell) &&
+      /useFocusEffect\(\s*useCallback\(\(\) => \{\s*\/\/[^\n]*\n\s*openingRef\.current = false;\s*void load\(\);\s*\}, \[load\]\)\s*\);/.test(bell)
+  );
+  check(
+    'a second look that went through after the person left its page: the bell reads its list again, and only the newest read is used',
+    /useEffect\(\(\) => onSecondLookSent\(\(\) => void load\(\)\), \[load\]\);/.test(bell) &&
+      /const seq = \+\+seqRef\.current;/.test(bell) &&
+      /const answer = await getNotifications\(\);\s*if \(seq !== seqRef\.current\) return;/.test(bell) &&
+      /if \(seq !== seqRef\.current \|\| itemsRef\.current !== null\) return;/.test(bell)
+  );
   check('the email is gone from the bell: no mail app, no address', !/Linking|mailto|secondLookFallback|contact/.test(bell));
   check('the hint only where the page opens', /accessibilityHint=\{canAskSecondLook\(item\) \? SECOND_LOOK_HINT : undefined\}/.test(bell));
   check(
@@ -824,6 +869,12 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     /useState<SecondLookItem \| null>\(\(\) => chosenSecondLook\(removal\)\)/.test(look) && /if \(item === null\) void readItem\(\);/.test(look)
   );
   check(
+    'read from the bell list, a removal that cannot ask shows a plain line by its state instead of the form',
+    /if \(found === undefined \|\| !canAskSecondLook\(found\)\) \{\s*\/\/[^\n]*\n\s*setClosedLook\(found\?\.second_look \?\? ''\);\s*setStatus\('closed'\);\s*return;\s*\}/.test(look) &&
+      /status === 'closed' \|\| line === null \? \(\s*<View style=\{\{ marginTop: space\.lg \}\}>\s*<AppText role="body">\{secondLookStateLine\(closedLook\)\}<\/AppText>/.test(look) &&
+      !/isRemovalKind|GONE_LINE/.test(look)
+  );
+  check(
     'Send is grey only while it sends, one send at a time',
     /<PrimaryButton label="Send" loading=\{sending\} onPress=\{\(\) => void send\(\)\} \/>/.test(look) &&
       !/disabled=\{!|onBlockedPress/.test(look) &&
@@ -841,15 +892,24 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
   check(
     'the photos upload at Send, one after another and each once, then the request names them',
-    /for \(const photo of photos\) \{\s*keys\.push\(await uploads\.ensure\(photo\.uri, \(\) => uploadEntryPhoto\(photo\.uri, photo\.mimeType\)\)\);\s*\}\s*await askSecondLook\(item\.removal, text, keys\);/.test(
+    /for \(const \[index, photo\] of photos\.entries\(\)\) \{\s*uploading = index \+ 1;\s*keys\.push\(await uploads\.ensure\(photo\.uri, \(\) => uploadEntryPhoto\(photo\.uri, photo\.mimeType\)\)\);\s*\}\s*uploading = 0;\s*await askSecondLook\(item\.removal, text, keys\);/.test(
       look
     )
+  );
+  check(
+    'a photo that would not upload is named by its place',
+    /secondLookFailure\(kind, answer\?\.status \?\? 0, answer\?\.code \?\? '', answer\?\.field, answer\?\.reason, photo\)/.test(look)
   );
   check('photos the server refused upload again at the next Send', /if \(answer\?\.code === 'validation_failed'\) uploads\.forget\(\);/.test(look));
   check('a removed photo is forgotten', /function dropPhoto\(uri: string\) \{\s*uploads\.forget\(uri\);/.test(look));
   check(
-    'sent: the line over Notifications, and back only while the page is still the one showing',
-    /setReportNotice\(SECOND_LOOK_SENT\);\s*\/\/[^\n]*\n\s*if \(mountedRef\.current && navigation\.isFocused\(\)\) goBack\(\);/.test(look)
+    'sent: the line over Notifications, and back only while the page is still the one showing; otherwise Notifications reads its list again',
+    /setReportNotice\(SECOND_LOOK_SENT\);\s*\/\/[^\n]*\n\s*if \(mountedRef\.current && navigation\.isFocused\(\)\) goBack\(\);\s*else secondLookSent\(\);/.test(look)
+  );
+  check(
+    'a failure after the person left the page: "Second look not sent." over the page then showing; on the page, its own line as before',
+    /return navigation\.addListener\('beforeRemove', \(\) => \{\s*leftRef\.current = true;\s*\}\);/.test(look) &&
+      /if \(leftRef\.current \|\| !mountedRef\.current\) setReportNotice\(SECOND_LOOK_NOT_SENT\);\s*else showFailure\(err, item\.kind, uploading\);/.test(look)
   );
   check('up to 3 photos: Add photos goes at 3', /\{photos\.length < SECOND_LOOK_MAX_PHOTOS \? \(/.test(look));
   check("photo access off: the phone's alert, with a way to Settings", /showAccessOff\(source\);/.test(look));

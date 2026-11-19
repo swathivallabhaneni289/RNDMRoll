@@ -653,6 +653,10 @@ const { ApiError, api, isRetryable } = client;
   );
   check('a second look photo keeps its own type', /next\.push\(\{ uri: asset\.uri, mimeType: asset\.mimeType \?\? 'image\/jpeg' \}\)/.test(look));
   check('a second look photo uploads with its own type', /uploadEntryPhoto\(photo\.uri, photo\.mimeType\)/.test(look));
+  check(
+    "a second look photo's size is read from its file as it is picked, as a post photo's is, never the picker's number",
+    /size = await fileSize\(asset\.uri\);/.test(look) && !/asset\.fileSize/.test(look)
+  );
 }
 
 // ---- the Spin page's fixed words and numbers ------------------------------------------------------
@@ -752,7 +756,7 @@ const { ApiError, api, isRetryable } = client;
     const boardApi = await load('lib/api/board.ts');
     const spinApi = await load('lib/api/spin.ts');
     const { loadToday } = await load('lib/wheel/loadToday.ts');
-    const { DECISION_KINDS, REASON_WORDS, canAskSecondLook, decisionLine, isDecisionKind } = await load('lib/notifications/moderation.ts');
+    const { DECISION_KINDS, REASON_WORDS, canAskSecondLook, decisionLine, isDecisionKind, isSecondLookAsked } = await load('lib/notifications/moderation.ts');
 
     // The bell: one item of each decision kind, none dropped, every key read as the server sent it.
     const bell = await serve(contract.bell, () => notifications.getNotifications());
@@ -806,6 +810,9 @@ const { ApiError, api, isRetryable } = client;
       // a removal would.
       check(`${sent.kind}: the tap asks for no second look`, !canAskSecondLook(read));
       eq(`${sent.kind}: with none asked, only a removal would`, canAskSecondLook({ ...read, second_look: '' }), removed);
+      // "closed": none was asked and none can be any more. No tap, no hint, no "Second look asked." line.
+      const closed = { ...read, second_look: 'closed' };
+      check(`${sent.kind}: closed, nothing opens and no line shows`, !canAskSecondLook(closed) && !isSecondLookAsked(closed));
     }
     eq(
       'both removals were answered by a Bring it back',
@@ -912,7 +919,7 @@ const { ApiError, api, isRetryable } = client;
   eq(
     'a 400 on the words reads under the box',
     JSON.stringify(secondLookFailure('comment_removed', long.err?.status, long.err?.code, long.err?.field, long.err?.reason)),
-    JSON.stringify({ at: 'text', line: 'Keep it under 500 characters.' })
+    JSON.stringify({ at: 'text', line: 'At most 500 characters.' })
   );
   const keys = await ask(400, { error: 'validation_failed', field: 'photo_keys', reason: 'invalid' });
   eq('a 400 on the photos reads under them', secondLookFailure('post_removed', keys.err?.status, keys.err?.code, keys.err?.field, keys.err?.reason).at, 'photos');

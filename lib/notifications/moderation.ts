@@ -87,8 +87,10 @@ type SecondLookFields = { kind: string; removal: string; second_look: string };
 /**
  * True while a removal can still ask for a second look: the server sends `second_look` '' until
  * one is asked ("asked", then "kept" or "restored"; "restored" also when a Bring it back came
- * first), and `removal`, the id the request names. Any other kind, any other state (one this app
- * doesn't know too) or no id cannot, and a tap on it does nothing.
+ * first) or none can be any more ("closed": none was asked, and the item was deleted, isn't
+ * removed any more, or is past its 30 days), and `removal`, the id the request names. Any other
+ * kind, any other state (one this app doesn't know too) or no id cannot, and a tap on it does
+ * nothing.
  */
 export function canAskSecondLook<T extends SecondLookFields>(item: T): item is T & { kind: RemovalKind } {
   return isRemovalKind(item.kind) && item.removal !== '' && item.second_look === '';
@@ -111,6 +113,8 @@ export const SECOND_LOOK_LABEL = 'Tell us why it should come back';
 export const SECOND_LOOK_PHOTOS = 'Add photos';
 /** Over the page the bell shows again after a send (lib/report/notice.ts). */
 export const SECOND_LOOK_SENT = "Sent. We'll take another look.";
+/** Over the page then showing when a send fails after the person left the page (Back while it sent). */
+export const SECOND_LOOK_NOT_SENT = 'Second look not sent. Please try again.';
 
 /** The server's limits: 1 to 500 characters once trimmed, and up to 3 photos. */
 export const SECOND_LOOK_MAX_CHARS = 500;
@@ -126,8 +130,26 @@ export function secondLookItemLine(kind: RemovalKind, text: string): { label: st
   return { label: post ? 'Your post:' : 'Your comment:', words: post || text.trim() !== '' ? text : 'a photo' };
 }
 
+/** A removal the page can't find, or one that can't ask any more and isn't asked or answered. */
+const GONE_LINE = "This isn't here any more.";
+/** A second look already answered: the 409 second_look_back's line, and the page's. */
+const LOOKED_LINE = 'We already took another look.';
+
+/**
+ * The line the page shows in place of its form when it opens without the bell's item and the bell's
+ * list says this removal can't ask (canAskSecondLook), by its `second_look` there ('' when the list
+ * no longer has it): asked, "Second look asked."; answered (kept or restored), "We already took
+ * another look."; anything else ("closed", or a state this app doesn't know), "This isn't here any
+ * more."
+ */
+export function secondLookStateLine(secondLook: string): string {
+  if (secondLook === 'asked') return SECOND_LOOK_ASKED;
+  if (secondLook === 'kept' || secondLook === 'restored') return LOOKED_LINE;
+  return GONE_LINE;
+}
+
 const EMPTY_LINE = 'Tell us why first.';
-const TOO_LONG_LINE = 'Keep it under 500 characters.';
+const TOO_LONG_LINE = 'At most 500 characters.';
 
 /**
  * The text box's problem at Send, '' when there is none: nothing but spaces, or over 500
@@ -143,23 +165,27 @@ export function secondLookTextProblem(text: string): string {
 
 /**
  * Where a failed send's line shows, and the line: under the text box, under the photos, or over
- * Send. A null line is the client's own words (no connection, and a photo that would not upload).
+ * Send. A null line is the client's own words (no connection, and a photo that would not upload
+ * when no place is known for it).
  */
 export type SecondLookFailure = { at: 'text' | 'photos' | 'form'; line: string | null };
 
 /**
- * A failed send, by the answer's status, error code, and the field and reason of a 400. The server
- * refuses a photo it will not take (one it already holds for something else): the page then
- * uploads the photos again at the next Send. A 409 says the removal was asked about already, is
- * past its 30 days, or was answered by a Bring it back; that last line never says the post is back,
- * since the same answer comes for an older removal of a post that was removed again.
+ * A failed send, by the answer's status, error code, the field and reason of a 400, and `photo`, the
+ * place of the photo that was uploading (1 for the first, 0 for none): a photo that would not upload
+ * is named by it. The server refuses a photo it will not take (one it already holds for something
+ * else): the page then uploads the photos again at the next Send. A 409 says the removal was asked
+ * about already, is past its 30 days, or was answered by a Bring it back; that last line never says
+ * the post is back, since the same answer comes for an older removal of a post that was removed
+ * again.
  */
 export function secondLookFailure(
   kind: RemovalKind,
   status: number,
   code: string,
   field = '',
-  reason = ''
+  reason = '',
+  photo = 0
 ): SecondLookFailure {
   if (code === 'validation_failed' && field === 'text') {
     if (reason === 'required') return { at: 'text', line: EMPTY_LINE };
@@ -170,13 +196,15 @@ export function secondLookFailure(
   if (code === 'validation_failed' && field === 'photo_keys') {
     return { at: 'photos', line: "Couldn't use those photos. Please try again." };
   }
-  if (code === 'photo_rejected' || code === 'photo_upload_failed') return { at: 'photos', line: null };
+  if (code === 'photo_rejected' || code === 'photo_upload_failed') {
+    return { at: 'photos', line: photo > 0 ? `Photo ${photo} couldn't upload. Remove it or try again.` : null };
+  }
   if (status === 404 || code === 'not_found') {
     return { at: 'form', line: kind === 'post_removed' ? "This post isn't here any more." : "This comment isn't here any more." };
   }
   if (code === 'second_look_asked') return { at: 'form', line: 'You already asked for a second look.' };
   if (code === 'second_look_too_late') return { at: 'form', line: "It's too late to ask. It's been 30 days." };
-  if (code === 'second_look_back') return { at: 'form', line: 'We already took another look.' };
+  if (code === 'second_look_back') return { at: 'form', line: LOOKED_LINE };
   // A 429 without the usual body has no code, so the status counts too.
   if (status === 429 || code === 'rate_limited') {
     return { at: 'form', line: 'Too many tries. Wait a minute and try again.' };

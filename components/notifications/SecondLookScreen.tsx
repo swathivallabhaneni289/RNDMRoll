@@ -14,6 +14,7 @@ import { ApiError } from '@/lib/api/client';
 import { uploadEntryPhoto } from '@/lib/api/entries';
 import { getNotifications } from '@/lib/api/notifications';
 import { photoSource } from '@/lib/api/photoSource';
+import { fileSize } from '@/lib/api/profile';
 import { askSecondLook } from '@/lib/api/secondLooks';
 import { createUploadMemory, photoMessage, photoProblem } from '@/lib/entry/photo';
 import { announceProblem } from '@/lib/forms/announce';
@@ -22,16 +23,18 @@ import { showAccessOff } from '@/lib/media/showAccessOff';
 import {
   SECOND_LOOK_LABEL,
   SECOND_LOOK_MAX_PHOTOS,
+  SECOND_LOOK_NOT_SENT,
   SECOND_LOOK_PHOTOS,
   SECOND_LOOK_SENT,
   SECOND_LOOK_TITLE,
-  isRemovalKind,
+  canAskSecondLook,
   secondLookFailure,
   secondLookItemLine,
+  secondLookStateLine,
   secondLookTextProblem,
   type RemovalKind,
 } from '@/lib/notifications/moderation';
-import { chosenSecondLook, type SecondLookItem } from '@/lib/notifications/secondLookItem';
+import { chosenSecondLook, secondLookSent, type SecondLookItem } from '@/lib/notifications/secondLookItem';
 import { setReportNotice } from '@/lib/report/notice';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
 
@@ -41,8 +44,8 @@ const PREVIEW = 64;
 const CLOSE = 24;
 /** What a screen reader says before a line under the photos. */
 const PHOTOS_LABEL = 'Photos';
-/** A page opened without the bell's item, for a removal the bell's list no longer has. */
-const GONE_LINE = "This isn't here any more.";
+/** A picked file whose size can't be read: the post photo's line (components/entry/PhotoField.tsx). */
+const FILE_REFUSED = "That file can't be used as a photo. Try another one.";
 
 type Photo = { uri: string; mimeType: string };
 
@@ -51,25 +54,32 @@ type Photo = { uri: string; mimeType: string };
  * "maybe give a little option there, not like something really big"), pushed from its line in
  * Notifications. It names the item ("Your post: Dune"), then a box for why it should come back
  * (required, up to 500 characters) and Add photos: up to 3 from the camera or the library,
- * screenshots too, each with a close mark. Send is grey only while it sends. A tap with nothing
- * written, or too much, says so under the box; a refusal says what is wrong in a few words, under
- * the box, under the photos or over Send.
+ * screenshots too, each with a close mark, each checked by the size of its file as it is picked.
+ * Send is grey only while it sends. A tap with nothing written, or too much, says so under the box;
+ * a refusal says what is wrong in a few words, under the box, under the photos (a photo that would
+ * not upload by its place: "Photo 2 couldn't upload.") or over Send. A page opened without the
+ * bell's item reads the bell's list, and a removal that can't ask any more shows a plain line
+ * instead of the form.
  *
  * The photos upload at Send, one after another, each once (the comment box's rule), so a send tried
  * again after a lost answer, with the same words, names the same files and the server answers it as
  * the same request. A refusal of the photos forgets them all, so the next Send uploads them again.
  * Once it is sent, "Sent. We'll take another look." shows over Notifications, which reads its list
- * again and says "Second look asked." under the line. What was sent is not shown again. No bottom
- * bar, so the page keeps all four safe-area edges.
+ * again and says "Second look asked." under the line. If the person went back while it sent,
+ * Notifications reads its list again when it goes through, and a failure shows "Second look not
+ * sent. Please try again." over it instead. What was sent is not shown again. No bottom bar, so the
+ * page keeps all four safe-area edges.
  */
 export function SecondLookScreen({ removal }: { removal: string }) {
   const router = useRouter();
   const navigation = useNavigation();
   // The item the bell kept for this removal. A page opened without it (a link) reads the bell's list.
   const [item, setItem] = useState<SecondLookItem | null>(() => chosenSecondLook(removal));
-  const [status, setStatus] = useState<'ready' | 'loading' | 'offline' | 'gone'>(() =>
+  const [status, setStatus] = useState<'ready' | 'loading' | 'offline' | 'closed'>(() =>
     item === null ? 'loading' : 'ready'
   );
+  // A removal the bell's list says can't ask: its second look there, '' when the list no longer has it.
+  const [closedLook, setClosedLook] = useState('');
   const [failure, setFailure] = useState<'network' | 'generic'>('network');
   const [text, setText] = useState('');
   const [textError, setTextError] = useState('');
@@ -80,6 +90,8 @@ export function SecondLookScreen({ removal }: { removal: string }) {
   // From the tap until the answer: a second tap sends nothing.
   const sendingRef = useRef(false);
   const mountedRef = useRef(true);
+  // Set as the page goes (Back, the swipe): a send that ends after that tells the page then showing.
+  const leftRef = useRef(false);
   // Each photo is uploaded once, at Send, and its key kept until it is removed.
   const uploads = useRef(createUploadMemory()).current;
   // A line under the box or the photos scrolls them into view; the box's also puts the cursor in it.
@@ -95,6 +107,12 @@ export function SecondLookScreen({ removal }: { removal: string }) {
     };
   }, []);
 
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', () => {
+      leftRef.current = true;
+    });
+  }, [navigation]);
+
   /** The bell's list, read for this removal when the bell kept no item for it. */
   async function readItem() {
     setStatus('loading');
@@ -102,8 +120,10 @@ export function SecondLookScreen({ removal }: { removal: string }) {
       const { items } = await getNotifications();
       if (!mountedRef.current) return;
       const found = items.find((one) => one.removal !== '' && one.removal === removal);
-      if (found === undefined || !isRemovalKind(found.kind)) {
-        setStatus('gone');
+      if (found === undefined || !canAskSecondLook(found)) {
+        // Asked, answered, no longer open to one, or gone from the list: a plain line, no form.
+        setClosedLook(found?.second_look ?? '');
+        setStatus('closed');
         return;
       }
       setItem({ removal, kind: found.kind, text: found.text ?? '' });
@@ -132,22 +152,40 @@ export function SecondLookScreen({ removal }: { removal: string }) {
     setFormError('');
   }
 
-  /** A picked file is checked (type and size, as for a comment's photo) before it is kept, up to 3 in all. */
-  function take(result: ImagePicker.ImagePickerResult) {
+  /**
+   * A picked file is checked before it is kept, up to 3 in all: its type, and the size of the file
+   * itself, read as a post's photo reads it (the picker's own number can be missing).
+   */
+  async function take(result: ImagePicker.ImagePickerResult) {
     if (result.canceled || result.assets.length === 0) return;
-    const next = [...photos];
+    const accepted: ImagePicker.ImagePickerAsset[] = [];
     let problem = '';
     for (const asset of result.assets) {
-      const refused = photoProblem(asset.mimeType, asset.fileSize ?? 0);
+      let size: number;
+      try {
+        size = await fileSize(asset.uri);
+      } catch {
+        if (problem === '') problem = FILE_REFUSED;
+        continue;
+      }
+      const refused = photoProblem(asset.mimeType, size);
       if (refused !== null) {
         if (problem === '') problem = photoMessage(refused);
         continue;
       }
-      if (next.length < SECOND_LOOK_MAX_PHOTOS && !next.some((photo) => photo.uri === asset.uri)) {
-        next.push({ uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg' });
-      }
+      accepted.push(asset);
     }
-    setPhotos(next);
+    if (!mountedRef.current) return;
+    // Added to the photos as they are now: one may have been removed while the sizes were read.
+    setPhotos((now) => {
+      const next = [...now];
+      for (const asset of accepted) {
+        if (next.length < SECOND_LOOK_MAX_PHOTOS && !next.some((photo) => photo.uri === asset.uri)) {
+          next.push({ uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg' });
+        }
+      }
+      return next;
+    });
     setPhotosError(problem);
     setFormError('');
   }
@@ -183,7 +221,7 @@ export function SecondLookScreen({ removal }: { removal: string }) {
       setPhotosError(source === 'camera' ? "Camera isn't available on this device." : "Photos aren't available right now.");
       return;
     }
-    take(result);
+    await take(result);
   }
 
   function choosePhotos() {
@@ -208,10 +246,10 @@ export function SecondLookScreen({ removal }: { removal: string }) {
     textBoxRef.current?.focus();
   }
 
-  /** A failed send's line, where secondLookFailure puts it. */
-  function showFailure(err: unknown, kind: RemovalKind) {
+  /** A failed send's line, where secondLookFailure puts it; `photo` is the place of the one uploading. */
+  function showFailure(err: unknown, kind: RemovalKind, photo: number) {
     const answer = err instanceof ApiError ? err : null;
-    const failed = secondLookFailure(kind, answer?.status ?? 0, answer?.code ?? '', answer?.field, answer?.reason);
+    const failed = secondLookFailure(kind, answer?.status ?? 0, answer?.code ?? '', answer?.field, answer?.reason, photo);
     const line = failed.line ?? answer?.userMessage ?? '';
     if (failed.at === 'text') {
       showTextProblem(line);
@@ -242,19 +280,27 @@ export function SecondLookScreen({ removal }: { removal: string }) {
     setPhotosError('');
     setFormError('');
     let sent = false;
+    // The place of the photo uploading now (1 for the first), so a failed upload names it; 0 after.
+    let uploading = 0;
     try {
       // One photo after another, as the entry form uploads its own.
       const keys: string[] = [];
-      for (const photo of photos) {
+      for (const [index, photo] of photos.entries()) {
+        uploading = index + 1;
         keys.push(await uploads.ensure(photo.uri, () => uploadEntryPhoto(photo.uri, photo.mimeType)));
       }
+      uploading = 0;
       await askSecondLook(item.removal, text, keys);
       sent = true;
       setReportNotice(SECOND_LOOK_SENT);
       // Not when the person already left while this ran: going back again would close Notifications.
       if (mountedRef.current && navigation.isFocused()) goBack();
+      else secondLookSent();
     } catch (err) {
-      if (mountedRef.current) showFailure(err, item.kind);
+      // Left while this ran (Back, the swipe): no one would see this page's lines, so a short one
+      // shows over the page now showing.
+      if (leftRef.current || !mountedRef.current) setReportNotice(SECOND_LOOK_NOT_SENT);
+      else showFailure(err, item.kind, uploading);
     } finally {
       sendingRef.current = false;
       // After a success the button stays busy until the page has gone.
@@ -285,9 +331,9 @@ export function SecondLookScreen({ removal }: { removal: string }) {
           <View style={{ marginTop: space.lg }}>
             <StatusMessage kind={failure} onRetry={() => void readItem()} />
           </View>
-        ) : status === 'gone' || line === null ? (
+        ) : status === 'closed' || line === null ? (
           <View style={{ marginTop: space.lg }}>
-            <AppText role="body">{GONE_LINE}</AppText>
+            <AppText role="body">{secondLookStateLine(closedLook)}</AppText>
           </View>
         ) : (
           <>
