@@ -918,6 +918,7 @@ Some were found while writing this document; others were already in the planning
 18. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
 19. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
 20. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 17), or a comment under a hidden post (issue 18). The same way, a reporter's account that comes back can hide it again with no note.
+21. **A busy bell can lose the way to ask for a second look.** The bell shows at most 50 items, so 50 newer ones can push a removal off the list before its 30 days end. A second look is asked only from that line, so the owner then can't ask in the app.
 
 ### Open questions
 
