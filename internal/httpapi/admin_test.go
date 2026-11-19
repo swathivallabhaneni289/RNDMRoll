@@ -43,6 +43,8 @@ type fakeAdminRepo struct {
 	restoreErr error
 	dismissErr error
 	shownAgain bool
+	// keepErr is what KeepRemoved answers.
+	keepErr error
 
 	// openReports, disabled, reports, removed and events are what
 	// OpenReports, DisabledPeople, Reports, Removed and Events answer;
@@ -67,6 +69,7 @@ type fakeAdminRepo struct {
 	dismissals []adminDismiss // each DismissItem call
 	removes    []adminAction  // each RemoveItem call
 	restores   []adminAction  // each RestoreItem call
+	keeps      []adminAction  // each KeepRemoved call
 	disables   []adminDisable // each SetDisabled call
 }
 
@@ -159,6 +162,11 @@ func (f *fakeAdminRepo) RemoveItem(_ context.Context, kind string, target, perso
 func (f *fakeAdminRepo) RestoreItem(_ context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
 	f.restores = append(f.restores, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
 	return f.restoreErr
+}
+
+func (f *fakeAdminRepo) KeepRemoved(_ context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
+	f.keeps = append(f.keeps, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
+	return f.keepErr
 }
 
 func (f *fakeAdminRepo) ResolvePerson(context.Context, uuid.UUID, string, time.Time) error {

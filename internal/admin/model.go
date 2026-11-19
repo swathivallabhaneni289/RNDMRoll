@@ -34,6 +34,11 @@ var (
 	ErrParentRemoved = errors.New("admin: the comment it answers is removed")
 )
 
+// ErrNoRequest is a Keep it removed on a removal with no open request for a
+// second look (a page drawn before a Bring it back answered it, say).
+// Nothing changes, and nothing is logged.
+var ErrNoRequest = errors.New("admin: no second look asked")
+
 // Report kinds.
 const (
 	KindPerson  = "person"
@@ -58,7 +63,8 @@ const RemovalGrace = 30 * 24 * time.Hour
 // decided about a post, a comment or an account. Item is KindPost,
 // KindComment or ItemAccount. LogHidden is the one row no admin writes: the
 // report that hides a post or comment logs it, so its owner hears of it
-// (developer, 2026-11-18).
+// (developer, 2026-11-18). LogKept is a Keep it removed, the answer to a
+// second look that leaves it removed (developer, 2026-11-19).
 const (
 	ItemAccount = "account"
 
@@ -68,12 +74,21 @@ const (
 	LogDisabled   = "disabled"
 	LogEnabled    = "enabled"
 	LogHidden     = "hidden"
+	LogKept       = "kept"
+)
+
+// The answers to a second look (migration 0021's second_looks.decision):
+// none yet, Bring it back, or Keep it removed.
+const (
+	LookOpen     = ""
+	LookRestored = "restored"
+	LookKept     = "kept"
 )
 
 // Ref is the short reference of a decision: the first 8 hex characters of
 // its id in the log. The Removed tab, the person's history and the owner's
-// bell item about a removal all show the removal's, so an email asking for a
-// second look can name it.
+// bell item about a removal all show the removal's, so the admin can match a
+// second look, or an email about one, to its removal.
 func Ref(event uuid.UUID) string { return event.String()[:8] }
 
 // ReasonWords are the report reasons as the admin reads them (the same list
@@ -316,12 +331,22 @@ type Repository interface {
 	// ErrNotFound when it is not there or removed past it.
 	RemoveItem(ctx context.Context, kind string, target, person uuid.UUID, reason string, at, loggedAt time.Time) error
 	// RestoreItem brings person's removed post or comment back while it is
-	// inside RemovalGrace, and logs it. Its reports stay closed. A comment
+	// inside RemovalGrace, and logs it. Its reports stay closed, and a second
+	// look asked about its newest removal is closed as LookRestored, also
+	// one a Keep closed before. A comment
 	// whose post or the comment it answers is still removed stays removed:
 	// ErrPostRemoved or ErrParentRemoved. ErrAlreadyDone when a Bring it back
 	// brought it back already, ErrNotFound when it is not removed otherwise,
 	// or past the grace.
 	RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
+	// KeepRemoved is Keep it removed, the answer to a second look that
+	// leaves person's post or comment removed (developer, 2026-11-19): the
+	// open request about its newest removal is closed as LookKept, and that
+	// is logged (LogKept), for the owner's bell. ErrNoRequest when no
+	// request about it is open, ErrAlreadyDone when a Keep closed it
+	// already (the second click of a double click), ErrNotFound when it is
+	// not removed or is past RemovalGrace.
+	KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error
 	// ReportTarget is the post or comment an open-or-closed report points

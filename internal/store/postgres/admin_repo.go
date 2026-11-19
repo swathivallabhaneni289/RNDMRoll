@@ -638,6 +638,75 @@ func (r *AdminRepo) RestoreItem(ctx context.Context, kind string, target, person
 	if err := itemDecision(kind, admin.LogRestored, person, target, entry, snapshot, loggedAt).log(ctx, tx); err != nil {
 		return err
 	}
+	// A second look asked about the removal is answered: it is back
+	// (developer, 2026-11-19), also when a Keep it removed answered it
+	// before.
+	if _, err := tx.Exec(ctx, `update second_looks set decision = '`+admin.LookRestored+`', decided_at = now()
+		where removal_id = (`+newestRemoval+`) and decision is distinct from '`+admin.LookRestored+`'`, target, person); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// newestRemoval is the id of the newest removal in the log of the post or
+// comment $1 of person $2, by created_at (the database's clock, as
+// whyNotBack reads the log). A second look is about that one: an older
+// removal was answered by the Bring it back that came after it.
+const newestRemoval = `select nr.id from moderation_events nr
+	where nr.owner_id = $2 and nr.item_id = $1 and nr.action = '` + admin.LogRemoved + `'
+	order by nr.created_at desc limit 1`
+
+// KeepRemoved implements admin.Repository, in one transaction. The post or
+// comment is held for update first, as Bring it back's update holds it, so
+// a Keep and a Bring it back from two tabs take turns, and so does a second
+// look being asked, which holds it for share. Then the open request about
+// its newest removal is held, closed as kept and logged. A Keep that finds
+// the request closed as kept already is the second click of a double click.
+func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
+	m, ok := moderatedItems[kind]
+	if !ok {
+		return admin.ErrNotFound
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	var snapshot string
+	var entry uuid.UUID
+	var inside bool
+	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null and `+insideRemovalGrace("removed_at")+`
+		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &inside)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return admin.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !inside {
+		return admin.ErrNotFound
+	}
+	var look uuid.UUID
+	var decision *string
+	err = tx.QueryRow(ctx, `select id, decision from second_looks where removal_id = (`+newestRemoval+`) for update`,
+		target, person).Scan(&look, &decision)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return admin.ErrNoRequest
+	case err != nil:
+		return err
+	case decision != nil && *decision == admin.LookKept:
+		return admin.ErrAlreadyDone
+	case decision != nil:
+		return admin.ErrNoRequest
+	}
+	if _, err := tx.Exec(ctx, `update second_looks set decision = '`+admin.LookKept+`', decided_at = now() where id = $1`, look); err != nil {
+		return err
+	}
+	if err := itemDecision(kind, admin.LogKept, person, target, entry, snapshot, loggedAt).log(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
