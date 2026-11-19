@@ -277,12 +277,12 @@ func TestSocialCoverage_DismissClosesOnlyTheReportsOnTheCardAsItWasDrawn(t *test
 		!strings.Contains(open, "<button>Dismiss</button>") || !strings.Contains(open, "Remove comment") {
 		t.Fatalf("the report that came in later, want it open and alone: %s", open)
 	}
-	closed := adminReportOf(t, page, "Bullying or harassment · Spam")
-	if !strings.Contains(closed, `<p class="by">Dismissed <span class="when">`) || strings.Contains(closed, "<button>Dismiss</button>") {
-		t.Fatalf("the dismissed card: %s", closed)
+	if log := historyOf(t, page); strings.Count(log, `<p class="by">Dismissed <span class="when">`) != 2 || strings.Contains(log, "<button>") ||
+		strings.Count(log, `<span class="tag">Open</span>`) != 1 {
+		t.Fatalf("the History, want the two dismissed reports closed and the later one open: %s", log)
 	}
-	if at := strings.Index(page, "Closed reports"); at < 0 || strings.Index(page, "Hate speech") > at {
-		t.Fatalf("the open card is not ahead of Closed reports: %s", page)
+	if strings.Index(page, "Hate speech") > strings.Index(page, "<h2>History</h2>") {
+		t.Fatalf("the open card is not ahead of the History: %s", page)
 	}
 	list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
 	if !strings.Contains(list, "<title>(1) Reports · RNDMRoll admin</title>") || strings.Count(list, `<article class="card`) != 1 ||

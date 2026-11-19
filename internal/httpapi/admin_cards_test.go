@@ -141,8 +141,8 @@ func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 // and Removed tabs), why, then the buttons, so the stylesheet puts each in
 // its column under the headings. An account's card shows the account as the
 // thing. On a person's page the buttons stand alone, as the profile's
-// Disable does, and a closed card has none. The Disabled tab has headings
-// too.
+// Disable does, and a closed report is a line of the History, not a card.
+// The Disabled tab has headings too.
 func TestAdminCards_EachCardIsALineOfTheTable(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
@@ -209,13 +209,13 @@ func TestAdminCards_EachCardIsALineOfTheTable(t *testing.T) {
 		t.Errorf("the profile, want its details, then Disable: %s", profile)
 	}
 	got = cardsOn(page)
-	if len(got) != 3 || strings.Count(page, headings) != 2 {
-		t.Fatalf("%d cards on the person page, want 3 under the open and the closed headings: %s", len(got), page)
+	if len(got) != 2 || strings.Count(page, headings) != 1 || !strings.Contains(page[strings.Index(page, "<h2>History</h2>"):],
+		`<strong>Post reported for spam</strong> by @tess_r`) {
+		t.Fatalf("%d cards on the person page, want the 2 open ones under the headings, and the closed one in the History: %s", len(got), page)
 	}
 	for i, want := range []parts{
 		{kind: "Comment", row: "type body about side", side: "actions"},
 		{kind: "Account", row: "type about side", side: "actions"},
-		{kind: "Post", row: "type body about"},
 	} {
 		if c := got[i]; c.kind != want.kind || c.row != want.row || c.side != want.side || strings.Contains(c.buttons, "Open profile") {
 			t.Errorf("the person page, card %d: %q, %q, %q; want %+v, with no Open profile", i, c.kind, c.row, c.side, want)

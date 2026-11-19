@@ -1112,10 +1112,12 @@ func TestAdminModerationIntegration_RemovedBeforeCountsWhatWasNotBroughtBack(t *
 	log := historyOf(t, page)
 	var labels []string
 	for _, part := range strings.Split(log, "<strong>")[1:] {
-		labels = append(labels, part[:strings.Index(part, "</strong>")])
+		if label := part[:strings.Index(part, "</strong>")]; !strings.Contains(label, " reported for ") {
+			labels = append(labels, label)
+		}
 	}
 	if want := []string{"Post removed", "Post brought back", "Comment removed", "Post removed"}; !slices.Equal(labels, want) {
-		t.Fatalf("the History, newest first: %v, want %v", labels, want)
+		t.Fatalf("the History's decisions, newest first: %v, want %v", labels, want)
 	}
 	newest := w.lastLogged(b)
 	if !strings.Contains(log, `<p class="by">Ref: `+newest.ID[:8]+` · Nudity or sexual content</p><p class="text quote">Dune</p>`) ||

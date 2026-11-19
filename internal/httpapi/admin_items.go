@@ -116,6 +116,30 @@ func (it adminItem) ReportedBy() string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
+// historyEntry is one line of a person's History: a report about them, or a
+// decision from the log (developer, 2026-11-19: "the history section, we'll
+// have it there").
+type historyEntry struct {
+	At     time.Time
+	Report *admin.Report
+	Event  *admin.Event
+}
+
+// history is every report about the person and every decision about them,
+// the newest first; at the same moment a decision comes before a report,
+// and each list keeps its own order.
+func history(reports []admin.Report, events []admin.Event) []historyEntry {
+	out := make([]historyEntry, 0, len(reports)+len(events))
+	for i := range events {
+		out = append(out, historyEntry{At: events[i].At, Event: &events[i]})
+	}
+	for i := range reports {
+		out = append(out, historyEntry{At: reports[i].CreatedAt, Report: &reports[i]})
+	}
+	slices.SortStableFunc(out, func(a, b historyEntry) int { return b.At.Compare(a.At) })
+	return out
+}
+
 // groupKey is what reports about the same thing share: the post, the
 // comment, or the account itself. An open report whose post or comment is
 // gone keeps a card of its own, since it no longer says which one it was.

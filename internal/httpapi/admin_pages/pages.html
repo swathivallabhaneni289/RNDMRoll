@@ -111,9 +111,8 @@
 {{if .PostsCapped}}<p class="lede">Showing the newest {{len .Posts}}.</p>{{end}}{{else}}<p class="empty">No posts.</p>{{end}}
 {{else}}<p class="lede">Their posts show here while a report about the account is open, or while it's disabled.</p>{{end}}
 {{if .History}}<h2>History</h2>
-<ol class="history">{{range .History}}<li><p><strong>{{decision .}}</strong> <span class="muted when">{{when .At}}</span></p>{{if eq .Action "removed"}}<p class="by">Ref: {{ref .ID}}{{if .Reason}} · {{reason .Reason}}{{else}}{{with .Reasons}} · {{reasons .}}{{end}}{{end}}</p>{{end}}{{if .Snapshot}}<p class="text quote">{{.Snapshot}}</p>{{end}}</li>{{end}}</ol>{{end}}
-{{if .Closed}}<details class="past"><summary>Closed reports<span class="n">{{len .Closed}}</span></summary>
-<div class="cards table">{{template "thead"}}{{range .Closed}}{{template "item" (card . $.CSRF "person")}}{{end}}</div></details>{{end}}
+{{with .Reported}}<p class="lede">{{reportedTimes .}}</p>
+{{end}}<ol class="history">{{range .History}}{{with .Report}}<li><p><strong>{{kind .Kind}} reported for {{reasonLower .Reason}}</strong>{{with .Reporter}} by @{{.}}{{end}} <span class="muted when">{{when .CreatedAt}}</span></p><p class="by">{{if .ResolvedAt}}{{closed .Resolution}} <span class="when">{{when .ResolvedAt}}</span>{{else}}<span class="tag">Open</span>{{end}}</p>{{with said .}}<p class="text quote">{{.}}</p>{{end}}</li>{{end}}{{with .Event}}<li><p><strong>{{decision .}}</strong> <span class="muted when">{{when .At}}</span></p>{{if eq .Action "removed"}}<p class="by">Ref: {{ref .ID}}{{if .Reason}} · {{reason .Reason}}{{else}}{{with .Reasons}} · {{reasons .}}{{end}}{{end}}</p>{{end}}{{if .Snapshot}}<p class="text quote">{{.Snapshot}}</p>{{end}}</li>{{end}}{{end}}</ol>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "post"}}<article class="post">

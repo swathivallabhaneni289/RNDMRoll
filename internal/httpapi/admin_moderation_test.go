@@ -303,12 +303,15 @@ func TestAdminCards_RemovedBeforeShowsOnlyWhenThereIsSome(t *testing.T) {
 	}
 }
 
-// The person page lists every decision in the log in the store's order (the
-// newest first), with when, on its own list after the open reports and the
-// posts: no new card, no form, nothing a card's check could match. A removal says its ref
-// and the reason the admin gave (for one from before the Reason list, the
-// reports' reasons), and what was decided about shows as it was then,
-// escaped. With no decision, no History.
+// The person page's History lists every decision in the log in the store's
+// order and every report about them, merged newest first, with when, on its
+// own list after the open reports and the posts: no new card, no form,
+// nothing a card's check could match (developer, 2026-11-19: "the history
+// section, we'll have it there"). A removal says its ref and the reason the
+// admin gave (for one from before the Reason list, the reports' reasons),
+// and what was decided about shows as it was then, escaped. A report says
+// what, why and who, then Open or how and when it closed, then what it was
+// about. With neither, no History.
 func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
@@ -325,7 +328,14 @@ func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 		{ID: removal, Item: admin.KindPost, Action: admin.LogRemoved, Snapshot: "Ramen", Reasons: []string{"violence", "spam"}, At: cardAt(11, 0)},
 		{ID: photoOnly, Item: admin.KindComment, Action: admin.LogRemoved, At: cardAt(10, 0)},
 	}
-	r.repo.reports = []admin.Report{{Kind: admin.KindPerson, ID: uuid.New(), Reporter: "tess_r", Reason: "spam", CreatedAt: cardAt(9, 0)}}
+	dismissedAt := cardAt(15, 30)
+	r.repo.reports = []admin.Report{
+		{Kind: admin.KindPerson, ID: uuid.New(), Reporter: "tess_r", Reason: "spam", CreatedAt: cardAt(9, 0)},
+		{Kind: admin.KindComment, ID: uuid.New(), Reporter: "jon_p", Reason: "harassment", CreatedAt: cardAt(12, 30),
+			CommentID: uuidPtr(uuid.New()), Body: "<b>rude</b>", ResolvedAt: &dismissedAt, Resolution: admin.Dismissed},
+		{Kind: admin.KindPost, ID: uuid.New(), Reason: "violence", CreatedAt: cardAt(10, 30), Title: "Ramen then", TitleNow: "Ramen now",
+			ResolvedAt: &dismissedAt, Resolution: admin.Removed},
+	}
 	page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+person.String(), cookie, nil, "").Body.String()
 	start := strings.Index(page, "<h2>History</h2>")
 	if start < 0 || strings.Index(page, "<h2>Posts</h2>") > start || strings.Index(page, `<article class="card`) > start ||
@@ -333,23 +343,34 @@ func TestAdminPerson_HistoryListsEveryDecision(t *testing.T) {
 		t.Fatalf("want the History after the one open report and the posts: %s", page)
 	}
 	log := page[start : start+strings.Index(page[start:], "</ol>\n")+len("</ol>\n")]
-	want := `<h2>History</h2>` + "\n" + `<ol class="history">` +
+	want := `<h2>History</h2>` + "\n" + `<p class="lede">Reported 3 times.</p>` + "\n" + `<ol class="history">` +
 		`<li><p><strong>Post removed</strong> <span class="muted when">` + adminWhen(cardAt(16, 0)) + `</span></p><p class="by">Ref: 9c8d7e6f · Hate speech</p><p class="text quote">Pho</p></li>` +
 		`<li><p><strong>Account enabled</strong> <span class="muted when">` + adminWhen(cardAt(15, 0)) + `</span></p></li>` +
 		`<li><p><strong>Account disabled</strong> <span class="muted when">` + adminWhen(cardAt(14, 0)) + `</span></p></li>` +
 		`<li><p><strong>Comment shown again</strong> <span class="muted when">` + adminWhen(cardAt(13, 0)) + `</span></p><p class="text quote">&lt;i&gt;fine&lt;/i&gt;</p></li>` +
+		`<li><p><strong>Comment reported for bullying or harassment</strong> by @jon_p <span class="muted when">` + adminWhen(cardAt(12, 30)) +
+		`</span></p><p class="by">Dismissed <span class="when">` + adminWhen(dismissedAt) + `</span></p><p class="text quote">&lt;b&gt;rude&lt;/b&gt;</p></li>` +
 		`<li><p><strong>Post brought back</strong> <span class="muted when">` + adminWhen(cardAt(12, 0)) + `</span></p><p class="text quote">Ramen</p></li>` +
 		`<li><p><strong>Post removed</strong> <span class="muted when">` + adminWhen(cardAt(11, 0)) + `</span></p><p class="by">Ref: 1a2b3c4d · Violence or threats, Spam</p><p class="text quote">Ramen</p></li>` +
+		`<li><p><strong>Post reported for violence or threats</strong> <span class="muted when">` + adminWhen(cardAt(10, 30)) +
+		`</span></p><p class="by">Removed <span class="when">` + adminWhen(dismissedAt) + `</span></p><p class="text quote">Ramen now</p></li>` +
 		`<li><p><strong>Comment removed</strong> <span class="muted when">` + adminWhen(cardAt(10, 0)) + `</span></p><p class="by">Ref: 5e6f7a8b</p></li>` +
+		`<li><p><strong>Account reported for spam</strong> by @tess_r <span class="muted when">` + adminWhen(cardAt(9, 0)) +
+		`</span></p><p class="by"><span class="tag">Open</span></p></li>` +
 		`</ol>` + "\n"
 	if log != want {
 		t.Fatalf("the History:\n%s\nwant\n%s", log, want)
 	}
 	socialNoScript(t, "the person page", page)
 
-	r.repo.events = nil
+	r.repo.events, r.repo.reports = nil, r.repo.reports[:1]
+	if page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+person.String(), cookie, nil, "").Body.String(); !strings.Contains(page,
+		"<h2>History</h2>\n"+`<p class="lede">Reported once.</p>`) {
+		t.Fatalf("one report, want Reported once: %s", page)
+	}
+	r.repo.reports = nil
 	if page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+person.String(), cookie, nil, "").Body.String(); strings.Contains(page, "History") {
-		t.Fatalf("no decision, yet a History: %s", page)
+		t.Fatalf("no decision and no report, yet a History: %s", page)
 	}
 }
 

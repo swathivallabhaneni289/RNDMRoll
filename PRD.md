@@ -538,7 +538,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 |---|---|---|---|
 | ADM-01 | A web page at /admin, for admin accounts only | P0 | Built, off unless admin emails are set |
 | ADM-02 | A Reports tab with one card per reported post, comment or account, a Disabled tab and a Removed tab | P0 | Built |
-| ADM-03 | A person page laid out like a profile, with their details, their reports, open ones first (up to 200), their posts while a report about the account is open or it is disabled, and the history of decisions about them, only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
+| ADM-03 | A person page laid out like a profile, with their details, their open reports, their posts while a report about the account is open or it is disabled, and a History of every report and decision about them (up to 200 reports), only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
 | ADM-04 | Dismiss a card's reports, remove a post or comment, bring it back within 30 days, disable or enable an account | P0 | Built |
 | ADM-05 | A record of which admin took each action | P2 | Later (the decision log says what was decided and when, not by whom) |
 | ADM-06 | An email to the admins about new reports | P1 | Built, sent for real once email is on |
@@ -561,10 +561,10 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The person: name, username, profile photo, bio and join date.
   - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone (deleted by its author, or 30 days after a removal) shows only the title it had when it was reported, and says so.
   - A comment report: the comment's text from when it was reported, and its photo.
-  - The person page reads like a profile. A back arrow on top goes to the tab it was opened from (Reports, Disabled or Removed). Then come their photo, name, username, bio and join date with Disable or Enable, the open cards, their posts, the History and the closed cards.
-  - The person page puts open cards first. Closed ones fold away under "Closed reports", one card for each action that closed them.
+  - The person page reads like a profile. A back arrow on top goes to the tab it was opened from (Reports, Disabled or Removed). Then come their photo, name, username, bio and join date with Disable or Enable, the open cards, their posts and the History.
+  - The History lists every report about them and every decision, newest first, under how often they were reported ("Reported 3 times."). A report says what was reported, why and by whom, then Open or how and when it closed, then the post's title or the comment's words. Closed reports have no card of their own.
   - Their posts show while a report about the account is open, or while it's disabled, since Disable closes those reports and Enable is decided on them. The newest 60 show, newest first, each with every photo (the first one large), its category and day, its title and text, and a tag when it's removed, hidden or reported. Otherwise the page says when they show.
-  - The person page's History lists every decision about the person, newest first: removed, brought back, shown again, disabled and enabled, each with when. Their profile card says "Removed before: N" once, when N is more than 0.
+  - The History's decisions are removed (with its ref and reason), brought back, shown again, hidden by reports, disabled and enabled, each with when. Their profile card says "Removed before: N" once, when N is more than 0.
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment), disabled accounts and people with a decision in the log. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
   - Their posts show only while a report about the account is open or it's disabled. A report about one post or comment shows only that one. Archived posts, and posts past the 30 days after a removal, never show.
@@ -971,6 +971,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 18 | Remove asks for a reason, and the owner's message names it | "It would be reasonable if we actually answer them why we are removing it" | One more choice at Remove; the reason is one of the 7 report reasons, with no typed note |
 | Nov 18 | The person page reads like a profile, with a back arrow and their posts while their account is reported or disabled; the admin page uses the width of the screen | "When there's like an open account thing, I should be able to see that person's profile page" | Admins see more of a reported account than the reported posts |
 | Nov 19 | The cards make a table: one line per reported thing under the headings Type, What and Reason, each line its own box, with the buttons at the end | "I dont want random boxes floating on my page"; then they picked a table over two mock-ups and asked for more room | Photos are small in the line (each opens full size) |
+| Nov 19 | A person's History lists every report about them, with how it ended, among the decisions, under how often they were reported; it replaces the closed cards | "We should know that this person got reported once", then "the history section, we'll have it there" | A long list for someone reported often |
 
 ## 18. Out of scope and future ideas
 

@@ -327,7 +327,8 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if rec.Header().Get("Location") != "/admin/people/"+reported.id+"?n=dismissed" {
 		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	if after := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String(); !strings.Contains(after, "Dismissed. Its reports are closed.") || !strings.Contains(after, "Closed reports") {
+	if after := adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String(); !strings.Contains(after, "Dismissed. Its reports are closed.") ||
+		!strings.Contains(historyOf(t, after), `<p class="by">Dismissed <span class="when">`) {
 		t.Fatalf("after the dismissal: %s", after)
 	}
 
@@ -1090,17 +1091,14 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 	act("remove", "comment", "Nudity or sexual content · Bullying or harassment", "removed")
 	act("remove", "post", `<p class="reasons">Violence or threats</p>`, "removed")
 
-	// Each closed card is one action: what Remove closed, and the three
-	// reports dismissed before, which it left as they were.
+	// Each report is a line of the History with how it closed: the three
+	// dismissed before, which Remove left as they were, and the three each
+	// Remove closed.
 	page := personPage()
-	for mark, closed := range map[string]string{
-		`<p class="reasons">Violence or threats</p>`:        "Removed",
-		"Violence or threats · Hate speech · Spam</p>":      "Dismissed",
-		"Nudity or sexual content · Bullying or harassment": "Removed",
-	} {
-		if card := adminReportOf(t, page, mark); !strings.Contains(card, `<p class="by">`+closed+` <span class="when">`) {
-			t.Fatalf("the card %q, want %s: %s", mark, closed, card)
-		}
+	if log := historyOf(t, page); strings.Count(log, `<p class="by">Dismissed <span class="when">`) != 3 ||
+		strings.Count(log, `<p class="by">Removed <span class="when">`) != 3 || strings.Contains(log, `<span class="tag">Open</span>`) ||
+		!strings.Contains(log, `<strong>Comment reported for nudity or sexual content</strong>`) {
+		t.Fatalf("the History, want the three dismissed reports and the three removed ones: %s", log)
 	}
 	if strings.Contains(page, "<button>Dismiss</button>") || strings.Contains(page, "Remove post") || strings.Contains(page, "Remove comment") {
 		t.Fatalf("a closed report still offers an action: %s", page)

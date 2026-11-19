@@ -16,14 +16,18 @@ import (
 // the tab it was opened from, their profile, and their posts while a report
 // about the account is open or it is disabled (admin.ShowsPosts).
 
-// postsOf is each post on a person page, in the page's order.
+// postsOf is each post on a person page, in the page's order, up to its end.
 func postsOf(t *testing.T, page string) []string {
 	t.Helper()
 	start := strings.Index(page, `<div class="posts">`)
 	if start < 0 {
 		return nil
 	}
-	return strings.Split(page[start:], `<article class="post">`)[1:]
+	posts := strings.Split(page[start:], `<article class="post">`)[1:]
+	for i, p := range posts {
+		posts[i] = p[:strings.Index(p, "</article>")]
+	}
+	return posts
 }
 
 // While a report about the account is open, the page shows their posts as

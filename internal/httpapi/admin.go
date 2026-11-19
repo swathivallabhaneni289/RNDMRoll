@@ -165,6 +165,40 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 			}
 			return r
 		},
+		// reasonLower is a report reason in words inside a sentence, as in
+		// "Post reported for spam".
+		"reasonLower": func(r string) string {
+			if w, ok := admin.ReasonWords[r]; ok {
+				return strings.ToLower(w)
+			}
+			return r
+		},
+		// reportedTimes is how often a person was reported, above their
+		// History.
+		"reportedTimes": func(n int) string {
+			if n == 1 {
+				return "Reported once."
+			}
+			return "Reported " + strconv.Itoa(n) + " times."
+		},
+		// said is what a report was about, for the History: the post's title
+		// (as it is now, or as it was once the post is gone), the comment's
+		// words, or nothing for an account.
+		"said": func(r admin.Report) string {
+			switch r.Kind {
+			case admin.KindPost:
+				if r.TitleNow != "" {
+					return r.TitleNow
+				}
+				return r.Title
+			case admin.KindComment:
+				if r.Body == "" {
+					return "(photo only)"
+				}
+				return r.Body
+			}
+			return ""
+		},
 		"kind": func(k string) string {
 			switch k {
 			case admin.KindPost:
@@ -501,11 +535,10 @@ type adminPage struct {
 	OpenCount     int
 	DisabledCount int
 	RemovedCount  int
-	// Items are every open report, put together (the Reports tab); Open and
-	// Closed are one person's (their page).
-	Items  []adminItem
-	Open   []adminItem
-	Closed []adminItem
+	// Items are every open report, put together (the Reports tab); Open are
+	// one person's (their page).
+	Items []adminItem
+	Open  []adminItem
 	// Capped says Items holds only the newest admin.OpenReportsLimit open
 	// reports.
 	Capped bool
@@ -513,8 +546,11 @@ type adminPage struct {
 	People []admin.Person
 	// Removed is what the Removed tab lists.
 	Removed []admin.RemovedItem
-	// History is the person's decision log, newest first (their page).
-	History []admin.Event
+	// History is every report about the person and every decision about
+	// them, newest first, and Reported how many reports there are (their
+	// page).
+	History  []historyEntry
+	Reported int
 	// Back and BackLabel are where their page's back arrow goes and that
 	// tab's name (backArrow). Posts are their posts when admin.ShowsPosts
 	// (PostsShown), the newest admin.PostsLimit, and PostsCapped says they
@@ -806,14 +842,14 @@ func (h *AdminHandler) person(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	history, err := h.repo.Events(ctx, id)
+	events, err := h.repo.Events(ctx, id)
 	if err != nil {
 		h.fail(c, err)
 		return
 	}
-	open, closed := groupReports(p, reports)
-	page := adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open, Closed: closed,
-		History: history, Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed}
+	open, _ := groupReports(p, reports)
+	page := adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open,
+		History: history(reports, events), Reported: len(reports), Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed}
 	page.Back, page.BackLabel = backArrow(c.Query("from"))
 	if admin.ShowsPosts(p, reports) {
 		posts, err := h.repo.Posts(ctx, id)
