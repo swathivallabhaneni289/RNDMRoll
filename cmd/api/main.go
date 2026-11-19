@@ -239,6 +239,9 @@ func main() {
 	// admin removed once admin.RemovalGrace has passed: in the same loop,
 	// after the accounts, so the two never hold rows of one account at once.
 	purger.SetRemoved(postgres.NewRemovedPurgeRepo(pool))
+	// And last, the photos owners added to a second look, 30 days after the
+	// removal whatever the answer (developer, 2026-11-19).
+	purger.SetSecondLooks(postgres.NewSecondLookPurgeRepo(pool))
 	purger.Start(purgeCtx)
 
 	httpServer := &http.Server{

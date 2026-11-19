@@ -86,3 +86,36 @@ func TestModeration_MainWiresSecondLooksAndTheirEmail(t *testing.T) {
 		t.Fatalf("main.go: %s.SetNotifier is not given the report email's alerts", svc)
 	}
 }
+
+// The photos an owner adds to a second look are deleted 30 days after the
+// removal only if main adds the sweep to the purge loop, with the Postgres
+// store, after purge.New and before purger.Start, in main's own body.
+// Without it they stay in the owner's folder until the account goes.
+func TestModeration_MainSweepsSecondLookPhotosInThePurgeLoop(t *testing.T) {
+	body := accountsMainBody(t)
+	purger, _, at := accountsAssignedFrom(body, "purge", "New")
+	if purger == "" {
+		t.Fatal("main.go: no purger := purge.New(...) in main")
+	}
+	setAt, startAt := token.NoPos, token.NoPos
+	for _, stmt := range body.List {
+		if stmt.Pos() < at {
+			continue
+		}
+		if call := accountsExprCall(stmt, purger, "SetSecondLooks"); call != nil {
+			if len(call.Args) != 1 || accountsCallOf(call.Args[0], "postgres", "NewSecondLookPurgeRepo") == nil {
+				t.Fatalf("main.go: %s.SetSecondLooks is not given postgres.NewSecondLookPurgeRepo(pool)", purger)
+			}
+			setAt = stmt.Pos()
+		}
+		if accountsExprCall(stmt, purger, "Start") != nil && startAt == token.NoPos {
+			startAt = stmt.Pos()
+		}
+	}
+	if setAt == token.NoPos {
+		t.Fatalf("main.go: %s.SetSecondLooks(...) is not called in main after purge.New (inside a branch does not count)", purger)
+	}
+	if startAt == token.NoPos || setAt > startAt {
+		t.Fatalf("main.go: %s.SetSecondLooks must come before %s.Start", purger, purger)
+	}
+}

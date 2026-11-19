@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/purge"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
@@ -600,5 +604,82 @@ func TestPhotoKeys_AProofsFileIsItsAlone(t *testing.T) {
 	}
 	if len(deleted) != 0 {
 		t.Fatalf("deleting the post deletes %v, want nothing", deleted)
+	}
+}
+
+// proofFiles is the photo store the sweep deletes from: it records each key.
+type proofFiles struct{ deleted []string }
+
+func (f *proofFiles) DeleteAccountFolders(context.Context, uuid.UUID) (int, error) { return 0, nil }
+
+func (f *proofFiles) DeletePhoto(_ context.Context, key string) error {
+	f.deleted = append(f.deleted, key)
+	return nil
+}
+
+// The purge's run deletes a second look's photos 30 days after the removal,
+// on the purge's own line and whatever the answer (a request about a post
+// that came back included), and empties its keys; a request inside the 30
+// days keeps them, and a file a post's photo also names (the hand-made race
+// the checks cannot stop) is left alone. The request stays, with its words,
+// also once the purge deletes its post.
+func TestSecondLookPurge_DeletesTheProofPhotos30DaysAfterTheRemoval(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "proof-sweep@example.com")
+	repo := postgres.NewSecondLookRepo(pool)
+	k := []string{newKey(a.ID.String()), newKey(a.ID.String()), newKey(a.ID.String()), newKey(a.ID.String())}
+	ask := func(removal uuid.UUID, keys ...string) {
+		t.Helper()
+		if made, err := repo.Ask(ctx, a.ID, removal, "Why", keys, time.Now()); err != nil || !made {
+			t.Fatalf("ask: %v, %v", made, err)
+		}
+	}
+	backdate := func(item, removal uuid.UUID) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `with e as (update entries set removed_at = now() - interval '30 days' where id = $1 and removed_at is not null)
+			update moderation_events set created_at = now() - interval '30 days' where id = $2`, item, removal); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, oldRemoval := removedPostOf(t, pool, a.ID, "Old")
+	ask(oldRemoval, k[0], k[1])
+	_, newRemoval := removedPostOf(t, pool, a.ID, "New")
+	ask(newRemoval, k[2])
+	back, backRemoval := removedPostOf(t, pool, a.ID, "Back")
+	ask(backRemoval, k[3])
+	if err := postgres.NewAdminRepo(pool).RestoreItem(ctx, admin.KindPost, back, a.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	backdate(old, oldRemoval)
+	backdate(back, backRemoval)
+	if _, err := pool.Exec(ctx, `insert into entry_photos (entry_id, user_id, position, storage_key, content_type, source, created_at)
+		values ($1, $2, 0, $3, 'image/jpeg', 'library', now())`, back, a.ID, k[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	files := &proofFiles{}
+	p := purge.New(postgres.NewPurgeRepo(pool), files, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	p.SetSecondLooks(postgres.NewSecondLookPurgeRepo(pool))
+	if res := p.RunSecondLookPhotosOnce(ctx); res != (purge.Result{Due: 2, Purged: 2}) {
+		t.Fatalf("the sweep: %+v, want 2 due and both cleared", res)
+	}
+	if !slices.Equal(files.deleted, []string{k[0], k[3]}) {
+		t.Fatalf("deleted %v, want %v", files.deleted, []string{k[0], k[3]})
+	}
+	for removal, want := range map[uuid.UUID]string{oldRemoval: "", backRemoval: "", newRemoval: k[2]} {
+		var keys string
+		if err := pool.QueryRow(ctx, `select array_to_string(photo_keys, ',') from second_looks where removal_id = $1`, removal).Scan(&keys); err != nil || keys != want {
+			t.Fatalf("the request about %v keeps %q (%v), want %q", removal, keys, err, want)
+		}
+	}
+	if res := p.RunSecondLookPhotosOnce(ctx); res != (purge.Result{}) || len(files.deleted) != 2 {
+		t.Fatalf("a second run: %+v, %d deleted", res, len(files.deleted))
+	}
+	if _, err := pool.Exec(ctx, `delete from entries where id = $1`, old); err != nil {
+		t.Fatal(err)
+	}
+	if got := asked(t, pool, oldRemoval); got != "post "+old.String()+" - - Why " {
+		t.Fatalf("the request once its post is purged: %q", got)
 	}
 }

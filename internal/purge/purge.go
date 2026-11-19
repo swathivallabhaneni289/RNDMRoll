@@ -99,6 +99,9 @@ type Purger struct {
 	// itemDeadline bounds the work on one of them.
 	removed      RemovedStore
 	itemDeadline time.Duration
+	// proofs, when set (SetSecondLooks), is the store of the second looks
+	// whose proof photos each run deletes, last.
+	proofs ProofStore
 
 	wg sync.WaitGroup
 }
@@ -211,8 +214,9 @@ func deletable(photo CommentPhoto, purged uuid.UUID) bool {
 
 // Start runs the purge in one background goroutine: the first run firstRun
 // after Start, then one every `every` after the previous run ended, so runs
-// never overlap, until ctx is done. Each run purges the accounts, and then
-// what an admin removed (SetRemoved). A panic in a run is logged and the
+// never overlap, until ctx is done. Each run purges the accounts, then what
+// an admin removed (SetRemoved), then the second-look proof photos that are
+// due (SetSecondLooks). A panic in a run is logged and the
 // loop goes on. To stop it, cancel ctx and then call Wait.
 func (p *Purger) Start(ctx context.Context) {
 	p.wg.Add(1)
@@ -231,6 +235,7 @@ func (p *Purger) Start(ctx context.Context) {
 			}
 			p.runSafely(ctx)
 			p.runRemovedSafely(ctx)
+			p.runSecondLooksSafely(ctx)
 			timer.Reset(p.every)
 		}
 	}()

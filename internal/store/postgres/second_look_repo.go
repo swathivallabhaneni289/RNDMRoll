@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/purge"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
 )
 
@@ -181,4 +182,79 @@ func withoutProofKeys(ctx context.Context, q keysQuerier, keys []string) ([]stri
 		}
 	}
 	return out, nil
+}
+
+// SecondLookPurgeRepo is the database side of the sweep of second-look proof
+// photos (purge.ProofStore).
+type SecondLookPurgeRepo struct {
+	pool *pgxpool.Pool
+}
+
+// NewSecondLookPurgeRepo builds a SecondLookPurgeRepo backed by pool.
+func NewSecondLookPurgeRepo(pool *pgxpool.Pool) *SecondLookPurgeRepo {
+	return &SecondLookPurgeRepo{pool: pool}
+}
+
+var _ purge.ProofStore = (*SecondLookPurgeRepo)(nil)
+
+// proofsDue is a where fragment over second_looks as sl and its removal as
+// me: photos are still kept, and the removal is past the line
+// (pastRemovalGrace on the log row's created_at, which is the removed_at it
+// set, so a request about an item the purge deletes is due in the same run).
+var proofsDue = `cardinality(sl.photo_keys) > 0 and ` + pastRemovalGrace("me.created_at")
+
+// DueProofs implements purge.ProofStore.
+func (r *SecondLookPurgeRepo) DueProofs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return collect[uuid.UUID](r.pool.Query(ctx, `
+		select sl.id from second_looks sl join moderation_events me on me.id = sl.removal_id
+		where `+proofsDue+`
+		order by me.created_at, sl.id
+		limit $1`, limit))
+}
+
+// ClearProofs implements purge.ProofStore in one transaction. The request is
+// held for update until the end, and only while it is still due. A file
+// that a photo row or a comment also names is left out: the checks keep a
+// file to one row, but they are separate, so two hand-made requests at the
+// same moment could still share one, and that post or comment still shows
+// it. The keys are emptied either way.
+func (r *SecondLookPurgeRepo) ClearProofs(ctx context.Context, id uuid.UUID, deleteFiles func(ctx context.Context, photos []purge.Photo) error) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	var owner uuid.UUID
+	err = tx.QueryRow(ctx, `select sl.owner_id from second_looks sl join moderation_events me on me.id = sl.removal_id
+		where sl.id = $1 and `+proofsDue+` for update of sl`, id).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	keys, err := collect[string](tx.Query(ctx, `
+		select k from second_looks sl, unnest(sl.photo_keys) with ordinality as p(k, n)
+		where sl.id = $1
+		  and not exists (select 1 from entry_photos ep where ep.storage_key = k)
+		  and not exists (select 1 from post_comments c where c.photo_key = k)
+		order by n`, id))
+	if err != nil {
+		return false, err
+	}
+	photos := make([]purge.Photo, 0, len(keys))
+	for _, k := range keys {
+		photos = append(photos, purge.Photo{Key: k, Writer: owner})
+	}
+	if err := deleteFiles(ctx, photos); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `update second_looks set photo_keys = '{}' where id = $1`, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
