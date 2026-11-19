@@ -1098,7 +1098,7 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 		"Violence or threats · Hate speech · Spam</p>":      "Dismissed",
 		"Nudity or sexual content · Bullying or harassment": "Removed",
 	} {
-		if card := adminReportOf(t, page, mark); !strings.Contains(card, `<p class="by">`+closed+` · `) {
+		if card := adminReportOf(t, page, mark); !strings.Contains(card, `<p class="by">`+closed+` <span class="when">`) {
 			t.Fatalf("the card %q, want %s: %s", mark, closed, card)
 		}
 	}

@@ -55,7 +55,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	for card, wants := range map[string][]string{
 		postCard: {
 			`Violence or threats · Spam</p><p class="kind">Post</p>`,
-			`<p class="by">Removed <span class="when">` + adminWhen(removedAt) + `</span> · 29 days left · Ref: 9f8e7d6c</p>`,
+			`<p class="by">Removed <span class="when">` + adminWhen(removedAt) + `</span></p><p class="by">29 days left · Ref: 9f8e7d6c</p>`,
 			`<p class="day">Nov 15, 2026</p><h3>Ramen</h3><p class="text">Slurp</p>`,
 			`<a href="` + fakePhotoLink("k1") + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink("k1") + `"`,
 			`<img class="thumb" src="` + fakePhotoLink("k2") + `"`,
@@ -64,7 +64,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 		},
 		commentCard: {
 			`<p class="reasons">Hate speech</p><p class="kind">Comment</p>`,
-			` · 1 day left · Ref: 0a1b2c3d</p>`,
+			`<p class="by">1 day left · Ref: 0a1b2c3d</p>`,
 			`<p class="text quote">&lt;b&gt;rude&lt;/b&gt;</p>`,
 			`<img class="thumb" src="` + fakePhotoLink("c1") + `"`,
 			`<strong>@dev_runs</strong> <span class="muted">Dev</span></p></div><span class="tag">Disabled</span></div>`,
@@ -103,7 +103,7 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	r.repo.removed = r.repo.removed[1:]
 	r.repo.removed[0].Ref = ""
 	if page := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String(); strings.Contains(page, "Ref:") ||
-		!strings.Contains(page, " · 29 days left</p>") {
+		!strings.Contains(page, `<p class="by">29 days left</p>`) {
 		t.Fatalf("a removal with no ref: %s", page)
 	}
 	r.repo.removed = nil
@@ -229,7 +229,7 @@ func TestAdminList_HiddenCardsComeFirstWithTheirTag(t *testing.T) {
 	page := adminDo(t, r.w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
 	hidden, violent := adminReportOf(t, page, "buy now"), adminReportOf(t, page, "<h3>Drive</h3>")
 	if !strings.Contains(hidden, `Spam</p><p class="kind">Comment</p></div>`+"\n"+
-		`<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>`+"\n"+`<p class="by">Reported by @tess_r and @jon_p · `) {
+		`<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>`+"\n"+`<p class="by">Reported by @tess_r and @jon_p</p><p class="by"><span class="when">`) {
 		t.Fatalf("the hidden card, want its tag between the reasons and who reported it: %s", hidden)
 	}
 	if strings.Contains(violent, "Hidden") || strings.Count(page, `<span class="tag">Hidden</span>`) != 1 ||

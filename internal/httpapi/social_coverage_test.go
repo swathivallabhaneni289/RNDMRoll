@@ -313,7 +313,7 @@ func TestSocialCoverage_TheReportsTabSaysWhenOnlyTheNewestFit(t *testing.T) {
 		if page.Code != http.StatusOK || strings.Contains(page.Body.String(), line) != c.says {
 			t.Fatalf("%d open reports: %d, says only the newest fit: %v, want %v", c.n, page.Code, !c.says, c.says)
 		}
-		if c.n >= admin.OpenReportsLimit && !strings.Contains(page.Body.String(), " and 497 more ·") {
+		if c.n >= admin.OpenReportsLimit && !strings.Contains(page.Body.String(), " and 497 more</p>") {
 			t.Fatalf("%d open reports: the card does not hold the newest 500: %s", c.n, page.Body.String())
 		}
 	}

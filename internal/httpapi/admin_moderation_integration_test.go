@@ -288,7 +288,7 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 	card := adminReportOf(t, tab, "<h3>Dune</h3>")
 	for _, want := range []string{
 		`<p class="reasons">Hate speech</p><p class="kind">Post</p>`,
-		` · 30 days left · Ref: ` + removal.ID[:8] + `</p>`,
+		`<p class="by">30 days left · Ref: ` + removal.ID[:8] + `</p>`,
 		`<a href="` + fakePhotoLink(photos[0]) + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink(photos[0]) + `"`,
 		`<strong>@am_bob</strong>`,
 		`<a class="button push" href="/admin/people/` + b.id + `?from=removed">Open profile</a>`,
@@ -633,7 +633,7 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	w.exec(`update entries set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, post)
 	again := w.lastLogged(b)
 	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Hate speech</p><p class=\"kind\">Post</p>") ||
-		!strings.Contains(tab, " · 1 day left · Ref: "+again.ID[:8]+"</p>") || strings.Contains(tab, "Spam") {
+		!strings.Contains(tab, `<p class="by">1 day left · Ref: `+again.ID[:8]+"</p>") || strings.Contains(tab, "Spam") {
 		t.Fatalf("an hour short of the 30 days, want 1 day left and the newest removal's ref and reasons: %s", tab)
 	}
 	w.exec(`update entries set removed_at = now() - interval '30 days' where id = $1`, post)
@@ -698,7 +698,7 @@ func TestAdminModerationIntegration_ACommentComesBackOnlyAfterWhatItIsUnder(t *t
 	w.exec(`update post_comments set removed_at = now() - interval '20 days' where id = $1`, parent)
 	left := func(mark, want string) {
 		t.Helper()
-		if card := adminReportOf(t, w.page("/admin/removed"), mark); !strings.Contains(card, "</span> · "+want+" · Ref: ") {
+		if card := adminReportOf(t, w.page("/admin/removed"), mark); !strings.Contains(card, `</span></p><p class="by">`+want+" · Ref: ") {
 			t.Fatalf("the Removed tab's card holding %q, want %s: %s", mark, want, card)
 		}
 	}

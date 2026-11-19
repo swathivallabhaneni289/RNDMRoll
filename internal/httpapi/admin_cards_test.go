@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -133,6 +134,121 @@ func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 		t.Fatalf("the empty list: %s", page)
 	}
 }
+
+// Each card is one row (developer, 2026-11-19: "i dont want random boxes
+// floating on my page"): why it was reported, then the thing itself, then
+// whose it is with the buttons, so the stylesheet gives each its own column
+// and the buttons sit at the same place on every row. An account's card
+// shows the account as the thing. On a person's page the right column holds
+// the buttons alone, as the profile's holds Disable, and a closed card has
+// none.
+func TestAdminCards_EachCardIsARowOfWhyWhatAndButtons(t *testing.T) {
+	r := newAdminRig(t, true)
+	cookie := r.session(time.Now())
+	mira := admin.Person{ID: uuid.New(), Username: "mira_cooks"}
+	closedAt := cardAt(16, 0)
+	post := admin.Report{Kind: admin.KindPost, ID: uuid.New(), Reporter: "tess_r", Reason: "spam", CreatedAt: cardAt(15, 0),
+		EntryID: uuidPtr(uuid.New()), Title: "Ramen", TitleNow: "Ramen", LocalDate: "2026-11-15"}
+	comment := admin.Report{Kind: admin.KindComment, ID: uuid.New(), Reporter: "tess_r", Reason: "harassment", CreatedAt: cardAt(14, 0),
+		CommentID: uuidPtr(uuid.New()), Body: "Rude"}
+	account := admin.Report{Kind: admin.KindPerson, ID: uuid.New(), Reporter: "jon_p", Reason: "impersonation", CreatedAt: cardAt(13, 0)}
+	for _, report := range []admin.Report{post, comment, account} {
+		r.repo.openReports = append(r.repo.openReports, admin.OpenReport{Owner: mira, Report: report})
+	}
+	closedPost := post
+	closedPost.ID, closedPost.ResolvedAt, closedPost.Resolution = uuid.New(), &closedAt, admin.Dismissed
+	r.repo.reports = []admin.Report{comment, account, closedPost}
+
+	// cardsOn is each card on the page: its kind, its parts in order, and
+	// those of its right column, each only at the top level, so a part
+	// nested in another does not count; and its buttons, from the start of
+	// .actions to the end of the right column.
+	type parts struct{ kind, row, side, buttons string }
+	cardsOn := func(page string) []parts {
+		var out []parts
+		for _, card := range strings.Split(page, `<article class="card`)[1:] {
+			card = card[strings.Index(card, ">")+1 : strings.Index(card, "</article>")]
+			kind := card[strings.Index(card, `<p class="kind">`)+len(`<p class="kind">`):]
+			c := parts{kind: kind[:strings.Index(kind, "<")], row: strings.Join(topDivs(card), " ")}
+			if i := strings.Index(card, `<div class="side">`); i >= 0 {
+				side := card[i+len(`<div class="side">`) : strings.LastIndex(card, "</div>")]
+				c.side = strings.Join(topDivs(side), " ")
+				if j := strings.Index(side, `<div class="actions">`); j >= 0 {
+					c.buttons = side[j:]
+				}
+			}
+			out = append(out, c)
+		}
+		return out
+	}
+
+	list := adminDo(t, r.w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
+	got := cardsOn(list)
+	if len(got) != 3 {
+		t.Fatalf("%d cards on the Reports tab: %s", len(got), list)
+	}
+	for _, c := range got {
+		side := "owner actions"
+		if c.kind == "Account" {
+			side = "actions"
+		}
+		if c.row != "about body side" || c.side != side || !strings.Contains(c.buttons, ">Open profile</a>") {
+			t.Errorf("the Reports tab, the %s card: %q, %q; want why, the thing, then whose it is (but for an account) above the buttons, Open profile among them",
+				c.kind, c.row, c.side)
+		}
+	}
+	if account := adminReportOf(t, list, "Pretending to be someone else"); !strings.Contains(account, `<div class="body"><div class="who">`) {
+		t.Errorf("the account's card, want the account as the thing: %s", account)
+	}
+
+	page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+mira.ID.String(), cookie, nil, "").Body.String()
+	profile := page[strings.Index(page, `<section class="card profile">`)+len(`<section class="card profile">`) : strings.Index(page, "</section>")]
+	side := profile[strings.Index(profile, `<div class="side">`)+len(`<div class="side">`) : strings.LastIndex(profile, "</div>")]
+	if strings.Join(topDivs(profile), " ") != "info side" || strings.Join(topDivs(side), " ") != "actions" || !strings.Contains(side, "Disable account") {
+		t.Errorf("the profile, want its details, then Disable in the right column: %s", profile)
+	}
+	got = cardsOn(page)
+	if len(got) != 3 {
+		t.Fatalf("%d cards on the person page: %s", len(got), page)
+	}
+	for i, want := range []parts{
+		{kind: "Comment", row: "about body side", side: "actions"},
+		{kind: "Account", row: "about side", side: "actions"},
+		{kind: "Post", row: "about body"},
+	} {
+		if c := got[i]; c.kind != want.kind || c.row != want.row || c.side != want.side || strings.Contains(c.buttons, "Open profile") {
+			t.Errorf("the person page, card %d: %q, %q, %q; want %+v, with no Open profile", i, c.kind, c.row, c.side, want)
+		}
+	}
+
+	// The Removed tab's cards are rows the same way.
+	r.repo.removed = []admin.RemovedItem{{Kind: admin.KindPost, ID: uuid.New(), Owner: mira, Title: "Ramen", LocalDate: "2026-11-15",
+		RemovedAt: closedAt, DaysLeft: 30, Reason: "spam"}}
+	removed := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String()
+	if got = cardsOn(removed); len(got) != 1 || got[0].row != "about body side" || got[0].side != "owner actions" ||
+		!strings.Contains(got[0].buttons, ">Open profile</a>") {
+		t.Fatalf("the Removed tab, want why, the thing, then whose it is above the buttons: %+v: %s", got, removed)
+	}
+}
+
+// topDivs is the class of each div at the top level of fragment, in order.
+func topDivs(fragment string) []string {
+	var classes []string
+	depth := 0
+	for _, m := range divTag.FindAllStringSubmatch(fragment, -1) {
+		if m[0] == "</div>" {
+			depth--
+			continue
+		}
+		if depth == 0 {
+			classes = append(classes, m[1])
+		}
+		depth++
+	}
+	return classes
+}
+
+var divTag = regexp.MustCompile(`<div(?: class="([^"]*)")?>|</div>`)
 
 // The Disabled tab lists the disabled accounts with Enable right there, which
 // comes back to this tab; it does not refresh itself.

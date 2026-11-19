@@ -273,12 +273,12 @@ func TestSocialCoverage_DismissClosesOnlyTheReportsOnTheCardAsItWasDrawn(t *test
 
 	page = adminDo(t, w, http.MethodGet, "/admin/people/"+b.id, cookie, nil, "").Body.String()
 	open := adminReportOf(t, page, "Hate speech")
-	if !strings.Contains(open, "Reported by @sd_roy ·") || strings.Contains(open, "sd_rae") || strings.Contains(open, "sd_rex") ||
+	if !strings.Contains(open, "Reported by @sd_roy</p>") || strings.Contains(open, "sd_rae") || strings.Contains(open, "sd_rex") ||
 		!strings.Contains(open, "<button>Dismiss</button>") || !strings.Contains(open, "Remove comment") {
 		t.Fatalf("the report that came in later, want it open and alone: %s", open)
 	}
 	closed := adminReportOf(t, page, "Bullying or harassment · Spam")
-	if !strings.Contains(closed, `<p class="by">Dismissed · `) || strings.Contains(closed, "<button>Dismiss</button>") {
+	if !strings.Contains(closed, `<p class="by">Dismissed <span class="when">`) || strings.Contains(closed, "<button>Dismiss</button>") {
 		t.Fatalf("the dismissed card: %s", closed)
 	}
 	if at := strings.Index(page, "Closed reports"); at < 0 || strings.Index(page, "Hate speech") > at {
@@ -405,7 +405,7 @@ func TestSocialCoverage_ACommentReportIsRefusedLikeAMiss(t *testing.T) {
 	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
 	page := adminDo(t, w, http.MethodGet, "/admin/people/"+c.id, cookie, nil, "").Body.String()
 	card := adminReportOf(t, page, "Bullying or harassment · Spam")
-	if !(strings.Contains(card, "Reported by @sr_alice and @sr_bob ·") || strings.Contains(card, "Reported by @sr_bob and @sr_alice ·")) ||
+	if !(strings.Contains(card, "Reported by @sr_alice and @sr_bob</p>") || strings.Contains(card, "Reported by @sr_bob and @sr_alice</p>")) ||
 		!strings.Contains(card, "Hello there") || !strings.Contains(card, `<p class="kind">Comment</p>`) {
 		t.Fatalf("the comment's card: %s", card)
 	}

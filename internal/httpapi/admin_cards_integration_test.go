@@ -98,7 +98,7 @@ func TestAdminIntegration_TheReportsTabHasOneCardPerReportedThing(t *testing.T) 
 	// Both reporters, once each (the test clock gives them the same time, so
 	// either may come first).
 	bothReporters := func(card string) bool {
-		return strings.Contains(card, "Reported by @ad_cara and @ad_alice ·") || strings.Contains(card, "Reported by @ad_alice and @ad_cara ·")
+		return strings.Contains(card, "Reported by @ad_cara and @ad_alice</p>") || strings.Contains(card, "Reported by @ad_alice and @ad_cara</p>")
 	}
 	if strings.Index(list, "Violence or threats · Spam") > strings.Index(list, "Bullying or harassment") ||
 		!bothReporters(post) || !strings.Contains(post, "<strong>@ad_bob</strong>") || !bothReporters(account) {
@@ -129,7 +129,7 @@ func TestAdminIntegration_TheReportsTabHasOneCardPerReportedThing(t *testing.T) 
 	// The same person reporting the account again opens a report again.
 	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "impersonation"})
 	list = adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
-	if again := adminReportOf(t, list, "Pretending to be someone else"); !strings.Contains(again, "Reported by @ad_alice ·") {
+	if again := adminReportOf(t, list, "Pretending to be someone else"); !strings.Contains(again, "Reported by @ad_alice</p>") {
 		t.Fatalf("the repeat report: %s", again)
 	}
 
