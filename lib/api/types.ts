@@ -135,7 +135,13 @@ export type ApiErrorCode =
   | 'spin_changed'
   // Phase 5 (follows, the Board, reactions and comments; 05-FOLLOW-OVERRIDES section 6).
   | 'own_post'
-  | 'comments_off';
+  | 'comments_off'
+  // A second look at a removed post or comment (developer, 2026-11-19), each a 409 of
+  // POST /removals/{id}/second-look: asked already, past the removal's 30 days, or answered by a
+  // Bring it back (lib/notifications/moderation.ts words them).
+  | 'second_look_asked'
+  | 'second_look_too_late'
+  | 'second_look_back';
 
 // ---------------------------------------------------------------------------
 // Phase 2: the daily spin and the wheel (plan 02-01 Task 3b and 3c, the exact wire shapes).

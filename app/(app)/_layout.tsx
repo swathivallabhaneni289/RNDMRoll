@@ -30,18 +30,19 @@ import { refetchToday } from '@/lib/wheel/useToday';
  *    `today`, `board` and `profile`, each a folder with its own stack. The Board's stack
  *    (Phase 5) hides the bar on a post, your entry page and edit entry.
  *  - "Report sent." shows over every page here for a moment (ReportNotice below), so it outlives
- *    the post page and the person page, which close as they set it.
+ *    the post page and the person page, which close as they set it. The second look's page sets
+ *    its "Sent." line there too as it closes (2026-11-19).
  */
 export const unstable_settings = {
   initialRouteName: 'today',
 };
 
 /**
- * The one line after a report (lib/report/notice.ts), over whichever page is showing. It sits just
- * under the top row, below any Back row and well clear of a post's comment bar at the bottom, on
- * its own plain panel so it reads over a photo too. Taps go through it, it comes and goes at once
- * (no fade), and a screen reader is told it rather than finding it. Its own component, so a notice
- * never draws the tabs again.
+ * The one line after a report or a second look (lib/report/notice.ts), over whichever page is
+ * showing. It sits just under the top row, below any Back row and well clear of a post's comment
+ * bar at the bottom, on its own plain panel so it reads over a photo too. Taps go through it, it
+ * comes and goes at once (no fade), and a screen reader is told it rather than finding it. Its own
+ * component, so a notice never draws the tabs again.
  */
 function ReportNotice() {
   const insets = useSafeAreaInsets();
@@ -77,7 +78,7 @@ function ReportNotice() {
 /** The bar is this tall above the bottom safe area. */
 const BAR_CONTENT_HEIGHT = 56;
 /** Today's pushed pages that show no bottom bar. */
-const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'find-friends', 'post', 'entry', 'log', 'edit-entry'];
+const BARLESS_TODAY_PAGES = ['notifications', 'follow-requests', 'second-look', 'find-friends', 'post', 'entry', 'log', 'edit-entry'];
 /** Profile's pushed pages that show no bottom bar (the same entry pages). */
 const BARLESS_ENTRY_PAGES = ['entry', 'edit-entry', 'post'];
 /** The Board's pushed pages that show no bottom bar: a post, your entry page and edit entry. */

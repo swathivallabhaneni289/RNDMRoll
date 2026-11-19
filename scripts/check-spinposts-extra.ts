@@ -5,7 +5,8 @@
  * session (section 10, Reliability), the Spin page's fixed words and numbers (SPIN-02, SPIN-03,
  * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05), the photo settings (section 10, Performance), how a
  * report ends, and the server's moderation answers read through the app's own readers (moderation,
- * 2026-11-17; the answers are internal/httpapi/testdata/moderation_contract.json).
+ * 2026-11-17; the answers are internal/httpapi/testdata/moderation_contract.json), with a second
+ * look sent through the real client (2026-11-19).
  * Not part of the app bundle. Run from the repo root with:
  *   node --experimental-strip-types scripts/check-spinposts-extra.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
@@ -643,6 +644,15 @@ const { ApiError, api, isRetryable } = client;
     check(`${rel} uploads each photo with its own type`, /uploadEntryPhoto\(photo\.uri, photo\.mimeType \?\? 'image\/jpeg'\)/.test(source(rel)));
   }
   check('the comment photo uploads with its own type', /uploadEntryPhoto\(photo\.uri, photo\.mimeType\)/.test(comments));
+  // The second look's photos (2026-11-19): the comment photo's settings, up to 3.
+  const look = source('components/notifications/SecondLookScreen.tsx');
+  check('the second look photo saves at 80%, Compatible', count(look, quality) === 1 && count(look, /quality:/g) === 1 && count(look, compatible) === 1);
+  check(
+    "the second look's camera takes one photo and its library as many as there is room for, with those settings",
+    /source === 'camera'\s*\? await ImagePicker\.launchCameraAsync\(options\)\s*: await ImagePicker\.launchImageLibraryAsync\(\{\s*\.\.\.options,\s*allowsMultipleSelection: true,\s*selectionLimit: SECOND_LOOK_MAX_PHOTOS - photos\.length,\s*\}\)/.test(look)
+  );
+  check('a second look photo keeps its own type', /next\.push\(\{ uri: asset\.uri, mimeType: asset\.mimeType \?\? 'image\/jpeg' \}\)/.test(look));
+  check('a second look photo uploads with its own type', /uploadEntryPhoto\(photo\.uri, photo\.mimeType\)/.test(look));
 }
 
 // ---- the Spin page's fixed words and numbers ------------------------------------------------------
@@ -742,7 +752,7 @@ const { ApiError, api, isRetryable } = client;
     const boardApi = await load('lib/api/board.ts');
     const spinApi = await load('lib/api/spin.ts');
     const { loadToday } = await load('lib/wheel/loadToday.ts');
-    const { DECISION_KINDS, REASON_WORDS, decisionLine, isDecisionKind, secondLookMailto } = await load('lib/notifications/moderation.ts');
+    const { DECISION_KINDS, REASON_WORDS, canAskSecondLook, decisionLine, isDecisionKind } = await load('lib/notifications/moderation.ts');
 
     // The bell: one item of each decision kind, none dropped, every key read as the server sent it.
     const bell = await serve(contract.bell, () => notifications.getNotifications());
@@ -763,6 +773,7 @@ const { ApiError, api, isRetryable } = client;
         eq(`${sent.kind}: ${key} reads as sent`, JSON.stringify(read[key]), JSON.stringify(sent[key]));
       }
       const removed = sent.kind === 'post_removed' || sent.kind === 'comment_removed';
+      const kept = sent.kind === 'post_kept' || sent.kind === 'comment_kept';
       const decision = sent.id.slice(sent.kind.length + 1);
       check(`${sent.kind}: a decision with its sentence`, isDecisionKind(read.kind) && decisionLine(read.kind, read.reason) !== '');
       // A removal names the reason the admin gave, sent as its key (2026-11-18); nothing else has one.
@@ -779,21 +790,28 @@ const { ApiError, api, isRetryable } = client;
       }
       eq(`${sent.kind}: no person`, read.actor, null);
       eq(`${sent.kind}: the words are the title or the comment`, read.text, sent.kind.startsWith('post_') ? 'Dune' : 'Thanks for watching');
-      check(`${sent.kind}: the address only on a removal`, removed ? read.contact !== '' && read.contact === sent.contact : read.contact === '', read.contact);
+      check(`${sent.kind}: no address on any item`, !('contact' in sent) && !('contact' in read), JSON.stringify(read.contact));
       eq(`${sent.kind}: the ref, on a removal only, is the start of its own decision`, read.ref, removed ? decision.slice(0, 8) : '');
-      eq(`${sent.kind}: a removal opens no post, the others open the post`, read.entry_id, removed ? null : ids.post);
+      // The id a second look names, on a removal only, sent as its own key (never read out of the item id).
+      eq(`${sent.kind}: the removal id, on a removal only, is its own decision`, read.removal, removed ? decision : '');
+      eq(`${sent.kind}: the second look, on a removal only`, read.second_look, removed ? sent.second_look : '');
+      eq(`${sent.kind}: a removal or a kept one opens no post, the others open the post`, read.entry_id, removed || kept ? null : ids.post);
       eq(
         `${sent.kind}: only a post that is back or hidden shows its first photo`,
         read.photo_url,
         sent.kind === 'post_back' || sent.kind === 'post_hidden' ? firstPhoto : ''
       );
-      if (removed) {
-        // What a tap on it opens, built as the bell screen builds it.
-        const link = secondLookMailto({ kind: read.kind, contact: read.contact, username: 'ct_olive', text: read.text ?? '', ref: read.ref });
-        check(`${sent.kind}: a tap opens the email to the server's address`, typeof link === 'string' && link.startsWith(`mailto:${sent.contact}?subject=`), String(link));
-        check(`${sent.kind}: the email names the ref`, typeof link === 'string' && decodeURIComponent(link).includes(`Ref: ${read.ref}`), String(link));
-      }
+      // A tap opens the second look only while none was asked. Both removals here were brought
+      // back after a Keep it removed ("restored"), so neither asks; read as sent with none asked,
+      // a removal would.
+      check(`${sent.kind}: the tap asks for no second look`, !canAskSecondLook(read));
+      eq(`${sent.kind}: with none asked, only a removal would`, canAskSecondLook({ ...read, second_look: '' }), removed);
     }
+    eq(
+      'both removals were answered by a Bring it back',
+      contract.bell.items.filter((item) => item.kind.endsWith('_removed')).map((item) => item.second_look).join(','),
+      'restored,restored'
+    );
 
     // The owner's own Board card under review.
     const board = await serve(contract.board_owner, () => boardApi.getBoard());
@@ -846,6 +864,60 @@ const { ApiError, api, isRetryable } = client;
       JSON.stringify({ entry: gone.today?.entry, entry_removed: gone.today?.entry_removed, state: gone.today?.state })
     );
   }
+}
+
+// ---- a second look, sent through the real client (2026-11-19) -------------------------------------
+{
+  const looks = await load('lib/api/secondLooks.ts');
+  const { secondLookFailure } = await load('lib/notifications/moderation.ts');
+  const realFetch = globalThis.fetch;
+  const removal = '00000008-0000-4000-8000-000000000008';
+  const words = '  It was a joke between friends.\n';
+  // Answers the one request with `status` and `body`, and keeps what was sent.
+  const ask = async (status: number, body: unknown) => {
+    const sent = [];
+    globalThis.fetch = async (url, init) => {
+      sent.push({ url: String(url), init });
+      return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    };
+    try {
+      await looks.askSecondLook(removal, words, ['entries/u1/abc.jpg']);
+      return { sent, err: null };
+    } catch (err) {
+      return { sent, err };
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  };
+  for (const status of [201, 200]) {
+    const { sent, err } = await ask(status, { second_look: 'asked' });
+    eq(`a ${status} is sent`, err, null);
+    check(
+      `${status}: POST /v1/removals/{id}/second-look with the removal id`,
+      sent.length === 1 && sent[0].init?.method === 'POST' && sent[0].url.endsWith(`/v1/removals/${removal}/second-look`),
+      sent[0]?.url
+    );
+    eq(`${status}: the words as written, and the photo keys`, sent[0]?.init?.body, JSON.stringify({ text: words, photo_keys: ['entries/u1/abc.jpg'] }));
+  }
+  for (const [code, line] of [
+    ['second_look_asked', 'You already asked for a second look.'],
+    ['second_look_too_late', "It's too late to ask. It's been 30 days."],
+    ['second_look_back', 'We already took another look.'],
+  ]) {
+    const { err } = await ask(409, { error: code });
+    check(`a 409 ${code} comes back with its code`, err instanceof ApiError && err.status === 409 && err.code === code, String(err?.code));
+    eq(`a 409 ${code} reads over Send`, JSON.stringify(secondLookFailure('post_removed', err?.status, err?.code, err?.field, err?.reason)), JSON.stringify({ at: 'form', line }));
+  }
+  const long = await ask(400, { error: 'validation_failed', field: 'text', reason: 'too_long' });
+  eq(
+    'a 400 on the words reads under the box',
+    JSON.stringify(secondLookFailure('comment_removed', long.err?.status, long.err?.code, long.err?.field, long.err?.reason)),
+    JSON.stringify({ at: 'text', line: 'Keep it under 500 characters.' })
+  );
+  const keys = await ask(400, { error: 'validation_failed', field: 'photo_keys', reason: 'invalid' });
+  eq('a 400 on the photos reads under them', secondLookFailure('post_removed', keys.err?.status, keys.err?.code, keys.err?.field, keys.err?.reason).at, 'photos');
+  const gone = await ask(404, { error: 'not_found' });
+  eq('a 404 reads over Send', secondLookFailure('comment_removed', gone.err?.status, gone.err?.code).line, "This comment isn't here any more.");
 }
 
 console.log(failures === 0 ? `ok: ${checks} checks, no failure` : `${failures} of ${checks} checks failed`);

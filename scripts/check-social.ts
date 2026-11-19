@@ -7,7 +7,8 @@
  * and the database, and the moderation build's phone side (2026-11-17): "Report sent." and the three
  * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
  * line, the bell's decision kinds (with the two hidden ones of 2026-11-18, and the reason a removal
- * names, also 2026-11-18) and the email that asks for a second look.
+ * names, also 2026-11-18), and the second look a removal opens in the app (2026-11-19): who can ask,
+ * its words, its page and its refusals.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -25,13 +26,24 @@ import { COMMENT_MAX } from '../lib/entry/rules.ts';
 import {
   DECISION_KINDS,
   REASON_WORDS,
+  SECOND_LOOK_ASKED,
   SECOND_LOOK_HINT,
+  SECOND_LOOK_LABEL,
+  SECOND_LOOK_MAX_CHARS,
+  SECOND_LOOK_MAX_PHOTOS,
+  SECOND_LOOK_PHOTOS,
+  SECOND_LOOK_SENT,
+  SECOND_LOOK_TITLE,
+  canAskSecondLook,
   decisionLine,
   isDecisionKind,
-  secondLookEmail,
-  secondLookFallback,
-  secondLookMailto,
+  isRemovalKind,
+  isSecondLookAsked,
+  secondLookFailure,
+  secondLookItemLine,
+  secondLookTextProblem,
 } from '../lib/notifications/moderation.ts';
+import { chooseSecondLook, chosenSecondLook } from '../lib/notifications/secondLookItem.ts';
 import { REPORT_NOTICE_MS, getReportNotice, setReportNotice, subscribeReportNotice } from '../lib/report/notice.ts';
 
 let checks = 0;
@@ -423,8 +435,16 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq('the bell: your comment back', decisionLine('comment_back'), 'Sorry, we got that wrong. Your comment is back.');
   eq('the bell: 3 reports hid your post', decisionLine('post_hidden'), 'Your post is hidden while we take a look.');
   eq('the bell: 3 reports hid your comment', decisionLine('comment_hidden'), 'Your comment is hidden while we take a look.');
-  eq('the hint on a removed item that opens the email', SECOND_LOOK_HINT, 'Opens an email to ask for a second look.');
-  eq('no mail app: the line names the address', secondLookFallback(' help@example.com '), 'Email help@example.com to ask for a second look.');
+  eq('the bell: your post kept removed after a second look', decisionLine('post_kept'), 'We looked again. Your post stays removed.');
+  eq('the bell: your comment kept removed after a second look', decisionLine('comment_kept'), 'We looked again. Your comment stays removed.');
+  eq('under a removal once its second look is asked', SECOND_LOOK_ASKED, 'Second look asked.');
+  eq('the hint on a removal that opens the second look', SECOND_LOOK_HINT, 'Opens a page to ask for a second look.');
+  eq("the second look's title", SECOND_LOOK_TITLE, 'Ask for a second look');
+  eq("the second look's box", SECOND_LOOK_LABEL, 'Tell us why it should come back');
+  eq("the second look's photos", SECOND_LOOK_PHOTOS, 'Add photos');
+  eq('after a second look is sent', SECOND_LOOK_SENT, "Sent. We'll take another look.");
+  eq('a second look takes up to 500 characters', SECOND_LOOK_MAX_CHARS, 500);
+  eq('and up to 3 photos', SECOND_LOOK_MAX_PHOTOS, 3);
 
   // A removal names the reason the admin gave, sent as its key (2026-11-18).
   for (const [reason, postLine, commentLine] of [
@@ -443,7 +463,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     eq(`the bell: your post removed, reason ${JSON.stringify(reason)}`, decisionLine('post_removed', reason), 'We removed your post. It broke our rules.');
     eq(`the bell: your comment removed, reason ${JSON.stringify(reason)}`, decisionLine('comment_removed', reason), 'We removed your comment. It broke our rules.');
   }
-  for (const kind of ['post_back', 'comment_back', 'post_hidden', 'comment_hidden']) {
+  for (const kind of ['post_back', 'comment_back', 'post_kept', 'comment_kept', 'post_hidden', 'comment_hidden']) {
     eq(`the bell: ${kind} never reads a reason`, decisionLine(kind, 'hate'), decisionLine(kind));
   }
   // The words are the report list's own (lib/api/person.ts imports the API client, so it is read as text), lowercased.
@@ -460,45 +480,72 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   }
 
   eq(
-    'the six decision kinds, as the server names them',
+    'the eight decision kinds, as the server names them',
     DECISION_KINDS.join(','),
-    'post_removed,comment_removed,post_back,comment_back,post_hidden,comment_hidden'
+    'post_removed,comment_removed,post_back,comment_back,post_kept,comment_kept,post_hidden,comment_hidden'
   );
   check('each of them is a decision kind', DECISION_KINDS.every((kind) => isDecisionKind(kind)));
   check(
     'no other kind is one',
-    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', 'hidden', ''].some((kind) =>
+    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', 'hidden', 'kept', ''].some((kind) =>
       isDecisionKind(kind)
     )
   );
 
-  const look = { kind: 'post_removed', contact: 'help@example.com', username: 'maya', text: 'Aftersun', ref: '1a2b3c4d' };
-  const post = secondLookEmail(look);
-  eq('the subject for a post', post.subject, 'Second look at my post');
-  eq('the body for a post', post.lines.join('\n'), 'Username: @maya\nPost: Aftersun\nRef: 1a2b3c4d\n\nWhy it should come back:');
-  const said = secondLookEmail({ ...look, kind: 'comment_removed', text: 'so good' });
-  eq('the subject for a comment', said.subject, 'Second look at my comment');
-  eq('the body for a comment', said.lines.join('\n'), 'Username: @maya\nComment: so good\nRef: 1a2b3c4d\n\nWhy it should come back:');
-  const photo = secondLookEmail({ ...look, kind: 'comment_removed', text: '' });
-  eq('the body for a comment that was only a photo', photo.lines.join('\n'), 'Username: @maya\nComment: a photo\nRef: 1a2b3c4d\n\nWhy it should come back:');
-  eq('a comment of only spaces reads as a photo too', secondLookEmail({ ...look, kind: 'comment_removed', text: '   ' }).lines[1], 'Comment: a photo');
+  // The second look's page names the item at its top.
+  const post = secondLookItemLine('post_removed', 'Aftersun');
+  check('the page names a post by its title', post.label === 'Your post:' && post.words === 'Aftersun', JSON.stringify(post));
+  const said = secondLookItemLine('comment_removed', 'so good');
+  check('a comment by its words', said.label === 'Your comment:' && said.words === 'so good', JSON.stringify(said));
+  eq('a comment that was only a photo says so', secondLookItemLine('comment_removed', '').words, 'a photo');
+  eq('a comment of only spaces reads as a photo too', secondLookItemLine('comment_removed', '   ').words, 'a photo');
 
   // Built from escapes so this file holds no dash of its own: the hyphen, U+2010 to U+2015, the minus.
   const DASH = /[-‐-―−]/;
+  // Every line a second look can show: its own, the box's two at Send, and each refusal's.
+  const refusals = [
+    [400, 'validation_failed', 'text', 'required'],
+    [400, 'validation_failed', 'text', 'too_long'],
+    [400, 'validation_failed', 'text', 'invalid'],
+    [400, 'validation_failed', 'photo_keys', 'invalid'],
+    [404, 'not_found'],
+    [409, 'second_look_asked'],
+    [409, 'second_look_too_late'],
+    [409, 'second_look_back'],
+    [429, 'rate_limited'],
+    [500, 'server_error'],
+  ];
+  const lookLines = [
+    ...new Set(
+      ['post_removed', 'comment_removed'].flatMap((kind) =>
+        refusals.map(([status, code, field, reason]) => secondLookFailure(kind, status, code, field, reason).line)
+      )
+    ),
+  ];
+  eq('a refused second look has eleven lines (the gone line differs for a post and a comment)', lookLines.length, 11);
   const sentences = [
     REPORT_SENT,
     UNDER_REVIEW,
     POST_REMOVED_LINE,
+    SECOND_LOOK_ASKED,
     SECOND_LOOK_HINT,
-    secondLookFallback('help@example.com'),
+    SECOND_LOOK_SENT,
+    secondLookTextProblem(''),
+    secondLookTextProblem('x'.repeat(501)),
+    ...lookLines,
     ...DECISION_KINDS.map((kind) => decisionLine(kind)),
   ];
+  // Names on the page, not sentences: a capital, no full stop.
+  const names = [SECOND_LOOK_TITLE, SECOND_LOOK_LABEL, SECOND_LOOK_PHOTOS];
   // A removal with its reason, for a post and a comment: their own bound, as the longest, "We removed
   // your comment for pretending to be someone else.", is 58 characters.
   const reasonSentences = Object.keys(REASON_WORDS).flatMap((reason) => [decisionLine('post_removed', reason), decisionLine('comment_removed', reason)]);
   eq('a removal names each of the six reasons, for a post and for a comment', reasonSentences.length, 12);
-  for (const line of [...sentences, ...reasonSentences, post.subject, ...post.lines, said.subject, ...said.lines, ...photo.lines]) {
+  for (const line of [...sentences, ...reasonSentences, ...names, post.label, said.label]) {
     check('no dash of any kind in the new words', !DASH.test(line), line);
+  }
+  for (const line of names) {
+    check('a short plain name: a capital, no full stop', /^[A-Z][^!.]*$/.test(line) && line.length <= 40, line);
   }
   for (const line of sentences) {
     check('a short plain sentence: a capital, a full stop, no exclamation mark', /^[A-Z][^!]*\.$/.test(line) && line.length <= 50, line);
@@ -508,31 +555,77 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   }
 }
 
-// ---- moderation: the email link, how a report ends, and a comment leaving the list ----------------
+// ---- moderation: the second look's rules, how a report ends, and a comment leaving the list ------
 {
-  const look = { kind: 'post_removed', contact: 'help@example.com', username: 'maya', text: 'Aftersun', ref: '1a2b3c4d' };
-  const fields = (link: string) =>
-    Object.fromEntries(
-      link
-        .slice(link.indexOf('?') + 1)
-        .split('&')
-        .map((pair) => [pair.slice(0, pair.indexOf('=')), decodeURIComponent(pair.slice(pair.indexOf('=') + 1))])
-    );
-  const link = secondLookMailto(look) ?? '';
-  check('the link writes to the address', link.startsWith('mailto:help@example.com?'), link);
-  eq('the link carries the subject', fields(link).subject, 'Second look at my post');
-  eq('the link carries the body, its lines ending in CRLF', fields(link).body, secondLookEmail(look).lines.join('\r\n'));
-  const odd = secondLookMailto({ ...look, text: 'Fish & chips? #1 = best\nreally' }) ?? '';
-  check(
-    'a title with ? & # = and a line break stays inside the body',
-    (odd.match(/\?/g) ?? []).length === 1 && (odd.match(/&/g) ?? []).length === 1 && !/[#\s]/.test(odd),
-    odd
-  );
-  eq('and comes back word for word', fields(odd).body.split('\r\n')[1], 'Post: Fish & chips? #1 = best\nreally');
-  check('an address with spaces round it is trimmed', (secondLookMailto({ ...look, contact: '  help@example.com ' }) ?? '').startsWith('mailto:help@example.com?'));
-  for (const contact of ['', '   ', 'help', 'help@', '@example.com', 'a@b@c', 'help @example.com', 'help@example.com?cc=x', 'help@example.com#x']) {
-    eq(`no usable address, no link (the tap does nothing): ${JSON.stringify(contact)}`, secondLookMailto({ ...look, contact }), null);
+  // Who can ask: a removal with its id, while the server sends no second look on it.
+  const removal = { kind: 'post_removed', removal: '00000008-0000-4000-8000-000000000008', second_look: '' };
+  check('a removed post can ask', canAskSecondLook(removal));
+  check('a removed comment can ask', canAskSecondLook({ ...removal, kind: 'comment_removed' }));
+  for (const state of ['asked', 'kept', 'restored', 'expired', 'ASKED', ' ']) {
+    check(`not once its second look is ${JSON.stringify(state)}`, !canAskSecondLook({ ...removal, second_look: state }));
   }
+  check('not without the removal id', !canAskSecondLook({ ...removal, removal: '' }));
+  for (const kind of DECISION_KINDS.filter((k) => !isRemovalKind(k))) {
+    check(`${kind} never asks`, !canAskSecondLook({ ...removal, kind }));
+  }
+  check('nor does any other kind', !['comment', 'reply', 'follow', 'spin_open', 'removed', ''].some((kind) => canAskSecondLook({ ...removal, kind })));
+  eq('the removals are the two kinds that ask', DECISION_KINDS.filter((kind) => isRemovalKind(kind)).join(','), 'post_removed,comment_removed');
+  // "Second look asked." only while the admin has not answered.
+  check('asked: the line shows', isSecondLookAsked({ ...removal, second_look: 'asked' }));
+  check('on a removed comment too', isSecondLookAsked({ ...removal, kind: 'comment_removed', second_look: 'asked' }));
+  for (const state of ['', 'kept', 'restored', 'expired']) {
+    check(`no line while it is ${JSON.stringify(state)}`, !isSecondLookAsked({ ...removal, second_look: state }));
+  }
+  check('never on a kept item', !isSecondLookAsked({ ...removal, kind: 'post_kept', second_look: 'asked' }));
+
+  // The box at Send, counted as the server counts: trimmed, a line break as \n, in characters.
+  const emoji = '\u{1F600}';
+  eq('nothing written', secondLookTextProblem(''), 'Tell us why first.');
+  eq('only spaces and line breaks', secondLookTextProblem('  \n\t \r\n '), 'Tell us why first.');
+  eq('one character', secondLookTextProblem('x'), '');
+  eq('500 characters', secondLookTextProblem('x'.repeat(500)), '');
+  eq('501 characters', secondLookTextProblem('x'.repeat(501)), 'Keep it under 500 characters.');
+  eq('the spaces round 500 characters are not counted', secondLookTextProblem(`  ${'x'.repeat(500)}\n `), '');
+  eq('an emoji counts once: 500 of them', secondLookTextProblem(emoji.repeat(500)), '');
+  eq('501 emoji', secondLookTextProblem(emoji.repeat(501)), 'Keep it under 500 characters.');
+  eq('a CRLF line break counts once', secondLookTextProblem(`${'x'.repeat(249)}\r\n${'x'.repeat(250)}`), '');
+
+  // A refusal, where its line shows and the line (null: the client's own words).
+  const fail = (kind: string, status: number, code: string, field?: string, reason?: string) =>
+    JSON.stringify(secondLookFailure(kind, status, code, field, reason));
+  const at = (where: string, line: string | null) => JSON.stringify({ at: where, line });
+  for (const kind of ['post_removed', 'comment_removed']) {
+    eq(`${kind}: nothing written, said by the server`, fail(kind, 400, 'validation_failed', 'text', 'required'), at('text', 'Tell us why first.'));
+    eq(`${kind}: too long`, fail(kind, 400, 'validation_failed', 'text', 'too_long'), at('text', 'Keep it under 500 characters.'));
+    eq(`${kind}: a character the server refuses`, fail(kind, 400, 'validation_failed', 'text', 'invalid'), at('text', "That has a character we can't use."));
+    eq(`${kind}: a photo the server refuses`, fail(kind, 400, 'validation_failed', 'photo_keys', 'invalid'), at('photos', "Couldn't use those photos. Please try again."));
+    eq(`${kind}: a file storage refused`, fail(kind, 400, 'photo_rejected'), at('photos', null));
+    eq(`${kind}: a photo that would not upload`, fail(kind, 500, 'photo_upload_failed'), at('photos', null));
+    eq(`${kind}: asked already`, fail(kind, 409, 'second_look_asked'), at('form', 'You already asked for a second look.'));
+    eq(`${kind}: past the 30 days`, fail(kind, 409, 'second_look_too_late'), at('form', "It's too late to ask. It's been 30 days."));
+    eq(`${kind}: answered by a Bring it back, never saying it is back`, fail(kind, 409, 'second_look_back'), at('form', 'We already took another look.'));
+    eq(`${kind}: too many tries`, fail(kind, 429, 'rate_limited'), at('form', 'Too many tries. Wait a minute and try again.'));
+    eq(`${kind}: a 429 whose body did not read`, fail(kind, 429, 'server_error'), at('form', 'Too many tries. Wait a minute and try again.'));
+    eq(`${kind}: no connection`, fail(kind, 0, 'network_unavailable'), at('form', null));
+    eq(`${kind}: a server failure`, fail(kind, 500, 'server_error'), at('form', 'Something went wrong. Please try again.'));
+    eq(`${kind}: anything but an answer`, fail(kind, 0, ''), at('form', 'Something went wrong. Please try again.'));
+    eq(`${kind}: another field's 400`, fail(kind, 400, 'validation_failed', 'removal', 'invalid'), at('form', 'Something went wrong. Please try again.'));
+  }
+  eq('a post that went away', fail('post_removed', 404, 'not_found'), at('form', "This post isn't here any more."));
+  eq('a comment that went away', fail('comment_removed', 404, 'not_found'), at('form', "This comment isn't here any more."));
+  eq('a 404 whose body did not read', fail('post_removed', 404, 'server_error'), at('form', "This post isn't here any more."));
+
+  // The bell keeps the item for the page, which finds it by the removal's id alone.
+  const first = '00000008-0000-4000-8000-000000000008';
+  const second = '00000009-0000-4000-8000-000000000009';
+  eq('nothing is kept before a tap', chosenSecondLook(first), null);
+  chooseSecondLook({ removal: first, kind: 'post_removed', text: 'Dune' });
+  eq('the page finds the item the bell kept', chosenSecondLook(first)?.text, 'Dune');
+  eq('another removal finds nothing', chosenSecondLook(second), null);
+  eq('nor does an empty id', chosenSecondLook(''), null);
+  chooseSecondLook({ removal: second, kind: 'comment_removed', text: '' });
+  eq('a newer tap takes its place', chosenSecondLook(first), null);
+  eq('with its own item', chosenSecondLook(second)?.kind, 'comment_removed');
 
   // How a report ended: a 404 counts as sent; no connection and too many tries keep the client's words.
   eq('a report answered 404 not_found is done', reportOutcome(404, 'not_found'), 'done');
@@ -655,18 +748,20 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
 
   const api = source('lib/api/notifications.ts');
-  check('the bell keeps the six decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
+  check('the bell keeps the eight decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
   check(
-    'contact and ref are read as strings, empty when missing, and no key is named email',
-    /contact: typeof raw\.contact === 'string' \? raw\.contact : '',/.test(api) &&
-      /ref: typeof raw\.ref === 'string' \? raw\.ref : '',/.test(api) &&
+    'the ref, the removal id and its second look are read as strings, empty when missing; no address, and no key named email',
+    /ref: typeof raw\.ref === 'string' \? raw\.ref : '',/.test(api) &&
+      /removal: typeof raw\.removal === 'string' \? raw\.removal : '',/.test(api) &&
+      /second_look: typeof raw\.second_look === 'string' \? raw\.second_look : '',/.test(api) &&
+      !/contact/.test(api) &&
       !/email/.test(api)
   );
   check("a removal's reason is read as a string, empty when missing", /reason: typeof raw\.reason === 'string' \? raw\.reason : '',/.test(api));
   const bell = source('components/today/NotificationsScreen.tsx');
   check(
-    'the six kinds say their sentence (a removal with its reason), spoken the same, and draw the wheel mark, not an empty face',
-    /case 'post_hidden':\s*case 'comment_hidden':\s*case 'post_removed':\s*case 'comment_removed':\s*case 'post_back':\s*case 'comment_back': \{[\s\S]{0,200}const line = decisionLine\(item\.kind, item\.reason\);\s*return \{ name: '', rest: line, spoken: line \};/.test(
+    'the eight kinds say their sentence (a removal with its reason), spoken the same with "Second look asked." after it while asked, and draw the wheel mark, not an empty face',
+    /case 'post_hidden':\s*case 'comment_hidden':\s*case 'post_removed':\s*case 'comment_removed':\s*case 'post_back':\s*case 'comment_back':\s*case 'post_kept':\s*case 'comment_kept': \{[\s\S]{0,300}const line = decisionLine\(item\.kind, item\.reason\);\s*return \{ name: '', rest: line, spoken: isSecondLookAsked\(item\) \? `\$\{line\} \$\{SECOND_LOOK_ASKED\}` : line \};/.test(
       bell
     ) && /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
   );
@@ -676,20 +771,31 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       /if \(item\.kind === 'reply' \|\| item\.kind === 'comment_back' \|\| item\.kind === 'comment_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*void openReply\(item\.entry_id\);/.test(bell)
   );
   check(
-    'a removed item opens the email only with an address, and names the address when no mail app opens',
-    /const link = secondLookLink\(item\);\s*if \(link !== null\) askSecondLook\(item, link\);/.test(bell) &&
-      /Linking\.openURL\(link\)\.catch\(\(\) => \{\s*setMailFailedId\(item\.id\);/.test(bell) &&
-      /\{secondLookFallback\(item\.contact\)\}/.test(bell)
+    'a removal opens the second look only while it can ask; once asked, and on a kept item, a tap does nothing',
+    /if \(item\.kind === 'post_removed' \|\| item\.kind === 'comment_removed'\) \{[^}]*if \(canAskSecondLook\(item\)\) openSecondLook\(item\);\s*return;\s*\}\s*if \(item\.kind === 'post_kept' \|\| item\.kind === 'comment_kept'\) return;/.test(
+      bell
+    )
   );
-  check('the hint only where the email opens', /accessibilityHint=\{secondLookLink\(item\) !== null \? SECOND_LOOK_HINT : undefined\}/.test(bell));
+  check(
+    'the page opens in this stack with only the removal id, the item kept for it first',
+    /chooseSecondLook\(\{ removal: item\.removal, kind: item\.kind, text: item\.text \?\? '' \}\);\s*router\.push\(\{\s*pathname: '\/\(app\)\/today\/second-look',\s*params: \{ removal: item\.removal \},\s*\}\);/.test(
+      bell
+    )
+  );
+  check('the email is gone from the bell: no mail app, no address', !/Linking|mailto|secondLookFallback|contact/.test(bell));
+  check('the hint only where the page opens', /accessibilityHint=\{canAskSecondLook\(item\) \? SECOND_LOOK_HINT : undefined\}/.test(bell));
+  check(
+    '"Second look asked." under the sentence while it waits: grey, a state and not an action',
+    /\{isSecondLookAsked\(item\) \? \(\s*\/\/[^\n]*\n\s*<Text maxFontSizeMultiplier=\{1\.3\} style=\{\{ \.\.\.rowText, color: color\.muted \}\}>\s*\{SECOND_LOOK_ASKED\}\s*<\/Text>\s*\) : null\}/.test(
+      bell
+    )
+  );
   check(
     'a post back or hidden shows its picture; a removed item never does',
     /\(item\.kind === 'comment' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) &&\s*item\.photo_url !== ''/.test(bell)
   );
-  check(
-    'no phone push for the decisions',
-    !/post_removed|comment_removed|post_back|comment_back|post_hidden|comment_hidden/.test(source('lib/notifications/pushTarget.ts'))
-  );
+  const pushTarget = source('lib/notifications/pushTarget.ts');
+  check('no phone push for the decisions', !DECISION_KINDS.some((kind) => pushTarget.includes(kind)));
 
   // Nothing red: only Log out is.
   for (const rel of [
@@ -702,9 +808,60 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     'components/profile/PostsFeed.tsx',
     'components/today/SettledBlock.tsx',
     'components/today/NotificationsScreen.tsx',
+    'components/notifications/SecondLookScreen.tsx',
+    'app/(app)/today/second-look.tsx',
   ]) {
     check(`${rel}: nothing red`, !/destructive/.test(source(rel)));
   }
+
+  // The second look's page (2026-11-19).
+  const look = source('components/notifications/SecondLookScreen.tsx');
+  check('the page is in the Spin page stack', /<Stack\.Screen name="second-look" \/>/.test(source('app/(app)/today/_layout.tsx')));
+  check('with no bottom bar', /const BARLESS_TODAY_PAGES = \[[^\]]*'second-look'/.test(layout));
+  check('the route hands the page the removal id alone', /<SecondLookScreen removal=\{removal \?\? ''\} \/>/.test(source('app/(app)/today/second-look.tsx')));
+  check(
+    'the page shows the item the bell kept, or reads the bell list for it',
+    /useState<SecondLookItem \| null>\(\(\) => chosenSecondLook\(removal\)\)/.test(look) && /if \(item === null\) void readItem\(\);/.test(look)
+  );
+  check(
+    'Send is grey only while it sends, one send at a time',
+    /<PrimaryButton label="Send" loading=\{sending\} onPress=\{\(\) => void send\(\)\} \/>/.test(look) &&
+      !/disabled=\{!|onBlockedPress/.test(look) &&
+      /if \(item === null \|\| sendingRef\.current\) return;/.test(look)
+  );
+  check('the box has no length cap to cut a paste short; Send says it is too long', !/maxLength/.test(look));
+  check(
+    'nothing written or too much: the line under the box, said, scrolled to, and the cursor in it',
+    /const problem = secondLookTextProblem\(text\);\s*if \(problem !== ''\) \{\s*showTextProblem\(problem\);\s*return;\s*\}/.test(look) &&
+      /setTextError\(line\);\s*announceProblem\(line, SECOND_LOOK_LABEL\);\s*bringIntoView\(scrollRef\.current, textFieldRef\.current\);\s*textBoxRef\.current\?\.focus\(\);/.test(look)
+  );
+  check(
+    'the photos and the form show their lines with the error look',
+    /<FieldError text=\{photosError\} label=\{PHOTOS_LABEL\} \/>/.test(look) && /<FieldError text=\{formError\} \/>/.test(look)
+  );
+  check(
+    'the photos upload at Send, one after another and each once, then the request names them',
+    /for \(const photo of photos\) \{\s*keys\.push\(await uploads\.ensure\(photo\.uri, \(\) => uploadEntryPhoto\(photo\.uri, photo\.mimeType\)\)\);\s*\}\s*await askSecondLook\(item\.removal, text, keys\);/.test(
+      look
+    )
+  );
+  check('photos the server refused upload again at the next Send', /if \(answer\?\.code === 'validation_failed'\) uploads\.forget\(\);/.test(look));
+  check('a removed photo is forgotten', /function dropPhoto\(uri: string\) \{\s*uploads\.forget\(uri\);/.test(look));
+  check(
+    'sent: the line over Notifications, and back only while the page is still the one showing',
+    /setReportNotice\(SECOND_LOOK_SENT\);\s*\/\/[^\n]*\n\s*if \(mountedRef\.current && navigation\.isFocused\(\)\) goBack\(\);/.test(look)
+  );
+  check('up to 3 photos: Add photos goes at 3', /\{photos\.length < SECOND_LOOK_MAX_PHOTOS \? \(/.test(look));
+  check("photo access off: the phone's alert, with a way to Settings", /showAccessOff\(source\);/.test(look));
+  check('Add photos is the photo mark and ink words, never a pill or underlined text', !/textDecorationLine|TextButton|radius\.full|<Chip/.test(look));
+  const dashes = new RegExp('[' + String.fromCharCode(0x2013, 0x2014) + ']');
+  check('the page has no em or en dash', !dashes.test(look));
+  check(
+    'the request names the removal and sends the words and the photo keys',
+    /api\.post<unknown>\(`\/removals\/\$\{encodeURIComponent\(removal\)\}\/second-look`, \{ text, photo_keys: photoKeys \}\)/.test(source('lib/api/secondLooks.ts'))
+  );
+  const types = source('lib/api/types.ts');
+  check('the three refusals are error codes the app knows', ['second_look_asked', 'second_look_too_late', 'second_look_back'].every((code) => types.includes(`| '${code}'`)));
 }
 
 // ---- moderation: the "Report sent." store (set, read, clear by its timer, restart, clear on '') ----

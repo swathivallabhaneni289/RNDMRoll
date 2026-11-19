@@ -8,8 +8,9 @@ import { DECISION_KINDS, type DecisionKind } from '@/lib/notifications/moderatio
  * notification settings already filter it on the server. Every field the app reads is read here.
  * There are no reaction items (reactions on posts were removed, developer, 2026-10-18); a stray one
  * from an older server is dropped like any unknown kind. What moderation did to your own post or
- * comment (removed, back, or hidden while we take a look) comes as six kinds with no person,
- * whatever the settings say (moderation, 2026-11-17 and 2026-11-18; lib/notifications/moderation.ts).
+ * comment (removed, back, kept removed after a second look, or hidden while we take a look) comes
+ * as eight kinds with no person, whatever the settings say (moderation, 2026-11-17, 2026-11-18 and
+ * 2026-11-19; lib/notifications/moderation.ts).
  *
  * The paths have no `/v1`: the client adds it.
  */
@@ -50,8 +51,6 @@ export type NotificationItem = {
    * can see the post; '' when there is none.
    */
   photo_url: string;
-  /** On `post_removed` and `comment_removed`: where to write for a second look, '' when none is set. */
-  contact: string;
   /** On an admin's decision: the short ref the admin page shows for it, '' when none. */
   ref: string;
   /**
@@ -59,6 +58,17 @@ export type NotificationItem = {
    * ('hate'); '' when none.
    */
   reason: string;
+  /**
+   * On `post_removed` and `comment_removed`: the removal's full id, which a second look names
+   * (lib/api/secondLooks.ts); '' on the other kinds. Never read out of `id`.
+   */
+  removal: string;
+  /**
+   * On `post_removed` and `comment_removed`: the second look on it, 'asked', 'kept' or 'restored'
+   * ('restored' also when a Bring it back came with none asked); '' while none was asked
+   * (canAskSecondLook in lib/notifications/moderation.ts).
+   */
+  second_look: string;
 };
 
 const KINDS: readonly NotificationKind[] = [
@@ -92,9 +102,10 @@ function readItem(raw: Record<string, unknown>): NotificationItem | null {
     text: textOrNull(raw.text),
     request_id: textOrNull(raw.request_id),
     photo_url: typeof raw.photo_url === 'string' ? raw.photo_url : '',
-    contact: typeof raw.contact === 'string' ? raw.contact : '',
     ref: typeof raw.ref === 'string' ? raw.ref : '',
     reason: typeof raw.reason === 'string' ? raw.reason : '',
+    removal: typeof raw.removal === 'string' ? raw.removal : '',
+    second_look: typeof raw.second_look === 'string' ? raw.second_look : '',
   };
 }
 
