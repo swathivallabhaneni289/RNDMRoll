@@ -189,13 +189,15 @@ func lookAnswer(t *testing.T, pool *pgxpool.Pool, removal uuid.UUID) string {
 }
 
 // askedAbout stores an open second look about removal, as the app's form
-// would.
-func askedAbout(t *testing.T, pool *pgxpool.Pool, owner, removal, item uuid.UUID) {
+// would, and returns its id.
+func askedAbout(t *testing.T, pool *pgxpool.Pool, owner, removal, item uuid.UUID) uuid.UUID {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `insert into second_looks (owner_id, removal_id, item, item_id, body, at)
-		values ($1, $2, 'post', $3, 'It was a joke.', now())`, owner, removal, item); err != nil {
+	var look uuid.UUID
+	if err := pool.QueryRow(context.Background(), `insert into second_looks (owner_id, removal_id, item, item_id, body, at)
+		values ($1, $2, 'post', $3, 'It was a joke.', now()) returning id`, owner, removal, item).Scan(&look); err != nil {
 		t.Fatalf("ask: %v", err)
 	}
+	return look
 }
 
 // Keep it removed answers the open second look about the newest removal,
@@ -204,7 +206,7 @@ func askedAbout(t *testing.T, pool *pgxpool.Pool, owner, removal, item uuid.UUID
 // (no request is open then: the Bring it back answered it) or past the 30
 // days it changes nothing. Bring it back answers the request too, also one
 // a Keep answered, and a removal after that has no request until one is
-// asked.
+// asked; a Keep naming the first request never answers that new one.
 func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 	pool := requireTestPool(t)
 	ctx := context.Background()
@@ -224,23 +226,26 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 		return n
 	}
 
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNoRequest) {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, uuid.New(), loggedAt); !errors.Is(err, admin.ErrNoRequest) {
 		t.Fatalf("Keep with nothing asked: %v, want ErrNoRequest", err)
 	}
-	askedAbout(t, pool, a.ID, removal, post)
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, b.ID, loggedAt); !errors.Is(err, admin.ErrNotFound) {
+	look := askedAbout(t, pool, a.ID, removal, post)
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, b.ID, look, loggedAt); !errors.Is(err, admin.ErrNotFound) {
 		t.Fatalf("Keep naming someone else: %v, want ErrNotFound", err)
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindComment, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNotFound) {
+	if err := repo.KeepRemoved(ctx, admin.KindComment, post, a.ID, look, loggedAt); !errors.Is(err, admin.ErrNotFound) {
 		t.Fatalf("Keep of a comment that is a post: %v, want ErrNotFound", err)
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); err != nil {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, uuid.New(), loggedAt); !errors.Is(err, admin.ErrNoRequest) || kept() != 0 {
+		t.Fatalf("Keep naming another request: %v with %d kept rows, want ErrNoRequest and 0", err, kept())
+	}
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, look, loggedAt); err != nil {
 		t.Fatalf("Keep: %v", err)
 	}
 	if got := lookAnswer(t, pool, removal); got != "kept" || kept() != 1 {
 		t.Fatalf("after Keep the request is %q with %d kept rows, want kept and 1", got, kept())
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrAlreadyDone) || kept() != 1 {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, look, loggedAt); !errors.Is(err, admin.ErrAlreadyDone) || kept() != 1 {
 		t.Fatalf("Keep again: %v with %d kept rows, want ErrAlreadyDone and 1", err, kept())
 	}
 	if err := repo.RestoreItem(ctx, admin.KindPost, post, a.ID, loggedAt); err != nil {
@@ -249,7 +254,7 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 	if got := lookAnswer(t, pool, removal); got != "restored" {
 		t.Fatalf("after Bring it back the request is %q, want restored", got)
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNoRequest) || kept() != 1 {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, look, loggedAt); !errors.Is(err, admin.ErrNoRequest) || kept() != 1 {
 		t.Fatalf("Keep once it is back: %v with %d kept rows, want ErrNoRequest (the Bring it back answered it) and 1", err, kept())
 	}
 
@@ -259,10 +264,15 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 		t.Fatalf("remove again: %v", err)
 	}
 	again := newestRemovalOf(t, pool, post)
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNoRequest) {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, look, loggedAt); !errors.Is(err, admin.ErrNoRequest) {
 		t.Fatalf("Keep on the new removal with nothing asked: %v, want ErrNoRequest", err)
 	}
 	askedAbout(t, pool, a.ID, again, post)
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, look, loggedAt); !errors.Is(err, admin.ErrNoRequest) ||
+		lookAnswer(t, pool, again) != "open" || kept() != 1 {
+		t.Fatalf("Keep from a page drawn for the first request: %v, the new request %q, %d kept rows; want ErrNoRequest, open and 1",
+			err, lookAnswer(t, pool, again), kept())
+	}
 	if err := repo.RestoreItem(ctx, admin.KindPost, post, a.ID, loggedAt); err != nil {
 		t.Fatalf("Bring it back on an open request: %v", err)
 	}
@@ -272,15 +282,56 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 
 	// Past the 30 days nothing is answered: only the purge touches it.
 	late, lateRemoval := removedPostOf(t, pool, b.ID, "Old")
-	askedAbout(t, pool, b.ID, lateRemoval, late)
+	lateLook := askedAbout(t, pool, b.ID, lateRemoval, late)
 	if _, err := pool.Exec(ctx, `update entries set removed_at = now() - interval '30 days' where id = $1`, late); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindPost, late, b.ID, loggedAt); !errors.Is(err, admin.ErrNotFound) {
+	if err := repo.KeepRemoved(ctx, admin.KindPost, late, b.ID, lateLook, loggedAt); !errors.Is(err, admin.ErrNotFound) {
 		t.Fatalf("Keep past the 30 days: %v, want ErrNotFound", err)
 	}
 	if got := lookAnswer(t, pool, lateRemoval); got != "open" {
 		t.Fatalf("past the 30 days the request is %q, want open", got)
+	}
+}
+
+// The bell's read of the decision log says closed on a removal nobody asked
+// about that can no longer be asked about (past the 30 days, or deleted),
+// and keeps every removal that can still be asked about past its limit, as
+// that line is the only way to ask.
+func TestNotificationsRepo_DecisionsKeepWhatCanStillBeAskedAbout(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "bell-looks@example.com")
+	removedPostOf(t, pool, a.ID, "Old")
+	gone, _ := removedPostOf(t, pool, a.ID, "Gone")
+	late, lateRemoval := removedPostOf(t, pool, a.ID, "Late")
+	asked, askedRemoval := removedPostOf(t, pool, a.ID, "Asked")
+	removedPostOf(t, pool, a.ID, "New")
+	askedAbout(t, pool, a.ID, askedRemoval, asked)
+	if _, err := pool.Exec(ctx, `delete from entries where id = $1`, gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `with e as (update entries set removed_at = now() - interval '30 days' where id = $1)
+		update moderation_events set created_at = now() - interval '30 days' where id = $2`, late, lateRemoval); err != nil {
+		t.Fatal(err)
+	}
+	read := func(limit int) []string {
+		t.Helper()
+		decisions, err := postgres.NewNotificationsRepo(pool).Decisions(ctx, a.ID, time.Now().Add(-time.Hour), limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, d := range decisions {
+			out = append(out, d.Snapshot+" "+d.SecondLook)
+		}
+		return out
+	}
+	if got, want := read(10), []string{"New ", "Asked asked", "Late closed", "Gone closed", "Old "}; !slices.Equal(got, want) {
+		t.Fatalf("the removals: %q, want %q", got, want)
+	}
+	if got, want := read(1), []string{"New ", "Old "}; !slices.Equal(got, want) {
+		t.Fatalf("the newest one: %q, want %q, the old one too as it can still be asked about", got, want)
 	}
 }
 

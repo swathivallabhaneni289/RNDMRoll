@@ -184,14 +184,18 @@ func TestSecondLookIntegration_TheOwnerAsksOnce(t *testing.T) {
 	}
 	// The bell: asked on the first removal, and back with nothing asked on
 	// the other, so there is nothing to ask about.
-	looks := map[string]string{}
-	for _, it := range w.ok(ann, http.MethodGet, "/v1/notifications", nil)["items"].([]any) {
-		item := it.(map[string]any)
-		if item["kind"] == "post_removed" && item["id"] == "post_removed:"+item["removal"].(string) {
-			looks[item["removal"].(string)], _ = item["second_look"].(string)
+	bellLooks := func(p feedPerson) map[string]string {
+		t.Helper()
+		looks := map[string]string{}
+		for _, it := range w.ok(p, http.MethodGet, "/v1/notifications", nil)["items"].([]any) {
+			item := it.(map[string]any)
+			if item["kind"] == "post_removed" && item["id"] == "post_removed:"+item["removal"].(string) {
+				looks[item["removal"].(string)], _ = item["second_look"].(string)
+			}
 		}
+		return looks
 	}
-	if len(looks) != 2 || looks[removal] != "asked" || looks[otherRemoval] != "restored" {
+	if looks := bellLooks(ann); len(looks) != 2 || looks[removal] != "asked" || looks[otherRemoval] != "restored" {
 		t.Fatalf("the bell's second looks: %v, want %s asked and %s restored", looks, removal, otherRemoval)
 	}
 	third := w.post(bo, "2026-10-08")
@@ -202,6 +206,20 @@ func TestSecondLookIntegration_TheOwnerAsksOnce(t *testing.T) {
 	}
 	if got := w.ask(bo, thirdRemoval, map[string]any{"text": "Why"}, http.StatusConflict); got["error"] != "second_look_too_late" {
 		t.Fatalf("past the 30 days: %v", got)
+	}
+	// Deleted another way before its 30 days: not there.
+	fourth := w.post(bo, "2026-10-09")
+	fourthRemoval := w.remove(admin.KindPost, fourth, bo)
+	if _, err := w.pool.Exec(context.Background(), `delete from entries where id = $1`, fourth); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.ask(bo, fourthRemoval, map[string]any{"text": "Why"}, http.StatusNotFound); got["error"] != "not_found" {
+		t.Fatalf("once deleted: %v", got)
+	}
+	// The bell says both are closed, so the app offers no form that the
+	// server would refuse.
+	if looks := bellLooks(bo); len(looks) != 2 || looks[thirdRemoval] != "closed" || looks[fourthRemoval] != "closed" {
+		t.Fatalf("the bell's second looks: %v, want %s and %s closed", looks, thirdRemoval, fourthRemoval)
 	}
 	if w.heard.count() != 1 {
 		t.Fatalf("%d admin emails, want still 1", w.heard.count())

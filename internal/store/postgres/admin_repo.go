@@ -700,10 +700,13 @@ const newestRemoval = `select nr.id from moderation_events nr
 // a Keep and a Bring it back from two tabs take turns, and so does a second
 // look being asked, which holds it for share. One that is not removed has
 // no open request: the Bring it back that brought it back answered it, and
-// the page says so rather than that it is gone. Then the open request about
-// its newest removal is held, closed as kept and logged. A Keep that finds
-// the request closed as kept already is the second click of a double click.
-func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
+// the page says so rather than that it is gone. Then the request look is
+// held while it is about the newest removal, closed as kept and logged. The
+// page names the request it showed, so a page drawn before a Bring it back
+// and a removal since never answers a new request nobody read. A Keep that
+// finds the request closed as kept already is the second click of a double
+// click.
+func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person, look uuid.UUID, loggedAt time.Time) error {
 	m, ok := moderatedItems[kind]
 	if !ok {
 		return admin.ErrNotFound
@@ -732,10 +735,9 @@ func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person
 	case !inside:
 		return admin.ErrNotFound
 	}
-	var look uuid.UUID
 	var decision *string
-	err = tx.QueryRow(ctx, `select id, decision from second_looks where removal_id = (`+newestRemoval+`) for update`,
-		target, person).Scan(&look, &decision)
+	err = tx.QueryRow(ctx, `select decision from second_looks where id = $3 and removal_id = (`+newestRemoval+`) for update`,
+		target, person, look).Scan(&decision)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return admin.ErrNoRequest

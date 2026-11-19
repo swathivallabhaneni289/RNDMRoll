@@ -45,32 +45,43 @@ func (w *adminModWorld) askLook(p feedPerson, removal, words string, keys ...str
 	}
 }
 
-// keepFormOf is the Keep it removed form the Removed tab draws for target.
-func keepFormOf(csrf, kind, target string, owner feedPerson) string {
+// keepFormOf is the Keep it removed form the Removed tab draws for target,
+// naming its second look, look.
+func keepFormOf(csrf, kind, target, look string, owner feedPerson) string {
 	return `<form method="post" action="/admin/removed/keep"><input type="hidden" name="csrf" value="` + csrf +
 		`"><input type="hidden" name="kind" value="` + kind + `"><input type="hidden" name="id" value="` + target +
-		`"><input type="hidden" name="person" value="` + owner.id +
+		`"><input type="hidden" name="person" value="` + owner.id + `"><input type="hidden" name="look" value="` + look +
 		`"><input type="hidden" name="from" value="removed"><button>Keep it removed</button></form>`
 }
 
 // keep sends the Keep it removed form that the Removed tab draws for the
-// post or comment target, and wants the tab to draw exactly that form.
-func (w *adminModWorld) keep(kind, target string, owner feedPerson) string {
+// post or comment target, whose removal is removal, and wants the tab to
+// draw exactly that form, naming the second look asked about it.
+func (w *adminModWorld) keep(kind, target, removal string, owner feedPerson) string {
 	w.t.Helper()
+	look := w.lookOf(removal)
 	tab := w.page("/admin/removed")
-	if !strings.Contains(tab, keepFormOf(csrfOf(w.t, tab), kind, target, owner)) {
+	if !strings.Contains(tab, keepFormOf(csrfOf(w.t, tab), kind, target, look, owner)) {
 		w.t.Fatalf("the Removed tab has no Keep it removed for %s %s: %s", kind, target, tab)
 	}
-	return w.keepAnyway(kind, target, owner)
+	return w.keepAnyway(kind, target, look, owner)
 }
 
-// keepAnyway sends Keep it removed for target, whether the tab offers it or
-// not.
-func (w *adminModWorld) keepAnyway(kind, target string, owner feedPerson) string {
+// keepAnyway sends Keep it removed for target and the second look look,
+// whether the tab offers it or not.
+func (w *adminModWorld) keepAnyway(kind, target, look string, owner feedPerson) string {
 	w.t.Helper()
 	return adminDo(w.t, w.feedWorld, http.MethodPost, "/admin/removed/keep", w.cookie,
-		url.Values{"csrf": {csrfOf(w.t, w.page("/admin/removed"))}, "kind": {kind}, "id": {target}, "person": {owner.id}, "from": {"removed"}},
+		url.Values{"csrf": {csrfOf(w.t, w.page("/admin/removed"))}, "kind": {kind}, "id": {target}, "person": {owner.id}, "look": {look},
+			"from": {"removed"}},
 		"").Header().Get("Location")
+}
+
+// lookOf is the id of the second look asked about removal, a fresh id that
+// names none when there is none.
+func (w *adminModWorld) lookOf(removal string) string {
+	w.t.Helper()
+	return w.one(`select coalesce((select id::text from second_looks where removal_id = $1), gen_random_uuid()::text)`, removal)
 }
 
 // lookState is the answer stored on the second look about removal: "open"
@@ -143,7 +154,7 @@ func TestAdminSecondLookIntegration_AnOpenRequestComesFirstAndKeepAnswersIt(t *t
 		`<p class="text quote">&lt;b&gt;Mine&lt;/b&gt;, not spam.`+"\n"+`Ask anyone.</p><div class="strip">`+proofLink(k1)+proofLink(k2)+`</div></div></div>`) {
 		t.Fatalf("Bob's What cell, want the tag, his words and his photos under the post: %s", what)
 	}
-	if !strings.Contains(bobs, keepFormOf(csrfOf(t, tab), "post", post, b)) ||
+	if !strings.Contains(bobs, keepFormOf(csrfOf(t, tab), "post", post, w.lookOf(postRemoval), b)) ||
 		!strings.Contains(adminReportOf(t, tab, cwLine), `<p class="text quote">A joke</p></div></div>`) {
 		t.Fatalf("want Keep it removed on Bob's line and Wren's words on hers: %s", tab)
 	}
@@ -152,7 +163,7 @@ func TestAdminSecondLookIntegration_AnOpenRequestComesFirstAndKeepAnswersIt(t *t
 	}
 
 	// Keep it removed.
-	if got := w.keep("post", post, b); got != "/admin/removed?n=kept" {
+	if got := w.keep("post", post, postRemoval, b); got != "/admin/removed?n=kept" {
 		t.Fatalf("keep it removed: %q", got)
 	}
 	tab = w.page("/admin/removed?n=kept")
@@ -188,7 +199,7 @@ func TestAdminSecondLookIntegration_AnOpenRequestComesFirstAndKeepAnswersIt(t *t
 	}
 
 	// A double click: what the first said, and nothing more.
-	if got := w.keepAnyway("post", post, b); got != "/admin/removed?n=kept" {
+	if got := w.keepAnyway("post", post, w.lookOf(postRemoval), b); got != "/admin/removed?n=kept" {
 		t.Fatalf("Keep again: %q", got)
 	}
 	if got := loggedActions(t, w.pool, b.id); len(got) != 2 || w.lookState(postRemoval) != "kept" {
@@ -218,7 +229,7 @@ func TestAdminSecondLookIntegration_AnOpenRequestComesFirstAndKeepAnswersIt(t *t
 	}
 
 	// Keep from a page drawn before Bring it back: answered, nothing logged.
-	if got := w.keepAnyway("post", post, b); got != "/admin/removed?n=answered" {
+	if got := w.keepAnyway("post", post, w.lookOf(postRemoval), b); got != "/admin/removed?n=answered" {
 		t.Fatalf("Keep once it is back: %q", got)
 	}
 	if tab := w.page("/admin/removed?n=answered"); !strings.Contains(tab, `<div class="note">That second look was already answered.</div>`) {
@@ -233,8 +244,9 @@ func TestAdminSecondLookIntegration_AnOpenRequestComesFirstAndKeepAnswersIt(t *t
 // Keep it removed changes nothing and logs nothing without an open second
 // look: none asked (the tab draws no Keep then), a form naming someone else
 // as the owner, a stale Keep after the item was brought back and removed
-// again (the new removal has no request), or a removal past the 30 days,
-// which leaves the tab while its request stays open for the purge. A
+// again (the new removal has no request, and once one is asked, the stale
+// Keep still names the first), or a removal past the 30 days, which leaves
+// the tab while its request stays open for the purge. A
 // comment whose post was removed too can be kept removed, though Bring it
 // back asks for its post first and leaves its request open.
 func TestAdminSecondLookIntegration_KeepChangesNothingWithoutAnOpenRequest(t *testing.T) {
@@ -249,11 +261,11 @@ func TestAdminSecondLookIntegration_KeepChangesNothingWithoutAnOpenRequest(t *te
 	if tab := w.page("/admin/removed"); strings.Contains(tab, "/admin/removed/keep") || strings.Contains(tab, "Second look") {
 		t.Fatalf("nothing asked, yet the tab offers Keep: %s", tab)
 	}
-	if got := w.keepAnyway("post", post, b); got != "/admin/removed?n=answered" {
+	if got := w.keepAnyway("post", post, w.lookOf(first), b); got != "/admin/removed?n=answered" {
 		t.Fatalf("Keep with nothing asked: %q", got)
 	}
 	w.askLook(b, first, "Please look again")
-	if got := w.keepAnyway("post", post, d); got != "/admin/removed?n=gone" || w.lookState(first) != "open" {
+	if got := w.keepAnyway("post", post, w.lookOf(first), d); got != "/admin/removed?n=gone" || w.lookState(first) != "open" {
 		t.Fatalf("Keep naming Dana as the owner: %q, %s", got, w.lookState(first))
 	}
 	if got := loggedActions(t, w.pool, b.id); !slices.Equal(got, []string{"removed post " + post}) {
@@ -266,21 +278,28 @@ func TestAdminSecondLookIntegration_KeepChangesNothingWithoutAnOpenRequest(t *te
 		t.Fatalf("bring it back: %q", got)
 	}
 	again := w.removeNow("post", post, b)
-	if got := w.keepAnyway("post", post, b); got != "/admin/removed?n=answered" || w.lookState(first) != "restored" ||
+	if got := w.keepAnyway("post", post, w.lookOf(first), b); got != "/admin/removed?n=answered" || w.lookState(first) != "restored" ||
 		w.lookState(again) != "none" {
 		t.Fatalf("Keep on the new removal: %q, the first request %s, the new one %s", got, w.lookState(first), w.lookState(again))
 	}
 
-	// Past the 30 days: off the tab, Keep is gone, the request stays open.
+	// Asked about again: a Keep from a page drawn for the first request
+	// never answers the new one nobody read.
 	w.askLook(b, again, "And again")
-	if tab := w.page("/admin/removed"); !strings.Contains(tab, keepFormOf(csrfOf(t, tab), "post", post, b)) {
+	if tab := w.page("/admin/removed"); !strings.Contains(tab, keepFormOf(csrfOf(t, tab), "post", post, w.lookOf(again), b)) {
 		t.Fatalf("the new request's line, want Keep it removed: %s", tab)
 	}
+	if got := w.keepAnyway("post", post, w.lookOf(first), b); got != "/admin/removed?n=answered" || w.lookState(first) != "restored" ||
+		w.lookState(again) != "open" {
+		t.Fatalf("Keep for the first request once a new one is asked: %q, the first %s, the new one %s", got, w.lookState(first), w.lookState(again))
+	}
+
+	// Past the 30 days: off the tab, Keep is gone, the request stays open.
 	w.exec(`update entries set removed_at = now() - interval '30 days' where id = $1`, post)
 	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Nothing removed in the last 30 days.") {
 		t.Fatalf("past the 30 days the tab still lists it: %s", tab)
 	}
-	if got := w.keepAnyway("post", post, b); got != "/admin/removed?n=gone" || w.lookState(again) != "open" {
+	if got := w.keepAnyway("post", post, w.lookOf(again), b); got != "/admin/removed?n=gone" || w.lookState(again) != "open" {
 		t.Fatalf("Keep past the 30 days: %q, %s", got, w.lookState(again))
 	}
 	if got := loggedActions(t, w.pool, b.id); !slices.Equal(got, []string{"removed post " + post, "restored post " + post, "removed post " + post}) {
@@ -298,7 +317,7 @@ func TestAdminSecondLookIntegration_KeepChangesNothingWithoutAnOpenRequest(t *te
 	if got := w.restore("comment", comment, cw); got != "/admin/removed?n=postfirst" || w.lookState(commentRemoval) != "open" {
 		t.Fatalf("bring the comment back under its removed post: %q, %s", got, w.lookState(commentRemoval))
 	}
-	if got := w.keep("comment", comment, cw); got != "/admin/removed?n=kept" || w.lookState(commentRemoval) != "kept" {
+	if got := w.keep("comment", comment, commentRemoval, cw); got != "/admin/removed?n=kept" || w.lookState(commentRemoval) != "kept" {
 		t.Fatalf("keep the comment under its removed post: %q, %s", got, w.lookState(commentRemoval))
 	}
 	if got := loggedActions(t, w.pool, cw.id); !slices.Equal(got, []string{"removed comment " + comment, "kept comment " + comment}) {
@@ -335,7 +354,7 @@ func TestAdminSecondLookIntegration_TheHistoryShowsEachRequestAndItsAnswer(t *te
 	w.askLook(b, postRemoval, "It was a <i>joke</i>", k1, k2)
 	commentRemoval := w.removeNow("comment", comment, b)
 	w.askLook(b, commentRemoval, "Fair words")
-	if got := w.keep("post", post, b); got != "/admin/removed?n=kept" {
+	if got := w.keep("post", post, postRemoval, b); got != "/admin/removed?n=kept" {
 		t.Fatalf("keep the post removed: %q", got)
 	}
 

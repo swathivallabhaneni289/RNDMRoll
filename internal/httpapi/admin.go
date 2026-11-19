@@ -1096,18 +1096,20 @@ func (h *AdminHandler) restore(c *gin.Context) {
 // keep is Keep it removed on the Removed tab, the answer to a second look
 // its owner asked for (developer, 2026-11-19): it stays removed, the request
 // is closed and logged on the owner's own clock, and their bell says so. The
-// tab draws it only on a line with an open request. A second Keep (a double
-// click) says what the first said, and changes nothing. One whose request a
-// Bring it back answered meanwhile says it was answered; past the grace or
-// deleted, it is gone.
+// tab draws it only on a line with an open request, and names that request
+// (look). A second Keep (a double click) says what the first said, and
+// changes nothing. One whose request a Bring it back answered meanwhile says
+// it was answered, also when a new request was asked since; past the grace
+// or deleted, it is gone.
 func (h *AdminHandler) keep(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
-	if !ok || kind == admin.KindPerson {
+	look, err := uuid.Parse(c.PostForm("look"))
+	if !ok || kind == admin.KindPerson || err != nil {
 		c.Redirect(http.StatusSeeOther, "/admin/removed")
 		return
 	}
 	ctx := c.Request.Context()
-	err := h.repo.KeepRemoved(ctx, kind, id, person, h.ownerNow(ctx, person))
+	err = h.repo.KeepRemoved(ctx, kind, id, person, look, h.ownerNow(ctx, person))
 	switch {
 	case err == nil, errors.Is(err, admin.ErrAlreadyDone):
 		backTo(c, person, "kept")

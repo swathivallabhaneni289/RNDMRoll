@@ -282,13 +282,16 @@ func TestModeration_TheTextIsTheSnapshotOnOneLine(t *testing.T) {
 
 // Decisions take their place among the other items by their own time, each
 // one an item of its own (a post removed, brought back and removed again
-// makes three), and fall under the same 50 newest as everything else.
+// makes three), and fall under the same 50 newest as everything else, but
+// for a removal its owner can still ask a second look about: that one stays
+// at the end, as its line is the only way to ask.
 func TestModeration_EachDecisionIsAnItemInItsPlace(t *testing.T) {
 	bell, notes, _, now, actor := socialBell(t)
 	entry := uuid.New()
 	category, text := "Movie", "hi"
 	at := func(m int) time.Time { return now.Add(-time.Duration(m) * time.Minute).UTC() }
 	removed := decisionAt("post", "removed", at(30), "Dune", &entry)
+	removed.SecondLook = SecondLookRestored
 	back := decisionAt("post", "restored", at(20), "Dune", &entry)
 	again := decisionAt("post", "removed", at(10), "Dune", &entry)
 	notes.decisions = []Decision{again, back, removed}
@@ -315,7 +318,8 @@ func TestModeration_EachDecisionIsAnItemInItsPlace(t *testing.T) {
 	}
 
 	// 60 comments newer than every decision: the decisions fall off the
-	// end like any other item.
+	// end like any other item, all but the newest removal, which can still
+	// be asked about.
 	notes.comments = nil
 	for m := 1; m <= 60; m++ {
 		notes.comments = append(notes.comments, Raw{Kind: KindComment, ID: "comment:" + time.Duration(m).String(), At: now.Add(-time.Duration(m) * time.Second).UTC(),
@@ -324,12 +328,24 @@ func TestModeration_EachDecisionIsAnItemInItsPlace(t *testing.T) {
 	if list, err = bell.List(context.Background(), uuid.New()); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Items) != MaxItems {
-		t.Fatalf("%d items, want %d", len(list.Items), MaxItems)
+	if len(list.Items) != MaxItems+1 {
+		t.Fatalf("%d items, want %d", len(list.Items), MaxItems+1)
 	}
-	for _, it := range list.Items {
+	for _, it := range list.Items[:MaxItems] {
 		if it.Kind != KindComment {
-			t.Fatalf("a decision older than 50 newer items is still listed: %+v", it)
+			t.Fatalf("a decision older than 50 newer items is among them: %+v", it)
+		}
+	}
+	if last := list.Items[MaxItems]; last.ID != "post_removed:"+again.ID.String() || last.Removal == nil || *last.Removal != again.ID {
+		t.Fatalf("past the 50, want only the removal that can still be asked about: %+v", last)
+	}
+	for _, look := range []string{SecondLookAsked, SecondLookKept, SecondLookRestored, SecondLookClosed} {
+		notes.decisions[0].SecondLook = look
+		if list, err = bell.List(context.Background(), uuid.New()); err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Items) != MaxItems {
+			t.Fatalf("a removal with its second look %q stays past the 50: %d items", look, len(list.Items))
 		}
 	}
 }

@@ -88,7 +88,7 @@
 <div class="about"><p class="reasons">{{if .Reason}}{{reason .Reason}}{{else}}{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}{{end}}</p>
 <p class="by">Removed <span class="when">{{when .RemovedAt}}</span></p><p class="by">{{daysLeft .DaysLeft}}{{with .Ref}} · Ref: {{.}}{{end}}</p></div>
 <div class="side"><div class="actions"><form method="post" action="/admin/removed/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button class="strong">Bring it back</button></form>
-{{if .SecondLook}}<form method="post" action="/admin/removed/keep"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button>Keep it removed</button></form>
+{{if .SecondLook}}<form method="post" action="/admin/removed/keep"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="look" value="{{.SecondLook.ID}}"><input type="hidden" name="from" value="removed"><button>Keep it removed</button></form>
 {{end}}<a class="button push" href="/admin/people/{{.Owner.ID}}?from=removed">Open profile</a></div></div>
 </article>{{end}}</div>
 {{else}}<p class="empty">Nothing removed in the last 30 days.</p>{{end}}

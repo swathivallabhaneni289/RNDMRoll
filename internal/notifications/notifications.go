@@ -65,11 +65,14 @@ const (
 // The second look on a removal (SecondLook): none asked, asked and not yet
 // answered, Keep it removed, or back. Back is also a removal that a Bring it
 // back answered with nothing asked: there is nothing left to ask about.
+// Closed is one nobody asked about that can no longer be asked about: its
+// post or comment is deleted, or its 30 days are over. Only None can ask.
 const (
 	SecondLookNone     = ""
 	SecondLookAsked    = "asked"
 	SecondLookKept     = "kept"
 	SecondLookRestored = "restored"
+	SecondLookClosed   = "closed"
 )
 
 // Sections.
@@ -188,8 +191,9 @@ type Repository interface {
 	// DecisionsAndSeen reads the two things every list needs whatever the
 	// switches, together: the admin's removals and returns of the viewer's
 	// own posts and comments, dated by the viewer's own clock (decisions
-	// about the account are not among them), and the viewer's seen time
-	// (haveSeen is false while there is none).
+	// about the account are not among them), the newest limit and every
+	// removal that can still be asked about (SecondLookNone), and the
+	// viewer's seen time (haveSeen is false while there is none).
 	DecisionsAndSeen(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) (decisions []Decision, seen time.Time, haveSeen bool, err error)
 	// MarkSeen moves the seen time forward only.
 	MarkSeen(ctx context.Context, viewer uuid.UUID, at time.Time) error
@@ -341,7 +345,11 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		return cmp.Compare(b.ID, a.ID)
 	})
 	if len(items) > MaxItems {
-		items = items[:MaxItems]
+		// A removal its owner can still ask a second look about stays past
+		// the 50: its line is the only way to ask, and the Terms promise
+		// its 30 days.
+		rest := slices.DeleteFunc(items[MaxItems:], func(it Item) bool { return !canAsk(it) })
+		items = items[:MaxItems+len(rest)]
 	}
 
 	out := List{Items: items}
@@ -355,6 +363,12 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		}
 	}
 	return out, nil
+}
+
+// canAsk is whether it is a removal its owner can still ask a second look
+// about.
+func canAsk(it Item) bool {
+	return (it.Kind == KindPostRemoved || it.Kind == KindCommentRemoved) && it.SecondLook == SecondLookNone
 }
 
 // decisionKind is the item kind of a decision about a post or a comment, ""

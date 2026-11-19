@@ -234,10 +234,11 @@ func TestAdminRemovedTab_ASecondLookShowsItsWordsPhotosAndKeep(t *testing.T) {
 	}
 	page := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String()
 	socialNoScript(t, "the Removed tab with second looks", page)
-	keepForm := func(kind string, id uuid.UUID, owner admin.Person) string {
+	keepForm := func(line admin.RemovedItem) string {
 		return `<form method="post" action="/admin/removed/keep"><input type="hidden" name="csrf" value="` + r.h.sign("csrf", cookie) +
-			`"><input type="hidden" name="kind" value="` + kind + `"><input type="hidden" name="id" value="` + id.String() +
-			`"><input type="hidden" name="person" value="` + owner.ID.String() +
+			`"><input type="hidden" name="kind" value="` + line.Kind + `"><input type="hidden" name="id" value="` + line.ID.String() +
+			`"><input type="hidden" name="person" value="` + line.Owner.ID.String() +
+			`"><input type="hidden" name="look" value="` + line.SecondLook.ID.String() +
 			`"><input type="hidden" name="from" value="removed"><button>Keep it removed</button></form>`
 	}
 	proof := func(key string) string {
@@ -259,7 +260,7 @@ func TestAdminRemovedTab_ASecondLookShowsItsWordsPhotosAndKeep(t *testing.T) {
 		t.Errorf("the comment's What cell, want the tag and their words, and no photos:\n%s\nwant\n%s", got, want)
 	}
 	bringBack := `<button class="strong">Bring it back</button></form>` + "\n"
-	for line, want := range map[string]string{postLine: keepForm(admin.KindPost, post, mira), commentLine: keepForm(admin.KindComment, comment, dev)} {
+	for line, want := range map[string]string{postLine: keepForm(r.repo.removed[0]), commentLine: keepForm(r.repo.removed[1])} {
 		if !strings.Contains(line, bringBack+want+"\n"+`<a class="button push" href="/admin/people/`) {
 			t.Errorf("a line with a second look, want Keep it removed right after Bring it back: %s", line)
 		}
@@ -277,16 +278,17 @@ func TestAdminRemovedTab_ASecondLookShowsItsWordsPhotosAndKeep(t *testing.T) {
 	}
 }
 
-// Keep it removed is one call with the line's kind, target and owner,
-// logged on the owner's own clock, and goes back to the Removed tab (or the
-// person's page) saying it is kept, also for a double click; or that the
-// second look was answered already (a Bring it back since); or that it is
-// gone, or failed. A form the page never draws, an old page's token and
-// another site do nothing, and nothing ever brings anything back.
+// Keep it removed is one call with the line's kind, target, owner and
+// second look, logged on the owner's own clock, and goes back to the
+// Removed tab (or the person's page) saying it is kept, also for a double
+// click; or that the second look was answered already (a Bring it back
+// since); or that it is gone, or failed. A form the page never draws, an
+// old page's token and another site do nothing, and nothing ever brings
+// anything back.
 func TestAdminKeep_KeepsItRemovedAndGoesBackToTheTab(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
-	owner, target := uuid.New(), uuid.New()
+	owner, target, look := uuid.New(), uuid.New(), uuid.New()
 	keep := func(form url.Values) string {
 		t.Helper()
 		if !form.Has("csrf") {
@@ -299,14 +301,14 @@ func TestAdminKeep_KeepsItRemovedAndGoesBackToTheTab(t *testing.T) {
 		return rec.Header().Get("Location")
 	}
 	form := func(kind string) url.Values {
-		return url.Values{"kind": {kind}, "id": {target.String()}, "person": {owner.String()}, "from": {"removed"}}
+		return url.Values{"kind": {kind}, "id": {target.String()}, "person": {owner.String()}, "look": {look.String()}, "from": {"removed"}}
 	}
 	if got := keep(form(admin.KindPost)); got != "/admin/removed?n=kept" || len(r.repo.keeps) != 1 {
 		t.Fatalf("keep a post removed: %q, %d calls", got, len(r.repo.keeps))
 	}
-	if got := r.repo.keeps[0]; got.kind != admin.KindPost || got.target != target || got.person != owner ||
+	if got := r.repo.keeps[0]; got.kind != admin.KindPost || got.target != target || got.person != owner || got.look != look ||
 		time.Since(got.loggedAt) < 0 || time.Since(got.loggedAt) > time.Minute {
-		t.Fatalf("the call: %+v, want the post, its owner and now (no clock of theirs)", got)
+		t.Fatalf("the call: %+v, want the post, its owner, the request the line showed and now (no clock of theirs)", got)
 	}
 	if page := adminDo(t, r.w, http.MethodGet, "/admin/removed?n=kept", cookie, nil, "").Body.String(); !strings.Contains(page,
 		`<div class="note">Kept removed. They&#39;ll see it in the app.</div>`) {
@@ -347,11 +349,13 @@ func TestAdminKeep_KeepsItRemovedAndGoesBackToTheTab(t *testing.T) {
 
 	calls := len(r.repo.keeps)
 	for name, f := range map[string]url.Values{
-		"a person":     {"kind": {admin.KindPerson}, "id": {target.String()}, "person": {owner.String()}, "from": {"removed"}},
-		"a bad kind":   {"kind": {"entry"}, "id": {target.String()}, "person": {owner.String()}, "from": {"removed"}},
-		"a bad id":     {"kind": {admin.KindPost}, "id": {"nope"}, "person": {owner.String()}, "from": {"removed"}},
-		"no person":    {"kind": {admin.KindPost}, "id": {target.String()}, "from": {"removed"}},
-		"no target id": {"kind": {admin.KindPost}, "person": {owner.String()}, "from": {"removed"}},
+		"a person":     {"kind": {admin.KindPerson}, "id": {target.String()}, "person": {owner.String()}, "look": {look.String()}, "from": {"removed"}},
+		"a bad kind":   {"kind": {"entry"}, "id": {target.String()}, "person": {owner.String()}, "look": {look.String()}, "from": {"removed"}},
+		"a bad id":     {"kind": {admin.KindPost}, "id": {"nope"}, "person": {owner.String()}, "look": {look.String()}, "from": {"removed"}},
+		"no person":    {"kind": {admin.KindPost}, "id": {target.String()}, "look": {look.String()}, "from": {"removed"}},
+		"no target id": {"kind": {admin.KindPost}, "person": {owner.String()}, "look": {look.String()}, "from": {"removed"}},
+		"a bad look":   {"kind": {admin.KindPost}, "id": {target.String()}, "person": {owner.String()}, "look": {"nope"}, "from": {"removed"}},
+		"no look":      {"kind": {admin.KindPost}, "id": {target.String()}, "person": {owner.String()}, "from": {"removed"}},
 	} {
 		if got := keep(f); got != "/admin/removed" {
 			t.Errorf("%s: %q, want the tab", name, got)

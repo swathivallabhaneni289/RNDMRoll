@@ -239,6 +239,18 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 			http.StatusCreated); got["second_look"] != "asked" {
 			t.Fatalf("ask about the %s: %v", kind, got)
 		}
+		if kind == "comment" {
+			// The bell's removals while one is asked about and the other is
+			// not: the two states the app marks a removal by, or opens the
+			// form by.
+			removed := []any{}
+			for _, it := range w.notes(o)["items"].([]any) {
+				if kind := it.(map[string]any)["kind"]; kind == "post_removed" || kind == "comment_removed" {
+					removed = append(removed, it)
+				}
+			}
+			answers["bell_one_asked"] = map[string]any{"items": removed}
+		}
 	}
 	for _, kind := range []string{"comment", "post"} {
 		id := map[string]string{"comment": oc, "post": post}[kind]
@@ -246,7 +258,8 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 			t.Fatalf("the %s removal once asked: %v", kind, item)
 		}
 		w.clk.Advance(time.Minute)
-		if err := postgres.NewAdminRepo(w.pool).KeepRemoved(context.Background(), kind, uuid.MustParse(id), uuid.MustParse(o.id),
+		look := uuid.MustParse(w.one(`select id::text from second_looks where removal_id = $1`, removals[kind]))
+		if err := postgres.NewAdminRepo(w.pool).KeepRemoved(context.Background(), kind, uuid.MustParse(id), uuid.MustParse(o.id), look,
 			w.clk.NowFor(o.id)); err != nil {
 			t.Fatalf("keep the %s removed: %v", kind, err)
 		}
@@ -280,6 +293,18 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 	answers["bell"] = map[string]any{"unread": bell["unread"], "items": decisions}
 
 	// The spec, on the answers themselves.
+	looks := map[string]any{}
+	for _, it := range answers["bell_one_asked"]["items"].([]any) {
+		item := it.(map[string]any)
+		look, ok := item["second_look"]
+		if !ok {
+			look = "absent"
+		}
+		looks[item["kind"].(string)] = look
+	}
+	if want := map[string]any{"comment_removed": "asked", "post_removed": "absent"}; !reflect.DeepEqual(looks, want) {
+		t.Fatalf("the removals with one asked about: %v, want %v", looks, want)
+	}
 	for _, kind := range bellKinds {
 		if events[kind] == "" {
 			t.Fatalf("no %s item in Olive's bell: %v", kind, bell["items"])

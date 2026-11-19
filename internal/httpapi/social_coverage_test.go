@@ -210,6 +210,8 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 	dismiss := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {report.ID.String()}, "person": {owner.ID.String()}}
 	remove := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {uuid.NewString()}, "person": {owner.ID.String()}, "from": {"list"}}
 	restore := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {removed.String()}, "person": {owner.ID.String()}, "from": {"removed"}}
+	keep := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {removed.String()}, "person": {owner.ID.String()},
+		"look": {look.ID.String()}, "from": {"removed"}}
 
 	want := map[string]string{
 		"Content-Security-Policy": "default-src 'self'; img-src 'self' https: http:; style-src 'self'; script-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
@@ -249,7 +251,7 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 		{"a dismiss", http.MethodPost, "/admin/reports/dismiss", cookie, dismiss, http.StatusSeeOther},
 		{"a remove", http.MethodPost, "/admin/reports/remove", cookie, remove, http.StatusSeeOther},
 		{"a bring it back", http.MethodPost, "/admin/removed/restore", cookie, restore, http.StatusSeeOther},
-		{"a keep it removed", http.MethodPost, "/admin/removed/keep", cookie, restore, http.StatusSeeOther},
+		{"a keep it removed", http.MethodPost, "/admin/removed/keep", cookie, keep, http.StatusSeeOther},
 	} {
 		check(c.name, adminDo(t, r.w, c.method, c.path, c.cookie, c.form, ""), c.code)
 	}

@@ -35,9 +35,10 @@ var (
 	ErrParentRemoved = errors.New("admin: the comment it answers is removed")
 )
 
-// ErrNoRequest is a Keep it removed on a removal with no open request for a
-// second look: a page drawn before a Bring it back answered it, so it is back
-// or removed again since. Nothing changes, and nothing is logged.
+// ErrNoRequest is a Keep it removed with no open request for a second look,
+// or for one that is not the request the page showed: a page drawn before a
+// Bring it back answered it, so it is back, or removed again since and
+// maybe asked about again. Nothing changes, and nothing is logged.
 var ErrNoRequest = errors.New("admin: no second look asked")
 
 // Report kinds.
@@ -379,13 +380,13 @@ type Repository interface {
 	RestoreItem(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// KeepRemoved is Keep it removed, the answer to a second look that
 	// leaves person's post or comment removed (developer, 2026-11-19): the
-	// open request about its newest removal is closed as LookKept, and that
-	// is logged (LogKept), for the owner's bell. ErrNoRequest when no
-	// request about it is open, and when it is not removed (a Bring it back
-	// answered it); ErrAlreadyDone when a Keep closed it already (the second
-	// click of a double click); ErrNotFound when it is not there, or is past
-	// RemovalGrace.
-	KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
+	// request look, the one the page showed, is closed as LookKept while it
+	// is open and about the newest removal, and that is logged (LogKept),
+	// for the owner's bell. ErrNoRequest when it is not, and when the post
+	// or comment is not removed (a Bring it back answered it); ErrAlreadyDone
+	// when a Keep closed it already (the second click of a double click);
+	// ErrNotFound when it is not there, or is past RemovalGrace.
+	KeepRemoved(ctx context.Context, kind string, target, person, look uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error
 	// ReportTarget is the post or comment an open-or-closed report points

@@ -124,6 +124,45 @@
     ],
     "unread": true
   },
+  "bell_one_asked": {
+    "items": [
+      {
+        "actor": null,
+        "at": "<instant>",
+        "at_label": "8:37 PM",
+        "category_name": null,
+        "entry_id": null,
+        "id": "post_removed:00000008-0000-4000-8000-000000000008",
+        "kind": "post_removed",
+        "photo_url": "",
+        "reason": "hate",
+        "ref": "00000008",
+        "removal": "00000008-0000-4000-8000-000000000008",
+        "request_id": null,
+        "section": "today",
+        "text": "Dune",
+        "unread": true
+      },
+      {
+        "actor": null,
+        "at": "<instant>",
+        "at_label": "8:36 PM",
+        "category_name": null,
+        "entry_id": null,
+        "id": "comment_removed:00000009-0000-4000-8000-000000000009",
+        "kind": "comment_removed",
+        "photo_url": "",
+        "reason": "harassment",
+        "ref": "00000009",
+        "removal": "00000009-0000-4000-8000-000000000009",
+        "request_id": null,
+        "second_look": "asked",
+        "section": "today",
+        "text": "Thanks for watching",
+        "unread": true
+      }
+    ]
+  },
   "board_owner": {
     "day_label": "today",
     "days": [

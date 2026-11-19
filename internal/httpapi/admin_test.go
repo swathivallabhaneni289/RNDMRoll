@@ -85,10 +85,10 @@ type adminDismiss struct {
 // adminAction is one RemoveItem, RestoreItem or KeepRemoved call. reason is
 // the one a removal was given; a Bring it back and a Keep have none.
 type adminAction struct {
-	kind           string
-	target, person uuid.UUID
-	reason         string
-	loggedAt       time.Time
+	kind                 string
+	target, person, look uuid.UUID
+	reason               string
+	loggedAt             time.Time
 }
 
 // adminDisable is one SetDisabled call.
@@ -170,8 +170,8 @@ func (f *fakeAdminRepo) RestoreItem(_ context.Context, kind string, target, pers
 	return f.restoreErr
 }
 
-func (f *fakeAdminRepo) KeepRemoved(_ context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
-	f.keeps = append(f.keeps, adminAction{kind: kind, target: target, person: person, loggedAt: loggedAt})
+func (f *fakeAdminRepo) KeepRemoved(_ context.Context, kind string, target, person, look uuid.UUID, loggedAt time.Time) error {
+	f.keeps = append(f.keeps, adminAction{kind: kind, target: target, person: person, look: look, loggedAt: loggedAt})
 	return f.keepErr
 }
 
