@@ -820,6 +820,24 @@ const { ApiError, api, isRetryable } = client;
       'restored,restored'
     );
 
+    // The bell's removals before any answer, as the server sent them: the comment's second look
+    // asked, the post's not yet (the key left out). The post opens the form; the comment shows
+    // "Second look asked." and opens nothing.
+    const before = await serve(contract.bell_one_asked, () => notifications.getNotifications());
+    eq('the removals before an answer are both read', before.items.length, 2);
+    for (const [kind, asks, marked] of [
+      ['post_removed', true, false],
+      ['comment_removed', false, true],
+    ] as const) {
+      const read = before.items.find((item) => item.kind === kind);
+      check(`${kind} before an answer: read`, read !== undefined);
+      if (read === undefined) continue;
+      eq(`${kind} before an answer: the second look reads as sent`, read.second_look, asks ? '' : 'asked');
+      eq(`${kind} before an answer: the removal id is its own key`, read.removal, read.id.slice(kind.length + 1));
+      eq(`${kind} before an answer: the tap opens the form`, canAskSecondLook(read), asks);
+      eq(`${kind} before an answer: "Second look asked." shows`, isSecondLookAsked(read), marked);
+    }
+
     // The owner's own Board card under review.
     const board = await serve(contract.board_owner, () => boardApi.getBoard());
     check('the Board reads GET /board', askedFor('/board'), asked.at(-1));

@@ -5,7 +5,8 @@ import { useSyncExternalStore } from 'react';
  * person page set it just before they close, and a comment's report sets it and stays; the one
  * overlay in app/(app)/_layout.tsx shows it over whatever page is showing then. The second look's
  * page sets its own line here as it goes back to Notifications: "Sent. We'll take another look."
- * (2026-11-19). The store clears itself after 2.5 seconds, and a new text restarts the timer. A
+ * (2026-11-19), or "Second look not sent. Please try again." when a send fails after the page was
+ * left. The store clears itself after 2.5 seconds, and a new text restarts the timer. A
  * copy of lib/settings/notice.ts, kept apart because Settings prints any text its own store holds.
  */
 

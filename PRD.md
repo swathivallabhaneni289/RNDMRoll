@@ -485,12 +485,12 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - "You hit your goal this week. One bonus spin added."
   - Moderation of your own posts and comments:
     - "Your post is hidden while we take a look." ("Your comment is hidden while we take a look." for a comment). This comes from the report that hides it (SAFE-05). Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
-    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens a page to ask for a second look (SAFE-05). Once one is asked, a tap does nothing, and the line has "Second look asked." under it until the admin answers.
+    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens a page to ask for a second look (SAFE-05). Once one is asked, a tap does nothing, and the line has "Second look asked." under it until the admin answers. A tap also does nothing once the post or comment is deleted or its 30 days are over.
     - "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment). This comes after Bring it back, or after a Dismiss that shows a hidden item again. Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
     - "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). This comes after Keep it removed (ADM-04). Tapping it does nothing.
 - **NOT-01 how it shows.**
   - Sections: Today, This week and Earlier.
-  - Items from the last 30 days, at most 50.
+  - Items from the last 30 days, at most 50. A removal that can still be asked about stays past the 50, since its line is the only way to ask.
   - A dot on the bell while anything is unread. Opening the page marks all as seen.
 - **NOT-02.** The first row of the list shows only a dot when a request waits, never a count or a name.
 - **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications and the admin's decisions can't be turned off.
@@ -592,7 +592,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - A removed post still counts for its day, like a post its author deleted: the posted day, the late flag, the week toward the bonus, the streak and the Board's unlock stay, and no new post is allowed that day. The Spin page says "We removed this post. The day still counts."
   - Edit, archive, delete, hide and delete comment answer 404 on a removed post or comment.
 - **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back, and a comment can't come back while its post or the comment it answers is still removed. It also answers a second look about it, even one Keep it removed answered before.
-- **ADM-04 keeping it removed.** Keep it removed shows only on a Removed line with an open second look. It answers the request and goes in the decision log, and the owner gets "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). The page says "Kept removed. They'll see it in the app."
+- **ADM-04 keeping it removed.** Keep it removed shows only on a Removed line with an open second look. It answers the request and goes in the decision log, and the owner gets "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). The page says "Kept removed. They'll see it in the app." Each Keep names the second look its line showed, so one from an older page never answers a newer request: the page says so and nothing changes.
   - The post or comment stays removed and is deleted when its 30 days end. Until then, Bring it back still works.
   - Keep it removed from a page drawn before the request was answered changes nothing and says so. After the 30 days, the page says it is gone.
 - **ADM-04 disabling.**
@@ -690,7 +690,7 @@ These rules decide what counts. The server owns all of them.
 
 ### Performance
 
-- Page sizes: Board 5 days (up to 10), person page 21 posts (up to 60), post history 20 (up to 50). Single lists with no more pages: notifications (at most 50, from the last 30 days), search 20, suggestions 20.
+- Page sizes: Board 5 days (up to 10), person page 21 posts (up to 60), post history 20 (up to 50). Single lists with no more pages: notifications (at most 50, from the last 30 days, plus any removal that can still be asked about), search 20, suggestions 20.
 - Camera photos and most library photos are saved as 80% JPEGs on the phone before upload. Library PNG files are saved again as PNG, and WebP files go up unchanged. Photos are cached on the phone after the first view.
 - A Spin page load is normally one request; when the zone is reported, that answer carries the page's state. On the server, eight of the state's reads go to the database together in one batch, the 5-second lock limit is sent with the start of the transaction, and two database connections stay open while idle.
 - **Later:** keep the Spin page's last state on the phone across launches, so a cold start shows it at once; fewer database round trips behind the bell's dot; and a new person's state row and starting wheel written in one statement.
@@ -918,7 +918,6 @@ Some were found while writing this document; others were already in the planning
 18. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
 19. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
 20. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 17), or a comment under a hidden post (issue 18). The same way, a reporter's account that comes back can hide it again with no note.
-21. **A busy bell can lose the way to ask for a second look.** The bell shows at most 50 items, so 50 newer ones can push a removal off the list before its 30 days end. A second look is asked only from that line, so the owner then can't ask in the app.
 
 ### Open questions
 

@@ -31,7 +31,8 @@ import { refetchToday } from '@/lib/wheel/useToday';
  *    (Phase 5) hides the bar on a post, your entry page and edit entry.
  *  - "Report sent." shows over every page here for a moment (ReportNotice below), so it outlives
  *    the post page and the person page, which close as they set it. The second look's page sets
- *    its "Sent." line there too as it closes (2026-11-19).
+ *    its "Sent." line there too as it closes (2026-11-19), and its not-sent line when a send
+ *    fails after it was left.
  */
 export const unstable_settings = {
   initialRouteName: 'today',
