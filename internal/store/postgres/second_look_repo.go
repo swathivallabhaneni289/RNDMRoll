@@ -45,7 +45,11 @@ func proofKeyHeld(col string) string {
 //  3. the post or comment is held for share. A foreign key's key share
 //     would not do: it lets Bring it back's update through. Held for
 //     share, a Bring it back or the purge under way finishes first, and the
-//     reads below see what it did, or waits until this is done;
+//     reads below see what it did, or waits until this is done. The locks
+//     go in the order every delete takes them, so they take turns and never
+//     deadlock: the owner's account (key share, as the insert's foreign key
+//     would take it last), then for a comment its post (key share, which a
+//     delete of the post needs to wait for), then the post or comment;
 //  4. what stands now is read: a request about the removal (the same one
 //     again is the phone's retry, made false), a Bring it back or a newer
 //     removal since, the 30 days, on the database's clock (the purge's
@@ -78,6 +82,15 @@ func (r *SecondLookRepo) Ask(ctx context.Context, owner, removal uuid.UUID, body
 		return false, err
 	}
 	m := moderatedItems[kind]
+	if _, err := tx.Exec(ctx, `select 1 from users where id = $1 for key share`, owner); err != nil {
+		return false, err
+	}
+	if kind == admin.KindComment {
+		if _, err := tx.Exec(ctx, `select 1 from entries where id = (select c.entry_id from post_comments c where c.id = $1) for key share`,
+			item); err != nil {
+			return false, err
+		}
+	}
 	var held int
 	err = tx.QueryRow(ctx, `select 1 from `+m.table+` where id = $1 and user_id = $2 for share`, item, owner).Scan(&held)
 	there := err == nil

@@ -682,4 +682,58 @@ func TestSecondLookPurge_DeletesTheProofPhotos30DaysAfterTheRemoval(t *testing.T
 	if got := asked(t, pool, oldRemoval); got != "post "+old.String()+" - - Why " {
 		t.Fatalf("the request once its post is purged: %q", got)
 	}
+	// The account going takes its requests (and the account purge its
+	// folders, with any photo still there).
+	if _, err := pool.Exec(ctx, `delete from users where id = $1`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, pool, `select count(*) from second_looks`); n != 0 {
+		t.Fatalf("%d requests outlive their account", n)
+	}
+}
+
+// A delete of a post holds the post, then deletes its comments. A request
+// about a removed comment under it takes the post before the comment, in
+// that same order, so the two take turns instead of deadlocking: here the
+// delete goes first, and the request finds the comment gone.
+func TestSecondLookRepo_ARequestAndADeleteOfItsPostTakeTurns(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	users := postgres.NewUserRepo(pool)
+	a := mustCreateUser(t, users, "turns-post-owner@example.com")
+	b := mustCreateUser(t, users, "turns-writer@example.com")
+	post, _ := removedPostOf(t, pool, a.ID, "Dune")
+	if err := postgres.NewAdminRepo(pool).RestoreItem(ctx, admin.KindPost, post, a.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	note := commentOf(t, pool, post, b.ID, "Rude", "")
+	now := time.Now()
+	if err := postgres.NewAdminRepo(pool).RemoveItem(ctx, admin.KindComment, note, b.ID, "", now, now); err != nil {
+		t.Fatal(err)
+	}
+	removal := newestRemovalOf(t, pool, note)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+	if _, err := tx.Exec(ctx, `select id from entries where id = $1 for update`, post); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := postgres.NewSecondLookRepo(pool).Ask(ctx, b.ID, removal, "Why", []string{}, time.Now())
+		done <- err
+	}()
+	waitForALockWait(t, pool)
+	if _, err := tx.Exec(ctx, `delete from entries where id = $1`, post); err != nil {
+		t.Fatalf("the delete of the post: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit the delete: %v", err)
+	}
+	if err := <-done; !errors.Is(err, secondlook.ErrNotFound) {
+		t.Fatalf("the request after its post was deleted: %v, want ErrNotFound", err)
+	}
 }
