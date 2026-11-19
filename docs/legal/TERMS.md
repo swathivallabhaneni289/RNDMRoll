@@ -62,7 +62,9 @@ A post or comment that several people report may be hidden from everyone but its
 
 We review reports. We may remove posts or comments, or disable accounts, that break these terms, put someone at risk or could cause legal trouble, and we may act without warning when that is needed to keep people safe. A post or comment we remove is hidden from everyone, its owner included. We keep it for 30 days in case we got it wrong, then delete it with its photos. A disabled account can't log in, and its profile, posts and comments are hidden from everyone else on RNDMRoll.
 
-If you think we got a decision wrong, email us at  and ask for a second look. If we removed a post or comment of yours, the message about it in the app opens that email for you, and we can bring it back within the 30 days.
+If we removed a post or comment of yours and you think we got it wrong, tap the message about it in the app and ask for a second look. Tell us why it should come back, and add up to 3 photos, such as screenshots, if they help. You can ask once for each removal, within its 30 days. If we bring it back or keep it removed, the app tells you.
+
+If you think we got any other decision wrong, such as disabling your account, email us at  and ask for a second look.
 
 Don't make a new account to get around a block or a disabled account.
 

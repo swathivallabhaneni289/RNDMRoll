@@ -105,7 +105,7 @@ These are drawn from the planning notes and research. No demographics were inven
 
 **C. The newcomer.** Just signed up and follows nobody. Must be 13 or over. Needs: a first spin right away, an easy way to find and invite friends, and a Board that explains itself instead of sitting empty.
 
-**Admin (a role, not a persona).** Reviews reports on a web page and can remove content, bring it back within 30 days, or disable accounts.
+**Admin (a role, not a persona).** Reviews reports and second looks on a web page. Can remove content, bring it back within 30 days or keep it removed, and disable accounts.
 
 ### Jobs to be done
 
@@ -206,7 +206,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 1. A comment breaks the rules. They press and hold it, tap Report and pick a reason.
 2. The app says "Report sent." The comment and its replies are gone for them for good.
 3. An admin sees the report on the admin page and removes the comment. Its writer gets "We removed your comment for bullying or harassment." in the bell. The comment is kept for 30 days in case the admin got it wrong, then deleted.
-4. If the writer disagrees, tapping that message opens an email asking for a second look. Within the 30 days the admin can bring the comment back, and the writer gets "Sorry, we got that wrong. Your comment is back."
+4. If the writer disagrees, tapping that message opens a small page to ask for a second look. They say why it should come back, add a screenshot and tap Send. Within the 30 days the admin can bring the comment back, and the writer gets "Sorry, we got that wrong. Your comment is back." Or the admin keeps it removed, and the writer gets "We looked again. Your comment stays removed."
 
 ## 8. Functional requirements
 
@@ -485,8 +485,9 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - "You hit your goal this week. One bonus spin added."
   - Moderation of your own posts and comments:
     - "Your post is hidden while we take a look." ("Your comment is hidden while we take a look." for a comment). This comes from the report that hides it (SAFE-05). Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
-    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens an email to the contact address asking for a second look.
+    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens a page to ask for a second look (SAFE-05). Once one is asked, a tap does nothing, and the line has "Second look asked." under it until the admin answers.
     - "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment). This comes after Bring it back, or after a Dismiss that shows a hidden item again. Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
+    - "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). This comes after Keep it removed (ADM-04). Tapping it does nothing.
 - **NOT-01 how it shows.**
   - Sections: Today, This week and Earlier.
   - Items from the last 30 days, at most 50.
@@ -503,7 +504,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SAFE-02 | Block, mute, hide a comment and remove a follower (8.6, 8.8) | P0 | Built |
 | SAFE-03 | Minimum age of 13 (ACC-03) | P0 | Built |
 | SAFE-04 | Admins are alerted about new reports | P1 | Launch |
-| SAFE-05 | Content hidden automatically after several reports, and an appeal flow | P2 | Hiding at 3 reports Built (November 17, 2026); an appeal in the app is Later, and second looks are by email |
+| SAFE-05 | Content hidden automatically after several reports, and an appeal flow | P2 | Hiding at 3 reports Built (November 17, 2026); second looks in the app Built (November 19, 2026) |
 
 **Acceptance criteria and rules**
 
@@ -521,15 +522,23 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Replies under a hidden comment go with it, except for its writer, who still sees the replies under it that they can see.
   - The report that hides it tells the owner in the bell, "Your post is hidden while we take a look." (NOT-01), and the admin page's History lists it as "Post hidden by reports" ("Comment" for a comment). Removed before doesn't count it.
   - The report that makes it hidden is emailed to the admins at once (ADM-06).
-- **SAFE-05 second looks.** The removal message in the bell opens an email to the contact address, with the subject "Second look at my post" (or "my comment"), the username, the title or text, a short ref and a line for why it should come back. If the mail app can't open, the app says "Email {address} to ask for a second look." The address is a server setting (CONTACT_EMAIL). Without it, the message still shows and a tap does nothing.
+- **SAFE-05 second looks.** Tapping a removal in the bell opens "Ask for a second look": "Your post:" with its title ("Your comment:" with its words), a box for "Tell us why it should come back", Add photos and Send.
+  - Only the owner can ask, once per removal and within its 30 days. A comment whose post was also removed can ask too.
+  - The words are needed: 1 to 500 characters once trimmed. Up to 3 photos from the camera or the library, screenshots too. They upload at Send.
+  - A problem says what is wrong in a few words, such as "Tell us why first.", "Keep it under 500 characters.", "You already asked for a second look." or "It's too late to ask. It's been 30 days."
+  - After Send the app says "Sent. We'll take another look." and the line in the bell has "Second look asked." under it. The owner doesn't see their words or photos again.
+  - The admins get an email (ADM-06), and the Removed tab lists the request first (ADM-02). Bring it back or Keep it removed answers it (ADM-04), and the bell says which.
+  - The words stay with the decision log while the owner's account exists. The photos are deleted 30 days after the removal, whatever the answer (section 12).
+  - Limit: 10 a minute.
 - **Moderation, left out on purpose.**
-  - An "ask for a second look" button in the app. Second looks are by email.
+  - Files other than photos in a second look, such as PDFs, a back-and-forth with the admin, and asking again after an answer.
+  - A second look in the app for a disabled account, which can't log in. The Terms say to email instead.
   - Phone pushes for the admin's decisions or a hide. They show in the bell only.
-  - Anything sent on Disable, or when the 30-day job deletes removed content.
+  - Anything sent on Disable, or when the 30-day job deletes removed content, even when a second look about it got no answer.
   - An undo for a reporter.
   - A message for people whose comments were under a removed post. Those comments just go with it.
   - A typed note with a removal. The reason is one of the 7 report reasons.
-  - The reason on the Spin page's removed line and in the second-look email.
+  - The reason on the Spin page's removed line.
   - Remove on a post nobody reported. The posts on a person page are for looking only.
 
 ### 8.11 The admin page
@@ -538,10 +547,10 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 |---|---|---|---|
 | ADM-01 | A web page at /admin, for admin accounts only | P0 | Built, off unless admin emails are set |
 | ADM-02 | A Reports tab with one card per reported post, comment or account, a Disabled tab and a Removed tab | P0 | Built |
-| ADM-03 | A person page laid out like a profile, with their details, their open reports, their posts while a report about the account is open or it is disabled, and a History of every report and decision about them (up to 200 reports), only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
-| ADM-04 | Dismiss a card's reports, remove a post or comment, bring it back within 30 days, disable or enable an account | P0 | Built |
+| ADM-03 | A person page laid out like a profile, with their details, their open reports, their posts while a report about the account is open or it is disabled, and a History of every report, decision and second look about them (up to 200 reports), only for people someone reported, disabled accounts and people with a past decision | P0 | Built |
+| ADM-04 | Dismiss a card's reports, remove a post or comment, bring it back within 30 days or keep it removed after a second look, disable or enable an account | P0 | Built |
 | ADM-05 | A record of which admin took each action | P2 | Later (the decision log says what was decided and when, not by whom) |
-| ADM-06 | An email to the admins about new reports | P1 | Built, sent for real once email is on |
+| ADM-06 | An email to the admins about new reports and second looks | P1 | Built, sent for real once email is on |
 
 **Acceptance criteria and rules**
 
@@ -556,7 +565,9 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The tabs and the browser tab show how many cards are open, like "(3) Reports", and the Reports tab refreshes itself every minute.
   - The newest 500 open reports show; past that the page says so.
 - **ADM-02 the Disabled tab.** Each disabled account with its photo, username, name and when, with Enable right there.
-- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reason picked at Remove, a short ref and Bring it back. The ref is the one in the owner's second-look email. This tab doesn't refresh itself.
+- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reason picked at Remove, a short ref and Bring it back. The person page's History shows the same ref with the removal and its second look. This tab doesn't refresh itself.
+  - A line whose owner asked for a second look (SAFE-05) comes first. Under the post or comment it has a "Second look asked" tag, their words and their photos, each opening full size, and Keep it removed comes after Bring it back. It stays one line of the table, with no new columns or counts.
+  - Once the request is answered, the line is a plain Removed line again. The History keeps the request.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
   - The person: name, username, profile photo, bio and join date.
   - A post report: the whole post as it is now, with its title, its date, its text and every photo in order. Each photo opens full size in a new tab. When the title changed after the report, the title it had then shows too, and both are labelled. A post that is gone (deleted by its author, or 30 days after a removal) shows only the title it had when it was reported, and says so.
@@ -564,7 +575,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The person page reads like a profile. A back arrow on top goes to the tab it was opened from (Reports, Disabled or Removed). Then come their photo, name, username, bio and join date with Disable or Enable, the open cards, their posts and the History.
   - The History lists every report about them and every decision, newest first, under how often they were reported ("Reported 3 times."). A report says what was reported, why and by whom, then Open or how and when it closed, then the post's title or the comment's words. Closed reports have no card of their own.
   - Their posts show while a report about the account is open, or while it's disabled, since Disable closes those reports and Enable is decided on them. The newest 60 show, newest first, each with every photo (the first one large), its category and day, its title and text, and a tag when it's removed, hidden or reported. Otherwise the page says when they show.
-  - The History's decisions are removed (with its ref and reason), brought back, shown again, hidden by reports, disabled and enabled, each with when. Their profile card says "Removed before: N" once, when N is more than 0.
+  - The History's decisions are removed (with its ref and reason), brought back, kept removed, shown again, hidden by reports, disabled and enabled, each with when. Their profile card says "Removed before: N" once, when N is more than 0.
+  - The History also lists each second look they asked for: "Asked for a second look at a post" (or "at a comment"), when, the removal's ref, their words, and their photos until they are deleted 30 days after the removal. The answer is a line of its own, such as "Post kept removed" or "Post brought back".
 - **ADM-03 privacy.**
   - An admin can open only people someone reported (them, a post or a comment), disabled accounts and people with a decision in the log. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
   - Their posts show only while a report about the account is open or it's disabled. A report about one post or comment shows only that one. Archived posts, and posts past the 30 days after a removal, never show.
@@ -579,20 +591,24 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The owner's message in the bell names that reason, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." The History and the Removed tab show the reason too.
   - A removed post still counts for its day, like a post its author deleted: the posted day, the late flag, the week toward the bonus, the streak and the Board's unlock stay, and no new post is allowed that day. The Spin page says "We removed this post. The day still counts."
   - Edit, archive, delete, hide and delete comment answer 404 on a removed post or comment.
-- **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back, and a comment can't come back while its post or the comment it answers is still removed.
+- **ADM-04 bringing back.** Bring it back, on the Removed tab, works within the 30 days. The post or comment shows again for everyone who could see it before, except the people who reported it, and the owner gets "Sorry, we got that wrong. Your post is back." After the 30 days it can't come back, and a comment can't come back while its post or the comment it answers is still removed. It also answers a second look about it, even one Keep it removed answered before.
+- **ADM-04 keeping it removed.** Keep it removed shows only on a Removed line with an open second look. It answers the request and goes in the decision log, and the owner gets "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). The page says "Kept removed. They'll see it in the app."
+  - The post or comment stays removed and is deleted when its 30 days end. Until then, Bring it back still works.
+  - Keep it removed from a page drawn before the request was answered changes nothing and says so. After the 30 days, the page says it is gone.
 - **ADM-04 disabling.**
   - Disabling closes the person's reports and ends every session at once.
   - It also deletes their reset code and push tokens.
   - It hides their profile, posts and comments from everyone else in the app.
   - Enabling brings it all back. An admin can't disable themselves.
   - Disable and Enable go in the decision log. Nothing is sent to the person.
-- **The decision log.** Every Remove, Bring it back, Dismiss that shows something again, Disable and Enable, and each report that hides something, is saved with whose post, comment or account it was and when. One about a post or comment keeps its title or text at the time, and a removal also keeps the report reasons and the reason picked at Remove.
-  - It feeds the person page's History, "Removed before" and the owner's bell messages, so a second-look email can be answered.
+- **The decision log.** Every Remove, Bring it back, Keep it removed, Dismiss that shows something again, Disable and Enable, and each report that hides something, is saved with whose post, comment or account it was and when. One about a post or comment keeps its title or text at the time, and a removal also keeps the report reasons and the reason picked at Remove.
+  - It feeds the person page's History, "Removed before" and the owner's bell messages. Each second look is about one removal in it.
   - "Removed before: N" counts the person's removed posts and comments that were not brought back.
   - It doesn't record which admin acted (ADM-05).
 - **Reporting again.** A second report of the same account by the same person replaces the reason and opens it again, even after an admin closed it. A second report of the same post or comment answers like a miss (SAFE-01).
 - **ADM-06 the email.** When someone reports a person, post or comment, the admins get an email: at once for violence or nudity, and for the report that hides a post or comment (SAFE-05), at most one a minute; otherwise at most one an hour, counting everything that came in.
   - It says how many reports came in and why, how many of them hid a post or comment ("Hidden while you take a look: N", only when any did), and links to the admin page. It never names anyone or shows what was reported.
+  - Each new second look (SAFE-05) is emailed at once too, at most one a minute, in the same email as any waiting reports. It says how many were asked, and its link opens the Removed tab. It never carries the owner's words or photos.
   - The link opens the page through a short hop, so an admin who is logged in stays logged in when they click it from their mail.
   - Waiting reports are kept in memory and sent when the server stops.
   - It uses the same sender as the Forgot password code: printed to the server log for now, sent with Resend once email is on.
@@ -656,7 +672,8 @@ These rules decide what counts. The server owns all of them.
 
 - No ads, analytics, crash reporting or tracking tools in the app or the server.
 - Other people in the app never see your email or birthday, and search never matches email. Admins don't either, and the admin page opens only accounts someone reported, that are disabled, or that have a decision in the log (ADM-03).
-- The decision log keeps, for each Remove, Bring it back, Dismiss that shows something again, Disable and Enable, and each report that hides something: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons and the reason picked at Remove. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
+- The decision log keeps, for each Remove, Bring it back, Keep it removed, Dismiss that shows something again, Disable and Enable, and each report that hides something: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons and the reason picked at Remove. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
+- A second look keeps the owner's words with the decision log while their account exists, and its photos until 30 days after the removal. Only admins see them, on the admin page.
 - The app asks for the camera, the photo library and notifications only, and never for location or contacts.
 - Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any reset code, is printed to the server log.
 - Photos are in a private bucket. The server gives a signed photo link only to someone allowed to see that photo, and each link stops working within an hour. A link already given out works until it runs out.
@@ -751,7 +768,7 @@ These rules decide what counts. The server owns all of them.
 **Architecture.**
 
 - **App:** an Expo and React Native app (TypeScript, Expo Router, Reanimated).
-- **API:** a Go server (Gin, pgx) with 20 SQL migrations. It runs on my computer until it is hosted, and reaches PostgreSQL on Supabase in Singapore through the session pooler over TLS. Supabase's Data API is off, and only the server holds the database password.
+- **API:** a Go server (Gin, pgx) with 21 SQL migrations. It runs on my computer until it is hosted, and reaches PostgreSQL on Supabase in Singapore through the session pooler over TLS. Supabase's Data API is off, and only the server holds the database password.
 - **Photos:** kept in a private Supabase Storage bucket in Singapore. The phone uploads through 5-minute signed links and loads photos through signed links that stop working within an hour, made only for people allowed to see them.
 - **Services:** email through Resend, and phone notifications through Expo's push service and Apple. Both are built but off until the accounts exist; today emails print to the server log.
 - **Web pages:** the admin page and the invite page are plain server-rendered pages on the API.
@@ -764,7 +781,7 @@ These rules decide what counts. The server owns all of them.
 | Spin | user_time_zones, user_spin_state, wheel_categories, spins, posted_days, goal_weeks |
 | Posts | entries, entry_photos |
 | Social | follows, blocks, mutes, post_comments, notification_settings, notification_seen |
-| Safety | user_reports, post_reports, comment_reports, moderation_events (the decision log) |
+| Safety | user_reports, post_reports, comment_reports, moderation_events (the decision log), second_looks |
 
 Two unused tables remain: email_verification_tokens and post_reactions.
 
@@ -773,8 +790,9 @@ Two unused tables remain: email_verification_tokens and post_reactions.
 - A deleted account is hidden at once and deleted for good 30 days later by an hourly job on the server: its photo files first, then its row, which removes every other row tied to it. The job only touches that account's own photo folders, plus the photos other people added to comments on its posts.
 - A deleted post removes its photos and comments from the database, and the server tries once to remove the photo files of the post and of its comments. A file whose removal fails stays in storage, but the server makes no new links for it (section 16, issue 3). Its spin and posted day stay.
 - A post or comment an admin removed is hidden at once and kept for 30 days, so it can be brought back. Then the same hourly job, after the account purge, deletes the photo files first, its own and those of the comments and replies under it, then its row, which takes those comments and replies with it. A failure keeps the row for the next run. Its spin and posted day stay.
+- A second look's photos are deleted by the same hourly job 30 days after the removal, whatever the answer, or earlier with the owner's account. Bringing the post or comment back, or deleting it, leaves them until then. A failure keeps them for the next run.
 - Saving a new profile photo deletes the old photo's file. If that fails, the file stays (section 16, issue 3).
-- Reports outlive the reported content, with a copy of the title or comment text, until the reporter's or the owner's account is deleted. The decision log keeps its copy until the owner's account is deleted.
+- Reports outlive the reported content, with a copy of the title or comment text, until the reporter's or the owner's account is deleted. The decision log keeps its copy, and a second look its words, until the owner's account is deleted.
 - There is no automatic cleanup yet for unused photo files or old login records (see the launch checklist in section 14, and issue 3 in section 16).
 
 ## 13. Success metrics
@@ -822,7 +840,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 **Legal and accounts**
 
 - [ ] A lawyer reviews the Terms of Use and the Privacy Policy, including which law applies.
-- [ ] A real contact email for the Terms and the Privacy Policy, and the same address in the server's CONTACT_EMAIL for the second-look email.
+- [ ] A real contact email for the Terms and the Privacy Policy.
 - [x] Account deletion in the app (Apple requires it for apps with sign-up). Built October 25, 2026.
 - [ ] Record the accepted terms version, and tell people when the terms change.
 - [ ] Verify email addresses at sign-up.
@@ -895,12 +913,11 @@ Some were found while writing this document; others were already in the planning
 13. **A Dismiss from an old admin page can close a newer person report.** When the same person reports the same account again after the page was drawn, Dismiss on the old card closes the new report too. A post or comment can't be reported twice by the same person, so only reports of people are affected. The Reports tab redraws every minute; a person's page doesn't.
 14. **Any 3 people who can see a post can hide it until an admin looks.** The same goes for a comment. The admin is emailed at once, and Dismiss shows it again.
 15. **A reporter who leaves can show a hidden item again with no review.** A report stops counting once its reporter's account is disabled or being deleted, and goes when that account is deleted. If fewer than 3 open reports are left, the post or comment shows again, and its owner isn't told.
-16. **The words outlive a removal.** After the 30 days, a removed post's title or a comment's text stays in its reports until the reporter's or the owner's account is deleted, and in the decision log until the owner's account is deleted.
-17. **The address in the second-look email is a server setting.** It comes from the server's CONTACT_EMAIL, apart from the address in the Terms and the Privacy Policy, so the two must be set to match. Until it is set, the removal message still shows, but tapping it does nothing.
-18. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
-19. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
-20. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
-21. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 18), or a comment under a hidden post (issue 19). The same way, a reporter's account that comes back can hide it again with no note.
+16. **The words outlive a removal.** After the 30 days, a removed post's title or a comment's text stays in its reports until the reporter's or the owner's account is deleted, and in the decision log until the owner's account is deleted. The owner's words in a second look stay as long.
+17. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
+18. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
+19. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
+20. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 17), or a comment under a hidden post (issue 18). The same way, a reporter's account that comes back can hide it again with no note.
 
 ### Open questions
 
@@ -972,6 +989,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 18 | The person page reads like a profile, with a back arrow and their posts while their account is reported or disabled; the admin page uses the width of the screen | "When there's like an open account thing, I should be able to see that person's profile page" | Admins see more of a reported account than the reported posts |
 | Nov 19 | The cards make a table: one line per reported thing under the headings Type, What and Reason, each line its own box, with the buttons at the end | "I dont want random boxes floating on my page"; then they picked a table over two mock-ups and asked for more room | Photos are small in the line (each opens full size) |
 | Nov 19 | A person's History lists every report about them, with how it ended, among the decisions, under how often they were reported; it replaces the closed cards | "We should know that this person got reported once", then "the history section, we'll have it there" | A long list for someone reported often |
+| Nov 19 | Second looks are asked in the app, not by email: tapping the removal opens a small page for why it should come back and up to 3 photos, once per removal within its 30 days; the admin answers with Bring it back or Keep it removed, and the bell says which | "Maybe give a little option there, not like something really big ... they can upload their file or something, and the proofs" | Photos only, with no PDFs and no back-and-forth; one ask per removal; a disabled account still asks by email |
 
 ## 18. Out of scope and future ideas
 
@@ -1012,7 +1030,8 @@ These are the product decisions I made along the way, with the reason and the co
 | Admin | An account allowed into the admin page to review reports |
 | Hidden while we take a look | A post or comment with 3 or more open reports: only its owner and the admin page see it, until an admin decides |
 | Removed | Taken down by an admin: hidden from everyone, its owner included, and deleted for good after 30 days unless it is brought back |
-| Decision log | The admin's record of each Remove, Bring it back, Dismiss that shows something again, Disable and Enable, with when |
+| Second look | The owner's request, from the bell, for another look at their removed post or comment: why it should come back and up to 3 photos, once per removal, within its 30 days |
+| Decision log | The admin's record of each Remove, Bring it back, Keep it removed, Dismiss that shows something again, Disable and Enable, with when |
 
 ## Appendix B: API overview
 
@@ -1028,6 +1047,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 | Follows | `GET`, `POST /follows`; `POST /follows/:user_id/unfollow`; `POST /follows/requests/:id/accept`, `/decline`; `POST /followers/:user_id/remove` | 60 to read; 20 for each change |
 | Board and comments | `GET /board`; `GET /posts/:id`; `POST /posts/:id/comments`, `/report`; `POST /comments/:id/delete`, `/hide`, `/unhide`, `/report`; `POST /posts/:id/reaction` (unused) | Comment 20; post reports 10 and comment reports 10, counted apart; reaction 60 |
 | Notifications | `GET /notifications`, `/notifications/summary`; `POST /notifications/seen` | 60, 120, 30 |
-| Web pages | `GET /i/:username` (invite page); `/admin` (admin page; the Removed tab is `GET /admin/removed`, and Bring it back is `POST /admin/removed/restore`); `GET /healthz` | Admin log in 5 per IP, sharing the app's per-account limit; the others have none |
+| Second looks | `POST /removals/:id/second-look` (the removal's id, from the bell; photos upload first through `POST /entry-photos/upload-url`) | 10 |
+| Web pages | `GET /i/:username` (invite page); `/admin` (admin page; the Removed tab is `GET /admin/removed`, Bring it back is `POST /admin/removed/restore`, and Keep it removed is `POST /admin/removed/keep`); `GET /healthz` | Admin log in 5 per IP, sharing the app's per-account limit; the others have none |
 
 Test-only routes under `/test` exist only when the test tools are on.
