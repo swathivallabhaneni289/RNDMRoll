@@ -36,21 +36,23 @@
 
 {{define "who"}}<div class="who">{{with $link := photo .PhotoKey}}<a href="{{$link}}" target="_blank" rel="noopener"><img class="avatar" src="{{$link}}" alt="Profile photo"></a>{{else}}<span class="avatar blank" aria-hidden="true">{{initial .Username}}</span>{{end}}<p><strong>@{{.Username}}</strong> <span class="muted">{{.Name}}</span></p></div>{{end}}
 
+{{define "thead"}}<div class="thead" aria-hidden="true"><span>Type</span><span>What</span><span>Reason</span><span></span></div>{{end}}
+
 {{define "reasonList"}}<label class="reason">Reason <select name="reason">{{$picked := .RemoveReason}}{{range reasonKeys}}<option value="{{.}}"{{if eq . $picked}} selected{{end}}>{{reason .}}</option>{{end}}</select></label>{{end}}
 
 {{define "item"}}{{with .Item}}<article class="card{{if not .Open}} closed{{end}}">
-<div class="about"><div class="why"><p class="reasons">{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}</p><p class="kind">{{kind .Kind}}</p></div>
-{{if .Hidden}}<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>{{end}}
-<p class="by">Reported by {{.ReportedBy}}</p><p class="by"><span class="when">{{when .NewestAt}}</span></p>
-{{if not .Open}}<p class="by">{{closed .Resolution}} <span class="when">{{when .ResolvedAt}}</span></p>{{end}}</div>
+<div class="type"><p class="kind">{{kind .Kind}}</p></div>
 {{if eq .Kind "post"}}{{with .Report}}<div class="body">{{if .EntryID}}{{if .PhotoKeys}}<div class="strip">{{range .PhotoKeys}}{{with $link := photo .}}<a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Post photo" loading="lazy" decoding="async"></a>{{end}}{{end}}</div>{{end}}
 <p class="day">{{day .LocalDate}}</p><h3>{{.TitleNow}}</h3>{{if ne .Title .TitleNow}}<p class="by">Title when reported: {{.Title}}</p>{{end}}{{if .Note}}<p class="text">{{.Note}}</p>{{end}}
 {{else}}<h3>{{if .Title}}{{.Title}}{{else}}(no title){{end}}</h3><p class="by">The post is gone.</p>{{end}}</div>{{end}}{{end}}
 {{if eq .Kind "comment"}}{{with .Report}}<div class="body"><p class="text quote">{{if .Body}}{{.Body}}{{else}}(photo only){{end}}</p>{{if .PhotoKey}}{{with $link := photo .PhotoKey}}<div class="strip"><a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Comment photo" loading="lazy" decoding="async"></a></div>{{end}}{{end}}{{if not .CommentID}}<p class="by">The comment is gone.</p>{{end}}</div>{{end}}{{end}}
 {{if and (eq .Kind "person") (eq $.From "list")}}<div class="body">{{template "who" .Owner}}{{if .Owner.Bio}}<p class="text quote">{{.Owner.Bio}}</p>{{end}}{{if .Owner.RemovedBefore}}<p class="by">Removed before: {{.Owner.RemovedBefore}}</p>{{end}}</div>{{end}}
-{{if .Open}}<div class="side">
 {{if and (ne .Kind "person") (eq $.From "list")}}<div class="owner">{{template "who" .Owner}}{{if .Owner.DisabledAt}}<span class="tag">Disabled</span>{{end}}{{if .Owner.RemovedBefore}}<span class="before">Removed before: {{.Owner.RemovedBefore}}</span>{{end}}</div>{{end}}
-<div class="actions">
+<div class="about"><p class="reasons">{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}</p>
+{{if .Hidden}}<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>{{end}}
+<p class="by">Reported by {{.ReportedBy}}</p><p class="by"><span class="when">{{when .NewestAt}}</span></p>
+{{if not .Open}}<p class="by">{{closed .Resolution}} <span class="when">{{when .ResolvedAt}}</span></p>{{end}}</div>
+{{if .Open}}<div class="side"><div class="actions">
 {{if and (eq .Kind "post") .Report.EntryID}}<form method="post" action="/admin/reports/remove"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="post"><input type="hidden" name="id" value="{{.Report.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="{{$.From}}">{{template "reasonList" .}}<button class="strong">Remove post</button></form>{{end}}
 {{if and (eq .Kind "comment") .Report.CommentID}}<form method="post" action="/admin/reports/remove"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="comment"><input type="hidden" name="id" value="{{.Report.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="{{$.From}}">{{template "reasonList" .}}<button class="strong">Remove comment</button></form>{{end}}
 <form method="post" action="/admin/reports/dismiss"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}">{{range .IDs}}<input type="hidden" name="id" value="{{.}}">{{end}}<input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="{{$.From}}"><button>Dismiss</button></form>
@@ -59,27 +61,28 @@
 </article>{{end}}{{end}}
 
 {{define "list"}}{{template "head" .}}{{template "top" .}}
-{{if .Items}}<div class="cards">{{range .Items}}{{template "item" (card . $.CSRF "list")}}{{end}}</div>{{else}}<p class="empty">No open reports. All quiet.</p>{{end}}
+{{if .Items}}<div class="cards table">{{template "thead"}}{{range .Items}}{{template "item" (card . $.CSRF "list")}}{{end}}</div>{{else}}<p class="empty">No open reports. All quiet.</p>{{end}}
 {{if .Capped}}<p class="lede">Only the newest open reports fit here. Close some to see the rest.</p>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "disabled"}}{{template "head" .}}{{template "top" .}}
 {{if .People}}<p class="lede">Logged out and hidden from everyone. Enable brings it all back.</p>
-<div class="rows">{{range .People}}<div class="row">{{template "who" .}}<p class="by">Disabled <span class="when">{{when .DisabledAt}}</span></p>
+<div class="rows"><div class="row head" aria-hidden="true"><span>Account</span><span>Disabled</span><span></span></div>{{range .People}}<div class="row">{{template "who" .}}<p class="by">Disabled <span class="when">{{when .DisabledAt}}</span></p>
 <div class="actions"><form method="post" action="/admin/people/{{.ID}}/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="from" value="disabled"><button>Enable</button></form><a class="button" href="/admin/people/{{.ID}}?from=disabled">Open profile</a></div></div>{{end}}</div>
 {{else}}<p class="empty">No disabled accounts.</p>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "removed"}}{{template "head" .}}{{template "top" .}}
 {{if .Removed}}<p class="lede">Hidden from everyone, the owner too. Deleted for good 30 days after removal.</p>
-<div class="cards">{{range .Removed}}<article class="card">
-<div class="about"><div class="why"><p class="reasons">{{if .Reason}}{{reason .Reason}}{{else}}{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}{{end}}</p><p class="kind">{{kind .Kind}}</p></div>
-<p class="by">Removed <span class="when">{{when .RemovedAt}}</span></p><p class="by">{{daysLeft .DaysLeft}}{{with .Ref}} · Ref: {{.}}{{end}}</p></div>
+<div class="cards table">{{template "thead"}}{{range .Removed}}<article class="card">
+<div class="type"><p class="kind">{{kind .Kind}}</p></div>
 {{if eq .Kind "post"}}<div class="body">{{if .PhotoKeys}}<div class="strip">{{range .PhotoKeys}}{{with $link := photo .}}<a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Post photo" loading="lazy" decoding="async"></a>{{end}}{{end}}</div>{{end}}
 <p class="day">{{day .LocalDate}}</p><h3>{{.Title}}</h3>{{if .Note}}<p class="text">{{.Note}}</p>{{end}}</div>
 {{else}}<div class="body"><p class="text quote">{{if .Body}}{{.Body}}{{else}}(photo only){{end}}</p>{{if .PhotoKey}}{{with $link := photo .PhotoKey}}<div class="strip"><a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Comment photo" loading="lazy" decoding="async"></a></div>{{end}}{{end}}</div>{{end}}
-<div class="side"><div class="owner">{{template "who" .Owner}}{{if .Owner.DisabledAt}}<span class="tag">Disabled</span>{{end}}</div>
-<div class="actions"><form method="post" action="/admin/removed/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button class="strong">Bring it back</button></form>
+<div class="owner">{{template "who" .Owner}}{{if .Owner.DisabledAt}}<span class="tag">Disabled</span>{{end}}</div>
+<div class="about"><p class="reasons">{{if .Reason}}{{reason .Reason}}{{else}}{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}{{end}}</p>
+<p class="by">Removed <span class="when">{{when .RemovedAt}}</span></p><p class="by">{{daysLeft .DaysLeft}}{{with .Ref}} · Ref: {{.}}{{end}}</p></div>
+<div class="side"><div class="actions"><form method="post" action="/admin/removed/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button class="strong">Bring it back</button></form>
 <a class="button push" href="/admin/people/{{.Owner.ID}}?from=removed">Open profile</a></div></div>
 </article>{{end}}</div>
 {{else}}<p class="empty">Nothing removed in the last 30 days.</p>{{end}}
@@ -102,7 +105,7 @@
 {{end}}</div>
 <p class="by">Disabling logs them out everywhere and hides their profile, posts and comments from everyone. Enabling brings it all back.</p></div></section>
 <h2>Open reports</h2>
-{{if .Open}}<div class="cards">{{range .Open}}{{template "item" (card . $.CSRF "person")}}{{end}}</div>{{else}}<p class="empty">None open.</p>{{end}}
+{{if .Open}}<div class="cards table">{{template "thead"}}{{range .Open}}{{template "item" (card . $.CSRF "person")}}{{end}}</div>{{else}}<p class="empty">None open.</p>{{end}}
 <h2>Posts</h2>
 {{if .PostsShown}}{{if .Posts}}<div class="posts">{{range .Posts}}{{template "post" .}}{{end}}</div>
 {{if .PostsCapped}}<p class="lede">Showing the newest {{len .Posts}}.</p>{{end}}{{else}}<p class="empty">No posts.</p>{{end}}
@@ -110,7 +113,7 @@
 {{if .History}}<h2>History</h2>
 <ol class="history">{{range .History}}<li><p><strong>{{decision .}}</strong> <span class="muted when">{{when .At}}</span></p>{{if eq .Action "removed"}}<p class="by">Ref: {{ref .ID}}{{if .Reason}} · {{reason .Reason}}{{else}}{{with .Reasons}} · {{reasons .}}{{end}}{{end}}</p>{{end}}{{if .Snapshot}}<p class="text quote">{{.Snapshot}}</p>{{end}}</li>{{end}}</ol>{{end}}
 {{if .Closed}}<details class="past"><summary>Closed reports<span class="n">{{len .Closed}}</span></summary>
-<div class="cards">{{range .Closed}}{{template "item" (card . $.CSRF "person")}}{{end}}</div></details>{{end}}
+<div class="cards table">{{template "thead"}}{{range .Closed}}{{template "item" (card . $.CSRF "person")}}{{end}}</div></details>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "post"}}<article class="post">

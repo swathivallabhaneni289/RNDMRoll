@@ -135,14 +135,15 @@ func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 	}
 }
 
-// Each card is one row (developer, 2026-11-19: "i dont want random boxes
-// floating on my page"): why it was reported, then the thing itself, then
-// whose it is with the buttons, so the stylesheet gives each its own column
-// and the buttons sit at the same place on every row. An account's card
-// shows the account as the thing. On a person's page the right column holds
-// the buttons alone, as the profile's holds Disable, and a closed card has
-// none.
-func TestAdminCards_EachCardIsARowOfWhyWhatAndButtons(t *testing.T) {
+// Each card is one line of a table (developer, 2026-11-19: "i dont want
+// random boxes floating on my page", then the table they picked): what kind
+// it is, the thing itself, whose it is (a post's or comment's, on the Reports
+// and Removed tabs), why, then the buttons, so the stylesheet puts each in
+// its column under the headings. An account's card shows the account as the
+// thing. On a person's page the buttons stand alone, as the profile's
+// Disable does, and a closed card has none. The Disabled tab has headings
+// too.
+func TestAdminCards_EachCardIsALineOfTheTable(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
 	mira := admin.Person{ID: uuid.New(), Username: "mira_cooks"}
@@ -158,11 +159,12 @@ func TestAdminCards_EachCardIsARowOfWhyWhatAndButtons(t *testing.T) {
 	closedPost := post
 	closedPost.ID, closedPost.ResolvedAt, closedPost.Resolution = uuid.New(), &closedAt, admin.Dismissed
 	r.repo.reports = []admin.Report{comment, account, closedPost}
+	const headings = `<div class="cards table"><div class="thead" aria-hidden="true"><span>Type</span><span>What</span><span>Reason</span><span></span></div>`
 
 	// cardsOn is each card on the page: its kind, its parts in order, and
-	// those of its right column, each only at the top level, so a part
+	// those of its buttons' column, each only at the top level, so a part
 	// nested in another does not count; and its buttons, from the start of
-	// .actions to the end of the right column.
+	// .actions to the end of that column.
 	type parts struct{ kind, row, side, buttons string }
 	cardsOn := func(page string) []parts {
 		var out []parts
@@ -184,17 +186,16 @@ func TestAdminCards_EachCardIsARowOfWhyWhatAndButtons(t *testing.T) {
 
 	list := adminDo(t, r.w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
 	got := cardsOn(list)
-	if len(got) != 3 {
-		t.Fatalf("%d cards on the Reports tab: %s", len(got), list)
+	if len(got) != 3 || strings.Count(list, headings) != 1 {
+		t.Fatalf("%d cards on the Reports tab, want 3 under the headings: %s", len(got), list)
 	}
 	for _, c := range got {
-		side := "owner actions"
+		row := "type body owner about side"
 		if c.kind == "Account" {
-			side = "actions"
+			row = "type body about side"
 		}
-		if c.row != "about body side" || c.side != side || !strings.Contains(c.buttons, ">Open profile</a>") {
-			t.Errorf("the Reports tab, the %s card: %q, %q; want why, the thing, then whose it is (but for an account) above the buttons, Open profile among them",
-				c.kind, c.row, c.side)
+		if c.row != row || c.side != "actions" || !strings.Contains(c.buttons, ">Open profile</a>") {
+			t.Errorf("the Reports tab, the %s card: %q, %q; want %q, then the buttons, Open profile among them", c.kind, c.row, c.side, row)
 		}
 	}
 	if account := adminReportOf(t, list, "Pretending to be someone else"); !strings.Contains(account, `<div class="body"><div class="who">`) {
@@ -205,29 +206,34 @@ func TestAdminCards_EachCardIsARowOfWhyWhatAndButtons(t *testing.T) {
 	profile := page[strings.Index(page, `<section class="card profile">`)+len(`<section class="card profile">`) : strings.Index(page, "</section>")]
 	side := profile[strings.Index(profile, `<div class="side">`)+len(`<div class="side">`) : strings.LastIndex(profile, "</div>")]
 	if strings.Join(topDivs(profile), " ") != "info side" || strings.Join(topDivs(side), " ") != "actions" || !strings.Contains(side, "Disable account") {
-		t.Errorf("the profile, want its details, then Disable in the right column: %s", profile)
+		t.Errorf("the profile, want its details, then Disable: %s", profile)
 	}
 	got = cardsOn(page)
-	if len(got) != 3 {
-		t.Fatalf("%d cards on the person page: %s", len(got), page)
+	if len(got) != 3 || strings.Count(page, headings) != 2 {
+		t.Fatalf("%d cards on the person page, want 3 under the open and the closed headings: %s", len(got), page)
 	}
 	for i, want := range []parts{
-		{kind: "Comment", row: "about body side", side: "actions"},
-		{kind: "Account", row: "about side", side: "actions"},
-		{kind: "Post", row: "about body"},
+		{kind: "Comment", row: "type body about side", side: "actions"},
+		{kind: "Account", row: "type about side", side: "actions"},
+		{kind: "Post", row: "type body about"},
 	} {
 		if c := got[i]; c.kind != want.kind || c.row != want.row || c.side != want.side || strings.Contains(c.buttons, "Open profile") {
 			t.Errorf("the person page, card %d: %q, %q, %q; want %+v, with no Open profile", i, c.kind, c.row, c.side, want)
 		}
 	}
 
-	// The Removed tab's cards are rows the same way.
 	r.repo.removed = []admin.RemovedItem{{Kind: admin.KindPost, ID: uuid.New(), Owner: mira, Title: "Ramen", LocalDate: "2026-11-15",
 		RemovedAt: closedAt, DaysLeft: 30, Reason: "spam"}}
 	removed := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String()
-	if got = cardsOn(removed); len(got) != 1 || got[0].row != "about body side" || got[0].side != "owner actions" ||
-		!strings.Contains(got[0].buttons, ">Open profile</a>") {
-		t.Fatalf("the Removed tab, want why, the thing, then whose it is above the buttons: %+v: %s", got, removed)
+	if got = cardsOn(removed); len(got) != 1 || strings.Count(removed, headings) != 1 || got[0].row != "type body owner about side" ||
+		got[0].side != "actions" || !strings.Contains(got[0].buttons, ">Open profile</a>") {
+		t.Fatalf("the Removed tab, want the same line under the headings: %+v: %s", got, removed)
+	}
+
+	r.repo.disabled = []admin.Person{{ID: uuid.New(), Username: "loud_larry", DisabledAt: &closedAt}}
+	if tab := adminDo(t, r.w, http.MethodGet, "/admin/disabled", cookie, nil, "").Body.String(); !strings.Contains(tab,
+		`<div class="rows"><div class="row head" aria-hidden="true"><span>Account</span><span>Disabled</span><span></span></div><div class="row">`) {
+		t.Fatalf("the Disabled tab, want headings above its lines: %s", tab)
 	}
 }
 

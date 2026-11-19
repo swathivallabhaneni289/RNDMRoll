@@ -1088,13 +1088,13 @@ func TestAdminIntegration_RemoveClosesEveryReportOpenOnIt(t *testing.T) {
 	w.call(reporters[0], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"}, http.StatusNotFound)
 	w.ok(reporters[3], http.MethodPost, "/v1/posts/"+bEntry+"/report", map[string]any{"reason": "violence"})
 	act("remove", "comment", "Nudity or sexual content · Bullying or harassment", "removed")
-	act("remove", "post", `Violence or threats</p><p class="kind">Post`, "removed")
+	act("remove", "post", `<p class="reasons">Violence or threats</p>`, "removed")
 
 	// Each closed card is one action: what Remove closed, and the three
 	// reports dismissed before, which it left as they were.
 	page := personPage()
 	for mark, closed := range map[string]string{
-		`Violence or threats</p><p class="kind">Post`:       "Removed",
+		`<p class="reasons">Violence or threats</p>`:        "Removed",
 		"Violence or threats · Hate speech · Spam</p>":      "Dismissed",
 		"Nudity or sexual content · Bullying or harassment": "Removed",
 	} {

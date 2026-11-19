@@ -54,7 +54,8 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 	postCard, commentCard := adminReportOf(t, page, "<h3>Ramen</h3>"), adminReportOf(t, page, "&lt;b&gt;rude&lt;/b&gt;")
 	for card, wants := range map[string][]string{
 		postCard: {
-			`Violence or threats · Spam</p><p class="kind">Post</p>`,
+			`<div class="type"><p class="kind">Post</p></div>`,
+			`<div class="about"><p class="reasons">Violence or threats · Spam</p>`,
 			`<p class="by">Removed <span class="when">` + adminWhen(removedAt) + `</span></p><p class="by">29 days left · Ref: 9f8e7d6c</p>`,
 			`<p class="day">Nov 15, 2026</p><h3>Ramen</h3><p class="text">Slurp</p>`,
 			`<a href="` + fakePhotoLink("k1") + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink("k1") + `"`,
@@ -63,7 +64,8 @@ func TestAdminRemovedTab_ListsWhatWasRemovedWithBringItBack(t *testing.T) {
 			`<a class="button push" href="/admin/people/` + mira.ID.String() + `?from=removed">Open profile</a>`,
 		},
 		commentCard: {
-			`<p class="reasons">Hate speech</p><p class="kind">Comment</p>`,
+			`<div class="type"><p class="kind">Comment</p></div>`,
+			`<div class="about"><p class="reasons">Hate speech</p>`,
 			`<p class="by">1 day left · Ref: 0a1b2c3d</p>`,
 			`<p class="text quote">&lt;b&gt;rude&lt;/b&gt;</p>`,
 			`<img class="thumb" src="` + fakePhotoLink("c1") + `"`,
@@ -228,7 +230,7 @@ func TestAdminList_HiddenCardsComeFirstWithTheirTag(t *testing.T) {
 	}
 	page := adminDo(t, r.w, http.MethodGet, "/admin", cookie, nil, "").Body.String()
 	hidden, violent := adminReportOf(t, page, "buy now"), adminReportOf(t, page, "<h3>Drive</h3>")
-	if !strings.Contains(hidden, `Spam</p><p class="kind">Comment</p></div>`+"\n"+
+	if !strings.Contains(hidden, `<div class="about"><p class="reasons">Spam</p>`+"\n"+
 		`<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>`+"\n"+`<p class="by">Reported by @tess_r and @jon_p</p><p class="by"><span class="when">`) {
 		t.Fatalf("the hidden card, want its tag between the reasons and who reported it: %s", hidden)
 	}

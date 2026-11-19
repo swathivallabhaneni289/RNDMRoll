@@ -549,7 +549,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours, or until their password changes.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
 - **ADM-02 the Reports tab.** Every report on the same post, comment or account is one card: why it was reported, who reported it (up to three usernames, then how many more), when, the thing itself and whose it is, with Remove, Dismiss and Open profile.
-  - Each card is one row across the page: why on the left, the thing in the middle, and whose it is with the buttons on the right, in the same place on every row. On a narrower screen the thing moves under the why, and on a phone it all goes in one column. The Removed tab and the person page lay out their cards the same way, and the profile keeps Disable in that right column.
+  - The cards make a table under the headings Type, What and Reason. Each card is one line, a box of its own with room around it: what kind it is, the thing itself with whose it is under it, why, and the buttons at the end, in the same columns on every line. Photos are small in the line, and each opens full size. On a narrower screen the kind moves above the thing, and on a phone a line's parts go under one another. The Removed tab and the person page's reports look the same, and the Disabled tab has headings too.
   - A post or comment card that is hidden under review (SAFE-05) has a "Hidden" tag. This is not the author's Hide (CMT-04).
   - Order: hidden cards first, then violence and nudity, then bullying and hate, then the rest; within those, the most reported, then the longest waiting.
   - The owner row says "Removed before: N" when N is more than 0.
@@ -970,7 +970,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 18 | The owner is told in the bell when 3 reports hide their post or comment | The owner should know it's under review, and "Sorry, we got that wrong" shouldn't come out of nowhere | One more bell item, in the bell only |
 | Nov 18 | Remove asks for a reason, and the owner's message names it | "It would be reasonable if we actually answer them why we are removing it" | One more choice at Remove; the reason is one of the 7 report reasons, with no typed note |
 | Nov 18 | The person page reads like a profile, with a back arrow and their posts while their account is reported or disabled; the admin page uses the width of the screen | "When there's like an open account thing, I should be able to see that person's profile page" | Admins see more of a reported account than the reported posts |
-| Nov 19 | Each card is one full-width row, with the buttons at the same place on every row, instead of cards side by side | "I dont want random boxes floating on my page" | Fewer cards fit on the screen at once |
+| Nov 19 | The cards make a table: one line per reported thing under the headings Type, What and Reason, each line its own box, with the buttons at the end | "I dont want random boxes floating on my page"; then they picked a table over two mock-ups and asked for more room | Photos are small in the line (each opens full size) |
 
 ## 18. Out of scope and future ideas
 

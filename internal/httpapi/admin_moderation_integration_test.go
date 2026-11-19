@@ -287,7 +287,8 @@ func TestAdminModerationIntegration_RemoveIsForEveryoneAndDeletesNothing(t *test
 	tab := w.page("/admin/removed")
 	card := adminReportOf(t, tab, "<h3>Dune</h3>")
 	for _, want := range []string{
-		`<p class="reasons">Hate speech</p><p class="kind">Post</p>`,
+		`<div class="type"><p class="kind">Post</p></div>`,
+		`<div class="about"><p class="reasons">Hate speech</p>`,
 		`<p class="by">30 days left · Ref: ` + removal.ID[:8] + `</p>`,
 		`<a href="` + fakePhotoLink(photos[0]) + `" target="_blank" rel="noopener"><img class="thumb" src="` + fakePhotoLink(photos[0]) + `"`,
 		`<strong>@am_bob</strong>`,
@@ -471,7 +472,7 @@ func TestAdminModerationIntegration_RemoveKeepsTheReasonTheAdminGave(t *testing.
 		strings.Contains(history, "Spam") {
 		t.Fatalf("the History, want the removal with Hate speech alone: %s", history)
 	}
-	if card := adminReportOf(t, w.page("/admin/removed"), "<h3>Dune</h3>"); !strings.Contains(card, `<p class="reasons">Hate speech</p><p class="kind">Post</p>`) ||
+	if card := adminReportOf(t, w.page("/admin/removed"), "<h3>Dune</h3>"); !strings.Contains(card, `<div class="about"><p class="reasons">Hate speech</p>`) ||
 		strings.Contains(card, "Spam") {
 		t.Fatalf("the Removed tab's card, want Hate speech alone: %s", card)
 	}
@@ -632,7 +633,7 @@ func TestAdminModerationIntegration_BringItBackWorksFor30Days(t *testing.T) {
 	}
 	w.exec(`update entries set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, post)
 	again := w.lastLogged(b)
-	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Hate speech</p><p class=\"kind\">Post</p>") ||
+	if tab := w.page("/admin/removed"); !strings.Contains(tab, `<div class="about"><p class="reasons">Hate speech</p>`) || !strings.Contains(tab, `<p class="kind">Post</p>`) ||
 		!strings.Contains(tab, `<p class="by">1 day left · Ref: `+again.ID[:8]+"</p>") || strings.Contains(tab, "Spam") {
 		t.Fatalf("an hour short of the 30 days, want 1 day left and the newest removal's ref and reasons: %s", tab)
 	}
@@ -785,7 +786,8 @@ func TestAdminModerationIntegration_DismissShowsAHiddenItemAgainOnce(t *testing.
 	}
 	list := w.page("/admin")
 	hiddenCard, violent := adminReportOf(t, list, "<strong>@ad_hana</strong>"), adminReportOf(t, list, "<strong>@ad_noel</strong>")
-	if !strings.Contains(hiddenCard, `<p class="kind">Post</p></div>`+"\n"+`<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>`) ||
+	if !strings.Contains(hiddenCard, `<div class="type"><p class="kind">Post</p></div>`) ||
+		!strings.Contains(hiddenCard, `<p class="reasons">Spam</p>`+"\n"+`<p class="flag"><span class="tag">Hidden</span> Only the owner sees it for now.</p>`) ||
 		strings.Contains(violent, "Hidden") || strings.Index(list, "<strong>@ad_hana</strong>") > strings.Index(list, "<strong>@ad_noel</strong>") {
 		t.Fatalf("the Reports tab, want the hidden spam card first with its tag, ahead of violence: %s", list)
 	}
