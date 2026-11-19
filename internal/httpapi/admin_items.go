@@ -116,27 +116,48 @@ func (it adminItem) ReportedBy() string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
-// historyEntry is one line of a person's History: a report about them, or a
+// historyEntry is one line of a person's History: a report about them, a
 // decision from the log (developer, 2026-11-19: "the history section, we'll
-// have it there").
+// have it there"), or a second look they asked for.
 type historyEntry struct {
-	At     time.Time
-	Report *admin.Report
-	Event  *admin.Event
+	At         time.Time
+	Report     *admin.Report
+	Event      *admin.Event
+	SecondLook *admin.SecondLook
+	// stored is when a decision or a second look was stored, on the
+	// database's clock. Both are dated on the owner's clock, which can stand
+	// still (a test clock): at the same At, the one stored later is newer,
+	// so a request shows between its removal and its answer.
+	stored time.Time
 }
 
-// history is every report about the person and every decision about them,
-// the newest first; at the same moment a decision comes before a report,
-// and each list keeps its own order.
-func history(reports []admin.Report, events []admin.Event) []historyEntry {
-	out := make([]historyEntry, 0, len(reports)+len(events))
+// history is every report about the person, every decision about them and
+// every second look they asked for, the newest first. At the same moment
+// the decisions and second looks come before the reports, the one stored
+// later first, and each list keeps its own order otherwise.
+func history(reports []admin.Report, events []admin.Event, looks []admin.SecondLook) []historyEntry {
+	out := make([]historyEntry, 0, len(reports)+len(events)+len(looks))
 	for i := range events {
-		out = append(out, historyEntry{At: events[i].At, Event: &events[i]})
+		out = append(out, historyEntry{At: events[i].At, Event: &events[i], stored: events[i].CreatedAt})
+	}
+	for i := range looks {
+		out = append(out, historyEntry{At: looks[i].At, SecondLook: &looks[i], stored: looks[i].CreatedAt})
 	}
 	for i := range reports {
 		out = append(out, historyEntry{At: reports[i].CreatedAt, Report: &reports[i]})
 	}
-	slices.SortStableFunc(out, func(a, b historyEntry) int { return b.At.Compare(a.At) })
+	slices.SortStableFunc(out, func(a, b historyEntry) int {
+		if c := b.At.Compare(a.At); c != 0 {
+			return c
+		}
+		if (a.Report == nil) != (b.Report == nil) {
+			if a.Report == nil {
+				return -1
+			}
+			return 1
+		}
+		return b.stored.Compare(a.stored)
+	})
 	return out
 }
 

@@ -1,8 +1,9 @@
 // Package admin holds what the admin web page reads and changes: every open
 // report with whose it is, one person's reports, the disabled accounts, what
-// was removed, the decision log, and the actions (dismiss, remove the post or
-// comment and bring it back, disable or enable the account). The page itself
-// is internal/httpapi/admin.go.
+// was removed and the second looks asked about it, the decision log, and the
+// actions (dismiss, remove the post or comment, bring it back or keep it
+// removed, disable or enable the account). The page itself is
+// internal/httpapi/admin.go.
 package admin
 
 import (
@@ -35,8 +36,8 @@ var (
 )
 
 // ErrNoRequest is a Keep it removed on a removal with no open request for a
-// second look (a page drawn before a Bring it back answered it, say).
-// Nothing changes, and nothing is logged.
+// second look: a page drawn before a Bring it back answered it, so it is back
+// or removed again since. Nothing changes, and nothing is logged.
 var ErrNoRequest = errors.New("admin: no second look asked")
 
 // Report kinds.
@@ -259,6 +260,37 @@ type RemovedItem struct {
 	Reasons []string
 	Reason  string
 	Ref     string
+	// SecondLook is the owner's open request for a second look at that
+	// removal, nil while none is open (developer, 2026-11-19): the tab lists
+	// these first, with their words and photos and Keep it removed.
+	SecondLook *SecondLook
+}
+
+// SecondLook is an owner's request for a second look at a removal of their
+// post or comment (migration 0021's second_looks), as the admin page shows
+// it.
+type SecondLook struct {
+	ID uuid.UUID
+	// Item is KindPost or KindComment, ItemID the post's or the comment's id
+	// (kept after the purge), and RemovalID the removal's row in the
+	// decision log, whose Ref the page shows.
+	Item      string
+	ItemID    uuid.UUID
+	RemovalID uuid.UUID
+	// Body is their words, trimmed. PhotoKeys are their photos' keys, in
+	// order: the purge deletes the files and empties it 30 days after the
+	// removal, whatever the answer, and the words stay.
+	Body      string
+	PhotoKeys []string
+	// At is when they asked, on their own clock, as the log's At; CreatedAt
+	// is when it was stored, on the database's.
+	At        time.Time
+	CreatedAt time.Time
+	// Decision is LookOpen until an admin answers, then LookRestored or
+	// LookKept, and DecidedAt when. One nobody answered stays LookOpen after
+	// the purge deletes its post or comment.
+	Decision  string
+	DecidedAt *time.Time
 }
 
 // Event is one decision in the log, about one of the person's posts or
@@ -279,8 +311,10 @@ type Event struct {
 	Snapshot string
 	Reasons  []string
 	Reason   string
-	// At is when, on the owner's own clock.
-	At time.Time
+	// At is when, on the owner's own clock, and CreatedAt when it was
+	// logged, on the database's.
+	At        time.Time
+	CreatedAt time.Time
 }
 
 // Repository is the admin page's storage. The moderation actions each run
@@ -302,13 +336,17 @@ type Repository interface {
 	Reports(ctx context.Context, person uuid.UUID) ([]Report, error)
 	// Events is the person's decision log, newest first.
 	Events(ctx context.Context, person uuid.UUID) ([]Event, error)
+	// SecondLooks is every second look the person asked for, newest first,
+	// answered or not.
+	SecondLooks(ctx context.Context, person uuid.UUID) ([]SecondLook, error)
 	// Posts is the person's posts, newest first: at most PostsLimit+1 of
 	// them, so the page can tell when there are more than it shows. A post
 	// they archived is left out, as only they see it, and so is one removed
 	// past RemovalGrace. The page reads them only when ShowsPosts.
 	Posts(ctx context.Context, person uuid.UUID) ([]Post, error)
-	// Removed is every post and comment removed inside RemovalGrace, the
-	// most recently removed first, and RemovedCount how many there are.
+	// Removed is every post and comment removed inside RemovalGrace: those
+	// with an open second look first, then the most recently removed first.
+	// RemovedCount is how many there are.
 	Removed(ctx context.Context) ([]RemovedItem, error)
 	RemovedCount(ctx context.Context) (int, error)
 	// DismissItem closes the open reports of kind with these ids that are
@@ -343,9 +381,10 @@ type Repository interface {
 	// leaves person's post or comment removed (developer, 2026-11-19): the
 	// open request about its newest removal is closed as LookKept, and that
 	// is logged (LogKept), for the owner's bell. ErrNoRequest when no
-	// request about it is open, ErrAlreadyDone when a Keep closed it
-	// already (the second click of a double click), ErrNotFound when it is
-	// not removed or is past RemovalGrace.
+	// request about it is open, and when it is not removed (a Bring it back
+	// answered it); ErrAlreadyDone when a Keep closed it already (the second
+	// click of a double click); ErrNotFound when it is not there, or is past
+	// RemovalGrace.
 	KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error

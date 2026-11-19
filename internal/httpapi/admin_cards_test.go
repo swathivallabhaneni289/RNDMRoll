@@ -142,7 +142,8 @@ func TestAdminList_ShowsEveryReportedThingAsACard(t *testing.T) {
 // its column under the headings. An account's card shows the account as the
 // thing. On a person's page the buttons stand alone, as the profile's
 // Disable does, and a closed report is a line of the History, not a card.
-// The Disabled tab has headings too.
+// A Removed line with a second look is the same line. The Disabled tab has
+// headings too.
 func TestAdminCards_EachCardIsALineOfTheTable(t *testing.T) {
 	r := newAdminRig(t, true)
 	cookie := r.session(time.Now())
@@ -222,12 +223,24 @@ func TestAdminCards_EachCardIsALineOfTheTable(t *testing.T) {
 		}
 	}
 
-	r.repo.removed = []admin.RemovedItem{{Kind: admin.KindPost, ID: uuid.New(), Owner: mira, Title: "Ramen", LocalDate: "2026-11-15",
-		RemovedAt: closedAt, DaysLeft: 30, Reason: "spam"}}
+	// A second look its owner asked for goes inside the line: in the thing's
+	// own cell, and Keep it removed among the buttons (developer,
+	// 2026-11-19).
+	r.repo.removed = []admin.RemovedItem{
+		{Kind: admin.KindPost, ID: uuid.New(), Owner: mira, Title: "Ramen", LocalDate: "2026-11-15", PhotoKeys: []string{"k1"},
+			RemovedAt: closedAt, DaysLeft: 30, Reason: "spam",
+			SecondLook: &admin.SecondLook{ID: uuid.New(), Item: admin.KindPost, Body: "Mine", PhotoKeys: []string{"p1"}, At: closedAt}},
+		{Kind: admin.KindComment, ID: uuid.New(), Owner: mira, Body: "Rude", RemovedAt: closedAt, DaysLeft: 30, Reason: "harassment"},
+	}
 	removed := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String()
-	if got = cardsOn(removed); len(got) != 1 || strings.Count(removed, headings) != 1 || got[0].row != "type body owner about side" ||
-		got[0].side != "actions" || !strings.Contains(got[0].buttons, ">Open profile</a>") {
-		t.Fatalf("the Removed tab, want the same line under the headings: %+v: %s", got, removed)
+	if got = cardsOn(removed); len(got) != 2 || strings.Count(removed, headings) != 1 {
+		t.Fatalf("the Removed tab, want its 2 lines under the headings: %+v: %s", got, removed)
+	}
+	for i, c := range got {
+		if c.row != "type body owner about side" || c.side != "actions" || !strings.Contains(c.buttons, ">Open profile</a>") ||
+			strings.Contains(c.buttons, ">Keep it removed</button>") != (i == 0) {
+			t.Errorf("the Removed tab, line %d: %+v, want the same line as the others, Keep it removed only with a second look", i, c)
+		}
 	}
 
 	r.repo.disabled = []admin.Person{{ID: uuid.New(), Username: "loud_larry", DisabledAt: &closedAt}}

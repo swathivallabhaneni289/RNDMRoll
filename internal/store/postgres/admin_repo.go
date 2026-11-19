@@ -218,7 +218,7 @@ func (r *AdminRepo) Reports(ctx context.Context, person uuid.UUID) ([]admin.Repo
 // their own clock, the database's breaking a tie.
 func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event, error) {
 	rows, err := r.pool.Query(ctx, `
-		select id, item, action, item_id, snapshot, reasons, reason, at
+		select id, item, action, item_id, snapshot, reasons, reason, at, created_at
 		from moderation_events where owner_id = $1
 		order by at desc, created_at desc`, person)
 	if err != nil {
@@ -228,10 +228,35 @@ func (r *AdminRepo) Events(ctx context.Context, person uuid.UUID) ([]admin.Event
 	out := []admin.Event{}
 	for rows.Next() {
 		var e admin.Event
-		if err := rows.Scan(&e.ID, &e.Item, &e.Action, &e.ItemID, &e.Snapshot, &e.Reasons, &e.Reason, &e.At); err != nil {
+		if err := rows.Scan(&e.ID, &e.Item, &e.Action, &e.ItemID, &e.Snapshot, &e.Reasons, &e.Reason, &e.At, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// SecondLooks implements admin.Repository: every request of the person, by
+// their own clock, the database's breaking a tie, as Events reads the log.
+// The words stay for as long as the account; the photo keys go 30 days
+// after the removal.
+func (r *AdminRepo) SecondLooks(ctx context.Context, person uuid.UUID) ([]admin.SecondLook, error) {
+	rows, err := r.pool.Query(ctx, `
+		select id, item, item_id, removal_id, body, photo_keys, at, created_at, coalesce(decision, ''), decided_at
+		from second_looks where owner_id = $1
+		order by at desc, created_at desc`, person)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []admin.SecondLook{}
+	for rows.Next() {
+		var l admin.SecondLook
+		if err := rows.Scan(&l.ID, &l.Item, &l.ItemID, &l.RemovalID, &l.Body, &l.PhotoKeys, &l.At, &l.CreatedAt,
+			&l.Decision, &l.DecidedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
 	}
 	return out, rows.Err()
 }
@@ -271,13 +296,18 @@ func (r *AdminRepo) Posts(ctx context.Context, person uuid.UUID) ([]admin.Post, 
 // Removed implements admin.Repository. Each item carries its newest removal
 // in the log, for its reasons, the reason the admin gave and its Ref; an
 // item removed with no log row (straight in the database) has none of them.
-// A comment's days left run from the earliest removal of it, its post and
-// the comment it answers (least skips the nulls): the purge of a post takes
-// its comments, and of a comment its replies.
+// The newest removal is the one a second look can be open about (an older
+// one was answered by the Bring it back after it), so each item carries the
+// request about it while nobody has answered it, and those come first
+// (developer, 2026-11-19). A comment's days left run from the earliest
+// removal of it, its post and the comment it answers (least skips the
+// nulls): the purge of a post takes its comments, and of a comment its
+// replies.
 func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+adminPersonColumns+`, x.kind, x.id, x.title, x.local_date, x.note, x.photo_keys, x.body, x.photo_key,
-		       x.removed_at, `+daysLeft("x.goes_from")+`, ev.id, coalesce(ev.reasons, array[]::text[]), coalesce(ev.reason, '')
+		       x.removed_at, `+daysLeft("x.goes_from")+`, ev.id, coalesce(ev.reasons, array[]::text[]), coalesce(ev.reason, ''),
+		       sl.id, coalesce(sl.body, ''), coalesce(sl.photo_keys, array[]::text[]), sl.at, sl.created_at
 		from (
 			select 'post' as kind, e.id, e.user_id, e.title, e.local_date::text as local_date,
 			       coalesce(e.comment, '') as note,
@@ -296,7 +326,8 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 			select me.id, me.reasons, me.reason from moderation_events me
 			where me.owner_id = x.user_id and me.item_id = x.id and me.action = 'removed'
 			order by me.created_at desc limit 1) ev on true
-		order by x.removed_at desc, x.id`)
+		left join second_looks sl on sl.removal_id = ev.id and sl.decision is null
+		order by (sl.id is not null) desc, x.removed_at desc, x.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -304,13 +335,21 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	out := []admin.RemovedItem{}
 	for rows.Next() {
 		var it admin.RemovedItem
-		var event *uuid.UUID
+		var event, look *uuid.UUID
+		var body string
+		var keys []string
+		var at, created *time.Time
 		if err := scanAdminPerson(rows, &it.Owner, &it.Kind, &it.ID, &it.Title, &it.LocalDate, &it.Note, &it.PhotoKeys,
-			&it.Body, &it.PhotoKey, &it.RemovedAt, &it.DaysLeft, &event, &it.Reasons, &it.Reason); err != nil {
+			&it.Body, &it.PhotoKey, &it.RemovedAt, &it.DaysLeft, &event, &it.Reasons, &it.Reason,
+			&look, &body, &keys, &at, &created); err != nil {
 			return nil, err
 		}
 		if event != nil {
 			it.Ref = admin.Ref(*event)
+		}
+		if look != nil && event != nil && at != nil && created != nil {
+			it.SecondLook = &admin.SecondLook{ID: *look, Item: it.Kind, ItemID: it.ID, RemovalID: *event,
+				Body: body, PhotoKeys: keys, At: *at, CreatedAt: *created, Decision: admin.LookOpen}
 		}
 		out = append(out, it)
 	}
@@ -659,7 +698,9 @@ const newestRemoval = `select nr.id from moderation_events nr
 // KeepRemoved implements admin.Repository, in one transaction. The post or
 // comment is held for update first, as Bring it back's update holds it, so
 // a Keep and a Bring it back from two tabs take turns, and so does a second
-// look being asked, which holds it for share. Then the open request about
+// look being asked, which holds it for share. One that is not removed has
+// no open request: the Bring it back that brought it back answered it, and
+// the page says so rather than that it is gone. Then the open request about
 // its newest removal is held, closed as kept and logged. A Keep that finds
 // the request closed as kept already is the second click of a double click.
 func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person uuid.UUID, loggedAt time.Time) error {
@@ -675,16 +716,20 @@ func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person
 
 	var snapshot string
 	var entry uuid.UUID
-	var inside bool
-	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null and `+insideRemovalGrace("removed_at")+`
-		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &inside)
+	var removed, inside bool
+	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null,
+		removed_at is not null and `+insideRemovalGrace("removed_at")+`
+		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &removed, &inside)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if !inside {
+	switch {
+	case !removed:
+		return admin.ErrNoRequest
+	case !inside:
 		return admin.ErrNotFound
 	}
 	var look uuid.UUID

@@ -39,6 +39,10 @@
 
 {{define "thead"}}<div class="thead" aria-hidden="true"><span>Type</span><span>What</span><span>Reason</span><span></span></div>{{end}}
 
+{{define "look"}}{{with .}}<div class="look"><p class="flag"><span class="tag">Second look asked</span></p><p class="text quote">{{.Body}}</p>{{template "proofs" .PhotoKeys}}</div>{{end}}{{end}}
+
+{{define "proofs"}}{{if .}}<div class="strip">{{range .}}{{with $link := photo .}}<a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Second look photo" loading="lazy" decoding="async"></a>{{end}}{{end}}</div>{{end}}{{end}}
+
 {{define "reasonList"}}<label class="reason">Reason <select name="reason">{{$picked := .RemoveReason}}{{range reasonKeys}}<option value="{{.}}"{{if eq . $picked}} selected{{end}}>{{reason .}}</option>{{end}}</select></label>{{end}}
 
 {{define "item"}}{{with .Item}}<article class="card{{if not .Open}} closed{{end}}">
@@ -78,13 +82,14 @@
 <div class="cards table">{{template "thead"}}{{range .Removed}}<article class="card">
 <div class="type"><p class="kind">{{kind .Kind}}</p></div>
 {{if eq .Kind "post"}}<div class="body">{{if .PhotoKeys}}<div class="strip">{{range .PhotoKeys}}{{with $link := photo .}}<a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Post photo" loading="lazy" decoding="async"></a>{{end}}{{end}}</div>{{end}}
-<p class="day">{{day .LocalDate}}</p><h3>{{.Title}}</h3>{{if .Note}}<p class="text">{{.Note}}</p>{{end}}</div>
-{{else}}<div class="body"><p class="text quote">{{if .Body}}{{.Body}}{{else}}(photo only){{end}}</p>{{if .PhotoKey}}{{with $link := photo .PhotoKey}}<div class="strip"><a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Comment photo" loading="lazy" decoding="async"></a></div>{{end}}{{end}}</div>{{end}}
+<p class="day">{{day .LocalDate}}</p><h3>{{.Title}}</h3>{{if .Note}}<p class="text">{{.Note}}</p>{{end}}{{template "look" .SecondLook}}</div>
+{{else}}<div class="body"><p class="text quote">{{if .Body}}{{.Body}}{{else}}(photo only){{end}}</p>{{if .PhotoKey}}{{with $link := photo .PhotoKey}}<div class="strip"><a href="{{$link}}" target="_blank" rel="noopener"><img class="thumb" src="{{$link}}" alt="Comment photo" loading="lazy" decoding="async"></a></div>{{end}}{{end}}{{template "look" .SecondLook}}</div>{{end}}
 <div class="owner">{{template "who" .Owner}}{{if .Owner.DisabledAt}}<span class="tag">Disabled</span>{{end}}</div>
 <div class="about"><p class="reasons">{{if .Reason}}{{reason .Reason}}{{else}}{{range $i, $r := .Reasons}}{{if $i}} · {{end}}{{reason $r}}{{end}}{{end}}</p>
 <p class="by">Removed <span class="when">{{when .RemovedAt}}</span></p><p class="by">{{daysLeft .DaysLeft}}{{with .Ref}} · Ref: {{.}}{{end}}</p></div>
 <div class="side"><div class="actions"><form method="post" action="/admin/removed/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button class="strong">Bring it back</button></form>
-<a class="button push" href="/admin/people/{{.Owner.ID}}?from=removed">Open profile</a></div></div>
+{{if .SecondLook}}<form method="post" action="/admin/removed/keep"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="person" value="{{.Owner.ID}}"><input type="hidden" name="from" value="removed"><button>Keep it removed</button></form>
+{{end}}<a class="button push" href="/admin/people/{{.Owner.ID}}?from=removed">Open profile</a></div></div>
 </article>{{end}}</div>
 {{else}}<p class="empty">Nothing removed in the last 30 days.</p>{{end}}
 {{template "foot" .}}{{end}}
@@ -113,7 +118,7 @@
 {{else}}<p class="lede">Their posts show here while a report about the account is open, or while it's disabled.</p>{{end}}
 {{if .History}}<h2>History</h2>
 {{with .Reported}}<p class="lede">{{reportedTimes .}}</p>
-{{end}}<ol class="history">{{range .History}}{{with .Report}}<li><p><strong>{{kind .Kind}} reported for {{reasonLower .Reason}}</strong>{{with .Reporter}} by @{{.}}{{end}} <span class="muted when">{{when .CreatedAt}}</span></p><p class="by">{{if .ResolvedAt}}{{closed .Resolution}} <span class="when">{{when .ResolvedAt}}</span>{{else}}<span class="tag">Open</span>{{end}}</p>{{with said .}}<p class="text quote">{{.}}</p>{{end}}</li>{{end}}{{with .Event}}<li><p><strong>{{decision .}}</strong> <span class="muted when">{{when .At}}</span></p>{{if eq .Action "removed"}}<p class="by">Ref: {{ref .ID}}{{if .Reason}} · {{reason .Reason}}{{else}}{{with .Reasons}} · {{reasons .}}{{end}}{{end}}</p>{{end}}{{if .Snapshot}}<p class="text quote">{{.Snapshot}}</p>{{end}}</li>{{end}}{{end}}</ol>{{end}}
+{{end}}<ol class="history">{{range .History}}{{with .Report}}<li><p><strong>{{kind .Kind}} reported for {{reasonLower .Reason}}</strong>{{with .Reporter}} by @{{.}}{{end}} <span class="muted when">{{when .CreatedAt}}</span></p><p class="by">{{if .ResolvedAt}}{{closed .Resolution}} <span class="when">{{when .ResolvedAt}}</span>{{else}}<span class="tag">Open</span>{{end}}</p>{{with said .}}<p class="text quote">{{.}}</p>{{end}}</li>{{end}}{{with .Event}}<li><p><strong>{{decision .}}</strong> <span class="muted when">{{when .At}}</span></p>{{if eq .Action "removed"}}<p class="by">Ref: {{ref .ID}}{{if .Reason}} · {{reason .Reason}}{{else}}{{with .Reasons}} · {{reasons .}}{{end}}{{end}}</p>{{end}}{{if .Snapshot}}<p class="text quote">{{.Snapshot}}</p>{{end}}</li>{{end}}{{with .SecondLook}}<li><p><strong>Asked for a second look at {{if eq .Item "comment"}}a comment{{else}}a post{{end}}</strong> <span class="muted when">{{when .At}}</span></p><p class="by">Ref: {{ref .RemovalID}}</p><p class="text quote">{{.Body}}</p>{{template "proofs" .PhotoKeys}}</li>{{end}}{{end}}</ol>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "post"}}<article class="post">

@@ -82,6 +82,13 @@ p, .note, .text { text-wrap: pretty; }
 .card .flag { margin-top: 6px; font-size: 14px; color: var(--muted); }
 .flag .tag { color: var(--ink); margin-right: 4px; }
 
+/* A second look its owner asked for, in the thing's own cell under it (and
+   under its photos): the tag, their words, then their photos. */
+.look { clear: both; padding-top: 16px; }
+.look .flag { margin-top: 0; }
+.look .quote { margin-top: 8px; }
+.look .strip { margin-top: 12px; }
+
 /* A person: profile photo (or their first letter), username and name. */
 .who { display: flex; align-items: center; gap: 10px; }
 .who p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -144,14 +151,15 @@ label.reason select { font: inherit; padding: 6px 10px; border: 1px solid var(--
 .row .actions { margin-top: 0; }
 .empty { background: var(--card); border: 1px dashed var(--line); border-radius: 8px; padding: 32px 16px; text-align: center; color: var(--muted); margin: 0 0 16px; }
 
-/* A person's History: every report about them and every decision, newest
-   first. */
+/* A person's History: every report about them, every decision and every
+   second look they asked for, newest first. */
 .history { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
 .history li { padding: 18px 28px; border-bottom: 1px solid var(--line); }
 .history .by { margin-top: 4px; }
 .history li:last-child { border-bottom: none; }
 .history p { margin: 0; }
 .history .quote { margin-top: 6px; padding-left: 12px; border-left: 3px solid var(--line); }
+.history .strip { margin-top: 10px; }
 
 
 label { display: block; margin: 12px 0 4px; }

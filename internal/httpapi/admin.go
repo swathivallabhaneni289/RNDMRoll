@@ -1,8 +1,9 @@
 // Package httpapi: admin.go serves the admin web page at /admin (developer,
 // 2026-10-18, like Instagram's review tool): open reports grouped by the
 // reported person, one person's reports and decision log, what was removed
-// in the last 30 days, and the actions (dismiss a report, remove the reported
-// post or comment and bring it back, disable or enable the account).
+// in the last 30 days with the second looks its owners asked for, and the
+// actions (dismiss a report, remove the reported post or comment, bring it
+// back or keep it removed, disable or enable the account).
 //
 // It is a plain server-rendered page, outside /v1 and its bearer tokens:
 //   - Only the accounts that had an ADMIN_EMAILS address when the server
@@ -75,6 +76,8 @@ var adminNotices = map[string]string{
 	"shownagain":  "Dismissed. It shows again, and they were told.",
 	"removed":     "Removed. It's on the Removed tab for 30 days.",
 	"restored":    "Brought back. They were told.",
+	"kept":        "Kept removed. They'll see it in the app.",
+	"answered":    "That second look was already answered.",
 	"gone":        "That post or comment is already gone.",
 	"postfirst":   "Bring back its post first.",
 	"parentfirst": "Bring back the comment it answers first.",
@@ -242,6 +245,8 @@ func NewAdminHandler(repo admin.Repository, users user.Repository, entries *Entr
 				return what + " enabled"
 			case admin.LogHidden:
 				return what + " hidden by reports"
+			case admin.LogKept:
+				return what + " kept removed"
 			}
 			return what + " " + e.Action
 		},
@@ -349,6 +354,7 @@ func (h *AdminHandler) Register(engine *gin.Engine) {
 	in.POST("/reports/dismiss", h.sameOrigin, h.checkCSRF, h.dismiss)
 	in.POST("/reports/remove", h.sameOrigin, h.checkCSRF, h.remove)
 	in.POST("/removed/restore", h.sameOrigin, h.checkCSRF, h.restore)
+	in.POST("/removed/keep", h.sameOrigin, h.checkCSRF, h.keep)
 	in.POST("/people/:id/disable", h.sameOrigin, h.checkCSRF, h.disable)
 	in.POST("/people/:id/enable", h.sameOrigin, h.checkCSRF, h.enable)
 }
@@ -548,9 +554,9 @@ type adminPage struct {
 	People []admin.Person
 	// Removed is what the Removed tab lists.
 	Removed []admin.RemovedItem
-	// History is every report about the person and every decision about
-	// them, newest first, and Reported how many reports there are (their
-	// page).
+	// History is every report about the person, every decision about them
+	// and every second look they asked for, newest first, and Reported how
+	// many reports there are (their page).
 	History  []historyEntry
 	Reported int
 	// Back and BackLabel are where their page's back arrow goes and that
@@ -761,8 +767,10 @@ func (h *AdminHandler) disabledPage(c *gin.Context) {
 }
 
 // removedPage is the Removed tab: every post and comment removed in the
-// last admin.RemovalGrace, the most recently removed first, each with Bring
-// it back. Unlike the Reports tab it does not refresh itself.
+// last admin.RemovalGrace, each with Bring it back. Those whose owner asked
+// for a second look come first, with what they wrote, their photos and Keep
+// it removed (developer, 2026-11-19); then the most recently removed first.
+// Unlike the Reports tab it does not refresh itself.
 func (h *AdminHandler) removedPage(c *gin.Context) {
 	ctx := c.Request.Context()
 	removed, err := h.repo.Removed(ctx)
@@ -855,9 +863,14 @@ func (h *AdminHandler) person(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	looks, err := h.repo.SecondLooks(ctx, id)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
 	open, _ := groupReports(p, reports)
 	page := adminPage{Title: "@" + p.Username, CSRF: h.csrf(c), Person: p, Open: open,
-		History: history(reports, events), Reported: len(reports), Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed}
+		History: history(reports, events, looks), Reported: len(reports), Self: id == adminUser(c).ID, OpenCount: len(items), DisabledCount: len(people), RemovedCount: removed}
 	page.Back, page.BackLabel = backArrow(c.Query("from"))
 	if admin.ShowsPosts(p, reports) {
 		posts, err := h.repo.Posts(ctx, id)
@@ -1050,11 +1063,13 @@ func (h *AdminHandler) remove(c *gin.Context) {
 
 // restore is Bring it back on the Removed tab: the post or comment shows
 // again, and its owner is told, while it is inside admin.RemovalGrace. Its
-// reports stay closed, so its reporters still never see it. A comment whose
-// post or the comment it answers is still removed stays removed, and the
-// notice says which to bring back first. A second Bring it back of one it
-// brought back (a double click) says what the first said, and changes
-// nothing. Past the grace, never removed or deleted, it is gone.
+// reports stay closed, so its reporters still never see it, and a second
+// look its owner asked for is answered with it, also one Keep it removed
+// answered before. A comment whose post or the comment it answers is still
+// removed stays removed, its request open, and the notice says which to
+// bring back first. A second Bring it back of one it brought back (a double
+// click) says what the first said, and changes nothing. Past the grace,
+// never removed or deleted, it is gone.
 func (h *AdminHandler) restore(c *gin.Context) {
 	kind, id, person, ok := formIDs(c)
 	if !ok || kind == admin.KindPerson {
@@ -1074,6 +1089,34 @@ func (h *AdminHandler) restore(c *gin.Context) {
 		backTo(c, person, "gone")
 	default:
 		log.Printf("httpapi: admin restore %s: %v", kind, err)
+		backTo(c, person, "failed")
+	}
+}
+
+// keep is Keep it removed on the Removed tab, the answer to a second look
+// its owner asked for (developer, 2026-11-19): it stays removed, the request
+// is closed and logged on the owner's own clock, and their bell says so. The
+// tab draws it only on a line with an open request. A second Keep (a double
+// click) says what the first said, and changes nothing. One whose request a
+// Bring it back answered meanwhile says it was answered; past the grace or
+// deleted, it is gone.
+func (h *AdminHandler) keep(c *gin.Context) {
+	kind, id, person, ok := formIDs(c)
+	if !ok || kind == admin.KindPerson {
+		c.Redirect(http.StatusSeeOther, "/admin/removed")
+		return
+	}
+	ctx := c.Request.Context()
+	err := h.repo.KeepRemoved(ctx, kind, id, person, h.ownerNow(ctx, person))
+	switch {
+	case err == nil, errors.Is(err, admin.ErrAlreadyDone):
+		backTo(c, person, "kept")
+	case errors.Is(err, admin.ErrNoRequest):
+		backTo(c, person, "answered")
+	case errors.Is(err, admin.ErrNotFound):
+		backTo(c, person, "gone")
+	default:
+		log.Printf("httpapi: admin keep %s: %v", kind, err)
 		backTo(c, person, "failed")
 	}
 }

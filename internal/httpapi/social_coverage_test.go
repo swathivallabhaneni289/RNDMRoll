@@ -57,9 +57,10 @@ func TestSocialCoverage_AnAdminSessionLastsEightHoursAndAChangedCookieIsRefused(
 		item := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {uuid.NewString()}, "person": {uuid.NewString()}, "from": {"removed"}}
 		sentToLogin(t, name+", a remove", adminDo(t, r.w, http.MethodPost, "/admin/reports/remove", cookie, item, ""), "expired", false)
 		sentToLogin(t, name+", a bring it back", adminDo(t, r.w, http.MethodPost, "/admin/removed/restore", cookie, item, ""), "expired", false)
-		if r.repo.reads != reads || r.repo.resolved != 0 || len(r.repo.removes) != 0 || len(r.repo.restores) != 0 {
-			t.Fatalf("%s: the page behind ran (%d reads, %d dismissals, %d removals, %d brought back)", name,
-				r.repo.reads-reads, r.repo.resolved, len(r.repo.removes), len(r.repo.restores))
+		sentToLogin(t, name+", a keep it removed", adminDo(t, r.w, http.MethodPost, "/admin/removed/keep", cookie, item, ""), "expired", false)
+		if r.repo.reads != reads || r.repo.resolved != 0 || len(r.repo.removes) != 0 || len(r.repo.restores) != 0 || len(r.repo.keeps) != 0 {
+			t.Fatalf("%s: the page behind ran (%d reads, %d dismissals, %d removals, %d brought back, %d kept removed)", name,
+				r.repo.reads-reads, r.repo.resolved, len(r.repo.removes), len(r.repo.restores), len(r.repo.keeps))
 		}
 	}
 
@@ -197,12 +198,15 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 	r.repo.openReports = []admin.OpenReport{{Owner: owner, Report: report}}
 	r.repo.reports = []admin.Report{report}
 	r.repo.disabled = []admin.Person{{ID: uuid.New(), Username: "off_one", Name: "Off One", DisabledAt: &now}}
-	removed := uuid.New()
+	removed, removal := uuid.New(), uuid.New()
+	look := admin.SecondLook{ID: uuid.New(), Item: admin.KindPost, ItemID: removed, RemovalID: removal, Body: "Please look again",
+		PhotoKeys: []string{"p1"}, At: now}
 	r.repo.removed = []admin.RemovedItem{{Kind: admin.KindPost, ID: removed, Owner: owner, Title: "Gone soon", LocalDate: "2026-10-08",
-		PhotoKeys: []string{"k1"}, RemovedAt: now, DaysLeft: 30, Reasons: []string{"spam"}, Ref: "0a1b2c3d"}}
+		PhotoKeys: []string{"k1"}, RemovedAt: now, DaysLeft: 30, Reasons: []string{"spam"}, Ref: "0a1b2c3d", SecondLook: &look}}
 	target := uuid.New()
 	r.repo.target, r.repo.owner = &target, owner.ID
-	r.repo.events = []admin.Event{{ID: uuid.New(), Item: admin.KindPost, Action: admin.LogRemoved, Snapshot: "Gone soon", Reasons: []string{"spam"}, At: now}}
+	r.repo.events = []admin.Event{{ID: removal, Item: admin.KindPost, Action: admin.LogRemoved, Snapshot: "Gone soon", Reasons: []string{"spam"}, At: now}}
+	r.repo.looks = []admin.SecondLook{look}
 	dismiss := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {report.ID.String()}, "person": {owner.ID.String()}}
 	remove := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {uuid.NewString()}, "person": {owner.ID.String()}, "from": {"list"}}
 	restore := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {removed.String()}, "person": {owner.ID.String()}, "from": {"removed"}}
@@ -234,6 +238,7 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 		{"the log in page", http.MethodGet, "/admin/login", "", nil, http.StatusOK},
 		{"the log in page with a notice", http.MethodGet, "/admin/login?n=badlogin", "", nil, http.StatusOK},
 		{"the report email's hop", http.MethodGet, "/admin/go", "", nil, http.StatusOK},
+		{"the second-look email's hop", http.MethodGet, "/admin/go?to=removed", "", nil, http.StatusOK},
 		{"the stylesheet", http.MethodGet, "/admin/style.css", "", nil, http.StatusOK},
 		{"the Reports tab", http.MethodGet, "/admin", cookie, nil, http.StatusOK},
 		{"the Disabled tab", http.MethodGet, "/admin/disabled", cookie, nil, http.StatusOK},
@@ -244,6 +249,7 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 		{"a dismiss", http.MethodPost, "/admin/reports/dismiss", cookie, dismiss, http.StatusSeeOther},
 		{"a remove", http.MethodPost, "/admin/reports/remove", cookie, remove, http.StatusSeeOther},
 		{"a bring it back", http.MethodPost, "/admin/removed/restore", cookie, restore, http.StatusSeeOther},
+		{"a keep it removed", http.MethodPost, "/admin/removed/keep", cookie, restore, http.StatusSeeOther},
 	} {
 		check(c.name, adminDo(t, r.w, c.method, c.path, c.cookie, c.form, ""), c.code)
 	}
@@ -251,14 +257,17 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 		t.Fatalf("the Reports tab drew no card, so the scan above saw no form: %s", page)
 	}
 	if page := adminDo(t, r.w, http.MethodGet, "/admin/removed", cookie, nil, "").Body.String(); !strings.Contains(page, "Gone soon") ||
-		!strings.Contains(page, `action="/admin/removed/restore"`) {
-		t.Fatalf("the Removed tab drew no card, so the scan above saw no form: %s", page)
+		!strings.Contains(page, `action="/admin/removed/restore"`) || !strings.Contains(page, `action="/admin/removed/keep"`) ||
+		!strings.Contains(page, "Please look again") {
+		t.Fatalf("the Removed tab drew no card with a second look, so the scan above saw no such form: %s", page)
 	}
-	if page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+owner.ID.String(), cookie, nil, "").Body.String(); !strings.Contains(page, "<h2>History</h2>") {
-		t.Fatalf("the person page drew no History, so the scan above saw none: %s", page)
+	if page := adminDo(t, r.w, http.MethodGet, "/admin/people/"+owner.ID.String(), cookie, nil, "").Body.String(); !strings.Contains(page, "<h2>History</h2>") ||
+		!strings.Contains(page, "Asked for a second look at a post") {
+		t.Fatalf("the person page drew no History with a second look, so the scan above saw none: %s", page)
 	}
-	if len(r.repo.removes) != 1 || len(r.repo.restores) != 1 {
-		t.Fatalf("the remove and the bring it back ran %d and %d times, want once each", len(r.repo.removes), len(r.repo.restores))
+	if len(r.repo.removes) != 1 || len(r.repo.restores) != 1 || len(r.repo.keeps) != 1 {
+		t.Fatalf("the remove, the bring it back and the keep it removed ran %d, %d and %d times, want once each",
+			len(r.repo.removes), len(r.repo.restores), len(r.repo.keeps))
 	}
 
 	// The failure page, when the account cannot be read.

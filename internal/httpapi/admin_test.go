@@ -46,15 +46,16 @@ type fakeAdminRepo struct {
 	// keepErr is what KeepRemoved answers.
 	keepErr error
 
-	// openReports, disabled, reports, removed and events are what
-	// OpenReports, DisabledPeople, Reports, Removed and Events answer;
-	// removedBefore is the RemovedBefore of the person Person answers;
-	// DismissItem finds the report ids in notOpen closed.
+	// openReports, disabled, reports, removed, events and looks are what
+	// OpenReports, DisabledPeople, Reports, Removed, Events and SecondLooks
+	// answer; removedBefore is the RemovedBefore of the person Person
+	// answers; DismissItem finds the report ids in notOpen closed.
 	openReports   []admin.OpenReport
 	disabled      []admin.Person
 	reports       []admin.Report
 	removed       []admin.RemovedItem
 	events        []admin.Event
+	looks         []admin.SecondLook
 	removedBefore int
 	notOpen       map[uuid.UUID]bool
 	// posts are what Posts answers, and disabledAt is the DisabledAt of the
@@ -62,7 +63,7 @@ type fakeAdminRepo struct {
 	posts      []admin.Post
 	disabledAt *time.Time
 
-	reads      int            // OpenReports, DisabledPeople, Person, Reports, Events, Removed and RemovedCount
+	reads      int            // OpenReports, DisabledPeople, Person, Reports, Events, SecondLooks, Removed and RemovedCount
 	postReads  int            // Posts
 	targets    int            // ReportTarget
 	resolved   int            // DismissItem
@@ -81,8 +82,8 @@ type adminDismiss struct {
 	loggedAt time.Time
 }
 
-// adminAction is one RemoveItem or RestoreItem call. reason is the one a
-// removal was given; a Bring it back has none.
+// adminAction is one RemoveItem, RestoreItem or KeepRemoved call. reason is
+// the one a removal was given; a Bring it back and a Keep have none.
 type adminAction struct {
 	kind           string
 	target, person uuid.UUID
@@ -127,6 +128,11 @@ func (f *fakeAdminRepo) Reports(context.Context, uuid.UUID) ([]admin.Report, err
 func (f *fakeAdminRepo) Events(context.Context, uuid.UUID) ([]admin.Event, error) {
 	f.reads++
 	return f.events, nil
+}
+
+func (f *fakeAdminRepo) SecondLooks(context.Context, uuid.UUID) ([]admin.SecondLook, error) {
+	f.reads++
+	return f.looks, nil
 }
 
 func (f *fakeAdminRepo) Removed(context.Context) ([]admin.RemovedItem, error) {

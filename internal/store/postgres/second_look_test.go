@@ -201,9 +201,10 @@ func askedAbout(t *testing.T, pool *pgxpool.Pool, owner, removal, item uuid.UUID
 // Keep it removed answers the open second look about the newest removal,
 // logs kept on the owner's clock with the title, and changes nothing more on
 // a second click; with no open request, for someone else, once it is back
-// or past the 30 days it changes nothing. Bring it back answers the request
-// too, also one a Keep answered, and a removal after that has no request
-// until one is asked.
+// (no request is open then: the Bring it back answered it) or past the 30
+// days it changes nothing. Bring it back answers the request too, also one
+// a Keep answered, and a removal after that has no request until one is
+// asked.
 func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 	pool := requireTestPool(t)
 	ctx := context.Background()
@@ -248,8 +249,8 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 	if got := lookAnswer(t, pool, removal); got != "restored" {
 		t.Fatalf("after Bring it back the request is %q, want restored", got)
 	}
-	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNotFound) {
-		t.Fatalf("Keep once it is back: %v, want ErrNotFound", err)
+	if err := repo.KeepRemoved(ctx, admin.KindPost, post, a.ID, loggedAt); !errors.Is(err, admin.ErrNoRequest) || kept() != 1 {
+		t.Fatalf("Keep once it is back: %v with %d kept rows, want ErrNoRequest (the Bring it back answered it) and 1", err, kept())
 	}
 
 	// Removed again: a new removal with no request of its own.
