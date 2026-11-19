@@ -53,6 +53,23 @@ const (
 	// and the same for a comment.
 	KindPostHidden    = "post_hidden"
 	KindCommentHidden = "comment_hidden"
+
+	// The admin looked again at the viewer's removed post or comment, as
+	// they asked, and kept it removed (developer, 2026-11-19): "We looked
+	// again. Your post stays removed.", and the same for a comment. Like a
+	// removal, it opens nothing.
+	KindPostKept    = "post_kept"
+	KindCommentKept = "comment_kept"
+)
+
+// The second look on a removal (SecondLook): none asked, asked and not yet
+// answered, Keep it removed, or back. Back is also a removal that a Bring it
+// back answered with nothing asked: there is nothing left to ask about.
+const (
+	SecondLookNone     = ""
+	SecondLookAsked    = "asked"
+	SecondLookKept     = "kept"
+	SecondLookRestored = "restored"
 )
 
 // Sections.
@@ -98,7 +115,8 @@ type Decision struct {
 	// ID is the log row's. The item's id and the removal's ref come from it.
 	ID uuid.UUID
 	// Item is admin.KindPost or admin.KindComment; Action is admin.LogRemoved,
-	// admin.LogRestored, admin.LogShownAgain or admin.LogHidden.
+	// admin.LogRestored, admin.LogShownAgain, admin.LogHidden or
+	// admin.LogKept.
 	Item, Action string
 	// At is the owner's own clock when it was decided, or hidden.
 	At time.Time
@@ -107,6 +125,9 @@ type Decision struct {
 	// Reason is the reason the admin gave at a removal, a report reason's
 	// key: "" on every other row, and on a removal with none.
 	Reason string
+	// SecondLook is the second look on a removal (SecondLookNone and the
+	// others), on the database's clock: "" on every other row.
+	SecondLook string
 	// EntryID is the post (for a comment, its post) while it is still in the
 	// database: nil once it is deleted.
 	EntryID *uuid.UUID
@@ -130,13 +151,15 @@ type Item struct {
 	Text         *string
 	RequestID    *uuid.UUID
 	PhotoKey     *string
-	// Ref, Contact and Reason are on a removal only: its short reference
-	// (admin.Ref), the address to email for a second look ("" while none is
-	// set), and the reason the admin gave, as a report reason's key ("" for
-	// none).
-	Ref     string
-	Contact string
-	Reason  string
+	// Ref, Reason, Removal and SecondLook are on a removal only: its short
+	// reference (admin.Ref), the reason the admin gave, as a report reason's
+	// key ("" for none), the removal's full id, which the app asks for a
+	// second look with, and the second look on it (SecondLookNone and the
+	// others).
+	Ref        string
+	Reason     string
+	Removal    *uuid.UUID
+	SecondLook string
 }
 
 // List is the list and its unread flag.
@@ -184,21 +207,12 @@ type Service struct {
 	repo   Repository
 	social *social.Service
 	clk    Clock
-	// contact is the address a removal's owner can email for a second look
-	// (SetContact); "" sends none.
-	contact string
 }
 
 // NewService builds a Service.
 func NewService(repo Repository, soc *social.Service, clk Clock) *Service {
 	return &Service{repo: repo, social: soc, clk: clk}
 }
-
-// SetContact sets the address the owner of a removed post or comment can
-// email to ask for a second look: the server's CONTACT_EMAIL, and never an
-// admin's sign-in address by default. The bell sends it on a removal only,
-// and sends none while it is "". Call it before the service is used.
-func (s *Service) SetContact(address string) { s.contact = address }
 
 // SectionOf is an item's section in the viewer's zone, by the same day count
 // as its label: today (or later), the six days before, earlier.
@@ -349,6 +363,7 @@ func decisionKind(item, action string) string {
 	removed := action == admin.LogRemoved
 	back := action == admin.LogRestored || action == admin.LogShownAgain
 	hidden := action == admin.LogHidden
+	kept := action == admin.LogKept
 	switch {
 	case item == admin.KindPost && removed:
 		return KindPostRemoved
@@ -362,16 +377,21 @@ func decisionKind(item, action string) string {
 		return KindPostHidden
 	case item == admin.KindComment && hidden:
 		return KindCommentHidden
+	case item == admin.KindPost && kept:
+		return KindPostKept
+	case item == admin.KindComment && kept:
+		return KindCommentKept
 	}
 	return ""
 }
 
 // decisionItem is the item for one decision, with the id kind:<log row>, at
 // the decision's own time and with the title or the comment text as it was
-// then (whole, on one line, as the email asking for a second look quotes
-// it). A removal carries no way back to what was removed, not even while it
-// is still kept for Bring it back: no post and no photo, only its ref, the
-// address to ask at and the reason the admin gave. A post that is back or
+// then (whole, on one line). A removal carries no way back to what was
+// removed, not even while it is still kept for Bring it back: no post and no
+// photo, only its ref, the reason the admin gave, its full id to ask for a
+// second look with, and that second look's state. A Keep it removed carries
+// none of them, no post and no photo either. A post that is back or
 // hidden opens the post, and shows its first photo while the viewer can see
 // it; a comment that is back or hidden opens its post only while the viewer
 // can see that post, which may be someone else's, and shows no photo.
@@ -387,9 +407,11 @@ func (s *Service) decisionItem(d Decision) (Item, bool) {
 	}
 	switch kind {
 	case KindPostRemoved, KindCommentRemoved:
+		id := d.ID
 		it.Ref = admin.Ref(d.ID)
-		it.Contact = s.contact
 		it.Reason = d.Reason
+		it.Removal = &id
+		it.SecondLook = d.SecondLook
 	case KindPostBack, KindPostHidden:
 		it.EntryID = d.EntryID
 		if d.Visible {

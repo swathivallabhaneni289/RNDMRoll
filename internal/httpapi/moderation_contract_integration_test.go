@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,8 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin/spintest"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
 
 // The app's side of moderation was built from the spec, not from this
@@ -120,8 +124,7 @@ func (p *contractPlaceholders) text(key, s string) string {
 	return contractUUID.ReplaceAllStringFunc(s, p.id)
 }
 
-// newContractWorld is an admin world whose bell sends bellContact and
-// whose spins come from a seeded source, so a post's category, which the
+// newContractWorld is an admin world whose spins come from a seeded source, so a post's category, which the
 // answers carry, is the same on every run. It returns that source too.
 func newContractWorld(t *testing.T) (*adminModWorld, *spintest.QueueRand) {
 	t.Helper()
@@ -130,7 +133,7 @@ func newContractWorld(t *testing.T) (*adminModWorld, *spintest.QueueRand) {
 	rnd := spintest.NewQueueRand(7)
 	w := &adminModWorld{feedWorld: &feedWorld{t: t, clk: clk}, pool: pool, photos: &fakeEntryPhotoStore{}, heard: &heardReports{}}
 	adminFirst(w.feedWorld, pool, integrationOptions{clock: clk, rand: rnd, adminEmails: []string{"ct_boss@example.com"},
-		entryPhotos: w.photos, contactEmail: bellContact}, "ct_boss")
+		entryPhotos: w.photos}, "ct_boss")
 	if w.cookie = adminLogin(t, w.feedWorld, "ct_boss@example.com", adminTestPassword); w.cookie == "" {
 		t.Fatal("the admin could not log in")
 	}
@@ -156,9 +159,10 @@ func firstDifference(want, got []byte) string {
 }
 
 // The answers the app reads for moderation, from the real server, equal the
-// golden file, and they follow the spec: a removal carries the address, its
-// ref and the reason the admin gave (its key) but no post and no photo, and
-// nothing else carries a reason; a post that is back or hidden opens the
+// golden file, and they follow the spec: a removal carries its ref, the
+// reason the admin gave (its key), its full id and its second look, but no
+// post, no photo and no address, and nothing else carries any of them; a
+// Keep it removed carries only its text; a post that is back or hidden opens the
 // post with its first photo, a comment that is back or hidden opens its post
 // with no photo; Today says the post was removed, with no entry; the owner is
 // told their post is under review on their Board card, post page, entry and
@@ -215,17 +219,41 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 	answers["entry_owner"] = w.ok(o, http.MethodGet, "/v1/entries/"+post, nil)
 	answers["today_under_review"] = w.ok(o, http.MethodGet, "/v1/today", nil)
 
-	// The admin removes Olive's comment, then her post, and brings both
-	// back, a minute apart, so the bell's order never rests on ids.
+	// The admin removes Olive's comment, then her post. Olive asks for a
+	// second look at each (developer, 2026-11-19), the admin keeps both
+	// removed, and then brings both back, a minute apart, so the bell's
+	// order never rests on ids.
 	w.clk.Advance(time.Minute)
 	if got := w.act("remove", "comment", o, "Bullying or harassment"); got != "/admin/people/"+o.id+"?n=removed" {
 		t.Fatalf("remove the comment: %q", got)
 	}
+	removals := map[string]string{"comment": w.lastLogged(o).ID}
 	w.clk.Advance(time.Minute)
 	if got := w.act("remove", "post", o, "Hate speech"); got != "/admin/people/"+o.id+"?n=removed" {
 		t.Fatalf("remove the post: %q", got)
 	}
+	removals["post"] = w.lastLogged(o).ID
 	answers["today_entry_removed"] = w.ok(o, http.MethodGet, "/v1/today", nil)
+	for _, kind := range []string{"comment", "post"} {
+		if got := w.call(o, http.MethodPost, "/v1/removals/"+removals[kind]+"/second-look", map[string]any{"text": "It was fine"},
+			http.StatusCreated); got["second_look"] != "asked" {
+			t.Fatalf("ask about the %s: %v", kind, got)
+		}
+	}
+	for _, kind := range []string{"comment", "post"} {
+		id := map[string]string{"comment": oc, "post": post}[kind]
+		if item, _ := w.bellItem(o, kind+"_removed:"+removals[kind]); item["second_look"] != "asked" || item["removal"] != removals[kind] {
+			t.Fatalf("the %s removal once asked: %v", kind, item)
+		}
+		w.clk.Advance(time.Minute)
+		if err := postgres.NewAdminRepo(w.pool).KeepRemoved(context.Background(), kind, uuid.MustParse(id), uuid.MustParse(o.id),
+			w.clk.NowFor(o.id)); err != nil {
+			t.Fatalf("keep the %s removed: %v", kind, err)
+		}
+		if item, _ := w.bellItem(o, kind+"_removed:"+removals[kind]); item["second_look"] != "kept" {
+			t.Fatalf("the %s removal once kept: %v", kind, item)
+		}
+	}
 	w.clk.Advance(time.Minute)
 	if got := w.restore("post", post, o); got != "/admin/removed?n=restored" {
 		t.Fatalf("bring the post back: %q", got)
@@ -267,17 +295,21 @@ func TestModerationContractIntegration_TheAnswersTheAppReads(t *testing.T) {
 		common := map[string]any{"actor": nil, "category_name": nil, "request_id": nil, "text": text, "unread": true}
 		switch kind {
 		case "post_removed", "comment_removed":
-			common["entry_id"], common["photo_url"], common["contact"], common["ref"] = nil, "", bellContact, events[kind][:8]
+			common["entry_id"], common["photo_url"], common["ref"], common["removal"] = nil, "", events[kind][:8], events[kind]
 			// The reason Remove's list started on, the reporters' own, as
-			// its key.
+			// its key. Kept removed, then brought back: restored.
 			common["reason"] = map[string]string{"post_removed": "hate", "comment_removed": "harassment"}[kind]
-			wantItem(t, kind, item, common)
+			common["second_look"] = "restored"
+			wantItem(t, kind, item, common, "contact")
+		case "post_kept", "comment_kept":
+			common["entry_id"], common["photo_url"] = nil, ""
+			wantItem(t, kind, item, common, "contact", "ref", "reason", "removal", "second_look")
 		case "post_back", "post_hidden":
 			common["entry_id"], common["photo_url"] = post, fakePhotoLink(photos[0])
-			wantItem(t, kind, item, common, "contact", "ref", "reason")
+			wantItem(t, kind, item, common, "contact", "ref", "reason", "removal", "second_look")
 		case "comment_back", "comment_hidden":
 			common["entry_id"], common["photo_url"] = post, ""
-			wantItem(t, kind, item, common, "contact", "ref", "reason")
+			wantItem(t, kind, item, common, "contact", "ref", "reason", "removal", "second_look")
 		}
 	}
 	if removed := answers["today_entry_removed"]; removed["state"] != "posted" || removed["entry"] != nil || removed["entry_removed"] != true {

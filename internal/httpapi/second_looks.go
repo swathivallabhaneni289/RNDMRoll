@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
 )
 
@@ -25,10 +26,6 @@ const (
 	// CodeSecondLookBack: a Bring it back answered the removal already.
 	CodeSecondLookBack ErrorCode = "second_look_back"
 )
-
-// secondLookAsked is the bell's state of a removal once a second look is
-// asked about it.
-const secondLookAsked = "asked"
 
 // SecondLookHandler serves the owner's request for a second look.
 type SecondLookHandler struct {
@@ -89,8 +86,8 @@ func (h *SecondLookHandler) ask(c *gin.Context) {
 	case err != nil:
 		respondFeedError(c, err)
 	case made:
-		Respond(c, http.StatusCreated, gin.H{"second_look": secondLookAsked})
+		Respond(c, http.StatusCreated, gin.H{"second_look": notifications.SecondLookAsked})
 	default:
-		Respond(c, http.StatusOK, gin.H{"second_look": secondLookAsked})
+		Respond(c, http.StatusOK, gin.H{"second_look": notifications.SecondLookAsked})
 	}
 }

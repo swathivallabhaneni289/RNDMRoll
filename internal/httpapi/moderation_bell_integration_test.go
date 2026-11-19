@@ -22,13 +22,10 @@ import (
 // are system items: no actor, no switch turns them off, and they light the
 // dot. A removal never gives a way back to what was removed.
 
-// bellContact is the address the test server gives as CONTACT_EMAIL.
-const bellContact = "second.look@example.com"
-
 // decisionKinds are the bell's kinds for the admin's decisions, and
 // hiddenKinds for a post or comment that reports hid.
 var (
-	decisionKinds = []string{"post_removed", "comment_removed", "post_back", "comment_back"}
+	decisionKinds = []string{"post_removed", "comment_removed", "post_back", "comment_back", "post_kept", "comment_kept"}
 	hiddenKinds   = []string{"post_hidden", "comment_hidden"}
 )
 
@@ -100,7 +97,7 @@ func (w *adminModWorld) dot(p feedPerson) bool {
 // photo. Removed again, that item keeps its post but loses the photo, and
 // the new removal has a ref of its own.
 func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testing.T) {
-	w := newAdminModWorldWith(t, bellContact)
+	w := newAdminModWorld(t)
 	ps := w.people("mb_bob", "mb_rhea", "mb_vera")
 	b, r, v := ps[0], ps[1], ps[2]
 	w.followAccepted(r, b)
@@ -124,7 +121,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 	removal := w.lastLogged(b)
 	item, body := w.bellItem(b, "post_removed:"+removal.ID)
 	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "actor": nil, "text": "Dune", "entry_id": nil,
-		"photo_url": "", "category_name": nil, "request_id": nil, "contact": bellContact, "ref": removal.ID[:8],
+		"photo_url": "", "category_name": nil, "request_id": nil, "removal": removal.ID, "ref": removal.ID[:8],
 		"reason": "spam", "unread": true, "at": instant(removal.At)})
 	for _, s := range append([]string{post}, photos...) {
 		if strings.Contains(body, s) {
@@ -154,7 +151,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 	back := w.lastLogged(b)
 	item, _ = w.bellItem(b, "post_back:"+back.ID)
 	wantItem(t, "back", item, map[string]any{"kind": "post_back", "actor": nil, "text": "Dune", "entry_id": post,
-		"photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(back.At)}, "contact", "ref", "reason")
+		"photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(back.At)}, "ref", "reason", "removal", "second_look")
 	if got := w.restoreAnyway("post", post, b); got != "/admin/removed?n=restored" {
 		t.Fatalf("bring it back again: %q", got)
 	}
@@ -181,7 +178,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 		t.Fatalf("the second removal: %v, want its own ref %s and reason, no post or photo, and unread", item, again.ID[:8])
 	}
 	item, _ = w.bellItem(b, "post_back:"+back.ID)
-	wantItem(t, "back, once removed again", item, map[string]any{"entry_id": post, "photo_url": "", "unread": false}, "contact", "ref", "reason")
+	wantItem(t, "back, once removed again", item, map[string]any{"entry_id": post, "photo_url": "", "unread": false}, "ref", "reason", "removal", "second_look")
 	for _, k := range photos {
 		if strings.Contains(body, k) {
 			t.Fatalf("the bell carries the removed post's photo %s: %s", k, body)
@@ -194,7 +191,7 @@ func TestModerationBellIntegration_TheOwnerHearsOfARemovalWithNoWayBack(t *testi
 // it opens the post (someone else's) only while the writer can see it: once
 // its owner archives it, the item opens nothing. It never shows a photo.
 func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
-	w := newAdminModWorldWith(t, bellContact)
+	w := newAdminModWorld(t)
 	ps := w.people("mc_vera", "mc_wren", "mc_rhea")
 	v, cw, r := ps[0], ps[1], ps[2]
 	w.followAccepted(cw, v)
@@ -214,7 +211,7 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 	removal := w.lastLogged(cw)
 	item, body := w.bellItem(cw, "comment_removed:"+removal.ID)
 	wantItem(t, "the removal", item, map[string]any{"kind": "comment_removed", "actor": nil, "text": "Rude words",
-		"entry_id": nil, "photo_url": "", "contact": bellContact, "ref": removal.ID[:8], "reason": "harassment", "unread": true,
+		"entry_id": nil, "photo_url": "", "removal": removal.ID, "ref": removal.ID[:8], "reason": "harassment", "unread": true,
 		"at": instant(removal.At)})
 	if strings.Contains(body, post) || strings.Contains(body, comment) {
 		t.Fatalf("the writer's bell names the removed comment or its post: %s", body)
@@ -235,11 +232,11 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 	back := w.lastLogged(cw)
 	item, _ = w.bellItem(cw, "comment_back:"+back.ID)
 	wantItem(t, "back", item, map[string]any{"kind": "comment_back", "actor": nil, "text": "Rude words", "entry_id": post,
-		"photo_url": "", "unread": true, "at": instant(back.At)}, "contact", "ref", "reason")
+		"photo_url": "", "unread": true, "at": instant(back.At)}, "ref", "reason", "removal", "second_look")
 
 	w.ok(v, http.MethodPost, "/v1/entries/"+post+"/archive", map[string]any{})
 	item, _ = w.bellItem(cw, "comment_back:"+back.ID)
-	wantItem(t, "back, on a post the writer can no longer see", item, map[string]any{"entry_id": nil, "photo_url": ""}, "contact", "ref", "reason")
+	wantItem(t, "back, on a post the writer can no longer see", item, map[string]any{"entry_id": nil, "photo_url": ""}, "ref", "reason", "removal", "second_look")
 }
 
 // A Dismiss that shows a hidden post or comment again tells its owner it is
@@ -247,7 +244,7 @@ func TestModerationBellIntegration_TheWriterHearsOfTheirComment(t *testing.T) {
 // hidden is told as a hide, not as a decision (TheOwnerHearsItIsHidden), and
 // a Dismiss of something never hidden tells nobody.
 func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testing.T) {
-	w := newAdminModWorldWith(t, bellContact)
+	w := newAdminModWorld(t)
 	ps := w.people("md_bob", "md_wren", "md_vera", "md_r1", "md_r2", "md_r3")
 	b, cw, v, r1, r2, r3 := ps[0], ps[1], ps[2], ps[3], ps[4], ps[5]
 	for _, p := range []feedPerson{cw, v, r1, r2, r3} {
@@ -285,7 +282,7 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 	shown := w.lastLogged(b)
 	item, _ := w.bellItem(b, "post_back:"+shown.ID)
 	wantItem(t, "the post back", item, map[string]any{"kind": "post_back", "actor": nil, "text": "Dune", "entry_id": post,
-		"photo_url": fakePhotoLink(photos[0]), "unread": true}, "contact", "ref", "reason")
+		"photo_url": fakePhotoLink(photos[0]), "unread": true}, "ref", "reason", "removal", "second_look")
 
 	if got := w.act("dismiss", "comment", cw, "Spam"); got != "/admin/people/"+cw.id+"?n=shownagain" {
 		t.Fatalf("dismiss the comment: %q", got)
@@ -293,7 +290,7 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 	shown = w.lastLogged(cw)
 	item, _ = w.bellItem(cw, "comment_back:"+shown.ID)
 	wantItem(t, "the comment back", item, map[string]any{"kind": "comment_back", "actor": nil, "text": "Rude words",
-		"entry_id": post, "photo_url": "", "unread": true}, "contact", "ref", "reason")
+		"entry_id": post, "photo_url": "", "unread": true}, "ref", "reason", "removal", "second_look")
 
 	if got := w.act("dismiss", "comment", v, "Spam"); got != "/admin/people/"+v.id+"?n=dismissed" {
 		t.Fatalf("dismiss the comment never hidden: %q", got)
@@ -312,7 +309,7 @@ func TestModerationBellIntegration_ADismissThatShowsItAgainSaysItIsBack(t *testi
 // reported it, is told again; once it is removed, its hides show no photo.
 // The admin's History lists each hide, and Removed before never counts one.
 func TestModerationBellIntegration_TheOwnerHearsItIsHidden(t *testing.T) {
-	w := newAdminModWorldWith(t, bellContact)
+	w := newAdminModWorld(t)
 	ps := w.people("mh_bob", "mh_wren", "mh_r1", "mh_r2", "mh_r3", "mh_n1", "mh_n2", "mh_n3")
 	b, cw, first, later := ps[0], ps[1], ps[2:5], ps[5:]
 	for _, p := range ps[1:] {
@@ -345,13 +342,13 @@ func TestModerationBellIntegration_TheOwnerHearsItIsHidden(t *testing.T) {
 	hid := w.lastLogged(cw)
 	item, _ := w.bellItem(cw, "comment_hidden:"+hid.ID)
 	wantItem(t, "the comment hidden", item, map[string]any{"kind": "comment_hidden", "actor": nil, "text": "Rude words",
-		"entry_id": post, "photo_url": "", "unread": true, "at": instant(hid.At)}, "contact", "ref", "reason")
+		"entry_id": post, "photo_url": "", "unread": true, "at": instant(hid.At)}, "ref", "reason", "removal", "second_look")
 	w.clk.Advance(time.Minute)
 	w.ok(first[2], http.MethodPost, "/v1/posts/"+post+"/report", map[string]any{"reason": "spam"})
 	hid = w.lastLogged(b)
 	item, _ = w.bellItem(b, "post_hidden:"+hid.ID)
 	wantItem(t, "the post hidden", item, map[string]any{"kind": "post_hidden", "actor": nil, "text": "Dune",
-		"entry_id": post, "photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(hid.At)}, "contact", "ref", "reason")
+		"entry_id": post, "photo_url": fakePhotoLink(photos[0]), "unread": true, "at": instant(hid.At)}, "ref", "reason", "removal", "second_look")
 	for _, p := range []feedPerson{b, cw} {
 		if !w.dot(p) {
 			t.Fatalf("hidden, and %s's dot is off", p.name)
@@ -395,8 +392,9 @@ func TestModerationBellIntegration_TheOwnerHearsItIsHidden(t *testing.T) {
 	}
 }
 
-// With no CONTACT_EMAIL the removal still shows, with its ref and no
-// address at all. A Disable and an Enable of the account are logged and make
+// The removal carries its ref and never an address (the bell sends none
+// since second looks are asked in the app, 2026-11-19), and no second look
+// while none is asked. A Disable and an Enable of the account are logged and make
 // no item.
 func TestModerationBellIntegration_NoAddressAndNoAccountItems(t *testing.T) {
 	w := newAdminModWorld(t)
@@ -426,7 +424,8 @@ func TestModerationBellIntegration_NoAddressAndNoAccountItems(t *testing.T) {
 		t.Fatalf("the decisions in the bell: %v, want only the removal", got)
 	}
 	item, _ := w.bellItem(b, "post_removed:"+removal.ID)
-	wantItem(t, "the removal with no address", item, map[string]any{"ref": removal.ID[:8], "reason": "spam", "entry_id": nil, "photo_url": ""}, "contact")
+	wantItem(t, "the removal with no address", item, map[string]any{"ref": removal.ID[:8], "removal": removal.ID, "reason": "spam",
+		"entry_id": nil, "photo_url": ""}, "contact", "second_look")
 
 	// The read itself leaves the account's rows out.
 	rows, err := postgres.NewNotificationsRepo(w.pool).Decisions(context.Background(), uuid.MustParse(b.id), time.Time{}, 50)

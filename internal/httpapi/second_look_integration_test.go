@@ -182,6 +182,18 @@ func TestSecondLookIntegration_TheOwnerAsksOnce(t *testing.T) {
 	if got := w.ask(ann, otherRemoval, map[string]any{"text": "Why"}, http.StatusConflict); got["error"] != "second_look_back" {
 		t.Fatalf("after Bring it back: %v", got)
 	}
+	// The bell: asked on the first removal, and back with nothing asked on
+	// the other, so there is nothing to ask about.
+	looks := map[string]string{}
+	for _, it := range w.ok(ann, http.MethodGet, "/v1/notifications", nil)["items"].([]any) {
+		item := it.(map[string]any)
+		if item["kind"] == "post_removed" && item["id"] == "post_removed:"+item["removal"].(string) {
+			looks[item["removal"].(string)], _ = item["second_look"].(string)
+		}
+	}
+	if len(looks) != 2 || looks[removal] != "asked" || looks[otherRemoval] != "restored" {
+		t.Fatalf("the bell's second looks: %v, want %s asked and %s restored", looks, removal, otherRemoval)
+	}
 	third := w.post(bo, "2026-10-08")
 	thirdRemoval := w.remove(admin.KindPost, third, bo)
 	if _, err := w.pool.Exec(context.Background(), `with e as (update entries set removed_at = now() - interval '30 days' where id = $1)

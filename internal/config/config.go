@@ -54,12 +54,6 @@ type Config struct {
 	// (/admin: reports, removing posts and comments, disabling accounts).
 	// Empty means the admin page is not mounted at all.
 	AdminEmails []string
-	// ContactEmail is where the owner of a post or comment an admin removed
-	// can email to ask for a second look: the bell sends it with the
-	// removal. It is read from CONTACT_EMAIL only, never taken from
-	// AdminEmails, so an admin's sign-in address is never handed out by
-	// default. Empty sends none.
-	ContactEmail string
 
 	// PushDriver is "off" (the default: phone pushes are not sent) or
 	// "expo" (sent through Expo's push service; docs/PUSH-SETUP.md).
@@ -209,7 +203,6 @@ func Load() (*Config, error) {
 		SpinTestTools:      spinTestTools,
 		SpinTestUserEmails: spinTestEmails,
 		AdminEmails:        parseEmailList(os.Getenv("ADMIN_EMAILS")),
-		ContactEmail:       strings.TrimSpace(os.Getenv("CONTACT_EMAIL")),
 
 		PushDriver:      pushDriver,
 		ExpoAccessToken: os.Getenv("EXPO_ACCESS_TOKEN"),

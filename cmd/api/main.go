@@ -126,9 +126,6 @@ func main() {
 	socialService := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardService := board.NewService(postgres.NewBoardRepo(pool), socialService, spinService, spinClock, entryPhotos.Link)
 	notificationsService := notifications.NewService(postgres.NewNotificationsRepo(pool), socialService, spinService)
-	// The bell tells the owner of a removed post or comment where to ask for
-	// a second look: CONTACT_EMAIL, or nothing while it is not set.
-	notificationsService.SetContact(cfg.ContactEmail)
 
 	// The owner of a post or comment an admin removed asks for a second look
 	// in the app (developer, 2026-11-19); the request keeps the owner's own

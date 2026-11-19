@@ -20,40 +20,6 @@ func accountsExprCall(stmt ast.Stmt, recv, name string) *ast.CallExpr {
 	return accountsCallOf(es.X, recv, name)
 }
 
-// The bell's address for a second look is CONTACT_EMAIL and nothing else
-// only because main hands cfg.ContactEmail to the bell's service, the one
-// the bell's handler is built on, before the server is built.
-func TestModeration_MainGivesTheBellTheContactAddress(t *testing.T) {
-	body := accountsMainBody(t)
-	cfg, _, _ := accountsAssignedFrom(body, "config", "MustLoad")
-	if cfg == "" {
-		t.Fatal("main.go: no cfg := config.MustLoad() in main")
-	}
-	svc, _, at := accountsAssignedFrom(body, "notifications", "NewService")
-	if svc == "" {
-		t.Fatal("main.go: no notificationsService := notifications.NewService(...) in main")
-	}
-	depsVar, lit := accountsDeps(t, body)
-	_, serverAt := accountsServerBuilt(t, body, depsVar)
-	handler := accountsDepsSetTo(body, depsVar, lit, "Notifications", "NewNotificationsHandler", serverAt)
-	if handler == nil || len(handler.Args) == 0 || !accountsIdent(handler.Args[0], svc) {
-		t.Fatalf("main.go: Deps.Notifications is not httpapi.NewNotificationsHandler(%s, ...)", svc)
-	}
-	set := false
-	for _, stmt := range body.List {
-		call := accountsExprCall(stmt, svc, "SetContact")
-		if call == nil || stmt.Pos() < at || stmt.Pos() > serverAt || len(call.Args) != 1 {
-			continue
-		}
-		if arg, ok := call.Args[0].(*ast.SelectorExpr); ok && accountsIdent(arg.X, cfg) && arg.Sel.Name == "ContactEmail" {
-			set = true
-		}
-	}
-	if !set {
-		t.Fatalf("main.go: %s.SetContact(%s.ContactEmail) is not called in main between notifications.NewService and httpapi.NewServer", svc, cfg)
-	}
-}
-
 // The twin of TestAccounts_MainStartsThePurge: the posts and comments an
 // admin removed are deleted for good after the 30 days only if main adds
 // them to the purge loop, purger.SetRemoved with the Postgres store, in

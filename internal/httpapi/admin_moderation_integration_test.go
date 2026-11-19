@@ -41,19 +41,10 @@ type adminModWorld struct {
 
 func newAdminModWorld(t *testing.T) *adminModWorld {
 	t.Helper()
-	return newAdminModWorldWith(t, "")
-}
-
-// newAdminModWorldWith is newAdminModWorld whose bell gives contact as the
-// address to ask for a second look ("" for none, as with CONTACT_EMAIL
-// unset).
-func newAdminModWorldWith(t *testing.T, contact string) *adminModWorld {
-	t.Helper()
 	pool := requireIntegrationPool(t)
 	clk := clock.NewFixed(time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC))
 	w := &adminModWorld{feedWorld: &feedWorld{t: t, clk: clk}, pool: pool, photos: &fakeEntryPhotoStore{}, heard: &heardReports{}}
 	adminFirst(w.feedWorld, pool, integrationOptions{clock: clk, adminEmails: []string{"ad_boss@example.com"}, entryPhotos: w.photos,
-		contactEmail: contact,
 		wire: func(s *social.Service, b *board.Service, _ *Deps) {
 			s.SetReportNotifier(w.heard)
 			b.SetReportNotifier(w.heard)
@@ -421,7 +412,7 @@ func TestAdminModerationIntegration_RemoveListsTheReasonsMostSeriousFirst(t *tes
 // reports it closes, and a removal that closes none keeps no reason, so the
 // bell sends none.
 func TestAdminModerationIntegration_RemoveKeepsTheReasonTheAdminGave(t *testing.T) {
-	w := newAdminModWorldWith(t, bellContact)
+	w := newAdminModWorld(t)
 	ps := w.people("rg_bob", "rg_vera", "rg_wren", "rg_r1", "rg_r2")
 	b, v, cw, r1, r2 := ps[0], ps[1], ps[2], ps[3], ps[4]
 	for _, p := range []feedPerson{cw, r1, r2} {
@@ -465,7 +456,7 @@ func TestAdminModerationIntegration_RemoveKeepsTheReasonTheAdminGave(t *testing.
 		t.Fatalf("the removal logged: %+v, want the reason hate, and spam from the reports", removal)
 	}
 	item, _ := w.bellItem(b, "post_removed:"+removal.ID)
-	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "reason": "hate", "ref": removal.ID[:8], "contact": bellContact})
+	wantItem(t, "the removal", item, map[string]any{"kind": "post_removed", "reason": "hate", "ref": removal.ID[:8], "removal": removal.ID})
 	page := w.page("/admin/people/" + b.id)
 	history := historyOf(t, page)
 	if !strings.Contains(history, `<p class="by">Ref: `+removal.ID[:8]+` · Hate speech</p><p class="text quote">Dune</p>`) ||

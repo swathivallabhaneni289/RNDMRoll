@@ -50,15 +50,18 @@ type itemView struct {
 	RequestID    *string      `json:"request_id"`
 	// PhotoURL is the post's first photo, "" when the item has none.
 	PhotoURL string `json:"photo_url"`
-	// Contact, Ref and Reason are sent on an admin's removal only
-	// (post_removed, comment_removed): the address to email for a second
-	// look, left out while the server has none, the removal's short
-	// reference, and the reason the admin gave, left out with none. The
+	// Ref, Reason, Removal and SecondLook are sent on an admin's removal
+	// only (post_removed, comment_removed): the removal's short reference,
+	// the reason the admin gave, left out with none, the removal's full id,
+	// which POST /removals/:id/second-look takes (the app never reads it
+	// from the item id), and the second look on it: "asked", "kept" or
+	// "restored", left out while none was asked and it is not back. The
 	// reason is a report reason's key ("hate"), never words: the app words
 	// it. The key is never "email": no feed answer carries one.
-	Contact string `json:"contact,omitempty"`
-	Ref     string `json:"ref,omitempty"`
-	Reason  string `json:"reason,omitempty"`
+	Ref        string `json:"ref,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Removal    string `json:"removal,omitempty"`
+	SecondLook string `json:"second_look,omitempty"`
 }
 
 // newItemView shows one item: photoURL signs the post's picture, personLink
@@ -67,8 +70,11 @@ type itemView struct {
 func newItemView(it notifications.Item, photoURL, personLink func(string) string) itemView {
 	v := itemView{
 		ID: it.ID, Kind: it.Kind, At: spin.Instant(it.At), AtLabel: it.AtLabel, Section: it.Section,
-		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text, Contact: it.Contact, Ref: it.Ref,
-		Reason: it.Reason,
+		Unread: it.Unread, CategoryName: it.CategoryName, Text: it.Text, Ref: it.Ref, Reason: it.Reason,
+		SecondLook: it.SecondLook,
+	}
+	if it.Removal != nil {
+		v.Removal = it.Removal.String()
 	}
 	if it.Actor != nil {
 		p := newPersonView(*it.Actor, personLink)

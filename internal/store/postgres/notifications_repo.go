@@ -190,25 +190,34 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 }
 
 // decisionsSQL is the decision log's rows about the viewer's ($1) own posts
-// and comments (removed, restored, shown again and hidden by reports; never
-// an account's) after $2, at most $3, newest first by the viewer's own clock,
-// with the reason the admin gave at a removal ("" on every other row).
+// and comments (removed, restored, shown again, hidden by reports and kept
+// removed after a second look; never an account's) after $2, at most $3,
+// newest first by the viewer's own clock, with the reason the admin gave at a
+// removal ("" on every other row). A removal carries its second look
+// (migration 0021): the answer, or asked while there is none; else restored
+// when a Bring it back came after it (by created_at, the database's clock,
+// as whyNotBack reads the log), so there is nothing to ask; else none.
 // Each carries its post while that is in the database, whether the viewer
 // can see it now (postVisibleTo, the whole of social.CanView), and the
-// post's first photo, read only for a post that is back or hidden and that
-// the viewer can see. A post deleted since leaves no row to join, so the
+// post's first photo, read only for a post that is back or hidden (never
+// removed or kept removed) and that the viewer can see. A post deleted since leaves no row to join, so the
 // check says so outright rather than trust a NULL to fall through the
 // fragments.
 var decisionsSQL = `
-	select x.id, x.item, x.action, x.at, x.snapshot, x.reason, x.entry, x.visible,
-	  case when x.visible and x.item = 'post' and x.action <> 'removed' then
+	select x.id, x.item, x.action, x.at, x.snapshot, x.reason, x.second_look, x.entry, x.visible,
+	  case when x.visible and x.item = 'post' and x.action not in ('removed', 'kept') then
 	    (select ep.storage_key from entry_photos ep where ep.entry_id = x.entry order by ep.position limit 1) end
 	from (
 	  select me.id, me.item, me.action, me.at, me.snapshot, me.reason, e.id as entry,
-	    (e.id is not null and ` + postVisibleTo("$1::uuid", "e") + `) as visible
+	    (e.id is not null and ` + postVisibleTo("$1::uuid", "e") + `) as visible,
+	    case when me.action = 'removed' then coalesce(
+	      (select coalesce(sl.decision, 'asked') from second_looks sl where sl.removal_id = me.id),
+	      case when exists (select 1 from moderation_events mr where mr.owner_id = me.owner_id and mr.item_id = me.item_id
+	                        and mr.action = 'restored' and mr.created_at > me.created_at) then 'restored' end,
+	      '') else '' end as second_look
 	  from moderation_events me
 	  left join entries e on e.id = me.entry_id
-	  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again', 'hidden')
+	  where me.owner_id = $1 and me.item in ('post', 'comment') and me.action in ('removed', 'restored', 'shown_again', 'hidden', 'kept')
 	    and me.at > $2
 	  order by me.at desc, me.id desc
 	  limit $3
@@ -224,7 +233,7 @@ func scanDecisions(rows pgx.Rows) ([]notifications.Decision, error) {
 	out := []notifications.Decision{}
 	for rows.Next() {
 		var d notifications.Decision
-		if err := rows.Scan(&d.ID, &d.Item, &d.Action, &d.At, &d.Snapshot, &d.Reason, &d.EntryID, &d.Visible, &d.PhotoKey); err != nil {
+		if err := rows.Scan(&d.ID, &d.Item, &d.Action, &d.At, &d.Snapshot, &d.Reason, &d.SecondLook, &d.EntryID, &d.Visible, &d.PhotoKey); err != nil {
 			return nil, err
 		}
 		d.At = d.At.UTC()

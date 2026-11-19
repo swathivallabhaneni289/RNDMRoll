@@ -93,23 +93,26 @@ func TestModeration_TheAdminsDecisionsShowWhateverTheSwitches(t *testing.T) {
 	}
 }
 
-// A removal carries its title or text, its ref and the address to ask for a
-// second look, and no way back to what was removed: no post and no photo,
-// even when the read handed it both while the post is still kept for Bring
-// it back. With no address set, it carries none. A post or comment that is
-// back carries neither the ref nor the address.
-func TestModeration_ARemovalCarriesItsRefAndTheAddressAndNoWayBack(t *testing.T) {
+// A removal carries its title or text, its ref, its full id to ask for a
+// second look with and that second look's state, and no way back to what
+// was removed: no post and no photo, even when the read handed it both while
+// the post is still kept for Bring it back. A Keep it removed (developer,
+// 2026-11-19) is its own kind for a post and a comment, with the text and
+// nothing else. A post or comment that is back carries none of them.
+func TestModeration_ARemovalCarriesItsRefAndItsSecondLookAndNoWayBack(t *testing.T) {
 	bell, notes, _, now, _ := socialBell(t)
-	bell.SetContact("second.look@example.com")
 	entry := uuid.New()
 	photo := "entries/" + uuid.NewString() + "/0123456789abcdef.jpg"
 	post := decisionAt("post", "removed", now.Add(-time.Hour).UTC(), "Dune", &entry)
+	post.SecondLook = SecondLookAsked
 	comment := decisionAt("comment", "removed", now.Add(-2*time.Hour).UTC(), "Rude words", &entry)
 	back := decisionAt("post", "restored", now.Add(-3*time.Hour).UTC(), "Dune", &entry)
-	for _, d := range []*Decision{&post, &comment, &back} {
+	keptPost := decisionAt("post", "kept", now.Add(-4*time.Hour).UTC(), "Dune", &entry)
+	keptComment := decisionAt("comment", "kept", now.Add(-5*time.Hour).UTC(), "Rude words", &entry)
+	for _, d := range []*Decision{&post, &comment, &back, &keptPost, &keptComment} {
 		d.Visible, d.PhotoKey = true, &photo
 	}
-	notes.decisions = []Decision{post, comment, back}
+	notes.decisions = []Decision{post, comment, back, keptPost, keptComment}
 
 	list, err := bell.List(context.Background(), uuid.New())
 	if err != nil {
@@ -119,26 +122,30 @@ func TestModeration_ARemovalCarriesItsRefAndTheAddressAndNoWayBack(t *testing.T)
 		d    Decision
 		kind string
 		text string
-	}{{post, KindPostRemoved, "Dune"}, {comment, KindCommentRemoved, "Rude words"}} {
+		look string
+	}{{post, KindPostRemoved, "Dune", SecondLookAsked}, {comment, KindCommentRemoved, "Rude words", SecondLookNone}} {
 		it := itemByID(list, c.kind+":"+c.d.ID.String())
 		if it == nil {
 			t.Fatalf("no %s item: %+v", c.kind, list.Items)
 		}
 		if it.Text == nil || *it.Text != c.text || it.EntryID != nil || it.PhotoKey != nil ||
-			it.Ref != c.d.ID.String()[:8] || it.Contact != "second.look@example.com" {
-			t.Fatalf("the %s item: %+v, want its text, the ref %s, the address and no post or photo", c.kind, it, c.d.ID.String()[:8])
+			it.Ref != c.d.ID.String()[:8] || it.Removal == nil || *it.Removal != c.d.ID || it.SecondLook != c.look {
+			t.Fatalf("the %s item: %+v, want its text, the ref %s, its id, second look %q and no post or photo", c.kind, it, c.d.ID.String()[:8], c.look)
 		}
 	}
-	if it := itemByID(list, "post_back:"+back.ID.String()); it == nil || it.Ref != "" || it.Contact != "" {
-		t.Fatalf("the post_back item: %+v, want no ref and no address", it)
+	for _, c := range []struct {
+		d    Decision
+		kind string
+		text string
+	}{{keptPost, KindPostKept, "Dune"}, {keptComment, KindCommentKept, "Rude words"}} {
+		it := itemByID(list, c.kind+":"+c.d.ID.String())
+		if it == nil || it.Text == nil || *it.Text != c.text || it.EntryID != nil || it.PhotoKey != nil || it.Ref != "" ||
+			it.Removal != nil || it.SecondLook != "" || it.Reason != "" {
+			t.Fatalf("the %s item: %+v, want its text and nothing else", c.kind, it)
+		}
 	}
-
-	bell.SetContact("")
-	if list, err = bell.List(context.Background(), uuid.New()); err != nil {
-		t.Fatal(err)
-	}
-	if it := itemByID(list, "post_removed:"+post.ID.String()); it == nil || it.Contact != "" || it.Ref != post.ID.String()[:8] {
-		t.Fatalf("with no address set: %+v, want no address and still the ref", it)
+	if it := itemByID(list, "post_back:"+back.ID.String()); it == nil || it.Ref != "" || it.Removal != nil || it.SecondLook != "" {
+		t.Fatalf("the post_back item: %+v, want no ref, no id and no second look", it)
 	}
 }
 
@@ -244,8 +251,8 @@ func TestModeration_BackOpensOnlyWhatTheViewerCanSee(t *testing.T) {
 		if (it.PhotoKey != nil) != c.photo || (c.photo && *it.PhotoKey != photo) {
 			t.Fatalf("%s: photo %v, want it %v", c.name, it.PhotoKey, c.photo)
 		}
-		if it.Text == nil || *it.Text != c.d.Snapshot || it.Ref != "" || it.Contact != "" {
-			t.Fatalf("%s: %+v, want the text and no ref or address", c.name, it)
+		if it.Text == nil || *it.Text != c.d.Snapshot || it.Ref != "" || it.Removal != nil || it.SecondLook != "" {
+			t.Fatalf("%s: %+v, want the text and no ref, removal or second look", c.name, it)
 		}
 	}
 }
