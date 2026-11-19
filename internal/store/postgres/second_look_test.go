@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/admin"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
 
@@ -134,12 +138,17 @@ func removedPostOf(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID, title stri
 	t.Helper()
 	ctx := context.Background()
 	var entry uuid.UUID
-	if err := pool.QueryRow(ctx, `with c as (
-			insert into wheel_categories (user_id, name, weight, position) values ($1, 'Meal', 1, 0) returning id),
+	// Each post of the owner is on a day of its own, with a category of its
+	// own.
+	if err := pool.QueryRow(ctx, `with n as (select count(*)::int as n from spins where user_id = $1),
+		c as (
+			insert into wheel_categories (user_id, name, weight, position)
+			select $1, 'Meal ' || n.n, 1, n.n from n returning id),
 		s as (
 			insert into spins (user_id, local_date, tz_name, kind, seq, category_id, category_name, wheel,
 				winner_index, spun_at, window_opens_at, window_closes_at)
-			select $1, '2026-10-08'::date, 'America/New_York', 'daily', 0, c.id, 'Meal', '[]'::jsonb, 0, now(), now(), now() from c
+			select $1, '2026-10-08'::date + n.n, 'America/New_York', 'daily', 0, c.id, 'Meal', '[]'::jsonb, 0, now(), now(), now()
+			from c, n
 			returning id, local_date)
 		insert into entries (user_id, spin_id, local_date, title, stars, created_at, updated_at)
 		select $1, s.id, s.local_date, $2, 7, now(), now() from s returning id`, owner, title).Scan(&entry); err != nil {
@@ -267,5 +276,329 @@ func TestAdminRepo_KeepRemovedAndBringItBackAnswerTheSecondLook(t *testing.T) {
 	}
 	if got := lookAnswer(t, pool, lateRemoval); got != "open" {
 		t.Fatalf("past the 30 days the request is %q, want open", got)
+	}
+}
+
+// commentOf stores a comment of writer on post, with photo key (none when
+// ""), and returns its id.
+func commentOf(t *testing.T, pool *pgxpool.Pool, post, writer uuid.UUID, body, key string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(context.Background(), `insert into post_comments (entry_id, user_id, body, created_at, photo_key)
+		values ($1, $2, $3, now(), nullif($4, '')) returning id`, post, writer, body, key).Scan(&id); err != nil {
+		t.Fatalf("a comment: %v", err)
+	}
+	return id
+}
+
+// asked is the stored request about removal: its item, post, comment, words
+// and photo keys, one line.
+func asked(t *testing.T, pool *pgxpool.Pool, removal uuid.UUID) string {
+	t.Helper()
+	var s string
+	if err := pool.QueryRow(context.Background(), `select item || ' ' || item_id || ' ' || coalesce(entry_id::text, '-') || ' ' ||
+		coalesce(comment_id::text, '-') || ' ' || body || ' ' || array_to_string(photo_keys, ',') from second_looks where removal_id = $1`,
+		removal).Scan(&s); err != nil {
+		t.Fatalf("the request: %v", err)
+	}
+	return s
+}
+
+// Asking follows the rules: only the owner's own removal of a post or
+// comment, once (the same request again is a retry), not after a Bring it
+// back or a newer removal, not past the 30 days or once purged, and with
+// files no photo row, comment or other request uses. A comment under a
+// removed post can ask too.
+func TestSecondLookRepo_AskFollowsTheRules(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	repo := postgres.NewSecondLookRepo(pool)
+	admins := postgres.NewAdminRepo(pool)
+	users := postgres.NewUserRepo(pool)
+	a := mustCreateUser(t, users, "ask-owner@example.com")
+	b := mustCreateUser(t, users, "ask-other@example.com")
+	at := time.Date(2026, 11, 19, 21, 5, 0, 0, time.UTC)
+	post, removal := removedPostOf(t, pool, a.ID, "Dune")
+	k1, k2 := newKey(a.ID.String()), newKey(a.ID.String())
+	ask := func(owner, removal uuid.UUID, body string, keys ...string) (bool, error) {
+		t.Helper()
+		if keys == nil {
+			keys = []string{}
+		}
+		return repo.Ask(ctx, owner, removal, body, keys, at)
+	}
+	var hidden uuid.UUID
+	if err := pool.QueryRow(ctx, `insert into moderation_events (owner_id, item, action, entry_id, item_id, at)
+		values ($1, 'post', 'hidden', $2, $2, now()) returning id`, a.ID, post).Scan(&hidden); err != nil {
+		t.Fatal(err)
+	}
+	for name, id := range map[string][2]uuid.UUID{
+		"someone else's removal": {b.ID, removal},
+		"no such removal":        {a.ID, uuid.New()},
+		"a hide, not a removal":  {a.ID, hidden},
+	} {
+		if _, err := ask(id[0], id[1], "Why"); !errors.Is(err, secondlook.ErrNotFound) {
+			t.Fatalf("%s: %v, want ErrNotFound", name, err)
+		}
+	}
+
+	if made, err := ask(a.ID, removal, "It was a joke.", k1, k2); err != nil || !made {
+		t.Fatalf("ask: %v, %v", made, err)
+	}
+	if got, want := asked(t, pool, removal), "post "+post.String()+" "+post.String()+" - It was a joke. "+k1+","+k2; got != want {
+		t.Fatalf("stored %q, want %q", got, want)
+	}
+	var keptAt time.Time
+	if err := pool.QueryRow(ctx, `select at from second_looks where removal_id = $1`, removal).Scan(&keptAt); err != nil || !keptAt.Equal(at) {
+		t.Fatalf("kept at %v (%v), want the owner's %v", keptAt, err, at)
+	}
+	if made, err := ask(a.ID, removal, "It was a joke.", k1, k2); err != nil || made {
+		t.Fatalf("the same request again: %v, %v, want a retry", made, err)
+	}
+	for name, keys := range map[string][]string{"other words": {k1, k2}, "other photos": {k1}} {
+		body := "It was a joke."
+		if name == "other words" {
+			body = "Please"
+		}
+		if _, err := ask(a.ID, removal, body, keys...); !errors.Is(err, secondlook.ErrAsked) {
+			t.Fatalf("a second request with %s: %v, want ErrAsked", name, err)
+		}
+	}
+
+	// One file, one row: a post's photo, a comment's, another request's.
+	second, secondRemoval := removedPostOf(t, pool, a.ID, "Arrival")
+	onPost, onComment := newKey(a.ID.String()), newKey(a.ID.String())
+	if _, err := pool.Exec(ctx, `insert into entry_photos (entry_id, user_id, position, storage_key, content_type, source, created_at)
+		values ($1, $2, 0, $3, 'image/jpeg', 'library', now())`, second, a.ID, onPost); err != nil {
+		t.Fatal(err)
+	}
+	commentOf(t, pool, second, a.ID, "", onComment)
+	for name, k := range map[string]string{"a post's photo": onPost, "a comment's photo": onComment, "another request's photo": k2} {
+		var problem *secondlook.FieldProblem
+		if _, err := ask(a.ID, secondRemoval, "Why", newKey(a.ID.String()), k); !errors.As(err, &problem) || problem.Field != "photo_keys" {
+			t.Fatalf("%s as proof: %v, want photo_keys invalid", name, err)
+		}
+	}
+
+	// A comment under the removed post, removed too, asks about itself.
+	note := commentOf(t, pool, second, b.ID, "Rude", "")
+	now := time.Now()
+	if err := admins.RemoveItem(ctx, admin.KindComment, note, b.ID, "", now, now); err != nil {
+		t.Fatal(err)
+	}
+	noteRemoval := newestRemovalOf(t, pool, note)
+	if made, err := ask(b.ID, noteRemoval, "Not rude"); err != nil || !made {
+		t.Fatalf("a comment under a removed post: %v, %v", made, err)
+	}
+	if got, want := asked(t, pool, noteRemoval), "comment "+note.String()+" "+second.String()+" "+note.String()+" Not rude "; got != want {
+		t.Fatalf("stored %q, want %q", got, want)
+	}
+
+	// Brought back, and removed again: the old removal is answered.
+	if err := admins.RestoreItem(ctx, admin.KindPost, second, a.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(a.ID, secondRemoval, "Why"); !errors.Is(err, secondlook.ErrBack) {
+		t.Fatalf("after Bring it back: %v, want ErrBack", err)
+	}
+	if err := admins.RemoveItem(ctx, admin.KindPost, second, a.ID, "", now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(a.ID, secondRemoval, "Why"); !errors.Is(err, secondlook.ErrBack) {
+		t.Fatalf("the older removal of one removed again: %v, want ErrBack", err)
+	}
+	if made, err := ask(a.ID, newestRemovalOf(t, pool, second), "Why"); err != nil || !made {
+		t.Fatalf("the newer removal: %v, %v", made, err)
+	}
+
+	// Past the 30 days, purged or not yet, and gone another way before.
+	late, lateRemoval := removedPostOf(t, pool, b.ID, "Old")
+	backdate := func(item, removal uuid.UUID) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `with e as (update entries set removed_at = now() - interval '30 days' where id = $1)
+			update moderation_events set created_at = now() - interval '30 days' where id = $2`, item, removal); err != nil {
+			t.Fatal(err)
+		}
+	}
+	backdate(late, lateRemoval)
+	if _, err := ask(b.ID, lateRemoval, "Why"); !errors.Is(err, secondlook.ErrTooLate) {
+		t.Fatalf("past the 30 days: %v, want ErrTooLate", err)
+	}
+	if _, err := pool.Exec(ctx, `delete from entries where id = $1`, late); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(b.ID, lateRemoval, "Why"); !errors.Is(err, secondlook.ErrTooLate) {
+		t.Fatalf("purged: %v, want ErrTooLate", err)
+	}
+	gone, goneRemoval := removedPostOf(t, pool, b.ID, "Gone")
+	if _, err := pool.Exec(ctx, `delete from entries where id = $1`, gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(b.ID, goneRemoval, "Why"); !errors.Is(err, secondlook.ErrNotFound) {
+		t.Fatalf("deleted before the 30 days: %v, want ErrNotFound", err)
+	}
+	if n := countRows(t, pool, `select count(*) from second_looks`); n != 3 {
+		t.Fatalf("%d requests stored, want 3", n)
+	}
+}
+
+// A Bring it back under way when the request comes holds the post: the
+// request waits for it and then finds the removal answered.
+func TestSecondLookRepo_AskWaitsForABringItBackUnderWay(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "ask-race-back@example.com")
+	post, removal := removedPostOf(t, pool, a.ID, "Dune")
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+	if _, err := tx.Exec(ctx, `update entries set removed_at = null where id = $1`, post); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `insert into moderation_events (owner_id, item, action, entry_id, item_id, at)
+		values ($1, 'post', 'restored', $2, $2, now())`, a.ID, post); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := postgres.NewSecondLookRepo(pool).Ask(ctx, a.ID, removal, "Why", []string{}, time.Now())
+		done <- err
+	}()
+	waitForALockWait(t, pool)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, secondlook.ErrBack) {
+		t.Fatalf("the request after the Bring it back it waited for: %v, want ErrBack", err)
+	}
+	if n := countRows(t, pool, `select count(*) from second_looks`); n != 0 {
+		t.Fatalf("%d requests stored, want none", n)
+	}
+}
+
+// A request under way holds the post for share: a Bring it back waits for
+// it and then answers the request it saved.
+func TestSecondLookRepo_BringItBackWaitsForARequestUnderWay(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "ask-race-ask@example.com")
+	post, removal := removedPostOf(t, pool, a.ID, "Dune")
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+	if _, err := tx.Exec(ctx, `select 1 from entries where id = $1 for share`, post); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `insert into second_looks (owner_id, removal_id, item, item_id, entry_id, body, at)
+		values ($1, $2, 'post', $3, $3, 'Why', now())`, a.ID, removal, post); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- postgres.NewAdminRepo(pool).RestoreItem(ctx, admin.KindPost, post, a.ID, time.Now()) }()
+	waitForALockWait(t, pool)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("Bring it back after the request: %v", err)
+	}
+	if got := lookAnswer(t, pool, removal); got != "restored" {
+		t.Fatalf("the request is %q, want restored", got)
+	}
+}
+
+// Two requests of one owner take turns, so a file the first takes is not
+// free for the second, though it asks about another removal.
+func TestSecondLookRepo_TwoRequestsTakeTurnsOverAFile(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "ask-race-file@example.com")
+	first, firstRemoval := removedPostOf(t, pool, a.ID, "Dune")
+	_, secondRemoval := removedPostOf(t, pool, a.ID, "Arrival")
+	k := newKey(a.ID.String())
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended('second_look:' || $1::text, 0))`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `insert into second_looks (owner_id, removal_id, item, item_id, entry_id, body, photo_keys, at)
+		values ($1, $2, 'post', $3, $3, 'Why', $4, now())`, a.ID, firstRemoval, first, []string{k}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := postgres.NewSecondLookRepo(pool).Ask(ctx, a.ID, secondRemoval, "Why", []string{k}, time.Now())
+		done <- err
+	}()
+	waitForALockWait(t, pool)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var problem *secondlook.FieldProblem
+	if err := <-done; !errors.As(err, &problem) || problem.Field != "photo_keys" {
+		t.Fatalf("the second request with the first one's file: %v, want photo_keys invalid", err)
+	}
+}
+
+// A proof's file is refused by a post and a comment, and no delete of a
+// post or a comment deletes it, though a hand-made race left it on both.
+func TestPhotoKeys_AProofsFileIsItsAlone(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	a := mustCreateUser(t, postgres.NewUserRepo(pool), "proof-file@example.com")
+	_, removal := removedPostOf(t, pool, a.ID, "Dune")
+	k := newKey(a.ID.String())
+	if made, err := postgres.NewSecondLookRepo(pool).Ask(ctx, a.ID, removal, "Why", []string{k}, time.Now()); err != nil || !made {
+		t.Fatalf("ask: %v, %v", made, err)
+	}
+	seed := spin.Seed{At: time.Now(), LocalDate: mustDate(t, "2026-10-08"), TZName: "America/New_York", Goal: 4}
+	if err := postgres.NewSpinRepo(pool).InUserTx(ctx, a.ID.String(), seed, func(tx spin.Tx) error {
+		used, err := tx.PhotoKeysInUse([]string{k, newKey(a.ID.String())})
+		if err != nil {
+			return err
+		}
+		if len(used) != 1 || !used[k] {
+			return fmt.Errorf("keys in use = %v, want the proof's only", used)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A live post of a's, with a comment, for the comment insert.
+	live, _ := removedPostOf(t, pool, a.ID, "Live")
+	if err := postgres.NewAdminRepo(pool).RestoreItem(ctx, admin.KindPost, live, a.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, err := postgres.NewBoardRepo(pool).InsertComment(ctx, live, a.ID, "", time.Now(), nil, &k)
+	var problem *board.FieldProblem
+	if !errors.As(err, &problem) || problem.Field != "photo" {
+		t.Fatalf("a comment with a proof's file: %v, want photo invalid", err)
+	}
+
+	// The race the checks cannot stop: the file on a photo row and a comment
+	// as well. Deleting them leaves it alone.
+	if _, err := pool.Exec(ctx, `insert into entry_photos (entry_id, user_id, position, storage_key, content_type, source, created_at)
+		values ($1, $2, 0, $3, 'image/jpeg', 'library', now())`, live, a.ID, k); err != nil {
+		t.Fatal(err)
+	}
+	commentOf(t, pool, live, a.ID, "", k)
+	var deleted []string
+	if err := postgres.NewSpinRepo(pool).InUserTx(ctx, a.ID.String(), seed, func(tx spin.Tx) error {
+		var err error
+		deleted, err = tx.DeleteEntry(live.String())
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("deleting the post deletes %v, want nothing", deleted)
 	}
 }

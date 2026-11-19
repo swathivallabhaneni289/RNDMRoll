@@ -263,7 +263,7 @@ func TestEveryAdminIsEmailedAndAFailureLogsNoAddress(t *testing.T) {
 }
 
 func TestTheEmailEscapesItsLink(t *testing.T) {
-	e := compose(map[string]int{"spam": 1}, 0, `https://x.test/admin/go?a=1&b="2"`)
+	e := compose(map[string]int{"spam": 1}, 0, 0, `https://x.test/admin/go?a=1&b="2"`)
 	if !strings.Contains(e.html, `href="https://x.test/admin/go?a=1&amp;b=&#34;2&#34;"`) {
 		t.Fatalf("html: %s", e.html)
 	}
@@ -285,5 +285,73 @@ func TestCloseWaitsForAnEmailUnderWay(t *testing.T) {
 	a.Close(ctx)
 	if len(sender.got) != 1 {
 		t.Fatalf("emails once Close returned: %d, want 1", len(sender.got))
+	}
+}
+
+// A request for a second look is urgent: alone, it is emailed at once,
+// saying only how many were asked, with the link to the Removed tab; the
+// next within the minute waits for it, and they go together.
+func TestSecondLookAsked_IsEmailedAtOnceWithTheRemovedTabLink(t *testing.T) {
+	r := newRig(t)
+	r.a.SecondLookAsked()
+	if r.emails() != 1 {
+		t.Fatalf("%d emails after one second look, want 1 at once", r.emails())
+	}
+	e := r.last()
+	if e.subject != "RNDMRoll: 1 second look asked" ||
+		e.text != "1 second look asked on RNDMRoll.\n\nSee them on the admin page: "+pageURL+"?to=removed\n" ||
+		!strings.Contains(e.html, `<a href="`+pageURL+`?to=removed">See them on the admin page</a>`) || strings.Contains(e.text, "report") {
+		t.Fatalf("the email: %+v", e)
+	}
+	r.a.SecondLookAsked()
+	r.a.SecondLookAsked()
+	if r.emails() != 1 || r.live() == nil || r.live().d != UrgentGap {
+		t.Fatalf("two more inside the minute: %d emails, timer %+v, want them waiting the urgent gap", r.emails(), r.live())
+	}
+	r.pass(UrgentGap)
+	if r.emails() != 2 || r.last().subject != "RNDMRoll: 2 second looks asked" {
+		t.Fatalf("after the minute: %d emails, last %q", r.emails(), r.last().subject)
+	}
+}
+
+// A second look makes the reports waiting with it urgent too, and the one
+// email names both, with a link for each.
+func TestSecondLookAsked_GoesWithTheReportsWaiting(t *testing.T) {
+	r := newRig(t)
+	r.a.Reported("spam")
+	r.a.Reported("spam")
+	r.a.Reported("spam")
+	if r.emails() != 1 || r.live() == nil || r.live().d != CalmGap {
+		t.Fatalf("a calm report waits the calm gap: %+v", r.live())
+	}
+	r.a.SecondLookAsked()
+	if r.live() == nil || r.live().d != UrgentGap {
+		t.Fatalf("with a second look waiting the email waits the urgent gap: %+v", r.live())
+	}
+	r.pass(UrgentGap)
+	e := r.last()
+	want := "2 new reports on RNDMRoll.\n\nSpam: 2\n\nSecond looks asked: 1\n\nSee the reports on the admin page: " + pageURL +
+		"\nSee the second looks on the admin page: " + pageURL + "?to=removed\n"
+	if r.emails() != 2 || e.subject != "RNDMRoll: 2 new reports, 1 second look asked" || e.text != want ||
+		!strings.Contains(e.html, `<a href="`+pageURL+`?to=removed">See the second looks on the admin page</a>`) {
+		t.Fatalf("the email: %d sent, %+v", r.emails(), e)
+	}
+}
+
+// Close sends a second look still waiting, a nil Alerts ignores one, and
+// after Close none is counted.
+func TestSecondLookAsked_CloseSendsWhatWaitsAndNilIgnoresIt(t *testing.T) {
+	var none *Alerts
+	none.SecondLookAsked()
+	r := newRig(t)
+	r.a.SecondLookAsked()
+	r.a.SecondLookAsked()
+	r.a.Close(context.Background())
+	if r.emails() != 2 || r.last().subject != "RNDMRoll: 1 second look asked" {
+		t.Fatalf("Close: %d emails, last %q", r.emails(), r.last().subject)
+	}
+	r.a.SecondLookAsked()
+	if r.emails() != 2 {
+		t.Fatalf("a second look after Close was emailed")
 	}
 }

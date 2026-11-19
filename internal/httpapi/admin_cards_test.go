@@ -397,4 +397,21 @@ func TestAdminGoPage_MovesOnToTheList(t *testing.T) {
 	if r.repo.reads != 0 {
 		t.Fatal("the go page read the reports")
 	}
+
+	// The second-look email's link moves on to the Removed tab; any other
+	// to is the reports, and the query is never echoed.
+	rec = adminDo(t, r.w, http.MethodGet, "/admin/go?to=removed", "", nil, "")
+	if page := rec.Body.String(); rec.Code != http.StatusOK ||
+		!strings.Contains(page, `<meta http-equiv="refresh" content="0;url=/admin/removed">`) ||
+		!strings.Contains(page, `<a class="button" href="/admin/removed">Open the Removed tab</a>`) {
+		t.Fatalf("go page to the Removed tab: %d %s", rec.Code, page)
+	}
+	rec = adminDo(t, r.w, http.MethodGet, "/admin/go?to=https://evil.example/x", "", nil, "")
+	if page := rec.Body.String(); rec.Code != http.StatusOK || !strings.Contains(page, `content="0;url=/admin">`) ||
+		strings.Contains(page, "evil") {
+		t.Fatalf("go page with another to: %d %s", rec.Code, page)
+	}
+	if r.repo.reads != 0 {
+		t.Fatal("the go page read the reports")
+	}
 }

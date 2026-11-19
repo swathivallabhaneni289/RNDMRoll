@@ -89,3 +89,34 @@ func TestModeration_MainPurgesWhatWasRemovedInThePurgeLoop(t *testing.T) {
 		t.Fatalf("main.go: %s.SetRemoved must come before %s.Start", purger, purger)
 	}
 }
+
+// Second looks in the app (developer, 2026-11-19) are served only because
+// main builds the service over the Postgres store, mounts its handler before
+// the server is built, and hands it the admin email that the reports use, so
+// each new request is emailed like an urgent report.
+func TestModeration_MainWiresSecondLooksAndTheirEmail(t *testing.T) {
+	body := accountsMainBody(t)
+	svc, ctor, _ := accountsAssignedFrom(body, "secondlook", "NewService")
+	if svc == "" {
+		t.Fatal("main.go: no := secondlook.NewService(...) in main")
+	}
+	if len(ctor.Args) != 2 || accountsCallOf(ctor.Args[0], "postgres", "NewSecondLookRepo") == nil {
+		t.Fatal("main.go: secondlook.NewService is not given postgres.NewSecondLookRepo(pool)")
+	}
+	depsVar, lit := accountsDeps(t, body)
+	_, serverAt := accountsServerBuilt(t, body, depsVar)
+	h := accountsDepsSetTo(body, depsVar, lit, "SecondLooks", "NewSecondLookHandler", serverAt)
+	if h == nil || len(h.Args) != 1 || !accountsIdent(h.Args[0], svc) {
+		t.Fatalf("main.go: Deps.SecondLooks is not set to httpapi.NewSecondLookHandler(%s) before httpapi.NewServer", svc)
+	}
+	board, _, _ := accountsAssignedFrom(body, "board", "NewService")
+	reports := accountsCalls(body, board, "SetReportNotifier", false)
+	looks := accountsCalls(body, svc, "SetNotifier", false)
+	if len(reports) != 1 || len(looks) != 1 || len(looks[0].Args) != 1 {
+		t.Fatalf("main.go: want one %s.SetReportNotifier and one %s.SetNotifier, found %d and %d", board, svc, len(reports), len(looks))
+	}
+	alerts, ok := reports[0].Args[0].(*ast.Ident)
+	if !ok || !accountsIdent(looks[0].Args[0], alerts.Name) {
+		t.Fatalf("main.go: %s.SetNotifier is not given the report email's alerts", svc)
+	}
+}

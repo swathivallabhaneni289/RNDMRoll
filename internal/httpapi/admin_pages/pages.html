@@ -1,7 +1,7 @@
 {{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .OpenCount}}({{.OpenCount}}) {{end}}{{.Title}} · RNDMRoll admin</title><link rel="stylesheet" href="/admin/style.css">
-{{if .Refresh}}<meta http-equiv="refresh" content="0;url=/admin">{{else if eq .Tab "reports"}}<meta http-equiv="refresh" content="60;url=/admin">{{end}}</head>
+{{if .Refresh}}<meta http-equiv="refresh" content="0;url={{if .Next}}{{.Next}}{{else}}/admin{{end}}">{{else if eq .Tab "reports"}}<meta http-equiv="refresh" content="60;url=/admin">{{end}}</head>
 <body><main>{{end}}
 
 {{define "top"}}<header><h1><a class="home" href="/admin">RNDMRoll admin</a></h1>
@@ -24,8 +24,9 @@
 
 {{define "go"}}{{template "head" .}}
 <div class="login"><h1>RNDMRoll admin</h1>
-<p>Opening the reports.</p>
-<div class="actions"><a class="button" href="/admin">Open the reports</a></div></div>
+{{if .Next}}<p>Opening the Removed tab.</p>
+<div class="actions"><a class="button" href="{{.Next}}">Open the Removed tab</a></div></div>{{else}}<p>Opening the reports.</p>
+<div class="actions"><a class="button" href="/admin">Open the reports</a></div></div>{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "opened"}}{{template "head" .}}

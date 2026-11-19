@@ -25,6 +25,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/purge"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/push"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
@@ -129,6 +130,11 @@ func main() {
 	// a second look: CONTACT_EMAIL, or nothing while it is not set.
 	notificationsService.SetContact(cfg.ContactEmail)
 
+	// The owner of a post or comment an admin removed asks for a second look
+	// in the app (developer, 2026-11-19); the request keeps the owner's own
+	// clock, as the decision log does.
+	secondLookService := secondlook.NewService(postgres.NewSecondLookRepo(pool), spinService)
+
 	// The diary and the Profile summary only read, through the pool, on the
 	// same clock as the spin service. Followers are counted by follows.
 	diaryService := diary.NewService(postgres.NewDiaryReader(pool), spinClock, socialService)
@@ -146,6 +152,7 @@ func main() {
 		Follow:        httpapi.NewFollowHandler(socialService),
 		Board:         httpapi.NewBoardHandler(boardService),
 		Notifications: httpapi.NewNotificationsHandler(notificationsService, entryPhotos),
+		SecondLooks:   httpapi.NewSecondLookHandler(secondLookService),
 
 		// The Postgres user repository also asks for and cancels a deletion:
 		// delete account marks the account, and log in inside the grace
@@ -200,6 +207,8 @@ func main() {
 				strings.TrimRight(cfg.AppBaseURL, "/")+"/admin/go", logger)
 			boardService.SetReportNotifier(reportAlerts)
 			socialService.SetReportNotifier(reportAlerts)
+			// And so is each new request for a second look, at once.
+			secondLookService.SetNotifier(reportAlerts)
 		}
 	}
 	authHandler.SetAdminEmails(cfg.AdminEmails)

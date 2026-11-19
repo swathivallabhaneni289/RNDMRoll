@@ -223,6 +223,7 @@ func commentPhotosGoingWith(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]pur
 		  and (c.entry_id in (select e.id from entries e where e.user_id = $1)
 		       or c.parent_id in (select p.id from post_comments p where p.user_id = $1))
 		  and not exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)
+		  and not `+proofKeyHeld("c.photo_key")+`
 		order by c.id`, id)
 	if err != nil {
 		return nil, err

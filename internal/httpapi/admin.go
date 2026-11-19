@@ -522,8 +522,10 @@ func (h *AdminHandler) sameOrigin(c *gin.Context) {
 
 type adminPage struct {
 	Title string
-	// Refresh moves the page on to /admin at once (the page a link opens).
+	// Refresh moves the page on to /admin at once (the page a link opens),
+	// or to Next when it is set.
 	Refresh bool
+	Next    string
 	CSRF    string
 	Notice  string
 	Person  admin.Person
@@ -705,8 +707,14 @@ func (h *AdminHandler) logout(c *gin.Context) {
 // goPage is where the report email links (internal/adminalert). The session
 // cookie is SameSite=Strict, so a click in a mail app or webmail arrives
 // without it; this page asks for nothing and moves on to the list itself,
-// and that step, from this site, carries the cookie.
+// and that step, from this site, carries the cookie. ?to=removed, the
+// second-look link (developer, 2026-11-19), moves on to the Removed tab
+// instead; the query only picks one of the two fixed pages.
 func (h *AdminHandler) goPage(c *gin.Context) {
+	if c.Query("to") == "removed" {
+		h.render(c, "go", adminPage{Title: "Removed", Refresh: true, Next: "/admin/removed"})
+		return
+	}
 	h.render(c, "go", adminPage{Title: "Reports", Refresh: true})
 }
 

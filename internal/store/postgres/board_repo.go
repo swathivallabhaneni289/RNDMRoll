@@ -341,10 +341,12 @@ const commentPhotoIndex = "post_comments_photo_key_idx"
 // InsertComment implements board.Repository.
 func (r *BoardRepo) InsertComment(ctx context.Context, entryID, userID uuid.UUID, body string, at time.Time, parentID *uuid.UUID, photoKey *string) (uuid.UUID, time.Time, bool, error) {
 	var id uuid.UUID
-	// A photo file already used by an entry is refused like a reused one.
+	// A photo file already used by an entry, or by a second look as proof,
+	// is refused like a reused one.
 	if photoKey != nil {
 		var used bool
-		if err := r.pool.QueryRow(ctx, `select exists (select 1 from entry_photos where storage_key = $1)`, *photoKey).Scan(&used); err != nil {
+		if err := r.pool.QueryRow(ctx, `select exists (select 1 from entry_photos where storage_key = $1) or `+proofKeyHeld("$1::text"),
+			*photoKey).Scan(&used); err != nil {
 			return uuid.UUID{}, time.Time{}, false, err
 		}
 		if used {
@@ -427,14 +429,15 @@ func (r *BoardRepo) DeleteComment(ctx context.Context, id uuid.UUID) ([]string, 
 }
 
 // deleteCommentRows deletes a comment and its replies and returns their
-// photo keys, leaving out a file that a photo row also names, since that
-// post still shows it (the same rule as commentPhotoKeysOf). ErrNotFound
+// photo keys, leaving out a file that a photo row or a second look also
+// names, since that post still shows it or the admin may still look at it
+// (the same rule as commentPhotoKeysOf). ErrNotFound
 // when the comment was not there.
 func deleteCommentRows(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) ([]string, error) {
 	rows, err := pool.Query(ctx, `
 		delete from post_comments c where c.id = $1 or c.parent_id = $1
 		returning c.id = $1, coalesce(c.photo_key, ''),
-		          exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)`, id)
+		          exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key) or `+proofKeyHeld("c.photo_key"), id)
 	if err != nil {
 		return nil, err
 	}

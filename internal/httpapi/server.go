@@ -61,6 +61,9 @@ type Deps struct {
 	PasswordReset *PasswordResetHandler
 	// PushTokens is POST and DELETE /me/push-tokens; nil mounts nothing.
 	PushTokens *PushTokenHandler
+	// SecondLooks is POST /removals/:id/second-look, the owner asking for a
+	// second look at what an admin removed; nil mounts nothing.
+	SecondLooks *SecondLookHandler
 	// DeleteAccount is POST /me/delete; nil mounts nothing. Its store is also
 	// the one log in cancels a deletion with, inside the grace period.
 	DeleteAccount *DeleteAccountHandler
@@ -215,6 +218,9 @@ func NewServer(deps Deps) *Server {
 	}
 	if deps.PushTokens != nil {
 		deps.PushTokens.Register(authed)
+	}
+	if deps.SecondLooks != nil {
+		deps.SecondLooks.Register(authed)
 	}
 	if deps.TestTools != nil {
 		deps.TestTools.Register(authed)

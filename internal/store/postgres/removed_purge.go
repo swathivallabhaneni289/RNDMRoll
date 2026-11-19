@@ -102,7 +102,7 @@ func (r *RemovedPurgeRepo) Purge(ctx context.Context, item purge.Removed, delete
 	if item.Kind == admin.KindPost {
 		photos, err = collectPhotos(tx.Query(ctx, `
 			select storage_key, user_id from entry_photos
-			where entry_id = $1 and user_id = $2
+			where entry_id = $1 and user_id = $2 and not `+proofKeyHeld("storage_key")+`
 			order by position`, item.ID, owner))
 		if err != nil {
 			return false, err
@@ -138,13 +138,14 @@ func (r *RemovedPurgeRepo) Purge(ctx context.Context, item purge.Removed, delete
 
 // commentPhotosWhere reads (photo key, writer) of the comments matching
 // where (over post_comments as c, with the item's id as $1) whose file no
-// photo row names, the oldest first: the rule commentPhotoKeysOf and
-// commentPhotosGoingWith use.
+// photo row and no second look names, the oldest first: the rule
+// commentPhotoKeysOf and commentPhotosGoingWith use.
 func commentPhotosWhere(where string) string {
 	return `
 		select c.photo_key, c.user_id from post_comments c
 		where c.photo_key is not null and (` + where + `)
 		  and not exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)
+		  and not ` + proofKeyHeld("c.photo_key") + `
 		order by c.created_at, c.id`
 }
 

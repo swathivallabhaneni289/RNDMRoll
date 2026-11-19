@@ -34,6 +34,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/diary"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/notifications"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/secondlook"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
@@ -240,6 +241,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Follow:        NewFollowHandler(socialSvc),
 		Board:         NewBoardHandler(boardSvc),
 		Notifications: NewNotificationsHandler(notificationsSvc, entryPhotos),
+		SecondLooks:   NewSecondLookHandler(secondlook.NewService(postgres.NewSecondLookRepo(pool), spinSvc)),
 		Users:         users,
 		JWTSecret:     integrationJWTSecret,
 		Logger:        logger,

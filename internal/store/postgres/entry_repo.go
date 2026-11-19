@@ -326,7 +326,7 @@ func (t *pgTx) ReplacePhotos(entryID string, slots []spin.PhotoSlot, now time.Ti
 			return nil, err
 		}
 	}
-	return removed, nil
+	return withoutProofKeys(t.ctx, t.tx, removed)
 }
 
 func (t *pgTx) PhotoKeysInUse(keys []string) (map[string]bool, error) {
@@ -336,11 +336,13 @@ func (t *pgTx) PhotoKeysInUse(keys []string) (map[string]bool, error) {
 	}
 	// Across all people: a file belongs to one photo row in the whole table,
 	// and a comment's file is refused too, as the comment insert refuses a
-	// photo row's file.
+	// photo row's file, and so is a second look's proof (migration 0021).
 	rows, err := t.tx.Query(t.ctx, `
 		select storage_key from entry_photos where storage_key = any($1::text[])
 		union
-		select photo_key from post_comments where photo_key = any($1::text[])`, keys)
+		select photo_key from post_comments where photo_key = any($1::text[])
+		union
+		select k from second_looks sl, unnest(sl.photo_keys) k where sl.photo_keys && $1::text[] and k = any($1::text[])`, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +388,8 @@ func (t *pgTx) photoKeysOf(entryID uuid.UUID) ([]string, error) {
 // alone is not enough to delete a file, and a file that a photo row also
 // names is left alone: the comment insert refuses a post's key and the post
 // side a comment's, but the two checks are separate, so two hand-made
-// requests at the same moment could still share one.
+// requests at the same moment could still share one. A second look's proof
+// is left alone the same way (proofKeyHeld).
 func (t *pgTx) commentPhotoKeysOf(entryID uuid.UUID) ([]string, error) {
 	rows, err := t.tx.Query(t.ctx, `
 		select c.photo_key, c.user_id from post_comments c
@@ -394,6 +397,7 @@ func (t *pgTx) commentPhotoKeysOf(entryID uuid.UUID) ([]string, error) {
 		  and exists (select 1 from entries e where e.id = $1 and e.user_id = $2)
 		  and (c.entry_id = $1 or c.parent_id in (select p.id from post_comments p where p.entry_id = $1))
 		  and not exists (select 1 from entry_photos ep where ep.storage_key = c.photo_key)
+		  and not `+proofKeyHeld("c.photo_key")+`
 		order by c.created_at, c.id`, entryID, t.uid)
 	if err != nil {
 		return nil, err
@@ -435,6 +439,9 @@ func (t *pgTx) DeleteEntry(id string) ([]string, error) {
 	// and so do its comments with their photos.
 	keys, err := t.photoKeysOf(eid)
 	if err != nil {
+		return nil, err
+	}
+	if keys, err = withoutProofKeys(t.ctx, t.tx, keys); err != nil {
 		return nil, err
 	}
 	commentKeys, err := t.commentPhotoKeysOf(eid)
