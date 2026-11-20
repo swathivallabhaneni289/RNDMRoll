@@ -100,9 +100,10 @@ export default function ForgotPasswordScreen() {
     try {
       await api.post('/auth/password/forgot', { email: typed }, { auth: false });
       // The answer is the same whether or not a code is emailed (no account, a code under a minute
-      // old, or one whose 5 tries are used up), so the line says only what is always true. A new
-      // code replaces the last one, so the newest code in the email is the one that works.
-      setNotice(`If ${typed} has an active account, check your email for a 6-digit code. Use the newest one.`);
+      // old, or one whose 5 tries are used up), so the line never says whether the email has an
+      // account. It names the address, so a typo shows, and stays short (developer, 2026-11-20): an
+      // older code typed after a new one replaced it gets its own line (REPLACED).
+      setNotice(`Check ${typed} for a code.`);
       // A message about a code typed before would contradict the line above.
       setCodeError(undefined);
       maybeChangedRef.current = false;
