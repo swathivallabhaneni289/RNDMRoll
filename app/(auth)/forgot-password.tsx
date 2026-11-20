@@ -100,10 +100,12 @@ export default function ForgotPasswordScreen() {
     try {
       await api.post('/auth/password/forgot', { email: typed }, { auth: false });
       // The answer is the same whether or not a code is emailed (no account, a code under a minute
-      // old, or one whose 5 tries are used up), so the line never says whether the email has an
-      // account. It names the address, so a typo shows, and stays short and professional (developer,
-      // 2026-11-20): an older code typed after a new one replaced it gets its own line (REPLACED).
-      setNotice(`If an account exists for ${typed}, we've emailed a code.`);
+      // old, or one whose 5 tries are used up), and so is this line, for any address. That keeps it
+      // from saying whether the email has an account without an "If an account exists" (developer,
+      // 2026-11-20: the usual wording), as Login.gov, Okta, Keycloak, Supabase and Ory do. It names
+      // the address, so a typo shows. An older code typed after a new one replaced it gets its own
+      // line (REPLACED).
+      setNotice(`We sent a code to ${typed}.`);
       // A message about a code typed before would contradict the line above.
       setCodeError(undefined);
       maybeChangedRef.current = false;
@@ -226,7 +228,7 @@ export default function ForgotPasswordScreen() {
 
         <View style={{ marginTop: space.xl }}>
           <AppText role="heading" accessibilityRole="header">
-            {step === 'email' ? 'Forgot password' : step === 'code' ? 'Enter the code' : 'Set a new password'}
+            {step === 'email' ? 'Forgot password' : step === 'code' ? 'Check your email' : 'Set a new password'}
           </AppText>
         </View>
         {step === 'email' || step === 'code' ? (
