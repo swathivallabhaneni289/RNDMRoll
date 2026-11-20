@@ -220,7 +220,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ACC-04 | A second page, shown once, offers an optional photo and bio | P1 | Built |
 | ACC-05 | Find your friends is shown once after sign-up | P1 | Built |
 | ACC-06 | A person logs in with an email or a username, and a password | P0 | Built |
-| ACC-07 | Forgot password sends a 6-digit code by email, checks the code, and only then lets the person set a new password | P0 | Built; real email is Launch |
+| ACC-07 | Forgot password sends a 6-digit code by email, checks the code, and only then lets the person set a new password. An email typed on Log in is filled in. | P0 | Built; real email is Launch |
 | ACC-08 | Sign-up shows the Terms of Use and Privacy Policy before Continue | P0 | Built |
 | ACC-09 | The email address is verified | P1 | Launch |
 | ACC-10 | A person can delete their account in the app | P0 | Built (October 25, 2026) |

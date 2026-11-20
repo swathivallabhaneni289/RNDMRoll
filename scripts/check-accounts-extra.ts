@@ -1040,6 +1040,17 @@ for (const line of lines) {
       /const MAYBE_CHANGED = 'Something went wrong\. If your password did change, log in with the new one\.';/.test(page)
   );
   check('a new code forgets the lost answer', /maybeChangedRef\.current = false;\s*setStep\('code'\);/.test(page));
+  const login = source('app/(auth)/login.tsx');
+  check(
+    'Forgot password takes an email typed on Log in along, and never a username',
+    /const typed = login\.trim\(\);\s*router\.push\(EMAIL_PATTERN\.test\(typed\) \? \{ pathname: '\/forgot-password', params: \{ email: typed \} \} : '\/forgot-password'\);/.test(login)
+  );
+  check(
+    'the page fills in only an email it was given',
+    /const \[carried\] = useState\(\(\) => carriedEmail\(params\.email\)\);\s*const \[email, setEmail\] = useState\(carried\);/.test(page) &&
+      /const typed = typeof param === 'string' \? param\.trim\(\) : '';\s*return EMAIL_PATTERN\.test\(typed\) \? typed : '';/.test(page)
+  );
+  check('the keyboard opens by itself only for an empty email box', /autoFocus=\{carried === ''\}/.test(page));
 }
 
 // ---- Section 10 Privacy: no location, contacts or tracking; no tracking tools -----------------

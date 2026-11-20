@@ -154,9 +154,14 @@ export default function LoginScreen() {
           />
         </View>
 
-        {/* Forgot password: plain words, not underlined (developer's rule). */}
+        {/* Forgot password: plain words, not underlined (developer's rule). An email typed above goes
+            along and is filled in there, so it isn't typed twice (developer, 2026-11-20); a username
+            stays behind, as that page asks for an email. */}
         <Pressable
-          onPress={() => router.push('/forgot-password')}
+          onPress={() => {
+            const typed = login.trim();
+            router.push(EMAIL_PATTERN.test(typed) ? { pathname: '/forgot-password', params: { email: typed } } : '/forgot-password');
+          }}
           accessibilityRole="button"
           hitSlop={8}
           style={{ marginTop: space.sm, alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' }}

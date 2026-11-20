@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { AppText } from '@/components/ui/AppText';
@@ -16,6 +16,13 @@ import { passwordProblem } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The email Log in passed along, when it is one; '' for none, a username or anything else. */
+function carriedEmail(param: string | string[] | undefined): string {
+  const typed = typeof param === 'string' ? param.trim() : '';
+  return EMAIL_PATTERN.test(typed) ? typed : '';
+}
+
 const GENERIC = 'Something went wrong. Please try again.';
 /** A 429 on this page: the server's limits count requests here, not wrong codes. */
 const TOO_MANY = 'Too many requests. Wait a minute and try again.';
@@ -54,8 +61,12 @@ const SET_LOG_IN = 'Your new password is set. Log in with it.';
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { signIn } = useSession();
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
   const [step, setStep] = useState<'email' | 'code' | 'password' | 'done'>('email');
-  const [email, setEmail] = useState('');
+  // An email typed on Log in comes filled in, so the page asks only for Send code (developer,
+  // 2026-11-20). Read once, like autoFocus: the keyboard opens by itself only for an empty box.
+  const [carried] = useState(() => carriedEmail(params.email));
+  const [email, setEmail] = useState(carried);
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string | undefined>();
@@ -266,7 +277,7 @@ export default function ForgotPasswordScreen() {
               autoCapitalize="none"
               autoComplete="email"
               textContentType="emailAddress"
-              autoFocus
+              autoFocus={carried === ''}
             />
           </View>
         ) : null}
