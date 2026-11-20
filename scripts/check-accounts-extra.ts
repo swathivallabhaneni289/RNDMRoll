@@ -1027,7 +1027,7 @@ for (const line of lines) {
   );
   const send = page.slice(page.indexOf("await api.post('/auth/password/forgot'"), page.indexOf('} catch (err) {', page.indexOf("await api.post('/auth/password/forgot'")));
   check('Send code moves to the code step after any answer, with no branch on it', /setStep\('code'\);/.test(send) && !/\bif \(|\?|return/.test(send.replace(/\/\/[^\n]*/g, '')));
-  check('the notice never says whether the email has an account', /setNotice\(`Check \$\{typed\} for a code\.`\);/.test(page));
+  check('the notice never says whether the email has an account', /setNotice\(`If an account exists for \$\{typed\}, we've emailed a code\.`\);/.test(page));
   check('a spent code is never sent again', (page.match(/if \(spentRef\.current \|\| sendingRef\.current\) return;/g) ?? []).length === 2);
   check('the code is marked spent before the new session is kept', /spentRef\.current = true;\s*try \{\s*(\/\/[^\n]*\n\s*)*await signIn\(result\);/.test(page));
   check(
