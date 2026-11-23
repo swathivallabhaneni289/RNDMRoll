@@ -2,7 +2,7 @@
 
 # Terms of Use
 
-Effective November 17, 2026
+Effective November 23, 2026
 
 These terms are the rules for using RNDMRoll, the app where you spin a wheel once a day and post one real thing for the category it lands on. They are an agreement between you and the developer of RNDMRoll ("we" or "us").
 

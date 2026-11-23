@@ -23,14 +23,15 @@ export type LegalDocument = {
 /** Where people write to RNDMRoll: one place, so it is changed once. */
 export const CONTACT_EMAIL = '';
 
-const EFFECTIVE = 'November 17, 2026';
+const EFFECTIVE = 'November 23, 2026';
 
 /**
  * The Privacy Policy's own date, since it can change without the Terms (it did for what admins see,
- * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13, and for reports,
- * hiding and removals on 2026-11-17.
+ * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13, for reports, hiding
+ * and removals on 2026-11-17, and for second looks and password resets by 2026-11-23, the day they
+ * went public.
  */
-const PRIVACY_EFFECTIVE = 'November 17, 2026';
+const PRIVACY_EFFECTIVE = 'November 23, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
