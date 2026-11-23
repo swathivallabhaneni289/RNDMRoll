@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
@@ -85,7 +85,6 @@ const TOO_MANY_MESSAGE = 'Too many tries. Wait a minute and try again.';
 export function DeleteAccountScreen() {
   const { signOut } = useSession();
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [formError, setFormError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -273,7 +272,7 @@ export function DeleteAccountScreen() {
                 onChangeText={handleChange}
                 error={passwordError}
                 editable={!deleting}
-                secureTextEntry={!showPassword}
+                revealable
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="current-password"
@@ -286,18 +285,6 @@ export function DeleteAccountScreen() {
                   passwordFocusedRef.current = false;
                 }}
               />
-              {/* Sits on the label row, where the other fields show their hint. */}
-              <Pressable
-                onPress={() => setShowPassword((value) => !value)}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                hitSlop={12}
-                style={{ position: 'absolute', top: 0, right: 0 }}
-              >
-                <AppText role="label" tone="muted">
-                  {showPassword ? 'Hide' : 'Show'}
-                </AppText>
-              </Pressable>
             </View>
 
             {formError !== '' ? (

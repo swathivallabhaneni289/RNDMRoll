@@ -25,6 +25,12 @@ type TextFieldProps = {
   prefix?: string;
   /** A small clear button inside the box, shown while there is text. `soft` only. */
   clearable?: boolean;
+  /**
+   * A password box: dots until the eye button at the box's right end is tapped, and a second tap
+   * hides it again (developer, 2026-11-23: an eye in the box, as most apps have). Its text never
+   * gets capitals or autocorrect. Not with `clearable`.
+   */
+  revealable?: boolean;
   /** A short note on the label row, right-aligned, for example Optional. `soft` only. */
   hint?: string;
   /** A short green note under the field when its value is good, for example "Looks good.". Hidden while an error shows. */
@@ -112,6 +118,7 @@ export function TextField({
   variant = 'box',
   prefix,
   clearable = false,
+  revealable = false,
   hint,
   success,
   onFocus,
@@ -120,6 +127,7 @@ export function TextField({
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  const [shown, setShown] = useState(false);
   // An error keeps the focused border, so the box is marked as well as the words under it.
   const marked = focused || Boolean(error);
   const line = variant === 'line';
@@ -128,6 +136,8 @@ export function TextField({
   const lines = rest.numberOfLines ?? 3;
   const count = typeof rest.value === 'string' ? rest.value.length : 0;
   const counting = showCount && Boolean(rest.maxLength);
+  // A shown password must stay as typed, so a password box turns off capitals and autocorrect.
+  const inputProps: TextInputProps = revealable ? { autoCapitalize: 'none', autoCorrect: false, ...rest, secureTextEntry: !shown } : rest;
 
   const handleFocus: TextInputProps['onFocus'] = (event) => {
     setFocused(true);
@@ -168,6 +178,23 @@ export function TextField({
       {error ? <FieldError text={error} label={label} /> : null}
     </>
   );
+
+  // The eye: open while the password is dots, crossed out while it shows.
+  const eye = revealable ? (
+    <Pressable
+      onPress={() => setShown((current) => !current)}
+      accessibilityRole="button"
+      accessibilityLabel={`${shown ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+      hitSlop={soft ? 12 : undefined}
+      style={
+        soft
+          ? { marginLeft: space.sm }
+          : { position: 'absolute', top: 0, right: 0, bottom: 0, width: minTouchTarget, alignItems: 'center', justifyContent: 'center' }
+      }
+    >
+      <Ionicons name={shown ? 'eye-off-outline' : 'eye-outline'} size={22} color={color.muted} />
+    </Pressable>
+  ) : null;
 
   if (soft) {
     return (
@@ -226,7 +253,7 @@ export function TextField({
             </Text>
           ) : null}
           <TextInput
-            {...rest}
+            {...inputProps}
             ref={ref}
             onFocus={handleFocus}
             onBlur={handleBlur}
@@ -242,6 +269,7 @@ export function TextField({
               ...(multiline ? { lineHeight: type.body.lineHeight } : { height: SINGLE_LINE_INPUT_HEIGHT }),
             }}
           />
+          {eye}
           {clearable && count > 0 ? (
             <Pressable
               onPress={() => rest.onChangeText?.('')}
@@ -278,30 +306,36 @@ export function TextField({
   return (
     <View nativeID={FIELD_VIEW_ID}>
       <AppText role="label">{label}</AppText>
-      <TextInput
-        {...rest}
-        ref={ref}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        accessibilityHint={error ? error : rest.accessibilityHint}
-        style={{
-          backgroundColor: line ? 'transparent' : color.secondary,
-          borderRadius: line ? 0 : radius.md,
-          borderWidth: line ? 0 : marked ? 1.5 : 1,
-          borderBottomWidth: marked ? 1.5 : 1,
-          borderColor: marked ? color.ink : color.inkRest,
-          // iOS ignores numberOfLines for height, so a multiline field takes its height from the line count here.
-          minHeight: multiline ? type.body.lineHeight * lines + MULTILINE_PADDING * 2 : minTouchTarget,
-          paddingHorizontal: line ? 0 : 12,
-          ...(multiline
-            ? { paddingTop: MULTILINE_PADDING, paddingBottom: MULTILINE_PADDING, textAlignVertical: 'top' as const }
-            : null),
-          fontSize: type.body.fontSize,
-          fontFamily: type.body.fontFamily,
-          color: color.ink,
-          ...(multiline ? { lineHeight: type.body.lineHeight } : null),
-        }}
-      />
+      {/* Its own view, so the eye sits over the box's right end. */}
+      <View>
+        <TextInput
+          {...inputProps}
+          ref={ref}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          accessibilityHint={error ? error : rest.accessibilityHint}
+          style={{
+            backgroundColor: line ? 'transparent' : color.secondary,
+            borderRadius: line ? 0 : radius.md,
+            borderWidth: line ? 0 : marked ? 1.5 : 1,
+            borderBottomWidth: marked ? 1.5 : 1,
+            borderColor: marked ? color.ink : color.inkRest,
+            // iOS ignores numberOfLines for height, so a multiline field takes its height from the line count here.
+            minHeight: multiline ? type.body.lineHeight * lines + MULTILINE_PADDING * 2 : minTouchTarget,
+            paddingHorizontal: line ? 0 : 12,
+            // Room for the eye, so the text never runs under it.
+            ...(revealable ? { paddingRight: minTouchTarget } : null),
+            ...(multiline
+              ? { paddingTop: MULTILINE_PADDING, paddingBottom: MULTILINE_PADDING, textAlignVertical: 'top' as const }
+              : null),
+            fontSize: type.body.fontSize,
+            fontFamily: type.body.fontFamily,
+            color: color.ink,
+            ...(multiline ? { lineHeight: type.body.lineHeight } : null),
+          }}
+        />
+        {eye}
+      </View>
       {feedback}
       {counting ? (
         <View style={{ marginTop: space.xs, alignItems: 'flex-end' }}>

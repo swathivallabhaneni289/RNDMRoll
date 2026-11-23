@@ -166,7 +166,6 @@ export function ProfileForm({
 
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | undefined>(undefined);
-  const [showPassword, setShowPassword] = useState(false);
   // The Password box shows only the too-long line, as the checklist under it says the rest. After a
   // tap on the grey Continue it shows any line, so the box names what is still missing.
   const [passwordAsked, setPasswordAsked] = useState(false);
@@ -903,24 +902,12 @@ export function ProfileForm({
                 onBlur={() => setPasswordError(passwordProblem(password))}
                 error={passwordAsked || passwordError === PASSWORD_LONG_MESSAGE ? passwordError : undefined}
                 success={passwordOk ? LOOKS_GOOD_MESSAGE : undefined}
-                secureTextEntry={!showPassword}
+                revealable
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="new-password"
                 textContentType="newPassword"
               />
-              {/* Sits on the label row, where the other fields show their hint. */}
-              <Pressable
-                onPress={() => setShowPassword((current) => !current)}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                hitSlop={12}
-                style={{ position: 'absolute', top: 0, right: 0 }}
-              >
-                <AppText role="label" tone="muted">
-                  {showPassword ? 'Hide' : 'Show'}
-                </AppText>
-              </Pressable>
               <PasswordChecklist value={password} />
             </View>
           </View>

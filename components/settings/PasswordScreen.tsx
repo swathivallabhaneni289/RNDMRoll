@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -46,8 +46,6 @@ export function PasswordScreen() {
   const { signIn } = useSession();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNext, setShowNext] = useState(false);
   // The new password is judged when its box is left, and after that as it is typed.
   const [nextTouched, setNextTouched] = useState(false);
   // Set by a tap on the grey Save password: from then on the New password box names the checklist's
@@ -163,24 +161,12 @@ export function PasswordScreen() {
             value={current}
             onChangeText={handleCurrentChange}
             error={currentError}
-            secureTextEntry={!showCurrent}
+            revealable
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="current-password"
             textContentType="password"
           />
-          {/* Sits on the label row, where the other fields show their hint. */}
-          <Pressable
-            onPress={() => setShowCurrent((value) => !value)}
-            accessibilityRole="button"
-            accessibilityLabel={showCurrent ? 'Hide current password' : 'Show current password'}
-            hitSlop={12}
-            style={{ position: 'absolute', top: 0, right: 0 }}
-          >
-            <AppText role="label" tone="muted">
-              {showCurrent ? 'Hide' : 'Show'}
-            </AppText>
-          </Pressable>
         </View>
 
         <View ref={nextFieldRef} nativeID={FIELD_VIEW_ID} style={{ marginTop: space.md }}>
@@ -193,23 +179,12 @@ export function PasswordScreen() {
             onBlur={() => setNextTouched(true)}
             error={nextError}
             success={nextOk ? LOOKS_GOOD_MESSAGE : undefined}
-            secureTextEntry={!showNext}
+            revealable
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="new-password"
             textContentType="newPassword"
           />
-          <Pressable
-            onPress={() => setShowNext((value) => !value)}
-            accessibilityRole="button"
-            accessibilityLabel={showNext ? 'Hide new password' : 'Show new password'}
-            hitSlop={12}
-            style={{ position: 'absolute', top: 0, right: 0 }}
-          >
-            <AppText role="label" tone="muted">
-              {showNext ? 'Hide' : 'Show'}
-            </AppText>
-          </Pressable>
           <PasswordChecklist value={next} />
         </View>
 

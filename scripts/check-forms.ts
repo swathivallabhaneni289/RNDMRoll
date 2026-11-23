@@ -173,6 +173,14 @@ eq('second button', ACCESS_OFF_OPEN_SETTINGS, 'Open Settings');
       count(field, 'borderColor: marked ? color.ink : color.inkRest,') === 2
   );
   check('both text boxes take the ref', /ref\?: Ref<TextInput>;/.test(field) && count(field, 'ref={ref}') === 2);
+  check(
+    'a password box: dots until its eye is tapped, and never capitals or autocorrect',
+    /const inputProps: TextInputProps = revealable \? \{ autoCapitalize: 'none', autoCorrect: false, \.\.\.rest, secureTextEntry: !shown \} : rest;/.test(field) &&
+      count(field, '{...inputProps}') === 2 &&
+      count(field, '{eye}') === 2 &&
+      /<Ionicons name=\{shown \? 'eye-off-outline' : 'eye-outline'\} size=\{22\} color=\{color\.muted\} \/>/.test(field) &&
+      /accessibilityLabel=\{`\$\{shown \? 'Hide' : 'Show'\} \$\{label\.toLowerCase\(\)\}`\}/.test(field)
+  );
   check('the error is the hint of both text boxes', count(field, 'accessibilityHint={error ? error : rest.accessibilityHint}') === 2);
   check('the comment no longer says a live region speaks on iPhone', !/announces the error to screen readers on appearance/.test(field));
 }

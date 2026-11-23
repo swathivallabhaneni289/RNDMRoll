@@ -1051,13 +1051,20 @@ for (const line of lines) {
       /const typed = typeof param === 'string' \? param\.trim\(\) : '';\s*return EMAIL_PATTERN\.test\(typed\) \? typed : '';/.test(page)
   );
   check('the keyboard opens by itself only for an empty email box', /autoFocus=\{carried === ''\}/.test(page));
+  // Every password box has the eye (developer, 2026-11-23), so none sets its own dots.
+  const passwordPages: [string, number][] = [
+    ['app/(auth)/login.tsx', 1],
+    ['app/(auth)/forgot-password.tsx', 1],
+    ['components/profile/ProfileForm.tsx', 1],
+    ['components/settings/PasswordScreen.tsx', 2],
+    ['components/settings/DeleteAccountScreen.tsx', 1],
+  ];
   check(
-    'Log in and the new password box have Show and Hide, as sign-up and Settings do',
-    /secureTextEntry=\{!showPassword\}\s*autoCapitalize="none"\s*autoCorrect=\{false\}/.test(login) &&
-      /accessibilityLabel=\{showPassword \? 'Hide password' : 'Show password'\}/.test(login) &&
-      /secureTextEntry=\{!shown\}\s*autoCapitalize="none"\s*autoCorrect=\{false\}/.test(page) &&
-      /accessibilityLabel=\{shown \? 'Hide new password' : 'Show new password'\}/.test(page) &&
-      /<NewPasswordField value=\{password\} onChangeText=\{setPassword\} error=\{passwordError\} \/>/.test(page)
+    'every password box has the eye, and none hides its text by itself',
+    passwordPages.every(([file, boxes]) => {
+      const text = source(file);
+      return (text.match(/^\s*revealable$/gm) ?? []).length === boxes && !text.includes('secureTextEntry');
+    })
   );
 }
 
