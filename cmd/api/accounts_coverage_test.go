@@ -228,7 +228,7 @@ func TestAccounts_MainWiresDeleteAccountAndForgotPassword(t *testing.T) {
 	if reset == nil {
 		t.Fatal("main.go: Deps.PasswordReset is not set to httpapi.NewPasswordResetHandler(...) before httpapi.NewServer")
 	}
-	if len(reset.Args) < 3 || accountsCallOf(reset.Args[2], "postgres", "NewPasswordResetRepo") == nil {
+	if len(reset.Args) < 2 || accountsCallOf(reset.Args[1], "postgres", "NewPasswordResetRepo") == nil {
 		t.Fatal("main.go: httpapi.NewPasswordResetHandler is not given postgres.NewPasswordResetRepo(pool) as its code store")
 	}
 }

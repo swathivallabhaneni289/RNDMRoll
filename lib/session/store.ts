@@ -63,7 +63,7 @@ export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated' | 'o
 let inMemoryAccessToken: string | null = null;
 
 /**
- * Counts sign ins on this phone (log in, sign-up, a password change or reset). A request, a refresh
+ * Counts sign ins on this phone (log in, sign-up, a password change). A request, a refresh
  * or a log out remembers the count it began under: once it has moved on, someone signed in since,
  * and whatever it was doing belongs to a session that is over, so it must not touch the new one.
  * It only ever goes up, also when a sign in fails.

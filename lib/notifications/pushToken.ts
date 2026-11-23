@@ -173,7 +173,7 @@ export function registerPushToken(userId: string): Promise<void> {
 }
 
 /**
- * A sign in on this phone begins (log in, sign-up, a password change or reset). The store calls it
+ * A sign in on this phone begins (log in, sign-up, a password change). The store calls it
  * before anything is awaited, together with its own count of sign ins, so the two counts never
  * disagree: anything still running from before sends nothing, and a log out begun before it sends
  * no DELETE. The same person's last token stays known, no longer counted as sent, so a log out

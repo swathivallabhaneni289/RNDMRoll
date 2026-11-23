@@ -881,7 +881,14 @@ const lines = [];
   const restoredAfter = (page: string, call: string) =>
     new RegExp(`${call.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')}\\s*(lostSignupRef\\.current = null;\\s*)?(//[^\\n]*\\n\\s*)*sayIfRestored\\(result\\);`).test(page);
   check('Log in says a kept account right after it signs in', restoredAfter(source('app/(auth)/login.tsx'), 'await signIn(result);'));
-  check('a Forgot password reset does too', restoredAfter(source('app/(auth)/forgot-password.tsx'), 'await signIn(result);'));
+  // A reset signs nobody in (developer, 2026-11-23, after OWASP), so its done step says it.
+  const resetPage = source('app/(auth)/forgot-password.tsx');
+  check(
+    'a Forgot password reset says a kept account on its done step, and signs nobody in',
+    /setRestored\(result\.restored === true\);\s*setStep\('done'\);/.test(resetPage) &&
+      /\{restored \? \(\s*<View style=\{\{ marginTop: space\.sm \}\}>\s*<AppText role="body">\{RESTORED_MESSAGE\}<\/AppText>/.test(resetPage) &&
+      !/signIn|sayIfRestored|useSession/.test(resetPage)
+  );
   check("sign-up's way back to its lost account does too", restoredAfter(form, 'await signIn(result, { extras: extrasPage });'));
 
   const del = source('components/settings/DeleteAccountScreen.tsx');
@@ -1029,7 +1036,7 @@ for (const line of lines) {
   check('Send code moves to the code step after any answer, with no branch on it', /setStep\('code'\);/.test(send) && !/\bif \(|\?|return/.test(send.replace(/\/\/[^\n]*/g, '')));
   check('the notice never says whether the email has an account', /setNotice\(`We sent a code to \$\{typed\}\.`\);/.test(page));
   check('a spent code is never sent again', (page.match(/if \(spentRef\.current \|\| sendingRef\.current\) return;/g) ?? []).length === 2);
-  check('the code is marked spent before the new session is kept', /spentRef\.current = true;\s*try \{\s*(\/\/[^\n]*\n\s*)*await signIn\(result\);/.test(page));
+  check('the code is marked spent as soon as the reset is answered', /return;\s*\}\s*spentRef\.current = true;\s*setRestored\(result\.restored === true\);/.test(page));
   check(
     'a code that changed meanwhile goes back to the code step',
     /setCodeError\(codeLine\(err\.reason\)\);\s*\}\s*(\/\/[^\n]*\n\s*)*setStep\('code'\);/.test(page)
@@ -1065,6 +1072,28 @@ for (const line of lines) {
       const text = source(file);
       return (text.match(/^\s*revealable$/gm) ?? []).length === boxes && !text.includes('secureTextEntry');
     })
+  );
+  // After a reset: "Password changed", then Log in with the email filled in (developer, 2026-11-23).
+  check(
+    'the done step says the password changed and asks for a log in with it',
+    /: 'Password changed'\}/.test(page) &&
+      /const LOG_IN_WITH_NEW = 'Log in with your new password\.';/.test(page) &&
+      /<PrimaryButton label="Log in" onPress=\{logIn\} \/>/.test(page) &&
+      /if \(step === 'done'\) logIn\(\);/.test(page)
+  );
+  check(
+    'its Log in goes back to Log in with the email, new each time',
+    /leavingRef\.current = true;\s*router\.dismissTo\(\{ pathname: '\/login', params: \{ email: email\.trim\(\), reset: String\(Date\.now\(\)\) \} \}\);/.test(page)
+  );
+  check(
+    'and so does every other way back from the done step: no iOS swipe, and Android back is caught',
+    /navigation\.setOptions\(\{ gestureEnabled: step !== 'done' \}\);/.test(page) &&
+      /if \(step !== 'done'\) return;\s*return navigation\.addListener\('beforeRemove', \(event\) => \{\s*if \(leavingRef\.current\) return;\s*event\.preventDefault\(\);\s*logIn\(\);/.test(page)
+  );
+  check(
+    'Log in fills in that email and empties the password box for the new password',
+    /if \(typeof params\.reset !== 'string' \|\| typeof params\.email !== 'string'\) return;\s*setLogin\(params\.email\);\s*setPassword\(''\);/.test(login) &&
+      /setAutoFocusField\('password'\);\s*setAttemptId\(\(n\) => n \+ 1\);\s*\}, \[params\.email, params\.reset\]\);/.test(login)
   );
 }
 

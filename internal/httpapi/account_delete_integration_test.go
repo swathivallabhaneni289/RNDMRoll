@@ -16,7 +16,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
@@ -46,7 +45,7 @@ const (
 
 // deleteWorld is a feed world (one Fixed clock, everyone in New York) whose
 // server also mounts the phone's push token route and the three Forgot
-// password routes (their codes go to box, with no answer floor). It keeps
+// password routes (their emails go to box, with no answer floor). It keeps
 // the pool: some checks only the database can answer, and only SQL can move
 // an ask back in time.
 type deleteWorld struct {
@@ -66,14 +65,12 @@ func newDeleteWorld(t *testing.T) *deleteWorld {
 	engine := buildIntegrationServerWith(t, pool, integrationOptions{clock: clk,
 		wire: func(_ *social.Service, _ *board.Service, deps *Deps) {
 			deps.PushTokens = NewPushTokenHandler(postgres.NewPushRepo(pool))
-			w.reset = NewPasswordResetHandler(postgres.NewUserRepo(pool),
-				auth.NewRefreshService(postgres.NewRefreshTokenRepo(pool), time.Hour),
-				postgres.NewPasswordResetRepo(pool), w.box, integrationJWTSecret, 15*time.Minute)
+			w.reset = NewPasswordResetHandler(postgres.NewUserRepo(pool), postgres.NewPasswordResetRepo(pool), w.box, integrationJWTSecret)
 			w.reset.floor = 0
 			deps.PasswordReset = w.reset
 		}}).Engine()
-	// The code emails go out after the answer: they finish before the
-	// truncate (cleanups run last first).
+	// The emails go out after the answer: they finish before the truncate
+	// (cleanups run last first).
 	t.Cleanup(w.reset.Wait)
 	w.feedWorld = &feedWorld{t: t, engine: engine, clk: clk}
 	return w
@@ -183,7 +180,8 @@ func (w *deleteWorld) verifyCode(email, code string) *httptest.ResponseRecorder 
 		map[string]any{"email": email, "code": code})
 }
 
-// resetPassword sends a Forgot password reset.
+// resetPassword sends a Forgot password reset and waits for any email it
+// started.
 func (w *deleteWorld) resetPassword(email, code, newPassword string) *httptest.ResponseRecorder {
 	w.t.Helper()
 	rec := integrationDo(w.t, w.engine, http.MethodPost, "/v1/auth/password/reset", "",
@@ -334,6 +332,7 @@ func TestDeleteAccountIntegration_AsksAndEndsEverySession(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["reason"] != reasonWrongCode {
 		t.Fatalf("a reset with the code sent before the ask: %d %s, want 400 wrong_code", rec.Code, rec.Body.String())
 	}
+	w.box.wantChanged(t, "a reset with the code sent before the ask")
 
 	// Both phones' access tokens are refused at once, and so are their
 	// refresh tokens. Those were revoked with the ask, so a refresh answers
@@ -860,8 +859,9 @@ func TestDeleteAccountIntegration_LogInInsideGraceRestores(t *testing.T) {
 // Inside the grace period a Forgot password reset keeps the account too: the
 // code is still sent, verify passes it and cancels nothing, and the reset
 // changes the password and cancels the deletion in one transaction and says
-// so once with "restored": true. The new password logs in, the old one does
-// not, and a later reset is an ordinary one with no restored key.
+// so once with "restored": true, and nothing else: no session. The new
+// password logs in, an ordinary log in whose session works, the old one does
+// not, and a later reset is an ordinary one that answers {}.
 func TestDeleteAccountIntegration_ResetInsideGraceRestores(t *testing.T) {
 	w := newDeleteWorld(t)
 	b, _ := w.account("dr_bob", "Bob Brown")
@@ -886,35 +886,35 @@ func TestDeleteAccountIntegration_ResetInsideGraceRestores(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reset inside the grace period: %d %s, want 200", rec.Code, rec.Body.String())
 	}
-	body := decodeBody(t, rec)
-	if body["restored"] != true || dig(t, body, "user", "id") != b.id {
-		t.Fatalf("reset inside the grace period: %s, want B's session with restored true", rec.Body.String())
+	if body := decodeBody(t, rec); body["restored"] != true || len(body) != 1 {
+		t.Fatalf("reset inside the grace period: %s, want exactly restored true and no session", rec.Body.String())
 	}
 	if at := w.requestedAt(b.id); at != nil {
 		t.Fatalf("the reset left deletion_requested_at at %v", at)
 	}
-	b.token = body["access_token"].(string)
-	w.ok(b, http.MethodGet, "/v1/me", nil)
+	w.box.wantChanged(t, "the reset inside the grace period", email)
 
-	// The new password logs in, an ordinary log in; the old one does not.
+	// The new password logs in, an ordinary log in, and its session works;
+	// the old one does not.
 	login := w.logIn(email, fresh)
 	if login.Code != http.StatusOK {
 		t.Fatalf("log in with the new password: %d %s", login.Code, login.Body.String())
 	}
-	if v, present := decodeBody(t, login)["restored"]; present {
+	body := decodeBody(t, login)
+	if v, present := body["restored"]; present {
 		t.Fatalf("log in after the reset carries restored: %v, want no such key", v)
 	}
+	b.token = body["access_token"].(string)
+	w.ok(b, http.MethodGet, "/v1/me", nil)
 	assertInvalidCredentials(t, w.logIn(email, deleteTestPassword))
 
-	// A later reset is an ordinary one.
+	// A later reset is an ordinary one: {} and nothing else.
 	w.askForgot(email)
 	again := w.resetPassword(email, w.box.lastCode(t, email), "Third-password-3!")
-	if again.Code != http.StatusOK {
-		t.Fatalf("a later reset: %d %s", again.Code, again.Body.String())
+	if again.Code != http.StatusOK || strings.TrimSpace(again.Body.String()) != "{}" {
+		t.Fatalf("a later reset: %d %s, want 200 {}", again.Code, again.Body.String())
 	}
-	if v, present := decodeBody(t, again)["restored"]; present {
-		t.Fatalf("a later reset carries restored: %v, want no such key", v)
-	}
+	w.box.wantChanged(t, "a later reset", email, email)
 }
 
 // Past the grace period nothing brings the account back, and nothing tells a
@@ -994,4 +994,5 @@ func TestDeleteAccountIntegration_NoRestorePastGrace(t *testing.T) {
 	if w.passwordHashOf(d.id) != danHash || w.requestedAt(d.id) == nil {
 		t.Fatal("a reset with a code from inside the grace period, once it is over, changed the password or cancelled the ask")
 	}
+	w.box.wantChanged(t, "resets past the grace period")
 }

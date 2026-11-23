@@ -264,8 +264,8 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
-	// Change password never cancels a deletion (changePassword says why).
-	if _, err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent, false); err != nil {
+	// Change password never cancels a deletion (resetPassword says why).
+	if err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -297,12 +297,7 @@ func (r *UserRepo) SetPassword(ctx context.Context, userID uuid.UUID, passwordHa
 	if tag.RowsAffected() == 0 {
 		return unchangedAccount(ctx, tx, userID)
 	}
-	for range 2 {
-		if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
-			return err
-		}
-	}
-	if _, err := tx.Exec(ctx, deletePushTokensQ, userID); err != nil {
+	if err := endSessions(ctx, tx, userID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -317,59 +312,90 @@ var setHashQ = `update users set password_hash = $2 where id = $1 and disabled_a
 	and (deletion_requested_at is null or ($3::boolean and ` + insideGrace("deletion_requested_at") + `))`
 
 // changePassword is ChangePassword's writes, as steps of the caller's
-// transaction tx (ChangePassword says why the revoke runs twice). Forgot
-// password runs them in the transaction that spends its code
-// (PasswordResetRepo.SpendAndChangePassword), so both changes follow one set
-// of rules. The tables come in the order every session write takes them
-// (session_locks.go): the account, then every refresh token, the second
-// revoke included, and the push tokens last. Going back to the refresh
-// tokens after the push tokens is what once let a phone saving its push
-// token and a password change wait on each other.
-//
-// restore is true for Forgot password only. Inside the grace period of a
-// deletion the owner asked for, a reset changes the password and cancels the
-// deletion, as log in does: the person has shown they hold the account's
-// email. restored reports whether this call cancelled one. Change password
-// never restores: no signed-in request outlives the ask (RequireUser), and
-// one already in flight when the ask lands must not quietly undo it, so it
-// is refused like a disabled account.
-func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string, restore bool) (restored bool, err error) {
-	tag, err := tx.Exec(ctx, setHashQ, userID, passwordHash, restore)
+// transaction tx (ChangePassword says why the revoke runs twice). The tables
+// come in the order every session write takes them (session_locks.go): the
+// account, then every refresh token, the second revoke included, and the
+// push tokens last. Going back to the refresh tokens after the push tokens is
+// what once let a phone saving its push token and a password change wait on
+// each other.
+func changePassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) error {
+	tag, err := tx.Exec(ctx, setHashQ, userID, passwordHash, false)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return false, unchangedAccount(ctx, tx, userID)
-	}
-	if restore {
-		// setHash holds the row, so this sees the ask exactly as it saw it.
-		tag, err := tx.Exec(ctx, `update users set deletion_requested_at = null where id = $1 and deletion_requested_at is not null`, userID)
-		if err != nil {
-			return false, err
-		}
-		restored = tag.RowsAffected() == 1
+		return unchangedAccount(ctx, tx, userID)
 	}
 
 	if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
-		return false, err
+		return err
 	}
 	const insertToken = `insert into refresh_tokens (id, user_id, token_hash, expires_at, user_agent) values ($1, $2, $3, $4, $5::text)`
 	if _, err := tx.Exec(ctx, insertToken, sessionID, userID, newTokenHash, expiresAt, userAgent); err != nil {
-		return false, err
+		return err
 	}
 	const revokeOthers = `update refresh_tokens set revoked_at = now() where id in (
 		select id from refresh_tokens where user_id = $1 and revoked_at is null and id <> $2 order by id for no key update)`
 	if _, err := tx.Exec(ctx, revokeOthers, userID, sessionID); err != nil {
-		return false, err
+		return err
 	}
 
 	// Every phone the account was signed in on stops getting its pushes: their
 	// sessions are over, and their tokens go too. The phone that made the
 	// change sends its token again with its new session.
 	if _, err := tx.Exec(ctx, deletePushTokensQ, userID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// resetPassword is Forgot password's writes, as steps of the transaction that
+// spends its code (PasswordResetRepo.SpendAndChangePassword), in the order of
+// session_locks.go: it stores the new hash, then ends every session the
+// account had (endSessions) and makes no new one, so the person logs in with
+// the new password (developer, 2026-11-23, after OWASP's "Don't
+// automatically log the user in").
+//
+// Inside the grace period of a deletion the owner asked for, a reset changes
+// the password and cancels the deletion, as log in does: the person has
+// shown they hold the account's email. restored reports whether this call
+// cancelled one. Change password never restores: no signed-in request
+// outlives the ask (RequireUser), and one already in flight when the ask
+// lands must not quietly undo it, so it is refused like a disabled account.
+func resetPassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string) (restored bool, err error) {
+	tag, err := tx.Exec(ctx, setHashQ, userID, passwordHash, true)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, unchangedAccount(ctx, tx, userID)
+	}
+	// setHash holds the row, so this sees the ask exactly as it saw it.
+	tag, err = tx.Exec(ctx, `update users set deletion_requested_at = null where id = $1 and deletion_requested_at is not null`, userID)
+	if err != nil {
+		return false, err
+	}
+	restored = tag.RowsAffected() == 1
+	if err := endSessions(ctx, tx, userID); err != nil {
 		return false, err
 	}
 	return restored, nil
+}
+
+// endSessions ends every app session the account userID had, as steps of the
+// caller's transaction tx, and deletes its push tokens: every phone it was
+// signed in on is signed out at its next refresh and gets no more pushes. The
+// revoke runs twice (ChangePassword says why), and the push tokens come last
+// (session_locks.go). SetPassword and resetPassword, which make no session of
+// their own, end them here.
+func endSessions(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	for range 2 {
+		if _, err := tx.Exec(ctx, revokeAllQ, userID); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx, deletePushTokensQ, userID)
+	return err
 }
 
 // unchangedAccount says why the account userID matched no update: it is gone

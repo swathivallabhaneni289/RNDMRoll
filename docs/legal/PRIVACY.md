@@ -39,7 +39,7 @@ Photo files can hold details your phone saved in them, such as when and where a 
 
 - To run RNDMRoll: make your account, open your spin at 8 PM your time, save your posts and show them to the people allowed to see them.
 - To count your week: posted days, the weekly goal, bonus spins and your week streak.
-- To send what you asked for: the 8 PM reminder, notifications in the app, phone notifications when they are on, and password reset codes by email.
+- To send what you asked for: the 8 PM reminder, notifications in the app, phone notifications when they are on, and password reset codes by email, then an email once your password has changed.
 - To keep people safe: limit repeated tries, review reports and second looks, hide reported posts and comments, remove content or disable accounts that break the Terms of Use, and keep a record of those decisions.
 - To find and fix problems.
 
@@ -70,7 +70,7 @@ Photos are kept in private storage at Supabase. A photo opens only through a lin
 A few companies help run RNDMRoll. We give them only what they need to provide their service to us:
 
 - Supabase keeps our database and photos in Singapore, so it stores the information in this policy. Your phone sends and loads photos directly with Supabase, so it also sees your IP address. Our server runs on a computer we control, and its logs stay there.
-- Resend sends password reset codes by email. It receives your email address and the code.
+- Resend sends password reset codes, and the email that your password has changed. It receives your email address and what the email says.
 - Expo and Apple deliver phone notifications when those are on. They receive your push token, your phone's device token, the words of the notification, such as a friend's first name and the start of their comment, and the ID numbers the app uses to open the right page.
 
 ## On your phone
@@ -86,7 +86,7 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 
 ## How long we keep it
 
-- Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in before then.
+- Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in, or reset your password, before then.
 - When you delete a post, it is deleted with its photos and its comments, including photos in those comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.
 - When we remove a post or comment, it is hidden from everyone at once, you included, and kept for 30 days in case we got it wrong. Then it is deleted with its photos and with any comments or replies under it. Your spin for that day, and the fact that you posted, stay.
 - Some photo files can stay in storage after what they belonged to is gone: photos you uploaded but never posted or sent, and, rarely, a photo whose removal failed. The server makes no new links for these files, so any link to one stops working within an hour. We delete all of your photo files when your account is deleted.
@@ -107,7 +107,7 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 - In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.
 - Ask for a copy of your information, or ask us to correct it, by emailing  from the address on your account. We'll answer within 30 days.
 - Ask for a second look at a post or comment we removed: tap the message about it in the app, tell us why it should come back and add up to 3 photos if they help. You can ask once for each removal, within 30 days of it. To ask about a disabled account, email us at .
-- Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in before then keeps it. Copies in server logs are cleared on their normal schedule.
+- Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in, or resetting your password, before then keeps it. Copies in server logs are cleared on their normal schedule.
 
 Depending on where you live, the law may give you more rights over your information, such as the right to complain to a data protection authority. Email us and we will help.
 

@@ -81,7 +81,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. A post or comment you report is gone for you, and one that 3 people report is hidden until an admin looks. Reports go to an admin web page, one card per reported thing, and the admin gets an email. The admin can disable an account, or remove content, which is kept 30 days in case it should come back; its owner is told in the app and can ask there for a second look, with their words and up to 3 photos.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies and follow requests (built, off for now).
-- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in.
+- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in or reset your password.
 
 ## How I built it with Claude
 

@@ -38,10 +38,18 @@ export interface SessionTokens {
 export type AuthResult = SessionTokens & {
   user: ApiUser;
   /**
-   * True on a log in or a Forgot password reset that cancelled the account's pending deletion (it
-   * was asked for less than 30 days before; POST /me/delete). Left out otherwise, so read it with
-   * `=== true`.
+   * True on a log in that cancelled the account's pending deletion (it was asked for less than 30
+   * days before; POST /me/delete). Left out otherwise, so read it with `=== true`.
    */
+  restored?: boolean;
+};
+
+/**
+ * The answer of POST /auth/password/reset: the password is set and every session ended, with no
+ * new one (developer, 2026-11-23: the person then logs in with it). `restored` is true when the
+ * reset also cancelled a pending deletion, as on AuthResult; left out otherwise.
+ */
+export type ResetResult = {
   restored?: boolean;
 };
 

@@ -189,7 +189,7 @@ func TestSessionLocks_EverythingAtOnceNeverDeadlocks(t *testing.T) {
 			if _, _, err := resets.Try(ctx, owner.ID, code, at, 5); err != nil {
 				fail("try the code", err)
 			}
-			_, err := resets.SpendAndChangePassword(ctx, owner.ID, code, "reset-hash", uuid.New(), randomTokenHash(t), expires, nil)
+			_, err := resets.SpendAndChangePassword(ctx, owner.ID, code, "reset-hash")
 			if !expected(err) {
 				fail("reset", err)
 			}

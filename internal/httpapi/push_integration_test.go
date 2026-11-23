@@ -372,7 +372,10 @@ func TestPushIntegration_AccessTokenWithoutASession(t *testing.T) {
 // Change password ends every session's pushes, the other phone's too, even
 // though that phone's access token can still save its token for a few
 // minutes. The phone that changed it gets its pushes back by saving its token
-// with its new session. A reset does the same.
+// with its new session. A reset ends them too, the session of the phone that
+// changed the password included, and makes no session of its own: a phone
+// gets its pushes back once it logs in with the new password and saves its
+// token.
 func TestPushIntegration_PasswordChangeAndResetEndPushes(t *testing.T) {
 	w := newPushWorld(t)
 	id, phoneA := w.signUp("ps_change")
@@ -390,11 +393,13 @@ func TestPushIntegration_PasswordChangeAndResetEndPushes(t *testing.T) {
 	w.saveToken(changed.AccessToken, tokA)
 	w.wantPushedTo("the phone that changed it saves its token", id, tokA)
 
-	// Forgot password on phone B: every session ends again, and B's new one
-	// gets its pushes once it saves its token.
+	// Forgot password on phone B: every session ends again, none is made (the
+	// answer carries no session), and the push tokens go. Phone A's session
+	// from the change is over too: saving its token with it brings nothing
+	// back. Phone B logs in with the new password and gets its pushes once it
+	// saves its token with that session.
 	box := &captureSender{}
-	reset := NewPasswordResetHandler(postgres.NewUserRepo(w.pool), auth.NewRefreshService(postgres.NewRefreshTokenRepo(w.pool), time.Hour),
-		postgres.NewPasswordResetRepo(w.pool), box, integrationJWTSecret, 15*time.Minute)
+	reset := NewPasswordResetHandler(postgres.NewUserRepo(w.pool), postgres.NewPasswordResetRepo(w.pool), box, integrationJWTSecret)
 	reset.floor = 0
 	t.Cleanup(reset.Wait)
 	routes := gin.New()
@@ -403,12 +408,24 @@ func TestPushIntegration_PasswordChangeAndResetEndPushes(t *testing.T) {
 	reset.Wait()
 	rec := integrationDo(t, routes, http.MethodPost, "/v1/auth/password/reset", "",
 		map[string]any{"email": "ps_change@example.com", "code": box.lastCode(t, "ps_change@example.com"), "new_password": "Third-password-3!"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("reset: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "{}" {
+		t.Fatalf("reset: %d %s, want 200 {} and no session", rec.Code, rec.Body.String())
+	}
+	reset.Wait()
+	for what, q := range map[string]string{"live sessions": deleteLiveSessionsQ, "push tokens": deletePushTokensQ} {
+		var n int
+		if err := w.pool.QueryRow(context.Background(), q, uuid.MustParse(id)).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("after the reset: %d %s (err %v), want none", n, what, err)
+		}
 	}
 	w.wantPushedTo("after the reset", id)
-	w.saveToken(decodeBody(t, rec)["access_token"].(string), tokB)
-	w.wantPushedTo("the phone that reset it saves its token", id, tokB)
+	w.refreshRefused("the session the change made, after the reset", changed.RefreshToken)
+	w.saveToken(changed.AccessToken, tokA)
+	w.wantPushedTo("the phone that changed it saves its token with its ended session", id)
+	again := w.session("/v1/auth/login", "", map[string]any{"login": "ps_change", "password": "Third-password-3!"})
+	w.saveToken(again.AccessToken, tokB)
+	w.wantPushedTo("the phone that reset it logs in and saves its token", id, tokB)
+	box.wantChanged(t, "the reset", "ps_change@example.com")
 }
 
 // An admin's disable ends the pushes, and enabling the account again does

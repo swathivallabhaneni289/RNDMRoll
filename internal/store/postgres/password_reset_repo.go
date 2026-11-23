@@ -81,10 +81,10 @@ func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, codeHash 
 }
 
 // SpendAndChangePassword deletes the person's code if it is still codeHash
-// and, in the same transaction, changes their password as
-// UserRepo.ChangePassword does (the new session's refresh token is stored
-// under sessionID), except that inside the grace period of a deletion the
-// owner asked for it also cancels the deletion (restored is true then): both
+// and, in the same transaction, changes their password and ends every session
+// the account had, making no new one (resetPassword): the person then logs in
+// with the new password. Inside the grace period of a deletion the owner
+// asked for, it also cancels the deletion (restored is true then). Both
 // commit or neither does, so a change that fails or is
 // given up part way leaves the code as it was. Only one request can spend a
 // code: the delete holds the code's row until the end, so a second request
@@ -98,9 +98,9 @@ func (r *PasswordResetRepo) Try(ctx context.Context, userID uuid.UUID, codeHash 
 // when a newer code replaced this one meanwhile, and user.ErrResetCodeUsed
 // when another request spent it. A disabled account, and one past its
 // deletion grace period, is also refused when the code is still there
-// (changePassword), and keeps its code.
+// (resetPassword), and keeps its code.
 func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
-	passwordHash string, sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) (restored bool, err error) {
+	passwordHash string) (restored bool, err error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -114,15 +114,25 @@ func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID u
 	if tag.RowsAffected() == 0 {
 		return false, whyNotSpent(ctx, tx, userID, codeHash)
 	}
-	restored, err = changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent, true)
+	restored, err = resetPassword(ctx, tx, userID, passwordHash)
 	if err != nil {
 		return false, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	// Only the commit outlives the request. A client that gives up before it
+	// still rolls the change back and keeps its code, but one that gives up
+	// while the commit is on its way can no longer make a change that went
+	// through look failed, which would skip the email telling the owner.
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetCommitTimeout)
+	defer cancel()
+	if err := tx.Commit(commitCtx); err != nil {
 		return false, err
 	}
 	return restored, nil
 }
+
+// resetCommitTimeout bounds SpendAndChangePassword's commit, which runs past
+// the request.
+const resetCommitTimeout = 5 * time.Second
 
 // whyNotSpent says why the code codeHash, right when it was tried a moment
 // ago, was no longer there to spend. The account comes first, so one that is

@@ -221,8 +221,7 @@ func TestPasswordResetRepo_Spend_SaysWhyItCouldNotSpend(t *testing.T) {
 		}
 	}
 	spend := func(code string) error {
-		_, err := repo.SpendAndChangePassword(ctx, owner.ID, []byte(code), "hash-after-"+code, uuid.New(),
-			[]byte("spend-why-session-"+uuid.NewString()), start.Add(time.Hour), nil)
+		_, err := repo.SpendAndChangePassword(ctx, owner.ID, []byte(code), "hash-after-"+code)
 		return err
 	}
 	unchanged := func(what string) {
@@ -286,8 +285,7 @@ func TestPasswordResetRepo_Spend_SaysWhyItCouldNotSpend(t *testing.T) {
 	}
 
 	// An account that is gone.
-	_, err = repo.SpendAndChangePassword(ctx, uuid.New(), []byte("code-x"), "hash", uuid.New(),
-		[]byte("spend-why-gone-0000000000000001"), start.Add(time.Hour), nil)
+	_, err = repo.SpendAndChangePassword(ctx, uuid.New(), []byte("code-x"), "hash")
 	if !errors.Is(err, user.ErrNotFound) {
 		t.Fatalf("an account that is gone: %v, want ErrNotFound", err)
 	}

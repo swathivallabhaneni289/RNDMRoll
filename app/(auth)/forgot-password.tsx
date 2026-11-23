@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { PasswordChecklist } from '@/components/settings/PasswordChecklist';
 import { AppText } from '@/components/ui/AppText';
@@ -8,10 +8,9 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { api, ApiError } from '@/lib/api/client';
-import type { AuthResult } from '@/lib/api/types';
+import type { ResetResult } from '@/lib/api/types';
 import { answerLost, codeLine, maybeSpentByLostReset, SHORT_CODE, tooMany } from '@/lib/auth/resetPage';
-import { sayIfRestored } from '@/lib/auth/restored';
-import { useSession } from '@/lib/session/store';
+import { RESTORED_MESSAGE } from '@/lib/auth/restored';
 import { passwordProblem } from '@/lib/settings/rules';
 import { color, space } from '@/lib/theme/tokens';
 
@@ -44,8 +43,8 @@ const MAYBE_CHANGED = 'Something went wrong. If your password did change, log in
  * code could be wrong.
  */
 const MAYBE_CHANGED_AFTER = 'If your password did change, log in with the new one.';
-/** The new password is set, but this phone could not keep the new session. */
-const SET_LOG_IN = 'Your new password is set. Log in with it.';
+/** The done step's line: the password is set, and nobody is signed in by it. */
+const LOG_IN_WITH_NEW = 'Log in with your new password.';
 
 /**
  * Forgot password (developer, 2026-10-21), opened from Log in. Three steps on one page, as the new
@@ -54,16 +53,17 @@ const SET_LOG_IN = 'Your new password is set. Log in with it.';
  * (the same rules as sign-up, with the checklist). Set new password sends the checked code again,
  * and the server checks it once more before it spends it: if it expired, was replaced or was used
  * in between, the page goes back to the code step, which has Send a new code, and keeps the typed
- * password (after a lost answer, maybeChangedRef says which line it shows). The new password signs
- * you in at once and ends every other session. The server answers the same for any email, so the
- * page never says whether an account exists. A code that set the password is never sent again: if
- * this phone then cannot keep the new session, the page says the password is set and offers Log in
- * instead. A reset within 30 days of Delete account keeps the account, and says so once it has
- * signed in.
+ * password (after a lost answer, maybeChangedRef says which line it shows). Setting the new
+ * password ends every session the account had and signs nobody in, and the server emails the owner
+ * that it changed: the page says "Password changed" and its Log in goes back to Log in with this
+ * email filled in, for the new password (developer, 2026-11-23, after OWASP's "Don't automatically
+ * log the user in"). The server answers the same for any email, so the page never says whether an
+ * account exists. A code that set the password is never sent again. A reset within 30 days of
+ * Delete account keeps the account, and the done step says so.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const { signIn } = useSession();
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ email?: string | string[] }>();
   const [step, setStep] = useState<'email' | 'code' | 'password' | 'done'>('email');
   // An email typed on Log in comes filled in, so the page asks only for Send code (developer,
@@ -78,6 +78,8 @@ export default function ForgotPasswordScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The reset also cancelled a pending deletion: the done step says the account stays.
+  const [restored, setRestored] = useState(false);
   // Set as soon as a reset's answer says the code set the password, before anything else is
   // awaited: from then on the spent code is never sent again, not even to be checked, whatever
   // happens next.
@@ -89,10 +91,37 @@ export default function ForgotPasswordScreen() {
   // password. Until a new code is sent, a later answer, of the check or of a reset, that the code
   // is wrong or used says so again instead of the plain line about the code.
   const maybeChangedRef = useRef(false);
+  // True once logIn has started leaving, so the guard below lets that one through.
+  const leavingRef = useRef(false);
+
+  // Once the password is set, every way back goes where Log in does: the iOS swipe is off on the
+  // done step, and the guard turns any other way out (Android's back) into logIn.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: step !== 'done' });
+  }, [navigation, step]);
+  useEffect(() => {
+    if (step !== 'done') return;
+    return navigation.addListener('beforeRemove', (event) => {
+      if (leavingRef.current) return;
+      event.preventDefault();
+      logIn();
+    });
+    // logIn reads only the email, which the done step never changes.
+  }, [navigation, step]);
 
   function goBack() {
-    if (router.canGoBack()) router.back();
+    // Once the password is set, Back goes where Log in does.
+    if (step === 'done') logIn();
+    else if (router.canGoBack()) router.back();
     else router.replace('/login');
+  }
+
+  // Back to the Log in page this one was opened from (or a new one), with this email filled in and
+  // an empty password box. `reset` is new each time, so a second reset with the same email fills
+  // it in again (login.tsx).
+  function logIn() {
+    leavingRef.current = true;
+    router.dismissTo({ pathname: '/login', params: { email: email.trim(), reset: String(Date.now()) } });
   }
 
   function failure(err: unknown): string {
@@ -177,9 +206,9 @@ export default function ForgotPasswordScreen() {
     sendingRef.current = true;
     setFormError(null);
     setBusy(true);
-    let result: AuthResult;
+    let result: ResetResult;
     try {
-      result = await api.post<AuthResult>(
+      result = await api.post<ResetResult>(
         '/auth/password/reset',
         { email: email.trim(), code, new_password: password },
         { auth: false }
@@ -211,19 +240,10 @@ export default function ForgotPasswordScreen() {
       return;
     }
     spentRef.current = true;
-    try {
-      // The root guard routes the signed-in account to the app.
-      await signIn(result);
-      // This reset cancelled a pending deletion: "Welcome back" (developer, 2026-10-25).
-      sayIfRestored(result);
-    } catch {
-      // The password did change; only keeping the new session on this phone failed.
-      setStep('done');
-      setFormError(SET_LOG_IN);
-    } finally {
-      sendingRef.current = false;
-      setBusy(false);
-    }
+    setRestored(result.restored === true);
+    setStep('done');
+    sendingRef.current = false;
+    setBusy(false);
   }
 
   return (
@@ -242,7 +262,13 @@ export default function ForgotPasswordScreen() {
 
         <View style={{ marginTop: space.xl }}>
           <AppText role="heading" accessibilityRole="header">
-            {step === 'email' ? 'Forgot password' : step === 'code' ? 'Check your email' : 'Set a new password'}
+            {step === 'email'
+              ? 'Forgot password'
+              : step === 'code'
+                ? 'Check your email'
+                : step === 'password'
+                  ? 'Set a new password'
+                  : 'Password changed'}
           </AppText>
         </View>
         {step === 'email' || step === 'code' ? (
@@ -262,6 +288,20 @@ export default function ForgotPasswordScreen() {
             <View style={{ marginTop: space.xs }}>
               <AppText role="body" tone="muted">
                 {CHOOSE_PASSWORD}
+              </AppText>
+            </View>
+          </>
+        ) : null}
+        {step === 'done' ? (
+          <>
+            {restored ? (
+              <View style={{ marginTop: space.sm }}>
+                <AppText role="body">{RESTORED_MESSAGE}</AppText>
+              </View>
+            ) : null}
+            <View style={{ marginTop: restored ? space.xs : space.sm }}>
+              <AppText role="body" tone="muted">
+                {LOG_IN_WITH_NEW}
               </AppText>
             </View>
           </>
@@ -330,7 +370,7 @@ export default function ForgotPasswordScreen() {
           ) : step === 'password' ? (
             <PrimaryButton label="Set new password" onPress={reset} loading={busy} disabled={busy} />
           ) : (
-            <PrimaryButton label="Log in" onPress={goBack} />
+            <PrimaryButton label="Log in" onPress={logIn} />
           )}
         </View>
 

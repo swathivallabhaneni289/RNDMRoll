@@ -112,8 +112,7 @@ func TestPasswordResetRepo_Try_CountsOnlyAWrongCode(t *testing.T) {
 	e := []byte("code-e")
 	issue(e, later.Add(2*time.Minute))
 	try(owner.ID, d, later.Add(2*time.Minute), false, true, 1)
-	if _, err := repo.SpendAndChangePassword(ctx, owner.ID, e, "new-bcrypt-hash", uuid.New(),
-		[]byte("try-test-session-token-0000001"), later.Add(time.Hour), nil); err != nil {
+	if _, err := repo.SpendAndChangePassword(ctx, owner.ID, e, "new-bcrypt-hash"); err != nil {
 		t.Fatalf("SpendAndChangePassword: %v", err)
 	}
 	if _, ok := resetTries(t, pool, owner.ID); ok {
@@ -225,5 +224,182 @@ func TestPasswordResetRepo_Issue_GivesADisabledAccountNoCode(t *testing.T) {
 	setDisabled(false)
 	if !issue("issue-disabled-4", now.Add(2*time.Minute)) || code() != "issue-disabled-4" {
 		t.Fatalf("enabled again, the code was not replaced: %q", code())
+	}
+}
+
+// A spend changes the password and ends every session the account had, on
+// every phone, and makes none of its own: no refresh token of the account is
+// live after it, none was added, and its push tokens are gone with the code.
+// Another account keeps its own. The person then logs in with the new
+// password.
+func TestPasswordResetRepo_Spend_EndsEverySessionAndMakesNone(t *testing.T) {
+	pool := requireTestPool(t)
+	users := postgres.NewUserRepo(pool)
+	repo := postgres.NewPasswordResetRepo(pool)
+	ctx := context.Background()
+	now := time.Now()
+	owner, err := users.CreateComplete(ctx, newAccount("spend-ends@example.com", "spend_ends"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := users.CreateComplete(ctx, newAccount("spend-ends-other@example.com", "spend_ends_other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	codes := map[uuid.UUID][]byte{owner.ID: []byte("spend-ends-owner-code"), other.ID: []byte("spend-ends-other-code")}
+	for id, tag := range map[uuid.UUID]string{owner.ID: "spend-owner", other.ID: "spend-other"} {
+		signedIn(t, pool, id, tag)
+		if stored, err := repo.Issue(ctx, id, codes[id], now.Add(30*time.Minute), now, now.Add(-time.Minute), 5); err != nil || !stored {
+			t.Fatalf("Issue: stored %v, err %v", stored, err)
+		}
+	}
+	sessions := rowsOf(t, pool, "refresh_tokens", owner.ID)
+
+	restored, err := repo.SpendAndChangePassword(ctx, owner.ID, codes[owner.ID], "reset-bcrypt-hash")
+	if err != nil || restored {
+		t.Fatalf("SpendAndChangePassword: restored %v, err %v, want false and no error", restored, err)
+	}
+	if got := storedPasswordHash(t, pool, owner.ID); got != "reset-bcrypt-hash" {
+		t.Fatalf("stored hash = %q, want the new one", got)
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 0 {
+		t.Errorf("%d sessions still live, want none", n)
+	}
+	if n := rowsOf(t, pool, "refresh_tokens", owner.ID); n != sessions {
+		t.Errorf("%d refresh tokens stored, want the %d there were: a spend makes no session", n, sessions)
+	}
+	for _, table := range []string{"push_tokens", "password_resets"} {
+		if n := rowsOf(t, pool, table, owner.ID); n != 0 {
+			t.Errorf("%d %s rows left, want none", n, table)
+		}
+	}
+
+	if got := storedPasswordHash(t, pool, other.ID); got != "bcrypt-hash" {
+		t.Errorf("another account's hash changed to %q", got)
+	}
+	if n := activeTokenCount(t, pool, other.ID); n != 2 {
+		t.Errorf("another account has %d live sessions, want its 2", n)
+	}
+	for _, table := range []string{"push_tokens", "password_resets"} {
+		if n := rowsOf(t, pool, table, other.ID); n != 1 {
+			t.Errorf("another account has %d %s rows, want its 1", n, table)
+		}
+	}
+}
+
+// Inside the grace period of a deletion its owner asked for, a spend also
+// cancels the deletion and says so (restored). A later spend, with nothing
+// asked any more, restores nothing.
+func TestPasswordResetRepo_Spend_CancelsADeletionInsideTheGracePeriod(t *testing.T) {
+	pool := requireTestPool(t)
+	users := postgres.NewUserRepo(pool)
+	repo := postgres.NewPasswordResetRepo(pool)
+	ctx := context.Background()
+	now := time.Now()
+	leaving, err := users.CreateComplete(ctx, newAccount("spend-leaving@example.com", "spend_leaving"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := users.RequestDeletion(ctx, leaving.ID); err != nil {
+		t.Fatal(err)
+	}
+	spend := func(code, hash string, at time.Time) bool {
+		t.Helper()
+		if stored, err := repo.Issue(ctx, leaving.ID, []byte(code), at.Add(30*time.Minute), at, at.Add(-time.Minute), 5); err != nil || !stored {
+			t.Fatalf("Issue(%s): stored %v, err %v", code, stored, err)
+		}
+		restored, err := repo.SpendAndChangePassword(ctx, leaving.ID, []byte(code), hash)
+		if err != nil {
+			t.Fatalf("SpendAndChangePassword(%s): %v", code, err)
+		}
+		return restored
+	}
+
+	if !spend("spend-leaving-code-1", "reset-bcrypt-hash", now) {
+		t.Fatal("a spend inside the grace period did not say it restored the account")
+	}
+	var asked *time.Time
+	if err := pool.QueryRow(ctx, `select deletion_requested_at from users where id = $1`, leaving.ID).Scan(&asked); err != nil || asked != nil {
+		t.Fatalf("after the spend deletion_requested_at is %v (err %v), want none", asked, err)
+	}
+	if got := storedPasswordHash(t, pool, leaving.ID); got != "reset-bcrypt-hash" {
+		t.Fatalf("stored hash = %q, want the new one", got)
+	}
+	if spend("spend-leaving-code-2", "reset-bcrypt-hash-2", now.Add(2*time.Minute)) {
+		t.Fatal("a later spend said it restored the account again")
+	}
+}
+
+// A refresh on another phone that is in flight while a reset spends its code
+// (it has inserted its new token and holds the lock on its old one, and has
+// not committed) must not leave a live session behind. The spend waits for
+// that lock; the token the refresh then commits was invisible to its first
+// revoke, so only the second revoke can end it. No session of the account is
+// live after the spend.
+func TestPasswordResetRepo_Spend_RevokesARefreshThatCommitsWhileItRuns(t *testing.T) {
+	pool := requireTestPool(t)
+	users := postgres.NewUserRepo(pool)
+	tokens := postgres.NewRefreshTokenRepo(pool)
+	repo := postgres.NewPasswordResetRepo(pool)
+	ctx := context.Background()
+	now := time.Now()
+	expires := now.Add(time.Hour)
+	owner, err := users.CreateComplete(ctx, newAccount("spend-inflight@example.com", "spend_inflight"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldID, err := tokens.Insert(ctx, owner.ID, []byte("spend-inflight-old-token-00001"), expires, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := []byte("spend-inflight-code")
+	if stored, err := repo.Issue(ctx, owner.ID, code, now.Add(30*time.Minute), now, now.Add(-time.Minute), 5); err != nil || !stored {
+		t.Fatalf("Issue: stored %v, err %v", stored, err)
+	}
+
+	// The other phone's refresh, stopped just before its commit.
+	rotating, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rotating.Rollback(ctx) //nolint:errcheck // a no-op once committed; frees the lock if the test stops early
+	rotatedHash := []byte("spend-inflight-rotated-0000001")
+	var rotatedID uuid.UUID
+	if err := rotating.QueryRow(ctx, `insert into refresh_tokens (user_id, token_hash, expires_at) values ($1, $2, $3) returning id`,
+		owner.ID, rotatedHash, expires).Scan(&rotatedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rotating.Exec(ctx, `update refresh_tokens set revoked_at = now(), rotated_to = $1 where id = $2 and revoked_at is null`,
+		rotatedID, oldID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The reset spends its code and has to wait for that row.
+	done := make(chan error, 1)
+	go func() {
+		_, err := repo.SpendAndChangePassword(ctx, owner.ID, code, "reset-bcrypt-hash")
+		done <- err
+	}()
+	waitForALockWait(t, pool)
+	if err := rotating.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SpendAndChangePassword: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("SpendAndChangePassword never finished")
+	}
+
+	if got := storedPasswordHash(t, pool, owner.ID); got != "reset-bcrypt-hash" {
+		t.Errorf("stored hash = %q, want the new one", got)
+	}
+	if liveToken(t, tokens, rotatedHash) {
+		t.Error("the token the refresh in flight committed is still live after the reset")
+	}
+	if n := activeTokenCount(t, pool, owner.ID); n != 0 {
+		t.Errorf("%d live refresh tokens after the reset, want none", n)
 	}
 }

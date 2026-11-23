@@ -923,8 +923,7 @@ func TestAdminIntegration_ANewPasswordEndsTheAdminSession(t *testing.T) {
 	// newResetWorld wires them, which would empty it first).
 	cookie = login(changed)
 	sender := &captureSender{}
-	reset := NewPasswordResetHandler(postgres.NewUserRepo(pool), auth.NewRefreshService(postgres.NewRefreshTokenRepo(pool), time.Hour),
-		postgres.NewPasswordResetRepo(pool), sender, integrationJWTSecret, 15*time.Minute)
+	reset := NewPasswordResetHandler(postgres.NewUserRepo(pool), postgres.NewPasswordResetRepo(pool), sender, integrationJWTSecret)
 	reset.floor = 0
 	t.Cleanup(reset.Wait)
 	routes := gin.New()
@@ -943,6 +942,7 @@ func TestAdminIntegration_ANewPasswordEndsTheAdminSession(t *testing.T) {
 	const resetTo = "Reset-horse-battery-staple3"
 	resetCall("/v1/auth/password/reset", map[string]any{"email": email, "code": code, "new_password": resetTo})
 	ended("a Forgot password reset", cookie)
+	sender.wantChanged(t, "a Forgot password reset", email)
 
 	cookie = login(resetTo)
 	const setTo = "Set-horse-battery-staple4"

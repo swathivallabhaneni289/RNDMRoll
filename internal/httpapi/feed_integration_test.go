@@ -1002,8 +1002,9 @@ func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
 // Every answer that shows a person who has a profile photo sends its signed
 // link, not null: the follows lists and requests, the bell's actor, lookup,
 // search, the newest comment's writer on your posts list, the Blocked
-// accounts list, and the user a password change or a Forgot password reset
-// answers with. wantSignedPhotoLinks lets null through, so this is what
+// accounts list, the user a password change answers with, and, after a
+// Forgot password reset (which answers no user), the user of the log in with
+// the new password. wantSignedPhotoLinks lets null through, so this is what
 // fails when a handler is not given the link.
 func TestIntegration_EveryPersonCarriesTheSignedProfilePhoto(t *testing.T) {
 	w := newDeleteWorld(t)
@@ -1052,7 +1053,7 @@ func TestIntegration_EveryPersonCarriesTheSignedProfilePhoto(t *testing.T) {
 	wantPhoto("A's Blocked accounts list", dig(t, w.ok(a, http.MethodGet, "/v1/me/blocks", nil)["items"].([]any)[0], "user", "photo_url"), c)
 
 	// Last, since each ends the sessions: A changes the password, then B
-	// resets it with Forgot password.
+	// resets it with Forgot password and logs in with the new one.
 	changed := integrationDo(t, w.engine, http.MethodPost, "/v1/me/password", a.token,
 		map[string]any{"current_password": deleteTestPassword, "new_password": "Brand-new-password-2!"})
 	if changed.Code != http.StatusOK {
@@ -1062,8 +1063,12 @@ func TestIntegration_EveryPersonCarriesTheSignedProfilePhoto(t *testing.T) {
 	const bEmail = "pp_bob@example.com"
 	w.askForgot(bEmail)
 	reset := w.resetPassword(bEmail, w.box.lastCode(t, bEmail), "Brand-new-password-2!")
-	if reset.Code != http.StatusOK {
-		t.Fatalf("Forgot password reset: %d %s", reset.Code, reset.Body.String())
+	if reset.Code != http.StatusOK || strings.TrimSpace(reset.Body.String()) != "{}" {
+		t.Fatalf("Forgot password reset: %d %s, want 200 {} and no user", reset.Code, reset.Body.String())
 	}
-	wantPhoto("the user of a Forgot password reset", dig(t, decodeBody(t, reset), "user", "avatar_url"), b)
+	login := w.logIn(bEmail, "Brand-new-password-2!")
+	if login.Code != http.StatusOK {
+		t.Fatalf("log in with the new password: %d %s", login.Code, login.Body.String())
+	}
+	wantPhoto("the user of the log in after a Forgot password reset", dig(t, decodeBody(t, login), "user", "avatar_url"), b)
 }

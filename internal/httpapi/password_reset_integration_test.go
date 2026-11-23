@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,11 +18,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
+
+// changedSubject is the subject of the email a reset sends once the password
+// changed.
+const changedSubject = "Your RNDMRoll password was changed"
 
 // captureSender keeps every email instead of sending it.
 type captureSender struct {
@@ -36,16 +40,18 @@ func (s *captureSender) Send(_ context.Context, to, subject, _ string, text stri
 	return nil
 }
 
+// lastCode is the code in the last code email to `to`. The email a reset
+// sends once the password changed has no code, so it is passed over.
 func (s *captureSender) lastCode(t *testing.T, to string) string {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := len(s.sent) - 1; i >= 0; i-- {
-		if s.sent[i].to == to {
+		if s.sent[i].to == to && s.sent[i].subject != changedSubject {
 			return regexp.MustCompile(`\b\d{6}\b`).FindString(s.sent[i].text)
 		}
 	}
-	t.Fatalf("no email to %s", to)
+	t.Fatalf("no code email to %s", to)
 	return ""
 }
 
@@ -54,6 +60,29 @@ func (s *captureSender) count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sent)
+}
+
+// changed is whom each password-changed email went to, in order.
+func (s *captureSender) changed() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	to := []string{}
+	for _, m := range s.sent {
+		if m.subject == changedSubject {
+			to = append(to, m.to)
+		}
+	}
+	return to
+}
+
+// wantChanged checks that the password-changed emails went to exactly `to`,
+// one each and in order: none at all when `to` is empty. The emails go out
+// after the answer, so the caller waits for them first.
+func (s *captureSender) wantChanged(t *testing.T, what string, to ...string) {
+	t.Helper()
+	if got := s.changed(); !slices.Equal(got, to) {
+		t.Fatalf("%s: password-changed emails to %q, want %q", what, got, to)
+	}
 }
 
 // resetWorld is the three Forgot password routes over the real database, on a
@@ -65,6 +94,8 @@ type resetWorld struct {
 	routes *gin.Engine // the Forgot password routes
 	h      *PasswordResetHandler
 	now    time.Time
+	// failing is the code store resetFailing sends through (failingStore).
+	failing ResetStore
 }
 
 func newResetWorld(t *testing.T, sender mail.Sender) *resetWorld {
@@ -73,13 +104,12 @@ func newResetWorld(t *testing.T, sender mail.Sender) *resetWorld {
 	w := &resetWorld{t: t, pool: pool, now: time.Now()}
 	w.engine = buildIntegrationServerWith(t, pool, integrationOptions{}).Engine()
 	users := postgres.NewUserRepo(pool)
-	w.h = NewPasswordResetHandler(users, auth.NewRefreshService(postgres.NewRefreshTokenRepo(pool), time.Hour),
-		postgres.NewPasswordResetRepo(pool), sender, integrationJWTSecret, 15*time.Minute)
+	w.h = NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), sender, integrationJWTSecret)
 	w.h.now = func() time.Time { return w.now }
 	// No answer floor here: TestPasswordReset_EveryAnswerWaitsForTheFloor
 	// checks it, and the rest would wait for it on every reset.
 	w.h.floor = 0
-	// The email goes out after the answer: it finishes before the truncate
+	// The emails go out after the answer: they finish before the truncate
 	// (cleanups run last first).
 	t.Cleanup(w.h.Wait)
 	w.routes = gin.New()
@@ -129,16 +159,94 @@ func (w *resetWorld) codeTries(email string) (tries int, ok bool) {
 	return tries, true
 }
 
+// liveSessions is how many sessions of the account of email are live.
+func (w *resetWorld) liveSessions(email string) int {
+	w.t.Helper()
+	var n int
+	if err := w.pool.QueryRow(context.Background(), `
+		select count(*) from refresh_tokens r join users u on u.id = r.user_id
+		where u.email = $1 and r.revoked_at is null`, email).Scan(&n); err != nil {
+		w.t.Fatal(err)
+	}
+	return n
+}
+
+// failsAtLastWrite is a pgx tracer that stops the reset's last write, the
+// delete of the account's push tokens, before it is sent: it hands pgx a
+// context that has already ended. By then the reset has spent the code,
+// stored the new password and ended the sessions in its transaction, so all
+// of that has to roll back.
+type failsAtLastWrite struct{}
+
+func (failsAtLastWrite) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if !strings.HasPrefix(data.SQL, "delete from push_tokens") {
+		return ctx
+	}
+	ended, cancel := context.WithCancel(ctx)
+	cancel()
+	return ended
+}
+
+func (failsAtLastWrite) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// tracedStore is a code store on a pool of its own, whose connections show
+// tracer every statement before it is sent.
+func (w *resetWorld) tracedStore(tracer pgx.QueryTracer) ResetStore {
+	w.t.Helper()
+	cfg, err := pgxpool.ParseConfig(integrationTestDatabaseURL)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	cfg.ConnConfig.Tracer = tracer
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	w.t.Cleanup(pool.Close)
+	return postgres.NewPasswordResetRepo(pool)
+}
+
+// failingStore is the world's code store on a pool whose connections never
+// run the reset's last write (failsAtLastWrite). It is made the first time a
+// test asks for it.
+func (w *resetWorld) failingStore() ResetStore {
+	w.t.Helper()
+	if w.failing == nil {
+		w.failing = w.tracedStore(failsAtLastWrite{})
+	}
+	return w.failing
+}
+
+// cancelsAtCommit is a pgx tracer that runs cancel once, as the reset's
+// commit goes out: every write of the change is made by then, and this is
+// the moment a phone that gives up would end the request's context.
+type cancelsAtCommit struct {
+	once   sync.Once
+	cancel func()
+}
+
+func (c *cancelsAtCommit) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if data.SQL == "commit" {
+		c.once.Do(c.cancel)
+	}
+	return ctx
+}
+
+func (*cancelsAtCommit) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
 // resetFailing sends a reset whose change, should it get that far, fails at
-// its last write, after the new password: Postgres text cannot hold a NUL, so
-// the new session's device name cannot be stored.
+// its last write, after the new password and the ended sessions: for this one
+// request the code store cannot delete the account's push tokens
+// (failingStore), and the world's own store comes back after. It waits for
+// any email the reset started.
 func (w *resetWorld) resetFailing(email, code, password string, want int) {
 	w.t.Helper()
-	req := integrationRequest(w.t, http.MethodPost, "/v1/auth/password/reset", "",
+	kept := w.h.store
+	w.h.store = w.failingStore()
+	defer func() { w.h.store = kept }()
+	rec := integrationDo(w.t, w.routes, http.MethodPost, "/v1/auth/password/reset", "",
 		map[string]any{"email": email, "code": code, "new_password": password})
-	req.Header.Set("User-Agent", "phone\x00")
-	rec := httptest.NewRecorder()
-	w.routes.ServeHTTP(rec, req)
+	w.h.Wait()
 	if rec.Code != want {
 		w.t.Fatalf("a reset whose change cannot be stored: %d %s, want %d", rec.Code, rec.Body.String(), want)
 	}
@@ -147,7 +255,7 @@ func (w *resetWorld) resetFailing(email, code, password string, want int) {
 // resetGivenUp sends a reset and gives up while its change waits, as the app
 // does when the connection drops: another transaction holds the account's
 // row, so the change waits at its first write to it. It returns once the
-// reset has finished.
+// reset has finished, and any email it started.
 func (w *resetWorld) resetGivenUp(email, code, password string) {
 	t := w.t
 	t.Helper()
@@ -196,6 +304,7 @@ func (w *resetWorld) resetGivenUp(email, code, password string) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the given-up reset did not finish")
 	}
+	w.h.Wait()
 }
 
 // otherCode is a well-formed code that is not code.
@@ -237,13 +346,17 @@ func TestPasswordResetIntegration(t *testing.T) {
 	if got := w.reset("nobody@example.com", code, fresh, http.StatusBadRequest); fmt.Sprint(got) != fmt.Sprint(wrongBody) {
 		t.Fatalf("an unknown email: %v, want the wrong-code answer %v", got, wrongBody)
 	}
+	box.wantChanged(t, "a weak password, a wrong code and an unknown email")
 
-	// The right code: a new session, the new password works, the old one and
-	// the old session do not, and the code is used up.
-	got := w.reset(email, code, fresh, http.StatusOK)
-	if got["access_token"] == "" || dig(t, got, "user", "username") != "reset_me" {
-		t.Fatalf("session: %v", got)
+	// The right code: the answer is {} with no session in it, so the person
+	// logs in with the new password. It works, the old one and the old
+	// session do not, one email tells the account's own address (the email
+	// was typed another way) that the password changed, and the code is used
+	// up.
+	if got := w.reset("  RESET-me@Example.com ", code, fresh, http.StatusOK); len(got) != 0 {
+		t.Fatalf("the right code answered %v, want {} and no session", got)
 	}
+	box.wantChanged(t, "the right code", email)
 	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": fresh}); rec.Code != http.StatusOK {
 		t.Fatalf("new password: %d", rec.Code)
 	}
@@ -254,6 +367,7 @@ func TestPasswordResetIntegration(t *testing.T) {
 		t.Fatal("old session still works")
 	}
 	w.reset(email, code, "Another-password-3!", http.StatusBadRequest)
+	box.wantChanged(t, "the spent code again", email)
 
 	// Five wrong tries use the code up, even for the right code after.
 	w.forgot(email)
@@ -354,6 +468,9 @@ func TestPasswordResetIntegration_RightCodeAtOnceWorksOnce(t *testing.T) {
 	if len(won) != 1 {
 		t.Fatalf("one code changed the password %d times", len(won))
 	}
+	// Only the change that went through is emailed about.
+	w.h.Wait()
+	box.wantChanged(t, "the right code five times at once", email)
 	// The requests that lost gave nothing back: the spent code stays gone.
 	if tries, ok := w.codeTries(email); ok {
 		t.Fatalf("the spent code is back, with %d tries", tries)
@@ -527,15 +644,25 @@ func TestPasswordResetIntegration_FailedChangeKeepsTheCode(t *testing.T) {
 
 	w.resetFailing(email, code, fresh, http.StatusInternalServerError)
 
-	// Nothing changed: the code is still there with no try counted, the old
-	// password still works, and the same code sets the new one.
+	// Nothing changed: the code is still there with no try counted, the
+	// session the account had is still live, no email says the password
+	// changed, the old password still works, and the same code sets the new
+	// one, which ends both sessions.
 	if tries, ok := w.codeTries(email); !ok || tries != 0 {
 		t.Fatalf("after a failed change the code has %d tries (there: %v), want 0", tries, ok)
 	}
+	if n := w.liveSessions(email); n != 1 {
+		t.Fatalf("after a failed change %d sessions are live, want the 1 there was", n)
+	}
+	box.wantChanged(t, "a failed change")
 	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code != http.StatusOK {
 		t.Fatalf("old password after a failed change: %d", rec.Code)
 	}
 	w.reset(email, code, fresh, http.StatusOK)
+	if n := w.liveSessions(email); n != 0 {
+		t.Fatalf("after the reset %d sessions are live, want none", n)
+	}
+	box.wantChanged(t, "the same code after the failed change", email)
 }
 
 // The app giving up while the change waits leaves the code as it was.
@@ -549,10 +676,55 @@ func TestPasswordResetIntegration_CancelledChangeKeepsTheCode(t *testing.T) {
 
 	w.resetGivenUp(email, code, fresh)
 
+	box.wantChanged(t, "a given-up change")
 	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code != http.StatusOK {
 		t.Fatalf("old password after a given-up change: %d", rec.Code)
 	}
 	w.reset(email, code, fresh, http.StatusOK)
+}
+
+// The app giving up once every write of the change is made, as the commit
+// goes out, cannot make the change look failed: the commit runs on its own
+// deadline, not the request's. The reset answers 200 {}, the code is spent,
+// every session is over, the new password logs in and the old one does not,
+// and the password-changed email goes out. (Given up while the change still
+// waits, it rolls back: CancelledChangeKeepsTheCode.)
+func TestPasswordResetIntegration_GivenUpAsItCommitsStillChanges(t *testing.T) {
+	box := &captureSender{}
+	w := newResetWorld(t, box)
+	const email, old, fresh = "commit-given-up@example.com", "Correct-horse-battery-staple1", "Brand-new-password-2!"
+	integrationOnboardAccount(t, w.engine, email, old, "Commit Given Up", "commit_given_up")
+	w.forgot(email)
+	code := box.lastCode(t, email)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w.h.store = w.tracedStore(&cancelsAtCommit{cancel: cancel})
+	req := integrationRequest(t, http.MethodPost, "/v1/auth/password/reset", "",
+		map[string]any{"email": email, "code": code, "new_password": fresh}).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	w.routes.ServeHTTP(rec, req)
+	w.h.Wait()
+
+	if reqCtx.Err() == nil {
+		t.Fatal("the request's context never ended: the reset did not get as far as its commit")
+	}
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "{}" {
+		t.Fatalf("a reset given up as it commits: %d %s, want 200 {}", rec.Code, rec.Body.String())
+	}
+	if tries, ok := w.codeTries(email); ok {
+		t.Fatalf("the code is still there, with %d tries", tries)
+	}
+	if n := w.liveSessions(email); n != 0 {
+		t.Fatalf("%d sessions are live, want none", n)
+	}
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": fresh}); rec.Code != http.StatusOK {
+		t.Fatalf("the new password: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code == http.StatusOK {
+		t.Fatal("the old password still works")
+	}
+	box.wantChanged(t, "a reset given up as it commits", email)
 }
 
 // The right code on the last try costs no try, so when its change fails the
@@ -573,6 +745,7 @@ func TestPasswordResetIntegration_FailedChangeOnTheLastTryKeepsTheCode(t *testin
 	if tries, ok := w.codeTries(email); !ok || tries != resetMaxAttempts-1 {
 		t.Fatalf("after a failed change on the last try the code has %d tries (there: %v), want %d", tries, ok, resetMaxAttempts-1)
 	}
+	box.wantChanged(t, "a failed change on the last try")
 	w.reset(email, code, fresh, http.StatusOK)
 }
 
@@ -592,6 +765,7 @@ func TestPasswordResetIntegration_CancelledChangeOnTheLastTryKeepsTheCode(t *tes
 	if tries, ok := w.codeTries(email); !ok || tries != resetMaxAttempts-1 {
 		t.Fatalf("after a given-up change on the last try the code has %d tries (there: %v), want %d", tries, ok, resetMaxAttempts-1)
 	}
+	box.wantChanged(t, "a given-up change on the last try")
 	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": old}); rec.Code != http.StatusOK {
 		t.Fatalf("old password after a given-up change: %d", rec.Code)
 	}
@@ -625,6 +799,7 @@ func TestPasswordResetIntegration_WrongTriesStayCounted(t *testing.T) {
 	if tries, ok := w.codeTries(email); !ok || tries != 2 {
 		t.Fatalf("after a failed change beside 2 wrong tries the code has %d tries (there: %v), want 2", tries, ok)
 	}
+	box.wantChanged(t, "wrong tries and a failed change")
 	wrongTry(3)
 	wrongTry(4)
 	wrongTry(5)
@@ -651,6 +826,7 @@ func TestPasswordResetIntegration_PasswordOver72BytesCostsNoTry(t *testing.T) {
 	if tries, ok := w.codeTries(email); !ok || tries != 0 {
 		t.Fatalf("passwords over 72 bytes used %d tries (code there: %v), want 0", tries, ok)
 	}
+	box.wantChanged(t, "passwords over 72 bytes")
 	w.reset(email, code, "Brand-new-password-2!", http.StatusOK)
 }
 
@@ -855,8 +1031,7 @@ func (failingEmailLookup) GetByEmailCI(context.Context, string) (*user.User, err
 // would count as a try: at verify as at reset.
 func TestPasswordReset_LookupFailureIsNotAWrongCode(t *testing.T) {
 	store := &countingResetStore{}
-	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
-		store, &captureSender{}, []byte("test-secret"), 15*time.Minute)
+	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, store, &captureSender{}, []byte("test-secret"))
 	h.floor = 0
 	router := newTestRouter(t, TestDeps{})
 	h.Register(router.Group("/v1"))
@@ -917,6 +1092,7 @@ func TestPasswordResetIntegration_RightCodeReplacedMeanwhileIsToldReplaced(t *te
 	if got["field"] != "code" || got["reason"] != reasonReplaced || got["message"] != fieldReasonText[reasonReplaced] {
 		t.Fatalf("the right code replaced meanwhile: %v", got)
 	}
+	box.wantChanged(t, "the right code replaced meanwhile")
 	if tries, ok := w.codeTries(email); !ok || tries != 0 {
 		t.Fatalf("the code has %d tries (there: %v), want 0", tries, ok)
 	}
@@ -930,7 +1106,8 @@ func TestPasswordResetIntegration_RightCodeReplacedMeanwhileIsToldReplaced(t *te
 
 // The right code that another request used first (the app sent it twice, or
 // a second phone) is told "used", costs no try, and changes nothing more: the
-// password is the one the first request set.
+// password is the one the first request set, and only that change is emailed
+// about.
 func TestPasswordResetIntegration_RightCodeUsedMeanwhileIsToldUsed(t *testing.T) {
 	box := &captureSender{}
 	w := newResetWorld(t, box)
@@ -944,6 +1121,7 @@ func TestPasswordResetIntegration_RightCodeUsedMeanwhileIsToldUsed(t *testing.T)
 	if got["field"] != "code" || got["reason"] != reasonUsed || got["message"] != fieldReasonText[reasonUsed] {
 		t.Fatalf("the right code used meanwhile: %v", got)
 	}
+	box.wantChanged(t, "the right code used meanwhile", email)
 	if rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": first}); rec.Code != http.StatusOK {
 		t.Fatalf("the first request's password: %d", rec.Code)
 	}
@@ -991,6 +1169,8 @@ func TestPasswordResetIntegration_AnAccountDisabledMeanwhileGetsTheWrongCodeAnsw
 	if got := raw(code); got != want {
 		t.Fatalf("disabled while the reset ran: %s, want the wrong-code answer %s", got, want)
 	}
+	w.h.Wait()
+	box.wantChanged(t, "disabled while the reset ran")
 	var hashAfter string
 	if err := w.pool.QueryRow(context.Background(), `select password_hash from users where id = $1`, id).Scan(&hashAfter); err != nil || hashAfter != hashBefore {
 		t.Fatalf("the password changed (err %v)", err)
@@ -1229,9 +1409,9 @@ func TestPasswordResetIntegration_VerifySharesTheLimits(t *testing.T) {
 // wrong shape, a weak password, a wrong code for an account (a try is
 // written), an email with no account and a disabled account (nothing is
 // written), the replaced code, the right code at verify, the used code, a
-// limit, and the new session. The wait is asked for before the first byte,
-// once per answer; here the clock stands still, so it is the whole floor
-// every time.
+// limit, and the right code at reset, which sets the password. The wait is
+// asked for before the first byte, once per answer; here the clock stands
+// still, so it is the whole floor every time.
 func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	box := &captureSender{}
 	w := newResetWorld(t, box)
@@ -1300,7 +1480,7 @@ func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	w.hook(func() { w.reset(email, code, "Other-new-password-4!", http.StatusOK) })
 	send("the used code", body(email, code, fresh), http.StatusBadRequest, reasonUsed)
 	w.forgot(email) // the last code was spent, so a new one comes at once
-	send("the new session", body(email, box.lastCode(t, email), fresh), http.StatusOK, "")
+	send("the right code, which sets the password", body(email, box.lastCode(t, email), fresh), http.StatusOK, "")
 	// The per-address and email limit: five a minute, at reset and at verify,
 	// each from its own address (the two share the count).
 	for _, l := range []struct{ path, remote, body string }{
@@ -1321,8 +1501,8 @@ func TestPasswordResetIntegration_EveryAnswerWaitsForTheFloor(t *testing.T) {
 	}
 }
 
-// The floor holds the answer itself: on the real clock, a wrong code and a
-// new session both take at least the floor.
+// The floor holds the answer itself: on the real clock, a wrong code and the
+// right one, which sets the password, both take at least the floor.
 func TestPasswordResetIntegration_TheFloorHoldsTheAnswer(t *testing.T) {
 	box := &captureSender{}
 	w := newResetWorld(t, box)
@@ -1346,8 +1526,7 @@ func TestPasswordResetIntegration_TheFloorHoldsTheAnswer(t *testing.T) {
 
 // A lookup that fails waits for the floor too.
 func TestPasswordReset_ALookupFailureWaitsForTheFloor(t *testing.T) {
-	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
-		&countingResetStore{}, &captureSender{}, []byte("test-secret"), 15*time.Minute)
+	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, &countingResetStore{}, &captureSender{}, []byte("test-secret"))
 	if h.floor != resetAnswerFloor {
 		t.Fatalf("a new handler's floor is %v, want %v", h.floor, resetAnswerFloor)
 	}
@@ -1367,8 +1546,7 @@ func TestPasswordReset_ALookupFailureWaitsForTheFloor(t *testing.T) {
 // half-closes its connection ends the context but still reads the answer, so
 // the answer must come no sooner than the floor all the same.
 func TestPasswordReset_TheFloorOutlastsAnEndedRequestContext(t *testing.T) {
-	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
-		&countingResetStore{}, &captureSender{}, []byte("test-secret"), 15*time.Minute)
+	h := NewPasswordResetHandler(failingEmailLookup{newFakeUserRepo()}, &countingResetStore{}, &captureSender{}, []byte("test-secret"))
 	// The handler's own sleep and the real clock, with a short floor.
 	h.floor = 80 * time.Millisecond
 	router := newTestRouter(t, TestDeps{})
@@ -1402,8 +1580,7 @@ func (wrongCodeStore) Try(context.Context, uuid.UUID, []byte, time.Time, int) (b
 // spaces around it is still checked.
 func TestPasswordReset_ACodeOfTheWrongShapeCostsNoTry(t *testing.T) {
 	store := &countingResetStore{ResetStore: wrongCodeStore{}}
-	h := NewPasswordResetHandler(newFakeUserRepo(), auth.NewRefreshService(newFakeRefreshRepo(), time.Hour),
-		store, &captureSender{}, []byte("test-secret"), 15*time.Minute)
+	h := NewPasswordResetHandler(newFakeUserRepo(), store, &captureSender{}, []byte("test-secret"))
 	h.now = frozenClock
 	h.floor = 0
 	router := newTestRouter(t, TestDeps{})
@@ -1442,5 +1619,156 @@ func TestPasswordReset_ACodeOfTheWrongShapeCostsNoTry(t *testing.T) {
 		if got := send(50, " 123456 "); got["reason"] != reasonWrongCode || len(store.tries)-before != 1 {
 			t.Fatalf("%s, a padded code: %v, %d tries; want it checked once, as a wrong code", route.path, got, len(store.tries)-before)
 		}
+	}
+}
+
+// scriptedResetStore finds every code right, unless wrong is set, and its
+// spend answers restored and err as the test set them: what the database
+// answers after a change that cancelled a deletion, one it refused, or one
+// that failed. spends counts the spends.
+type scriptedResetStore struct {
+	ResetStore
+	wrong    bool
+	restored bool
+	err      error
+	spends   int
+}
+
+func (s *scriptedResetStore) Try(context.Context, uuid.UUID, []byte, time.Time, int) (bool, bool, error) {
+	return !s.wrong, false, nil
+}
+
+func (s *scriptedResetStore) SpendAndChangePassword(context.Context, uuid.UUID, []byte, string) (bool, error) {
+	s.spends++
+	return s.restored, s.err
+}
+
+// A reset answers no session. Once the password changed it answers 200 {},
+// or {"restored":true} when the change also cancelled a deletion, and after
+// the answer one email tells the account's own address that the password
+// changed: what changed, and what to do if it was not them. Every other
+// answer sends no email at all: a wrong code, a password over bcrypt's 72
+// bytes (which never reaches the store), a code replaced or used meanwhile,
+// an account disabled or gone meanwhile, and a change that failed.
+func TestPasswordReset_OnlyAChangeIsAnsweredAndEmailed(t *testing.T) {
+	users := newFakeUserRepo()
+	owner := users.seedComplete(t, "changed@example.com", "Changed Me", "changed_me", validBirthday)
+	const fresh = "Brand-new-password-2!"
+	long := "Aa1!" + strings.Repeat("é", 35) // 39 characters, 74 bytes
+	for _, c := range []struct {
+		name     string
+		store    *scriptedResetStore
+		password string
+		status   int
+		// want is the whole answer of a 200, the reason of a 400 and the
+		// error of a 500.
+		want    string
+		spends  int
+		emailed bool
+	}{
+		{"the password changed", &scriptedResetStore{}, fresh, http.StatusOK, `{}`, 1, true},
+		{"the change also cancelled a deletion", &scriptedResetStore{restored: true}, fresh, http.StatusOK, `{"restored":true}`, 1, true},
+		{"a wrong code", &scriptedResetStore{wrong: true}, fresh, http.StatusBadRequest, reasonWrongCode, 0, false},
+		{"a password over 72 bytes", &scriptedResetStore{}, long, http.StatusBadRequest, reasonTooLong, 0, false},
+		{"a code replaced meanwhile", &scriptedResetStore{err: user.ErrResetCodeReplaced}, fresh, http.StatusBadRequest, reasonReplaced, 1, false},
+		{"a code used meanwhile", &scriptedResetStore{err: user.ErrResetCodeUsed}, fresh, http.StatusBadRequest, reasonUsed, 1, false},
+		{"an account disabled meanwhile", &scriptedResetStore{err: user.ErrAccountDisabled}, fresh, http.StatusBadRequest, reasonWrongCode, 1, false},
+		{"an account gone meanwhile", &scriptedResetStore{err: user.ErrNotFound}, fresh, http.StatusBadRequest, reasonWrongCode, 1, false},
+		{"a change that failed", &scriptedResetStore{err: errors.New("httpapi test: the database is down")}, fresh,
+			http.StatusInternalServerError, string(CodeServerError), 1, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			box := &captureSender{}
+			h := NewPasswordResetHandler(users, c.store, box, []byte("test-secret"))
+			h.floor = 0
+			router := newTestRouter(t, TestDeps{})
+			h.Register(router.Group("/v1"))
+			// The email is typed another way than the account stores it.
+			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/password/reset",
+				map[string]any{"email": " Changed@Example.com ", "code": "123456", "new_password": c.password})
+			h.Wait()
+
+			if rec.Code != c.status {
+				t.Fatalf("%d %s, want %d", rec.Code, rec.Body.String(), c.status)
+			}
+			body := decodeBody(t, rec)
+			switch {
+			case c.status == http.StatusOK && strings.TrimSpace(rec.Body.String()) != c.want:
+				t.Fatalf("answered %s, want exactly %s", rec.Body.String(), c.want)
+			case c.status == http.StatusBadRequest && body["reason"] != c.want:
+				t.Fatalf("answered %s, want reason %s", rec.Body.String(), c.want)
+			case c.status == http.StatusInternalServerError && body["error"] != c.want:
+				t.Fatalf("answered %s, want error %s", rec.Body.String(), c.want)
+			}
+			if c.store.spends != c.spends {
+				t.Fatalf("the code was spent %d times, want %d", c.store.spends, c.spends)
+			}
+
+			if !c.emailed {
+				if n := box.count(); n != 0 {
+					t.Fatalf("%d emails went out, want none", n)
+				}
+				return
+			}
+			if n := box.count(); n != 1 {
+				t.Fatalf("%d emails went out, want one", n)
+			}
+			box.mu.Lock()
+			sent := box.sent[0]
+			box.mu.Unlock()
+			if sent.to != owner.Email || sent.subject != changedSubject {
+				t.Fatalf("the email went to %q with the subject %q, want %q and %q", sent.to, sent.subject, owner.Email, changedSubject)
+			}
+			if !strings.Contains(sent.text, "logged out on every phone") || !strings.Contains(sent.text, "reset your password") ||
+				regexp.MustCompile(`\d{6}`).MatchString(sent.text) {
+				t.Fatalf("the email says %q, want what changed and what to do if it was not them, and no code", sent.text)
+			}
+		})
+	}
+}
+
+// The reset answers before the password-changed email goes out, and the
+// email does not ride on the request's context: the real server ends that
+// context once it has answered.
+func TestPasswordReset_AnswersBeforeThePasswordChangedEmail(t *testing.T) {
+	users := newFakeUserRepo()
+	users.seedComplete(t, "held-reset@example.com", "Held Reset", "held_reset", validBirthday)
+	sender := &heldSender{release: make(chan struct{})}
+	var once sync.Once
+	release := func() { once.Do(func() { close(sender.release) }) }
+	h := NewPasswordResetHandler(users, &scriptedResetStore{}, sender, []byte("test-secret"))
+	h.floor = 0
+	t.Cleanup(h.Wait)
+	t.Cleanup(release) // runs before the wait
+	router := newTestRouter(t, TestDeps{})
+	h.Register(router.Group("/v1"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/password/reset",
+		strings.NewReader(`{"email":"held-reset@example.com","code":"123456","new_password":"Brand-new-password-2!"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		router.ServeHTTP(rec, req)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the reset waited on the password-changed email")
+	}
+	// The real server ends the request's context once it has answered.
+	cancel()
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "{}" {
+		t.Fatalf("reset: %d %s, want 200 {}", rec.Code, rec.Body.String())
+	}
+	release()
+	h.Wait()
+	sender.mu.Lock()
+	defer sender.mu.Unlock()
+	if len(sender.errs) != 1 || sender.errs[0] != nil {
+		t.Fatalf("emails sent with context errors %v, want one email with none", sender.errs)
 	}
 }

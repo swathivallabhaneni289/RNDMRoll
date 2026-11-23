@@ -72,7 +72,7 @@ Don't make a new account to get around a block or a disabled account.
 
 You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. A post or comment we removed is deleted for good 30 days later. To remove any other comment of yours, email us at . You can remove a follower whenever you like.
 
-To delete your whole account, go to Settings, then Delete account, and enter your password. Your account is hidden from everyone right away and deleted for good after 30 days, with everything in it. If you log back in before then, it won't be deleted. The Privacy Policy explains the few copies that take longer to clear.
+To delete your whole account, go to Settings, then Delete account, and enter your password. Your account is hidden from everyone right away and deleted for good after 30 days, with everything in it. If you log back in, or reset your password, before then, it won't be deleted. The Privacy Policy explains the few copies that take longer to clear.
 
 We may disable or delete an account that breaks these terms.
 

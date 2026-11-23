@@ -178,8 +178,7 @@ func main() {
 	}
 	// The reset store spends a code and changes the password in one
 	// transaction, so a change that fails never loses the code.
-	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, refreshSvc, postgres.NewPasswordResetRepo(pool),
-		codeSender, cfg.JWTSecret, cfg.AccessTokenTTL)
+	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), codeSender, cfg.JWTSecret)
 	var reportAlerts *adminalert.Alerts
 	if len(cfg.AdminEmails) > 0 {
 		// The admins are the accounts these addresses have now, found once.

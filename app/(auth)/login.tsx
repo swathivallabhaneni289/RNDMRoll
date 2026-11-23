@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AppText, TextLink } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -17,7 +17,8 @@ import { useSession } from '@/lib/session/store';
  * Log in with an email or a username, plus a password. Sign-up is its own page now
  * (make-it-yours). Back and "Sign up instead" both return to choose-method, which offers Sign up
  * and Log in. An account that never verified its email logs in like any other. A log in within 30
- * days of Delete account keeps the account, and says so once it has signed in.
+ * days of Delete account keeps the account, and says so once it has signed in. Forgot password
+ * comes back here once it has set a new password, with its email filled in for the new password.
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,6 +26,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useSession();
+  const params = useLocalSearchParams<{ email?: string; reset?: string }>();
 
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -39,6 +41,20 @@ export default function LoginScreen() {
   // the keyboard cursor there without needing TextField to expose a ref.
   const [attemptId, setAttemptId] = useState(0);
   const [autoFocusField, setAutoFocusField] = useState<'login' | 'password' | null>(null);
+
+  // Back from Forgot password with a new password set (developer, 2026-11-23): the email that set
+  // it fills the first box, the password box loses anything typed before, and the keyboard goes to
+  // it. `reset` is new on each return, so a second reset with the same email does this again.
+  useEffect(() => {
+    if (typeof params.reset !== 'string' || typeof params.email !== 'string') return;
+    setLogin(params.email);
+    setPassword('');
+    setLoginError(undefined);
+    setPasswordError(undefined);
+    setFormError(null);
+    setAutoFocusField('password');
+    setAttemptId((n) => n + 1);
+  }, [params.email, params.reset]);
 
   // This page is only pushed from choose-method (or swapped in for the sign-up form that was
   // pushed from it), so one step back is the method chooser. The replace is a safety net.

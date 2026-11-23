@@ -74,8 +74,8 @@ type Deps struct {
 	// PhotoLink signs the link of a stored profile photo key
 	// (storage.EntryPhotoStore.Link: one bucket holds every photo, so it
 	// signs post photos too). NewServer hands it to the profile, log in,
-	// change password, Forgot password, follows, the Board, the person page
-	// and the bell; nil sends their profile photos as null. The diary's
+	// change password, follows, the Board, the person page and the bell; nil
+	// sends their profile photos as null. The diary's
 	// comment writers and the admin page are not given it: they sign
 	// profile photos with the entry photo store's Link, the function cmd/api
 	// sets PhotoLink to. Who may see whom is decided first, as before.
@@ -155,9 +155,6 @@ func NewServer(deps Deps) *Server {
 	deps.Profile.photoLink = deps.PhotoLink
 	if deps.Account != nil {
 		deps.Account.photoLink = deps.PhotoLink
-	}
-	if deps.PasswordReset != nil {
-		deps.PasswordReset.photoLink = deps.PhotoLink
 	}
 
 	v1 := engine.Group("/v1")

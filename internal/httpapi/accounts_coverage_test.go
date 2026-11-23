@@ -62,7 +62,7 @@ func TestAccounts_ResetCodeIsStoredAsAKeyedHash(t *testing.T) {
 	secret := []byte("accounts-reset-secret-a-32-bytes-long")
 	store := &accountsResetStore{issued: map[uuid.UUID][]byte{}}
 	box := &captureSender{}
-	h := NewPasswordResetHandler(users, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour), store, box, secret, 15*time.Minute)
+	h := NewPasswordResetHandler(users, store, box, secret)
 	h.floor = 0
 	router := newTestRouter(t, TestDeps{})
 	h.Register(router.Group("/v1"))
@@ -102,8 +102,7 @@ func TestAccounts_ResetCodeIsStoredAsAKeyedHash(t *testing.T) {
 		t.Fatalf("stored %x, want HMAC-SHA256(secret, %q) = %x", stored, message, want)
 	}
 	// Keyed: the same account and code under another secret is another value.
-	other := NewPasswordResetHandler(users, auth.NewRefreshService(newFakeRefreshRepo(), time.Hour), store, box,
-		[]byte("accounts-reset-secret-b-32-bytes-long"), 15*time.Minute)
+	other := NewPasswordResetHandler(users, store, box, []byte("accounts-reset-secret-b-32-bytes-long"))
 	if bytes.Equal(other.codeHash(a.ID, code), stored) {
 		t.Fatal("another server secret gives the same hash")
 	}

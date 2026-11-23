@@ -2,9 +2,10 @@
 // 2026-10-21): POST /auth/password/forgot {email} emails a 6-digit code,
 // POST /auth/password/verify {email, code} checks the code before the app
 // asks for a new password (developer, 2026-11-13), and POST
-// /auth/password/reset {email, code, new_password} checks it again, sets the
-// new password and signs the person in. No link is needed, so it works before
-// the real web address exists.
+// /auth/password/reset {email, code, new_password} checks it again and sets the
+// new password, which the person then logs in with (developer, 2026-11-23,
+// after OWASP's "Don't automatically log the user in"). No link is needed, so
+// it works before the real web address exists.
 //
 //   - forgot always answers 200 {} at once, whether or not the email has an
 //     account: the lookup and the email run after the answer, so neither the
@@ -44,8 +45,10 @@
 //     checking a code at verify buys no requests that forgot and reset would
 //     not allow.
 //   - The new password follows the sign-up rules, and bcrypt's 72 bytes,
-//     checked before the code is; setting it ends every other session (as
-//     Change password does) and the answer is a fresh session.
+//     checked before the code is. Setting it ends every session the account
+//     had and makes no new one, and an email then tells the account's owner
+//     that the password changed (OWASP and NIST both say a reset is
+//     announced), so a reset they did not make does not go unnoticed.
 //   - A disabled account gets no code and cannot reset, also when an admin
 //     disables it while the reset runs (the change refuses it in its own
 //     transaction, and a disable deletes the code).
@@ -82,8 +85,8 @@ const (
 	// resetResendAfter: a younger code is not replaced, so a second tap
 	// cannot spoil the email on its way or fill the inbox.
 	resetResendAfter = time.Minute
-	// resetWorkDeadline bounds the lookup, the store and the email that
-	// forgot runs after its answer.
+	// resetWorkDeadline bounds the work that runs after an answer: forgot's
+	// lookup, store and code email, and reset's password-changed email.
 	resetWorkDeadline = 15 * time.Second
 	// resetAnswerFloor is how long after it came in a verify or a reset is
 	// answered at the soonest, whatever the answer. It is longer than the
@@ -103,25 +106,22 @@ type ResetStore interface {
 	// or no live code with tries left (a uuid.Nil userID never has one).
 	Try(ctx context.Context, userID uuid.UUID, codeHash []byte, at time.Time, maxTries int) (right, replaced bool, err error)
 	// SpendAndChangePassword spends the code if it is still codeHash and, in
-	// the same transaction, changes the password as
-	// user.PasswordChanger.ChangePassword does: both happen or neither does.
-	// With nothing changed, it answers user.ErrResetCodeReplaced (a newer
-	// code replaced this one meanwhile), user.ErrResetCodeUsed (another
-	// request spent it first), user.ErrAccountDisabled or user.ErrNotFound.
-	// restored is true when the change also cancelled a deletion the owner
-	// had asked for (inside its grace period).
-	SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte, passwordHash string,
-		sessionID uuid.UUID, newTokenHash []byte, expiresAt time.Time, userAgent *string) (restored bool, err error)
+	// the same transaction, changes the password and ends every session the
+	// account had, making no new one: both happen or neither does. With
+	// nothing changed, it answers user.ErrResetCodeReplaced (a newer code
+	// replaced this one meanwhile), user.ErrResetCodeUsed (another request
+	// spent it first), user.ErrAccountDisabled or user.ErrNotFound. restored
+	// is true when the change also cancelled a deletion the owner had asked
+	// for (inside its grace period).
+	SpendAndChangePassword(ctx context.Context, userID uuid.UUID, codeHash []byte, passwordHash string) (restored bool, err error)
 }
 
 // PasswordResetHandler serves the three Forgot password routes.
 type PasswordResetHandler struct {
-	users     user.Repository
-	refresh   *auth.RefreshService
-	store     ResetStore
-	sender    mail.Sender
-	secret    []byte
-	accessTTL time.Duration
+	users  user.Repository
+	store  ResetStore
+	sender mail.Sender
+	secret []byte
 	// now is the handler's clock: the codes' times, the limits and the
 	// answer floor all read it (a test moves it).
 	now func() time.Time
@@ -130,17 +130,14 @@ type PasswordResetHandler struct {
 	floor time.Duration
 	sleep func(d time.Duration)
 	wg    sync.WaitGroup
-	// photoLink signs the profile photo's link in the session's user
-	// (Deps.PhotoLink; NewServer sets it). Nil sends no photo.
-	photoLink func(string) string
 }
 
-// NewPasswordResetHandler builds the handler. sender delivers the code email;
-// store keeps the codes and changes the password with the code it spends.
-func NewPasswordResetHandler(users user.Repository, refresh *auth.RefreshService, store ResetStore,
-	sender mail.Sender, secret []byte, accessTTL time.Duration) *PasswordResetHandler {
-	return &PasswordResetHandler{users: users, refresh: refresh, store: store, sender: sender,
-		secret: secret, accessTTL: accessTTL, now: time.Now, floor: resetAnswerFloor, sleep: time.Sleep}
+// NewPasswordResetHandler builds the handler. sender delivers the code email
+// and the password-changed email; store keeps the codes and changes the
+// password with the code it spends.
+func NewPasswordResetHandler(users user.Repository, store ResetStore, sender mail.Sender, secret []byte) *PasswordResetHandler {
+	return &PasswordResetHandler{users: users, store: store, sender: sender, secret: secret,
+		now: time.Now, floor: resetAnswerFloor, sleep: time.Sleep}
 }
 
 // holdUntil waits, through sleep, until floor has passed on now's clock since
@@ -158,7 +155,8 @@ func holdUntil(now func() time.Time, sleep func(time.Duration), start time.Time,
 // test can set now after Register.
 func (h *PasswordResetHandler) clock() time.Time { return h.now() }
 
-// Wait waits for every code email started so far (tests and shutdown).
+// Wait waits for every email started so far, the codes and the
+// password-changed emails (tests and shutdown).
 func (h *PasswordResetHandler) Wait() { h.wg.Wait() }
 
 // Register mounts the routes on the public /v1 group. Like sign-up they are
@@ -289,6 +287,20 @@ func resetMessage(code string) (subject, html, text string) {
 	return subject, html, text
 }
 
+// changedMessage is the email a reset sends once the password changed
+// (developer, 2026-11-23), worded as other services word it: what changed,
+// nothing to do if it was you, and what to do if it was not. Plain words, no
+// em dashes.
+func changedMessage() (subject, html, text string) {
+	subject = "Your RNDMRoll password was changed"
+	changed := "Your RNDMRoll password was just changed, and you were logged out on every phone."
+	you := "If this was you, you can ignore this email."
+	notYou := "If it wasn't you, reset your password right away from the app's Log in page."
+	text = fmt.Sprintf("%s\n\n%s\n\n%s", changed, you, notYou)
+	html = fmt.Sprintf("<p>%s</p><p>%s</p><p>%s</p>", changed, you, notYou)
+	return subject, html, text
+}
+
 func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	var req ForgotPasswordRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
@@ -304,24 +316,34 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	// email run after it, so nobody learns who has an account, and a slow
 	// email never makes the app give up on a code that was sent.
 	Respond(c, http.StatusOK, gin.H{})
-	h.background(email)
+	h.background(func(ctx context.Context) { h.sendCode(ctx, email) })
 }
 
-// background runs sendCode for email on its own deadline, never the
-// request's.
-func (h *PasswordResetHandler) background(email string) {
+// background runs work (an email) after the answer, on its own deadline,
+// never the request's.
+func (h *PasswordResetHandler) background(work func(ctx context.Context)) {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("httpapi: reset code panic: %v", r)
+				log.Printf("httpapi: reset email panic: %v", r)
 			}
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), resetWorkDeadline)
 		defer cancel()
-		h.sendCode(ctx, email)
+		work(ctx)
 	}()
+}
+
+// sendChanged emails the owner of address that their password was just
+// changed (changedMessage). A failed email changes nothing: the password is
+// set either way.
+func (h *PasswordResetHandler) sendChanged(ctx context.Context, address string) {
+	subject, html, text := changedMessage()
+	if err := h.sender.Send(ctx, address, subject, html, text); err != nil {
+		log.Printf("httpapi: password changed email: %v", err)
+	}
 }
 
 // sendCode emails a new code to the account of email, if it has one that
@@ -421,7 +443,7 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 
 	// The change itself runs on the request's context: a person who gives up part way keeps the
 	// code, and only someone with the right code gets this far.
-	accessToken, refreshToken, restored, err := h.setPassword(c.Request.Context(), u.ID, codeHash, req.NewPassword, c.Request.UserAgent())
+	restored, err := h.setPassword(c.Request.Context(), u.ID, codeHash, req.NewPassword)
 	switch {
 	case err == nil:
 	case errors.Is(err, user.ErrResetCodeReplaced):
@@ -448,18 +470,16 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 		RespondError(c, err)
 		return
 	}
-	body := gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-		"expires_in":    int(h.accessTTL.Seconds()),
-		"user":          apiUser(u, h.photoLink),
-	}
-	// Inside the grace period of a deletion its owner asked for, the reset
-	// kept the account, as log in does, and says so once.
+	// No session: the person logs in with the new password. Inside the grace
+	// period of a deletion its owner asked for, the reset kept the account, as
+	// log in does, and says so once.
+	body := gin.H{}
 	if restored {
 		body["restored"] = true
 	}
 	Respond(c, http.StatusOK, body)
+	address := u.Email
+	h.background(func(ctx context.Context) { h.sendChanged(ctx, address) })
 }
 
 // checkCode checks code, already of the right shape (resetCodeShape), against
@@ -506,33 +526,18 @@ func (h *PasswordResetHandler) checkCode(c *gin.Context, email, code string) (u 
 	return nil, nil, false
 }
 
-// setPassword sets the new password with the right code and makes the new
-// session. The code is spent in the same transaction that changes the
-// password, by one request only: the right code sent twice at once changes the
-// password once (the other request gets user.ErrResetCodeUsed), no change can
-// leave the code usable, and a change that fails or is given up part way
-// leaves the code as it was. restored is true when the change also cancelled
-// a deletion the owner had asked for.
+// setPassword sets the new password with the right code and ends every
+// session the account had, making no new one. The code is spent in the same
+// transaction that changes the password, by one request only: the right code
+// sent twice at once changes the password once (the other request gets
+// user.ErrResetCodeUsed), no change can leave the code usable, and a change
+// that fails or is given up part way leaves the code as it was. restored is
+// true when the change also cancelled a deletion the owner had asked for.
 func (h *PasswordResetHandler) setPassword(ctx context.Context, userID uuid.UUID, codeHash []byte,
-	newPassword, userAgent string) (accessToken, refreshToken string, restored bool, err error) {
+	newPassword string) (restored bool, err error) {
 	newHash, err := auth.HashPassword(newPassword)
 	if err != nil {
-		return "", "", false, err
+		return false, err
 	}
-	// The new session's id is chosen here, so its access token can be made
-	// before anything is stored and still name it.
-	session := uuid.New()
-	accessToken, err = auth.IssueSessionAccessToken(userID, session, h.secret, h.accessTTL)
-	if err != nil {
-		return "", "", false, err
-	}
-	refreshToken, err = h.refresh.IssueInTransaction(ctx, func(tokenHash []byte, expiresAt time.Time) error {
-		var spendErr error
-		restored, spendErr = h.store.SpendAndChangePassword(ctx, userID, codeHash, newHash, session, tokenHash, expiresAt, &userAgent)
-		return spendErr
-	})
-	if err != nil {
-		return "", "", false, err
-	}
-	return accessToken, refreshToken, restored, nil
+	return h.store.SpendAndChangePassword(ctx, userID, codeHash, newHash)
 }

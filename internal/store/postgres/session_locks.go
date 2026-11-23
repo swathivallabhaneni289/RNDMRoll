@@ -2,8 +2,9 @@ package postgres
 
 // The session tables are written by several transactions at once: a log in,
 // a refresh (RefreshTokenRepo.Rotate), a log out (RevokeByHash), a password
-// change or reset (changePassword), a password set from the terminal
-// (UserRepo.SetPassword), an admin's disable, a deletion request
+// change (changePassword), a Forgot password reset (resetPassword, through
+// endSessions), a password set from the terminal (UserRepo.SetPassword, also
+// through endSessions), an admin's disable, a deletion request
 // (UserRepo.RequestDeletion), the purge (PurgeRepo.Purge), and the phone
 // saving or deleting its push token (PushRepo). So that no two of them can ever wait
 // on each other in a circle (Postgres would end one of them with a deadlock
