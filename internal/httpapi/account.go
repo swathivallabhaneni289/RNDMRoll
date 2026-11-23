@@ -1,10 +1,12 @@
 // Package httpapi: account.go implements the account routes of the signed-in
 // person that are not profile fields. There is one: POST /me/password, change
-// password. Like the profile routes it finds the caller only from the token's
-// subject; no request field names an account.
+// password, which then emails the owner that their password changed
+// (changedMessage). Like the profile routes it finds the caller only from the
+// token's subject; no request field names an account.
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/middleware"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
@@ -31,6 +34,8 @@ type AccountHandler struct {
 	users     user.Repository
 	passwords user.PasswordChanger
 	refresh   *auth.RefreshService
+	// emails sends the password-changed email, after the answer.
+	emails    emailer
 	jwtSecret []byte
 	accessTTL time.Duration
 	// clock is the time the limits count by; nil is the real clock. A test
@@ -52,16 +57,22 @@ func (h *AccountHandler) now() time.Time {
 // NewAccountHandler constructs an AccountHandler. passwords is the one
 // transaction that stores the new hash and replaces the account's sessions
 // (the Postgres user repository); refresh makes the new session's token;
-// jwtSecret and accessTTL mint the new access token, exactly as log in does.
-func NewAccountHandler(users user.Repository, passwords user.PasswordChanger, refresh *auth.RefreshService, jwtSecret []byte, accessTTL time.Duration) *AccountHandler {
+// sender delivers the password-changed email; jwtSecret and accessTTL mint the
+// new access token, exactly as log in does.
+func NewAccountHandler(users user.Repository, passwords user.PasswordChanger, refresh *auth.RefreshService, sender mail.Sender, jwtSecret []byte, accessTTL time.Duration) *AccountHandler {
 	return &AccountHandler{
 		users:     users,
 		passwords: passwords,
 		refresh:   refresh,
+		emails:    emailer{sender: sender},
 		jwtSecret: jwtSecret,
 		accessTTL: accessTTL,
 	}
 }
+
+// Wait waits for every password-changed email started so far (tests and
+// shutdown).
+func (h *AccountHandler) Wait() { h.emails.Wait() }
 
 // Register mounts POST /me/password on rg. The caller attaches RequireAuth and
 // RequireUser to rg first (NewServer applies both to the signed-in group).
@@ -93,9 +104,10 @@ func (h *AccountHandler) Register(rg *gin.RouterGroup) {
 // current one; the new password hashed (bcrypt counts 72 BYTES, so a long
 // multi-byte one is a field error on new_password); then ONE transaction that
 // stores the hash, revokes every refresh token the account holds and inserts
-// one new one; then the response. An account an admin disabled while this
-// ran is refused inside that transaction, as RequireUser refuses it (401
-// account_disabled), and keeps its password.
+// one new one; then the response; then, after it, an email tells the owner
+// that their password changed (changedMessage). An account an admin disabled
+// while this ran is refused inside that transaction, as RequireUser refuses
+// it (401 account_disabled), keeps its password and is emailed nothing.
 //
 // A wrong current password is 400 validation_failed field current_password,
 // never a 401: a 401 on a signed-in call means "your session is gone" and the
@@ -191,4 +203,8 @@ func (h *AccountHandler) changePassword(c *gin.Context) {
 		"expires_in":    int(h.accessTTL.Seconds()),
 		"user":          apiUser(u, h.photoLink),
 	})
+	// As after a reset, the owner hears of it by email: if it wasn't them,
+	// a reset from Log in ends every session, this one too.
+	address := u.Email
+	h.emails.background(func(ctx context.Context) { h.emails.sendChanged(ctx, address, "every other phone") })
 }

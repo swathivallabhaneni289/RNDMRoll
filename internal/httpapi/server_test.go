@@ -15,6 +15,7 @@ import (
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/clock"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin/spintest"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
@@ -54,6 +55,10 @@ type fullTestRig struct {
 	// entryPhotos is the fake photo store behind the entry routes: it hands out
 	// upload keys and links and records every file removal.
 	entryPhotos *fakeEntryPhotoStore
+	// account is the change-password handler (rigOptions.account), nil
+	// without it; emails keeps its emails unless rigOptions.sender took them.
+	account *AccountHandler
+	emails  *captureSender
 }
 
 // rigOptions changes how newFullTestRigWith wires the spin slice.
@@ -70,6 +75,9 @@ type rigOptions struct {
 	passwords user.PasswordChanger
 	// logger is the logger handed to NewServer; nil discards.
 	logger *slog.Logger
+	// sender, when set, takes the change-password emails instead of the
+	// rig's own captureSender (fullTestRig.emails).
+	sender mail.Sender
 }
 
 func newFullTestRig(t *testing.T, usersRepo user.Repository) *fullTestRig {
@@ -129,6 +137,7 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	if len(opts.toolEmails) > 0 {
 		deps.TestTools = NewSpinTestTools(true, spinSvc, spinClock, opts.toolEmails)
 	}
+	emails := &captureSender{}
 	if opts.account {
 		passwords, ok := usersRepo.(user.PasswordChanger)
 		if opts.passwords != nil {
@@ -137,8 +146,15 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		if !ok {
 			t.Fatalf("rigOptions.account needs a user repository that implements user.PasswordChanger, got %T", usersRepo)
 		}
-		deps.Account = NewAccountHandler(usersRepo, passwords, refreshSvc, testServerJWTSecret, 15*time.Minute)
+		var sender mail.Sender = emails
+		if opts.sender != nil {
+			sender = opts.sender
+		}
+		deps.Account = NewAccountHandler(usersRepo, passwords, refreshSvc, sender, testServerJWTSecret, 15*time.Minute)
 		deps.Account.clock = frozenClock
+		// A change emails after its answer: the test ends only once the
+		// emails have gone out.
+		t.Cleanup(deps.Account.Wait)
 	}
 
 	return &fullTestRig{
@@ -152,6 +168,8 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		rand:     rnd,
 
 		entryPhotos: entryPhotos,
+		account:     deps.Account,
+		emails:      emails,
 	}
 }
 

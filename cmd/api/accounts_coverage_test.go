@@ -233,6 +233,45 @@ func TestAccounts_MainWiresDeleteAccountAndForgotPassword(t *testing.T) {
 	}
 }
 
+// SES-05: a change in Settings emails the owner. main gives the account
+// handler the sender Forgot password uses, mounts that handler, and waits for
+// its emails at shutdown.
+func TestAccounts_MainEmailsAPasswordChangeInSettings(t *testing.T) {
+	body := accountsMainBody(t)
+	depsVar, lit := accountsDeps(t, body)
+	_, serverAt := accountsServerBuilt(t, body, depsVar)
+
+	account, call, _ := accountsAssignedFrom(body, "httpapi", "NewAccountHandler")
+	if account == "" {
+		t.Fatal("main.go: no account handler := httpapi.NewAccountHandler(...) in main")
+	}
+	if !accountsIdent(accountsField(lit, "Account"), account) {
+		t.Fatalf("main.go: Deps.Account is not %s", account)
+	}
+	reset := accountsDepsSetTo(body, depsVar, lit, "PasswordReset", "NewPasswordResetHandler", serverAt)
+	if reset == nil || len(reset.Args) < 3 {
+		t.Fatal("main.go: Deps.PasswordReset is not set to httpapi.NewPasswordResetHandler(...) before httpapi.NewServer")
+	}
+	sender, ok := reset.Args[2].(*ast.Ident)
+	if !ok {
+		t.Fatal("main.go: httpapi.NewPasswordResetHandler is not given its sender as a variable")
+	}
+	if len(call.Args) != 6 || !accountsIdent(call.Args[3], sender.Name) {
+		t.Fatalf("main.go: httpapi.NewAccountHandler is not given %s, Forgot password's sender, as its sender", sender.Name)
+	}
+	// Shutdown waits for the emails a change started.
+	waited := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok && accountsIdent(sel.X, account) && sel.Sel.Name == "Wait" {
+			waited = true
+		}
+		return true
+	})
+	if !waited {
+		t.Fatalf("main.go: shutdown does not wait for %s.Wait", account)
+	}
+}
+
 // ACC-02: sign-up refuses an ADMIN_EMAILS address only because main names
 // them to the auth handler that is mounted, before the server is built.
 func TestAccounts_MainNamesTheAdminAddressesToSignUp(t *testing.T) {

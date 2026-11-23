@@ -3,10 +3,27 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/board"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
 )
+
+// buildChangeServer is buildIntegrationServer with the change-password
+// handler and the emails it sent in reach.
+func buildChangeServer(t *testing.T, pool *pgxpool.Pool) (*Server, *AccountHandler, *captureSender) {
+	t.Helper()
+	box := &captureSender{}
+	var account *AccountHandler
+	server := buildIntegrationServerWith(t, pool, integrationOptions{mail: box,
+		wire: func(_ *social.Service, _ *board.Service, deps *Deps) { account = deps.Account }})
+	return server, account, box
+}
 
 // TestIntegration_ChangePassword_EndToEnd walks the whole change over HTTP
 // against the real database: sign up, a second phone logs in, a wrong current
@@ -16,7 +33,7 @@ import (
 // with the new tokens.
 func TestIntegration_ChangePassword_EndToEnd(t *testing.T) {
 	pool := requireIntegrationPool(t)
-	server := buildIntegrationServer(t, pool)
+	server, account, box := buildChangeServer(t, pool)
 	engine := server.Engine()
 	ctx := context.Background()
 
@@ -117,4 +134,42 @@ func TestIntegration_ChangePassword_EndToEnd(t *testing.T) {
 	if n := integrationUserCount(t, pool); n != 1 {
 		t.Fatalf("user count = %d, want 1", n)
 	}
+
+	// The right password, and only it, emailed the owner once.
+	account.Wait()
+	box.wantChanged(t, "a change in Settings", email)
+}
+
+// A change given up as it commits still goes through, is answered, and
+// emails the owner: the commit runs to its end (UserRepo.ChangePassword), as
+// a reset's does.
+func TestIntegration_ChangePassword_GivenUpAsItCommitsStillChangesAndEmails(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	server, account, box := buildChangeServer(t, pool)
+	engine := server.Engine()
+	const email, oldPassword, newPassword = "change-commit@example.com", "old-Correct-horse-battery1", "new-Correct-horse-battery1"
+	phone := integrationOnboardAccount(t, engine, email, oldPassword, "Change Commit", "change_commit")
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	account.passwords = postgres.NewUserRepo(tracedPool(t, &cancelsAtCommit{cancel: cancel}))
+	req := integrationRequest(t, http.MethodPost, "/v1/me/password", phone.AccessToken,
+		map[string]any{"current_password": oldPassword, "new_password": newPassword}).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	account.Wait()
+
+	if reqCtx.Err() == nil {
+		t.Fatal("the request's context never ended: the change did not get as far as its commit")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a change given up as it commits: %d %s, want 200", rec.Code, rec.Body.String())
+	}
+	if rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": newPassword}); rec.Code != http.StatusOK {
+		t.Fatalf("the new password: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/login", "", map[string]any{"login": email, "password": oldPassword}); rec.Code == http.StatusOK {
+		t.Fatal("the old password still works")
+	}
+	box.wantChanged(t, "a change given up as it commits", email)
 }

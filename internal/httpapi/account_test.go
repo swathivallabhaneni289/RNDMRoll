@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/auth"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/mail"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
@@ -58,6 +59,13 @@ type accountRig struct {
 
 func newAccountRig(t *testing.T) *accountRig {
 	t.Helper()
+	return newAccountRigWith(t, nil)
+}
+
+// newAccountRigWith is newAccountRig with the change-password emails going to
+// sender instead of the rig's own captureSender (nil keeps that one).
+func newAccountRigWith(t *testing.T, sender mail.Sender) *accountRig {
+	t.Helper()
 	logs := &syncBuffer{}
 	previous := log.Writer()
 	log.SetOutput(logs)
@@ -67,6 +75,7 @@ func newAccountRig(t *testing.T) *accountRig {
 	rig := newFullTestRigWith(t, fake, rigOptions{
 		account: true,
 		logger:  slog.New(slog.NewTextHandler(logs, nil)),
+		sender:  sender,
 	})
 	return &accountRig{fullTestRig: rig, fake: fake, logs: logs}
 }
@@ -138,6 +147,29 @@ func (r *accountRig) assertNothingChanged(t *testing.T, s accountSession, hashBe
 	}
 	if got := r.tokens.activeCount(s.id); got != activeBefore {
 		t.Errorf("active refresh tokens = %d, want %d (a refused change must not touch sessions)", got, activeBefore)
+	}
+	r.wantChangedEmails(t, "a refused change")
+}
+
+// settingsChangedText is the email a change in Settings sends: the reset's
+// email, but the phone the change was made on stays logged in.
+const settingsChangedText = "Your RNDMRoll password was just changed, and you were logged out on every other phone.\n\n" +
+	"If this was you, you can ignore this email.\n\n" +
+	"If it wasn't you, reset your password right away from the app's Log in page."
+
+// wantChangedEmails waits for the emails the changes started, then checks
+// that the password-changed emails went to exactly `to`, one each and in
+// order (none when `to` is empty), each saying settingsChangedText.
+func (r *accountRig) wantChangedEmails(t *testing.T, what string, to ...string) {
+	t.Helper()
+	r.account.Wait()
+	r.emails.wantChanged(t, what, to...)
+	r.emails.mu.Lock()
+	defer r.emails.mu.Unlock()
+	for _, m := range r.emails.sent {
+		if m.text != settingsChangedText {
+			t.Errorf("%s: the email to %s says %q, want %q", what, m.to, m.text, settingsChangedText)
+		}
 	}
 }
 
@@ -211,6 +243,48 @@ func TestChangePassword_Succeeds(t *testing.T) {
 	// The new refresh token is a live session.
 	if rec := rig.refreshWith(t, newRefresh); rec.Code != http.StatusOK {
 		t.Fatalf("refresh with the new token: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// One email tells the owner, after the answer.
+	rig.wantChangedEmails(t, "a change in Settings", s.email)
+}
+
+// The answer never waits for the email, and the email does not ride on the
+// request's context, which the server ends once it has answered.
+func TestChangePassword_AnswersBeforeTheEmail(t *testing.T) {
+	sender := &heldSender{release: make(chan struct{})}
+	var once sync.Once
+	release := func() { once.Do(func() { close(sender.release) }) }
+	rig := newAccountRigWith(t, sender)
+	t.Cleanup(release) // runs before the rig's wait
+	const oldPassword, newPassword = "Old-password-1234!", "New-password-5678!"
+	s := rig.signUp(t, "held-change@example.com", "held_change", oldPassword)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := integrationRequest(t, http.MethodPost, "/v1/me/password", s.access,
+		map[string]any{"current_password": oldPassword, "new_password": newPassword}).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		rig.srv.Engine().ServeHTTP(rec, req)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the change waited on the password-changed email")
+	}
+	cancel()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("change: %d %s, want 200", rec.Code, rec.Body.String())
+	}
+	release()
+	rig.account.Wait()
+	sender.mu.Lock()
+	defer sender.mu.Unlock()
+	if len(sender.errs) != 1 || sender.errs[0] != nil {
+		t.Fatalf("emails sent with context errors %v, want one email with none", sender.errs)
 	}
 }
 
@@ -397,6 +471,7 @@ func TestChangePassword_IsRateLimitedPerCallerAndPerAddress(t *testing.T) {
 	// The same caller from another address is not limited: it was the address,
 	// not the caller, that ran out.
 	assertFieldError(t, rig.postPassword(t, "198.51.100.78:4000", fifth.access, empty), "current_password")
+	rig.wantChangedEmails(t, "refused and limited changes")
 }
 
 func TestChangePassword_NoTokenIs401AndDeletedAccountIs401(t *testing.T) {
@@ -516,6 +591,7 @@ func TestChangePassword_MissingFieldsAreRequiredErrors(t *testing.T) {
 			t.Errorf("%s: a generic refusal should name no field: %s", name, rec.Body.String())
 		}
 	}
+	rig.wantChangedEmails(t, "changes missing a field")
 }
 
 func TestChangePassword_BodyOver16KBIs413(t *testing.T) {
@@ -575,6 +651,7 @@ func TestChangePassword_AccountGoneDuringTheChangeIs401TokenInvalid(t *testing.T
 	if rec.Code != http.StatusUnauthorized || decodeBody(t, rec)["error"] != "token_invalid" {
 		t.Fatalf("expected 401 token_invalid, got %d: %s", rec.Code, rec.Body.String())
 	}
+	rig.wantChangedEmails(t, "a change whose account went away")
 }
 
 func TestChangePassword_AccountWithNoStoredPasswordIsRefusedEvenForTheDummyText(t *testing.T) {
@@ -601,6 +678,7 @@ func TestChangePassword_AccountWithNoStoredPasswordIsRefusedEvenForTheDummyText(
 	if got := rig.tokens.activeCount(u.ID); got != 0 {
 		t.Fatalf("a session was made: %d", got)
 	}
+	rig.wantChangedEmails(t, "a refused change of an account with no password")
 }
 
 func TestServer_PasswordRouteIsNotMountedWhenTheAccountHandlerIsNotWired(t *testing.T) {

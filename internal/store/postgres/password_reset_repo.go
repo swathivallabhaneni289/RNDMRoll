@@ -122,7 +122,7 @@ func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID u
 	// still rolls the change back and keeps its code, but one that gives up
 	// while the commit is on its way can no longer make a change that went
 	// through look failed, which would skip the email telling the owner.
-	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resetCommitTimeout)
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), passwordCommitTimeout)
 	defer cancel()
 	if err := tx.Commit(commitCtx); err != nil {
 		return false, err
@@ -130,9 +130,10 @@ func (r *PasswordResetRepo) SpendAndChangePassword(ctx context.Context, userID u
 	return restored, nil
 }
 
-// resetCommitTimeout bounds SpendAndChangePassword's commit, which runs past
-// the request.
-const resetCommitTimeout = 5 * time.Second
+// passwordCommitTimeout bounds the commit of a password change, a reset's
+// (SpendAndChangePassword) or one made in Settings (UserRepo.ChangePassword),
+// which runs past the request.
+const passwordCommitTimeout = 5 * time.Second
 
 // whyNotSpent says why the code codeHash, right when it was tried a moment
 // ago, was no longer there to spend. The account comes first, so one that is

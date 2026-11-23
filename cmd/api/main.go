@@ -98,9 +98,18 @@ func main() {
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore)
 	usernameHandler := httpapi.NewUsernameHandler(users)
+	// Every email goes out through mailSender: Forgot password's codes, the
+	// password-changed emails and the report alerts. It prints them to the log
+	// in test mode (MAIL_DRIVER=log) and sends them with Resend otherwise.
+	var mailSender mail.Sender
+	if cfg.MailDriver == "log" {
+		mailSender = mail.NewLogSender(os.Stdout)
+	} else {
+		mailSender = mail.NewResendSender(cfg.ResendAPIKey, cfg.MailFromAddress, cfg.MailFromName)
+	}
 	// The Postgres user repository is also the PasswordChanger: the password
-	// and the sessions change in one transaction.
-	accountHandler := httpapi.NewAccountHandler(users, users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
+	// and the sessions change in one transaction. A change emails the owner.
+	accountHandler := httpapi.NewAccountHandler(users, users, refreshSvc, mailSender, cfg.JWTSecret, cfg.AccessTokenTTL)
 
 	// The spin slice has its own clock. Normally it is real time; in test
 	// mode (config.Load has already checked APP_ENV, the allow-list and the
@@ -168,17 +177,9 @@ func main() {
 	// at least one account. The cookie is Secure everywhere but test mode,
 	// which runs over plain http on localhost.
 	deps.DeepLinkScheme = cfg.DeepLinkScheme
-	// Forgot password emails a code: printed to the log in test mode
-	// (MAIL_DRIVER=log), sent with Resend otherwise.
-	var codeSender mail.Sender
-	if cfg.MailDriver == "log" {
-		codeSender = mail.NewLogSender(os.Stdout)
-	} else {
-		codeSender = mail.NewResendSender(cfg.ResendAPIKey, cfg.MailFromAddress, cfg.MailFromName)
-	}
 	// The reset store spends a code and changes the password in one
 	// transaction, so a change that fails never loses the code.
-	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), codeSender, cfg.JWTSecret)
+	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), mailSender, cfg.JWTSecret)
 	var reportAlerts *adminalert.Alerts
 	if len(cfg.AdminEmails) > 0 {
 		// The admins are the accounts these addresses have now, found once.
@@ -199,7 +200,7 @@ func main() {
 		if len(admins) > 0 {
 			// New reports are emailed to the admins (internal/adminalert), with
 			// the reset code's sender: the log in test mode, Resend otherwise.
-			reportAlerts = adminalert.New(codeSender, adminAddresses(cfg.AdminEmails, missing),
+			reportAlerts = adminalert.New(mailSender, adminAddresses(cfg.AdminEmails, missing),
 				strings.TrimRight(cfg.AppBaseURL, "/")+"/admin/go", logger)
 			boardService.SetReportNotifier(reportAlerts)
 			socialService.SetReportNotifier(reportAlerts)
@@ -286,7 +287,7 @@ func main() {
 			// Then the work the requests left running gets the rest of that
 			// time. Only after a clean Shutdown: no handler can start more
 			// while this waits.
-			waits := []func(){deps.PasswordReset.Wait, purger.Wait}
+			waits := []func(){deps.PasswordReset.Wait, accountHandler.Wait, purger.Wait}
 			if pushNotifier != nil {
 				waits = append(waits, pushNotifier.Wait)
 			}

@@ -281,6 +281,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SES-05.**
   - The current password is required, and the new one must differ and pass the sign-up rule.
   - Settings then shows "Password changed. Other phones are signed out."
+  - An email then tells the account that its password changed and that its other phones were logged out.
   - Limit: 5 a minute per person.
 
 ### 8.3 The daily spin and the wheel

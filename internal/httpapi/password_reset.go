@@ -85,8 +85,9 @@ const (
 	// resetResendAfter: a younger code is not replaced, so a second tap
 	// cannot spoil the email on its way or fill the inbox.
 	resetResendAfter = time.Minute
-	// resetWorkDeadline bounds the work that runs after an answer: forgot's
-	// lookup, store and code email, and reset's password-changed email.
+	// resetWorkDeadline bounds verify's and reset's lookup and try
+	// (checkCode), which do not ride on the request's context. The work after
+	// an answer has its own deadline (emailWorkDeadline).
 	resetWorkDeadline = 15 * time.Second
 	// resetAnswerFloor is how long after it came in a verify or a reset is
 	// answered at the soonest, whatever the answer. It is longer than the
@@ -118,9 +119,11 @@ type ResetStore interface {
 
 // PasswordResetHandler serves the three Forgot password routes.
 type PasswordResetHandler struct {
-	users  user.Repository
-	store  ResetStore
-	sender mail.Sender
+	users user.Repository
+	store ResetStore
+	// emails sends the code emails and the password-changed emails, after
+	// the answers.
+	emails emailer
 	secret []byte
 	// now is the handler's clock: the codes' times, the limits and the
 	// answer floor all read it (a test moves it).
@@ -129,14 +132,13 @@ type PasswordResetHandler struct {
 	// both (most to no floor at all).
 	floor time.Duration
 	sleep func(d time.Duration)
-	wg    sync.WaitGroup
 }
 
 // NewPasswordResetHandler builds the handler. sender delivers the code email
 // and the password-changed email; store keeps the codes and changes the
 // password with the code it spends.
 func NewPasswordResetHandler(users user.Repository, store ResetStore, sender mail.Sender, secret []byte) *PasswordResetHandler {
-	return &PasswordResetHandler{users: users, store: store, sender: sender, secret: secret,
+	return &PasswordResetHandler{users: users, store: store, emails: emailer{sender: sender}, secret: secret,
 		now: time.Now, floor: resetAnswerFloor, sleep: time.Sleep}
 }
 
@@ -157,7 +159,7 @@ func (h *PasswordResetHandler) clock() time.Time { return h.now() }
 
 // Wait waits for every email started so far, the codes and the
 // password-changed emails (tests and shutdown).
-func (h *PasswordResetHandler) Wait() { h.wg.Wait() }
+func (h *PasswordResetHandler) Wait() { h.emails.Wait() }
 
 // Register mounts the routes on the public /v1 group. Like sign-up they are
 // limited twice, and the three routes share both limits (the same two
@@ -287,20 +289,6 @@ func resetMessage(code string) (subject, html, text string) {
 	return subject, html, text
 }
 
-// changedMessage is the email a reset sends once the password changed
-// (developer, 2026-11-23), worded as other services word it: what changed,
-// nothing to do if it was you, and what to do if it was not. Plain words, no
-// em dashes.
-func changedMessage() (subject, html, text string) {
-	subject = "Your RNDMRoll password was changed"
-	changed := "Your RNDMRoll password was just changed, and you were logged out on every phone."
-	you := "If this was you, you can ignore this email."
-	notYou := "If it wasn't you, reset your password right away from the app's Log in page."
-	text = fmt.Sprintf("%s\n\n%s\n\n%s", changed, you, notYou)
-	html = fmt.Sprintf("<p>%s</p><p>%s</p><p>%s</p>", changed, you, notYou)
-	return subject, html, text
-}
-
 func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	var req ForgotPasswordRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
@@ -316,34 +304,7 @@ func (h *PasswordResetHandler) forgot(c *gin.Context) {
 	// email run after it, so nobody learns who has an account, and a slow
 	// email never makes the app give up on a code that was sent.
 	Respond(c, http.StatusOK, gin.H{})
-	h.background(func(ctx context.Context) { h.sendCode(ctx, email) })
-}
-
-// background runs work (an email) after the answer, on its own deadline,
-// never the request's.
-func (h *PasswordResetHandler) background(work func(ctx context.Context)) {
-	h.wg.Add(1)
-	go func() {
-		defer h.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("httpapi: reset email panic: %v", r)
-			}
-		}()
-		ctx, cancel := context.WithTimeout(context.Background(), resetWorkDeadline)
-		defer cancel()
-		work(ctx)
-	}()
-}
-
-// sendChanged emails the owner of address that their password was just
-// changed (changedMessage). A failed email changes nothing: the password is
-// set either way.
-func (h *PasswordResetHandler) sendChanged(ctx context.Context, address string) {
-	subject, html, text := changedMessage()
-	if err := h.sender.Send(ctx, address, subject, html, text); err != nil {
-		log.Printf("httpapi: password changed email: %v", err)
-	}
+	h.emails.background(func(ctx context.Context) { h.sendCode(ctx, email) })
 }
 
 // sendCode emails a new code to the account of email, if it has one that
@@ -377,7 +338,7 @@ func (h *PasswordResetHandler) sendCode(ctx context.Context, email string) {
 		return
 	}
 	subject, html, text := resetMessage(code)
-	if err := h.sender.Send(ctx, u.Email, subject, html, text); err != nil {
+	if err := h.emails.sender.Send(ctx, u.Email, subject, html, text); err != nil {
 		log.Printf("httpapi: reset email: %v", err)
 	}
 }
@@ -479,7 +440,7 @@ func (h *PasswordResetHandler) reset(c *gin.Context) {
 	}
 	Respond(c, http.StatusOK, body)
 	address := u.Email
-	h.background(func(ctx context.Context) { h.sendChanged(ctx, address) })
+	h.emails.background(func(ctx context.Context) { h.emails.sendChanged(ctx, address, "every phone") })
 }
 
 // checkCode checks code, already of the right shape (resetCodeShape), against

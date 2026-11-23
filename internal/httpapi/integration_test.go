@@ -173,6 +173,9 @@ type integrationOptions struct {
 	// wire, when set, adds to the wiring before the server is built (the
 	// push tests hang a fake push sender on the services).
 	wire func(socialSvc *social.Service, boardSvc *board.Service, deps *Deps)
+	// mail keeps the password-changed emails of a change made in Settings.
+	// nil means a fresh one that nobody holds.
+	mail *captureSender
 }
 
 // buildIntegrationServerWith is buildIntegrationServer with the spin slice's
@@ -218,8 +221,15 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	}
 
 	// users is the Postgres repository, which is also the PasswordChanger.
-	accountHandler := NewAccountHandler(users, users, refreshSvc, integrationJWTSecret, 15*time.Minute)
+	box := opts.mail
+	if box == nil {
+		box = &captureSender{}
+	}
+	accountHandler := NewAccountHandler(users, users, refreshSvc, box, integrationJWTSecret, 15*time.Minute)
 	accountHandler.clock = frozenClock
+	// A change emails after its answer: the test ends only once the emails
+	// have gone out.
+	t.Cleanup(accountHandler.Wait)
 
 	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.Link)

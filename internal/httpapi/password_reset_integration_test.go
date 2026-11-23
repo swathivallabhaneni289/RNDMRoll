@@ -193,17 +193,24 @@ func (failsAtLastWrite) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQuery
 // tracer every statement before it is sent.
 func (w *resetWorld) tracedStore(tracer pgx.QueryTracer) ResetStore {
 	w.t.Helper()
+	return postgres.NewPasswordResetRepo(tracedPool(w.t, tracer))
+}
+
+// tracedPool is a pool of its own on the test database whose connections
+// report every statement to tracer. It is closed when the test ends.
+func tracedPool(t *testing.T, tracer pgx.QueryTracer) *pgxpool.Pool {
+	t.Helper()
 	cfg, err := pgxpool.ParseConfig(integrationTestDatabaseURL)
 	if err != nil {
-		w.t.Fatal(err)
+		t.Fatal(err)
 	}
 	cfg.ConnConfig.Tracer = tracer
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
-		w.t.Fatal(err)
+		t.Fatal(err)
 	}
-	w.t.Cleanup(pool.Close)
-	return postgres.NewPasswordResetRepo(pool)
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // failingStore is the world's code store on a pool whose connections never

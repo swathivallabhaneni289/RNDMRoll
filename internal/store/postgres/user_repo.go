@@ -268,7 +268,13 @@ func (r *UserRepo) ChangePassword(ctx context.Context, userID uuid.UUID, passwor
 	if err := changePassword(ctx, tx, userID, passwordHash, sessionID, newTokenHash, expiresAt, userAgent); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	// Only the commit outlives the request, as a reset's does
+	// (PasswordResetRepo.SpendAndChangePassword): a phone that gives up while
+	// the commit is on its way can no longer make a change that went through
+	// look failed, which would skip the email telling the owner.
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), passwordCommitTimeout)
+	defer cancel()
+	return tx.Commit(commitCtx)
 }
 
 // SetPassword stores passwordHash for userID from the terminal (`make
