@@ -270,9 +270,15 @@ func TestChangePassword_AnswersBeforeTheEmail(t *testing.T) {
 		defer close(done)
 		rig.srv.Engine().ServeHTTP(rec, req)
 	}()
+	// The window is wide on purpose: the change runs bcrypt twice, which is
+	// slow under -race, while a change that waited on the email would not
+	// answer at all as long as the email is held.
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
+		// Let the email go, so the request ends inside the test, then fail.
+		release()
+		<-done
 		t.Fatal("the change waited on the password-changed email")
 	}
 	cancel()
