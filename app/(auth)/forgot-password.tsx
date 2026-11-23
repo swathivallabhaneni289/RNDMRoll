@@ -28,6 +28,9 @@ const GENERIC = 'Something went wrong. Please try again.';
 const TOO_MANY = 'Too many requests. Wait a minute and try again.';
 // The lines for the server's answers about the code, and the rules that pick them, are in
 // lib/auth/resetPage.ts (codeLine, maybeSpentByLostReset, tooMany, answerLost).
+/** The email step's line under its heading. It reads right both for an empty box and for one filled
+ * in from Log in, so it never asks for an email that is already there (developer, 2026-11-23). */
+const EMAIL_HINT = "We'll email you a code to reset your password.";
 /** The code step's line under its heading when no notice is set (a sent code's notice takes its place). */
 const CODE_HINT = 'Enter the 6-digit code from the email.';
 /** The password step's lines under its heading: green, then muted. */
@@ -245,9 +248,7 @@ export default function ForgotPasswordScreen() {
         {step === 'email' || step === 'code' ? (
           <View style={{ marginTop: space.sm }}>
             <AppText role="body" tone="muted">
-              {step === 'email'
-                ? "Enter your account's email to ask for a code to set a new password."
-                : notice ?? CODE_HINT}
+              {step === 'email' ? EMAIL_HINT : notice ?? CODE_HINT}
             </AppText>
           </View>
         ) : null}
