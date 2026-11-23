@@ -64,13 +64,13 @@ We review reports. We may remove posts or comments, or disable accounts, that br
 
 If we removed a post or comment of yours and you think we got it wrong, tap the message about it in the app and ask for a second look. Tell us why it should come back, and add up to 3 photos, such as screenshots, if they help. You can ask once for each removal, within its 30 days. If we bring it back or keep it removed, the app tells you.
 
-If you think we got any other decision wrong, such as disabling your account, email us at  and ask for a second look.
+If you think we got any other decision wrong, such as disabling your account, email us at swathi.vallabhaneni289@gmail.com and ask for a second look.
 
 Don't make a new account to get around a block or a disabled account.
 
 ## Leaving RNDMRoll
 
-You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. A post or comment we removed is deleted for good 30 days later. To remove any other comment of yours, email us at . You can remove a follower whenever you like.
+You can stop using RNDMRoll at any time. You can delete your posts, and your comments on posts you can still see. A post or comment we removed is deleted for good 30 days later. To remove any other comment of yours, email us at swathi.vallabhaneni289@gmail.com. You can remove a follower whenever you like.
 
 To delete your whole account, go to Settings, then Delete account, and enter your password. Your account is hidden from everyone right away and deleted for good after 30 days, with everything in it. If you log back in, or reset your password, before then, it won't be deleted. The Privacy Policy explains the few copies that take longer to clear.
 
@@ -88,4 +88,4 @@ We may update these terms as RNDMRoll changes. When we do, we'll change the date
 
 ## Contact
 
-Questions about these terms? Email us at .
+Questions about these terms? Email us at swathi.vallabhaneni289@gmail.com.

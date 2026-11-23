@@ -21,7 +21,7 @@ export type LegalDocument = {
 };
 
 /** Where people write to RNDMRoll: one place, so it is changed once. */
-export const CONTACT_EMAIL = '';
+export const CONTACT_EMAIL = 'swathi.vallabhaneni289@gmail.com';
 
 const EFFECTIVE = 'November 23, 2026';
 

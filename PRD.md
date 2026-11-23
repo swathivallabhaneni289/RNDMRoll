@@ -841,7 +841,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 **Legal and accounts**
 
 - [ ] A lawyer reviews the Terms of Use and the Privacy Policy, including which law applies.
-- [ ] A real contact email for the Terms and the Privacy Policy.
+- [x] A real contact email for the Terms and the Privacy Policy: the admin's email (developer, 2026-11-23).
 - [x] Account deletion in the app (Apple requires it for apps with sign-up). Built October 25, 2026.
 - [ ] Record the accepted terms version, and tell people when the terms change.
 - [ ] Verify email addresses at sign-up.

@@ -105,8 +105,8 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 - Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app. A post or comment we removed is deleted for good 30 days later.
 - Remove a follower, unfollow, mute or block anyone.
 - In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.
-- Ask for a copy of your information, or ask us to correct it, by emailing  from the address on your account. We'll answer within 30 days.
-- Ask for a second look at a post or comment we removed: tap the message about it in the app, tell us why it should come back and add up to 3 photos if they help. You can ask once for each removal, within 30 days of it. To ask about a disabled account, email us at .
+- Ask for a copy of your information, or ask us to correct it, by emailing swathi.vallabhaneni289@gmail.com from the address on your account. We'll answer within 30 days.
+- Ask for a second look at a post or comment we removed: tap the message about it in the app, tell us why it should come back and add up to 3 photos if they help. You can ask once for each removal, within 30 days of it. To ask about a disabled account, email us at swathi.vallabhaneni289@gmail.com.
 - Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in, or resetting your password, before then keeps it. Copies in server logs are cleared on their normal schedule.
 
 Depending on where you live, the law may give you more rights over your information, such as the right to complain to a data protection authority. Email us and we will help.
@@ -129,4 +129,4 @@ We may update this policy as RNDMRoll changes. When we do, we'll change the date
 
 ## Contact
 
-Questions about your privacy? Email us at .
+Questions about your privacy? Email us at swathi.vallabhaneni289@gmail.com.
