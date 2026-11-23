@@ -1051,6 +1051,14 @@ for (const line of lines) {
       /const typed = typeof param === 'string' \? param\.trim\(\) : '';\s*return EMAIL_PATTERN\.test\(typed\) \? typed : '';/.test(page)
   );
   check('the keyboard opens by itself only for an empty email box', /autoFocus=\{carried === ''\}/.test(page));
+  check(
+    'Log in and the new password box have Show and Hide, as sign-up and Settings do',
+    /secureTextEntry=\{!showPassword\}\s*autoCapitalize="none"\s*autoCorrect=\{false\}/.test(login) &&
+      /accessibilityLabel=\{showPassword \? 'Hide password' : 'Show password'\}/.test(login) &&
+      /secureTextEntry=\{!shown\}\s*autoCapitalize="none"\s*autoCorrect=\{false\}/.test(page) &&
+      /accessibilityLabel=\{shown \? 'Hide new password' : 'Show new password'\}/.test(page) &&
+      /<NewPasswordField value=\{password\} onChangeText=\{setPassword\} error=\{passwordError\} \/>/.test(page)
+  );
 }
 
 // ---- Section 10 Privacy: no location, contacts or tracking; no tracking tools -----------------

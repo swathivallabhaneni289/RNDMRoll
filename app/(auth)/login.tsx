@@ -28,6 +28,7 @@ export default function LoginScreen() {
 
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | undefined>();
   const [passwordError, setPasswordError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | null>(null);
@@ -146,12 +147,26 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             onBlur={() => setPasswordError(validatePasswordValue(password))}
             error={passwordError}
-            secureTextEntry
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
             maxLength={72}
             autoComplete="current-password"
             textContentType="password"
             autoFocus={autoFocusField === 'password'}
           />
+          {/* Show or Hide on the label row, as on sign-up and in Settings (developer, 2026-11-23). */}
+          <Pressable
+            onPress={() => setShowPassword((current) => !current)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            hitSlop={12}
+            style={{ position: 'absolute', top: 0, right: 0 }}
+          >
+            <AppText role="label" tone="muted">
+              {showPassword ? 'Hide' : 'Show'}
+            </AppText>
+          </Pressable>
         </View>
 
         {/* Forgot password: plain words, not underlined (developer's rule). An email typed above goes

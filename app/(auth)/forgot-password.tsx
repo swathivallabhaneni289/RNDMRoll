@@ -48,6 +48,44 @@ const MAYBE_CHANGED_AFTER = 'If your password did change, log in with the new on
 const SET_LOG_IN = 'Your new password is set. Log in with it.';
 
 /**
+ * The password step's box, with Show and Hide on its label row as on sign-up and in Settings
+ * (developer, 2026-11-23), and the checklist under it. Its own component, so a tap on Show draws
+ * only this box again.
+ */
+function NewPasswordField({ value, onChangeText, error }: { value: string; onChangeText: (next: string) => void; error?: string }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <View>
+      <TextField
+        label="New password"
+        value={value}
+        onChangeText={onChangeText}
+        error={error}
+        secureTextEntry={!shown}
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={72}
+        autoComplete="new-password"
+        textContentType="newPassword"
+        autoFocus
+      />
+      <Pressable
+        onPress={() => setShown((current) => !current)}
+        accessibilityRole="button"
+        accessibilityLabel={shown ? 'Hide new password' : 'Show new password'}
+        hitSlop={12}
+        style={{ position: 'absolute', top: 0, right: 0 }}
+      >
+        <AppText role="label" tone="muted">
+          {shown ? 'Hide' : 'Show'}
+        </AppText>
+      </Pressable>
+      <PasswordChecklist value={value} />
+    </View>
+  );
+}
+
+/**
  * Forgot password (developer, 2026-10-21), opened from Log in. Three steps on one page, as the new
  * password comes only after the code is checked (developer, 2026-11-13): your email, then the
  * 6-digit code from the email, which the server checks without using it up, then a new password
@@ -301,18 +339,7 @@ export default function ForgotPasswordScreen() {
         ) : null}
         {step === 'password' ? (
           <View key="new-password" style={{ marginTop: space.lg }}>
-            <TextField
-              label="New password"
-              value={password}
-              onChangeText={setPassword}
-              error={passwordError}
-              secureTextEntry
-              maxLength={72}
-              autoComplete="new-password"
-              textContentType="newPassword"
-              autoFocus
-            />
-            <PasswordChecklist value={password} />
+            <NewPasswordField value={password} onChangeText={setPassword} error={passwordError} />
           </View>
         ) : null}
 
