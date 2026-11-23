@@ -1761,9 +1761,15 @@ func TestPasswordReset_AnswersBeforeThePasswordChangedEmail(t *testing.T) {
 		defer close(done)
 		router.ServeHTTP(rec, req)
 	}()
+	// The window is wide on purpose (bcrypt is slow under -race), while a
+	// reset that waited on the email would not answer at all as long as the
+	// email is held.
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
+		// Let the email go, so the request ends inside the test, then fail.
+		release()
+		<-done
 		t.Fatal("the reset waited on the password-changed email")
 	}
 	// The real server ends the request's context once it has answered.
