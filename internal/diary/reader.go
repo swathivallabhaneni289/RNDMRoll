@@ -26,8 +26,9 @@ type Reader interface {
 	// TimeZone is the stored zone name, or "" when none.
 	TimeZone(ctx context.Context, userID string) (string, error)
 	// Social returns, for each of the person's own entries in entryIDs that
-	// has comments, the count and the newest few (LatestCount, oldest first),
-	// keyed by entry id. An entry with none is absent.
+	// has comments or likes, the comment count, the newest few (LatestCount,
+	// oldest first) and the like count, keyed by entry id. An entry with
+	// neither is absent.
 	Social(ctx context.Context, userID string, entryIDs []string) (map[string]PostSocial, error)
 }
 

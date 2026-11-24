@@ -25,7 +25,7 @@ const (
 
 // Row is one diary row. For an entry row Entry is set; for a skipped row
 // Entry is nil and Category is the skipped spin's category as written.
-// Social is set on an entry row with comments.
+// Social is set on an entry row with comments or likes.
 type Row struct {
 	Kind      RowKind
 	Entry     *spin.Entry
@@ -42,13 +42,16 @@ const LatestCount = 1
 // PostSocial is the comments on one of the person's own posts, for the posts
 // list (developer, 2026-10-17: comments shown under each post, like
 // Instagram). It counts what the post page shows its owner, without the
-// comments the owner hid: no one with a block either way. Reactions on posts
-// were removed (developer, 2026-10-18).
+// comments the owner hid: no one with a block either way. Likes came back as
+// a heart on 2026-11-24 (BRD-06).
 type PostSocial struct {
 	// Comments counts the comments and replies; Latest is up to LatestCount
 	// of the newest, oldest first (the order they are read in).
 	Comments int
 	Latest   []LatestComment
+	// Likes is how many people like the post, counted as the post page's
+	// Likes list (received) counts them, so the number and the list agree.
+	Likes int
 }
 
 // LatestComment is one of the newest comments on a post and who wrote it.

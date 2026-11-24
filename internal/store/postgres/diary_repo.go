@@ -303,8 +303,9 @@ func (r *DiaryReader) TimeZone(ctx context.Context, userID string) (string, erro
 // anything moderation keeps from the owner (a comment they reported, or one
 // under review or removed), and a reply whose top-level comment is left out
 // for either reason (board.Thread). A comment the owner hid is left out too,
-// so it never shows under a post in the list. Only the person's own entries
-// are read, and none an admin removed.
+// so it never shows under a post in the list. And the likes the post page's
+// Likes list shows (likeShownTo). Only the person's own entries are read, and
+// none an admin removed.
 func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []string) (map[string]diary.PostSocial, error) {
 	uid, err := diaryUserID(userID)
 	if err != nil {
@@ -346,6 +347,35 @@ func (r *DiaryReader) Social(ctx context.Context, userID string, entryIDs []stri
 		}
 		s := out[id.String()]
 		s.Comments = n
+		out[id.String()] = s
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// The likes, counted by the rule of the post page's Likes list
+	// (likeShownTo). A post with likes and no comments gets its entry here,
+	// or its count would read 0.
+	rows, err = r.pool.Query(ctx, `
+		select pr.entry_id, count(*)
+		from post_reactions pr
+		join entries e on e.id = pr.entry_id
+		where pr.entry_id = any($2::uuid[]) and e.user_id = $1
+		  and `+postShownTo("$1::uuid", "e")+` and `+likeShownTo("$1::uuid", "pr")+`
+		group by pr.entry_id`, uid, ids)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		s := out[id.String()]
+		s.Likes = n
 		out[id.String()] = s
 	}
 	rows.Close()

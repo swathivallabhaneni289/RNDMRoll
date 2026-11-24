@@ -55,8 +55,9 @@ type Repository interface {
 	// Thread puts them in page order, and drops the replies whose top-level
 	// comment is not there.
 	Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]CommentRow, error)
-	// Received are the reactions on owner's entry, newest change first,
-	// without people who have a block with the owner.
+	// Received are the likes on owner's entry (any stored name counts),
+	// newest change first, without people who have a block with the owner or
+	// whose account is gone.
 	Received(ctx context.Context, owner, entryID uuid.UUID) ([]Received, error)
 	SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) error
 	ClearReaction(ctx context.Context, entryID, userID uuid.UUID) error
@@ -376,8 +377,11 @@ func (s *Service) commentPhotoURL(key *string) string {
 	return s.photoURL(*key)
 }
 
-// SetReaction sets (a name) or clears (nil) the viewer's reaction. Order:
-// the post must be visible, not the viewer's own, then the name valid.
+// SetReaction sets (a name) or clears (nil) the viewer's reaction, which is
+// the like (BRD-06: the app sends "love" or nil). Order: the post must be
+// visible, not the viewer's own, then the name valid. Comments being off
+// never refuses it, and a like is never pushed: it waits in the owner's
+// bell.
 func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, reaction *string) (*string, error) {
 	row, f, err := s.visible(ctx, viewer, entryID)
 	if err != nil {

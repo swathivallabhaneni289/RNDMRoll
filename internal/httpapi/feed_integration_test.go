@@ -204,6 +204,18 @@ func (w *feedWorld) notes(p feedPerson) map[string]any {
 	return w.ok(p, http.MethodGet, "/v1/notifications", nil)
 }
 
+// likeCount is the like_count on entry's row of p's posts list (GET /diary).
+func (w *feedWorld) likeCount(p feedPerson, entry string) float64 {
+	w.t.Helper()
+	for _, v := range w.ok(p, http.MethodGet, "/v1/diary", nil)["items"].([]any) {
+		if row := v.(map[string]any); row["kind"] == "entry" && dig(w.t, row, "entry", "id") == entry {
+			return dig(w.t, row, "social", "like_count").(float64)
+		}
+	}
+	w.t.Fatalf("no row for %s on %s's posts list", entry, p.name)
+	return 0
+}
+
 // kinds lists the notification kinds in order.
 func kinds(t *testing.T, list map[string]any) []string {
 	t.Helper()
@@ -739,6 +751,16 @@ func TestPostIntegration_ReactionsAndComments(t *testing.T) {
 	if got := w.ok(a, http.MethodGet, path, nil); dig(t, got, "card", "my_reaction") != "love" {
 		t.Fatalf("my reaction on the card: %v", got)
 	}
+	// BRD-06: the like is a line in B's bell with B's post's picture, and
+	// B's posts list counts it as the post page's Likes list does.
+	like := itemOf(t, w.notes(b), "like")
+	if photo, _ := like["photo_url"].(string); like["id"] != "like:"+bEntry+":"+a.id || dig(t, like, "actor", "id") != a.id ||
+		like["entry_id"] != bEntry || photo == "" {
+		t.Fatalf("the like in B's bell: %v", like)
+	}
+	if n := w.likeCount(b, bEntry); n != 1 || n != float64(len(received)) {
+		t.Fatalf("B's posts list: like_count %v, want 1, the length of received %v", n, received)
+	}
 
 	// Comments: write, read, delete by the writer or the owner only.
 	got := w.call(a, http.MethodPost, path+"/comments", map[string]any{"text": "  Looks good  "}, http.StatusCreated)
@@ -779,6 +801,16 @@ func TestPostIntegration_ReactionsAndComments(t *testing.T) {
 	if off["can_comment"] != false || off["comments_off"] != true || len(off["comments"].([]any)) != 1 {
 		t.Fatalf("post with comments off: %v", off)
 	}
+	// Comments off does not stop likes (BRD-06): an undo and a like again.
+	if off["can_react"] != true {
+		t.Fatalf("can_react with comments off: %v", off)
+	}
+	if got := w.ok(a, http.MethodPost, path+"/reaction", map[string]any{"reaction": nil}); got["my_reaction"] != nil {
+		t.Fatalf("undo with comments off: %v", got)
+	}
+	if got := w.ok(a, http.MethodPost, path+"/reaction", map[string]any{"reaction": "love"}); got["my_reaction"] != "love" {
+		t.Fatalf("like with comments off: %v", got)
+	}
 	w.ok(a, http.MethodPost, "/v1/comments/"+dig(t, first, "id").(string)+"/delete", map[string]any{})
 	w.ok(b, http.MethodPatch, "/v1/entries/"+bEntry, map[string]any{"comments_off": false})
 
@@ -790,13 +822,20 @@ func TestPostIntegration_ReactionsAndComments(t *testing.T) {
 	if got := w.ok(b, http.MethodGet, path, nil); len(got["received"].([]any)) != 0 {
 		t.Fatalf("cleared: %v", got)
 	}
+	// The undo takes the like's line and its count away.
+	if k := kinds(t, w.notes(b)); has(k, "like") {
+		t.Fatalf("a like item after the undo: %v", k)
+	}
+	if n := w.likeCount(b, bEntry); n != 0 {
+		t.Fatalf("B's posts list after the undo: like_count %v, want 0", n)
+	}
 
 	// Deleting the post takes its reactions and comments with it.
 	w.ok(a, http.MethodPost, path+"/reaction", map[string]any{"reaction": "wow"})
 	w.call(a, http.MethodPost, path+"/comments", map[string]any{"text": "Bye"}, http.StatusCreated)
 	w.ok(b, http.MethodPost, "/v1/entries/"+bEntry+"/delete", map[string]any{})
 	w.call(a, http.MethodGet, path, nil, http.StatusNotFound)
-	if k := kinds(t, w.notes(b)); has(k, "reaction") || has(k, "comment") {
+	if k := kinds(t, w.notes(b)); has(k, "reaction") || has(k, "like") || has(k, "comment") {
 		t.Fatalf("items of a deleted post: %v", k)
 	}
 }
@@ -821,9 +860,14 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	}
 	list := w.notes(b)
 	k := kinds(t, list)
-	// A reaction on a post makes no item (reactions were removed, 2026-10-18).
-	if has(k, "reaction") || !has(k, "comment") || !has(k, "follow_request") || !has(k, "spin_open") || list["unread"] != true {
+	// A's "fire" is a like (BRD-06: any stored name counts), a line of its
+	// own kind with the post's picture and no text.
+	if has(k, "reaction") || !has(k, "like") || !has(k, "comment") || !has(k, "follow_request") || !has(k, "spin_open") || list["unread"] != true {
 		t.Fatalf("all on: %v", list)
+	}
+	if lk := itemOf(t, list, "like"); dig(t, lk, "actor", "username") != "nf_alice" || lk["entry_id"] != bEntry ||
+		lk["section"] != "today" || lk["at_label"] != "8:31 PM" || lk["text"] != nil || lk["photo_url"] == "" || lk["photo_url"] == nil {
+		t.Fatalf("like item: %v", lk)
 	}
 	if k[0] != "comment" {
 		t.Fatalf("newest first: %v", k)
@@ -840,13 +884,13 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	if got["reactions"] != false || got["comments"] != true || got["milestones"] != true {
 		t.Fatalf("patch: %v", got)
 	}
-	// The stored switch stays and no longer changes the list.
-	if k := kinds(t, w.notes(b)); has(k, "reaction") || !has(k, "comment") {
+	// The stored switch stays and changes nothing: likes have no switch.
+	if k := kinds(t, w.notes(b)); !has(k, "like") || !has(k, "comment") {
 		t.Fatalf("reactions off: %v", k)
 	}
 	w.ok(b, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"comments": false, "milestones": false})
-	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || has(k, "reaction") || !has(k, "follow_request") {
-		t.Fatalf("all off, follow items stay: %v", k)
+	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || !has(k, "like") || !has(k, "follow_request") {
+		t.Fatalf("all off, follow items and the like stay: %v", k)
 	}
 	if got := w.ok(b, http.MethodGet, "/v1/me/notification-settings", nil); got["reactions"] != false || got["comments"] != false || got["milestones"] != false {
 		t.Fatalf("stored: %v", got)
@@ -930,7 +974,8 @@ func TestNotificationIntegration_TheDotIsOffBeforeTheZoneIsSent(t *testing.T) {
 }
 
 // Your posts list carries each post's comment count and newest comment, so the
-// list needs no read per post (developer, 2026-10-17).
+// list needs no read per post (developer, 2026-10-17), and its like count
+// (BRD-06).
 func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
 	w := newFeedWorld(t)
 	a := w.person("ds_alice", "Alice Ames")
@@ -963,8 +1008,18 @@ func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
 		return out
 	}
 
-	if s := social(); s["comment_count"] != float64(0) || len(texts(s)) != 0 || len(s) != 2 {
+	if s := social(); s["comment_count"] != float64(0) || len(texts(s)) != 0 || s["like_count"] != float64(0) || len(s) != 3 {
 		t.Fatalf("nothing yet: %v", s)
+	}
+
+	// Likes and no comments still count (BRD-06): C likes, then A.
+	w.ok(c, http.MethodPost, path+"/reaction", map[string]any{"reaction": "love"})
+	if s := social(); s["like_count"] != float64(1) || s["comment_count"] != float64(0) || len(texts(s)) != 0 {
+		t.Fatalf("one like and no comments: %v", s)
+	}
+	w.ok(a, http.MethodPost, path+"/reaction", map[string]any{"reaction": "love"})
+	if s := social(); s["like_count"] != float64(2) {
+		t.Fatalf("two likes: %v", s)
 	}
 
 	w.call(c, http.MethodPost, path+"/comments", map[string]any{"text": "First"}, http.StatusCreated)
@@ -992,10 +1047,15 @@ func TestDiaryIntegration_PostsCarryCommentCountAndLatestComment(t *testing.T) {
 	}
 	w.ok(b, http.MethodPost, "/v1/comments/"+newestID+"/unhide", map[string]any{})
 
-	// A block leaves that person out of the count and the comments.
+	// A block leaves that person out of the count and the comments, and out
+	// of the like count, which still equals the post page's Likes list.
 	w.ok(b, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": a.id})
 	if s := social(); s["comment_count"] != float64(1) || strings.Join(texts(s), ",") != "First" {
 		t.Fatalf("after a block: %v", s)
+	}
+	received := w.ok(b, http.MethodGet, path, nil)["received"].([]any)
+	if s := social(); s["like_count"] != float64(1) || s["like_count"] != float64(len(received)) {
+		t.Fatalf("likes after a block: %v, received %v", s, received)
 	}
 }
 

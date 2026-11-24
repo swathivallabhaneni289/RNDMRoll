@@ -124,19 +124,28 @@ func (f *fakeReader) Social(_ context.Context, _ string, ids []string) (map[stri
 		if id == "liked" {
 			out[id] = PostSocial{Comments: 2}
 		}
+		if id == "loved" {
+			out[id] = PostSocial{Likes: 1}
+		}
 	}
 	return out, nil
 }
 
+// A post with likes and no comments gets its Social too (BRD-06), so its
+// like count is never lost.
 func TestDiaryServicePageAddsSocialToEntries(t *testing.T) {
 	f := &fakeReader{rows: []Row{
 		{Kind: KindEntry, Entry: &spin.Entry{ID: "liked"}, LocalDate: "2026-10-09"},
 		{Kind: KindEntry, Entry: &spin.Entry{ID: "quiet"}, LocalDate: "2026-10-08"},
 		{Kind: KindSkipped, LocalDate: "2026-10-07"},
+		{Kind: KindEntry, Entry: &spin.Entry{ID: "loved"}, LocalDate: "2026-10-06"},
 	}}
 	p, err := NewService(f, clock.NewFixed(time.Now()), nil).Page(context.Background(), "u", PageParams{Limit: 5})
 	if err != nil || p.Rows[0].Social == nil || p.Rows[0].Social.Comments != 2 || p.Rows[1].Social != nil || p.Rows[2].Social != nil {
 		t.Fatalf("social: %+v %v", p.Rows, err)
+	}
+	if s := p.Rows[3].Social; s == nil || s.Likes != 1 || s.Comments != 0 {
+		t.Fatalf("a post with likes and no comments: %+v", p.Rows[3])
 	}
 }
 

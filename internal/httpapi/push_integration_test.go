@@ -183,6 +183,10 @@ func TestPushIntegration_FourEventsSettingsBlocksAndSelf(t *testing.T) {
 	w.post(cara, day)
 	w.expect("posts")
 
+	// A like is never a phone notification (BRD-06): it waits in the bell.
+	w.ok(bob, http.MethodPost, "/v1/posts/"+entry+"/reaction", map[string]any{"reaction": "love"})
+	w.expect("like")
+
 	// A comment on Alice's post.
 	bobsComment := w.reply(bob, entry, "Love it", "")["id"].(string)
 	if d := w.lastData(); d["kind"] != "comment" || d["entry_id"] != entry || d["own"] != "true" {

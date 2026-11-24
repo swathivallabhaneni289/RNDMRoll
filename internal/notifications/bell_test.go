@@ -52,6 +52,10 @@ func (*fakeNotes) Accepted(context.Context, uuid.UUID, time.Time, int) ([]Raw, e
 	return nil, nil
 }
 
+func (*fakeNotes) Likes(context.Context, uuid.UUID, time.Time, int) ([]Raw, error) {
+	return nil, nil
+}
+
 func (*fakeNotes) Bonuses(context.Context, uuid.UUID, time.Time) ([]Bonus, error) {
 	return nil, nil
 }

@@ -55,7 +55,7 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 |---|---|
 | Audience | Friend groups; anyone 13 and over can join |
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
-| Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, notifications, reporting, an admin page, Terms and Privacy |
+| Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, likes, notifications, reporting, an admin page, Terms and Privacy |
 | Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
 | Quality | More than 750 Go test functions (more than 210 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
@@ -416,7 +416,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SOC-04.** The share sheet sends "Join me on RNDMRoll, one spin a day. Follow me here:" with a link. The link's web page has an "Open in RNDMRoll" button that opens the sender's profile in the app.
 - **SOC-05.** Suggestions draw on people your follows follow, people who follow you, and the newest accounts, with people who follow you first.
 - **SOC-06.**
-  - A block removes follows both ways and hides each person from the other in search, the Board, posts, comments and notifications. The blocker still sees them in Blocked accounts and on their page, with Unblock, unless that account is disabled or being deleted.
+  - A block removes follows both ways and hides each person from the other in search, the Board, posts, comments, likes and notifications. The blocker still sees them in Blocked accounts and on their page, with Unblock, unless that account is disabled or being deleted.
   - The blocked person isn't told. Unblock restores nothing.
   - Blocked accounts are listed in Settings.
 - **SOC-07.** Removes the person's posts from your Board only. Silent, no follow needed.
@@ -430,7 +430,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | BRD-03 | A skipped day shows its own message | P0 | Built |
 | BRD-04 | Following nobody shows a prompt to find people | P0 | Built |
 | BRD-05 | A post page shows the full post and its comments | P0 | Built |
-| BRD-06 | Reactions on friends' posts | P2 | Removed October 18, 2026 (comments cover it) |
+| BRD-06 | Like a friend's post | P2 | Built |
 
 **Acceptance criteria and rules**
 
@@ -445,7 +445,14 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **BRD-02 the day in play.** The most recent 8 PM that has passed. It lasts until the next 8 PM, so the Board calls it "Today" the whole time, also after midnight. A person who has never spun, or who made a first spin today (posted or not), is on today.
 - **BRD-03.** "You skipped today. Posts from people you follow open after your next post." with Go to Spin.
 - **BRD-04.** "See your friends' spins", "Follow people you know. Their posts show here on the days you post too." and Find people.
-- **BRD-05.** The author, the photos edge to edge, the stars, the emoji, the note with the posted time, comments oldest first with replies under them, and Report in the three dots. After Report the post page closes, and the post is gone for the reporter everywhere (SAFE-01).
+- **BRD-05.** The author, the photos edge to edge, the stars, the emoji, the heart (BRD-06), the note with the posted time, comments oldest first with replies under them, and Report in the three dots. After Report the post page closes, and the post is gone for the reporter everywhere (SAFE-01).
+- **BRD-06.**
+  - A heart sits beside the comment mark in the row under the photo: on the post page, on your own entry page and in your posts list. The Board's cards have no heart.
+  - On someone else's post, a tap likes it and a second tap undoes it. The outline heart fills, both in ink, with a short pop that Reduce Motion turns off. If the save fails, the heart goes back and "Couldn't save that. Please try again." shows for a moment.
+  - Friends never see a count, only their own heart.
+  - You can't like your own post. There the heart shows how many people liked it, with no number at none. A tap opens Likes: each person's photo, name and username, newest first, or "No likes yet." Tapping a person opens their page.
+  - Turning comments off doesn't stop likes.
+  - A like is stored as the old reaction "love", and any stored reaction counts as a like.
 
 ### 8.8 Comments
 
@@ -481,7 +488,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 **Acceptance criteria and rules**
 
 - **NOT-01 what it lists.**
-  - Comments on your posts, replies to your comments, new followers and accepted requests.
+  - Comments on your posts, replies to your comments, likes on your posts, new followers and accepted requests.
+  - A like reads "{first name} liked your post." with the post's picture. Tapping it opens your post. Undoing the like takes the line away.
   - "Your spin is open." from 8 PM to midnight, on evenings the wheel opens. It is not shown after a first spin made earlier that day, and after a time zone change it comes when the 12-hour gap ends.
   - "You hit your goal this week. One bonus spin added."
   - Moderation of your own posts and comments:
@@ -494,8 +502,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Items from the last 30 days, at most 50. A removal that can still be asked about stays past the 50, since its line is the only way to ask.
   - A dot on the bell while anything is unread. Opening the page marks all as seen.
 - **NOT-02.** The first row of the list shows only a dot when a request waits, never a count or a name.
-- **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications and the admin's decisions can't be turned off.
-- **NOT-04.** A push token is tied to the login it came from and stops working when that login ends. Pushes never go to yourself or across a block. The admin's decisions are never pushed; they wait in the bell.
+- **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications, likes and the admin's decisions can't be turned off.
+- **NOT-04.** A push token is tied to the login it came from and stops working when that login ends. Pushes never go to yourself or across a block. The admin's decisions and likes are never pushed; they wait in the bell.
 
 ### 8.10 Safety and moderation
 
@@ -651,6 +659,7 @@ These rules decide what counts. The server owns all of them.
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who made a first spin today or has never spun |
 | Who sees a post | Nobody in the app once an admin removed it, the author included. Otherwise the author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, they haven't reported it, it isn't hidden under review, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo, and a removed post until it is deleted. |
 | Who sees a comment | Anyone who can see the post, except: a comment by someone they blocked or who blocked them, or whose account is disabled or being deleted; a comment they reported; a comment the post's author hid, seen only by its writer and the post's author; a comment hidden under review, seen only by its writer; and a removed comment, seen by nobody in the app. A reply shows only with the comment it answers. |
+| Who sees a like | Only the post's owner, as the number beside the heart and the Likes list. Everyone else sees only their own heart. A like by someone the owner blocked or who blocked them, or whose account is disabled or being deleted, never shows or counts. Liking needs the same right to see the post as commenting, and turning comments off doesn't stop it. |
 | Hidden under review | 3 or more open reports on a post or comment from people whose accounts aren't disabled or being deleted. Worked out live from the open reports, never stored. The log only notes the report that hid it, for the owner's bell. |
 | Removed | An admin's Remove: hidden from everyone at once, kept 30 days so it can be brought back, then deleted with its photos. One 30-day rule, on the database clock. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
@@ -703,7 +712,7 @@ These rules decide what counts. The server owns all of them.
 
 - VoiceOver labels and hints on the app's controls. The wheel announces "Your spin is {word}." Posted and Skipped are announced when they change.
 - A box with a problem has it as its VoiceOver hint. A grey button that answers a tap is not read as dimmed, and its hint names what is missing, such as "Still needed: birthday and username." After the tap, VoiceOver says the first problem.
-- Reduce Motion: no spin, no sliding sheets, no photo reveals, and a still background.
+- Reduce Motion: no spin, no sliding sheets, no photo reveals, no heart pop, and a still background.
 - Larger Text is honoured. The shared text style stops at 1.3 times, so page headers don't break. A few labels, such as the Board's day headings, have no cap yet.
 - Most touch targets are at least 44 points. A few are smaller: View all comments, a comment's name and photo, and the Terms and Privacy words on sign-up.
 - Text contrast: ink 17.3:1 and muted grey 5.8:1 on the page colour.
@@ -744,7 +753,7 @@ These rules decide what counts. The server owns all of them.
 
 - The spin is about 4 seconds of slowing down, then the word rises.
 - Tabs swap at once. Pushed pages keep the iOS slide, except the Sign up or Log in page, which fades in from Welcome.
-- No confetti, sound or neon. Two small bounces remain: the pop when an emoji is picked and the pointer settling on Welcome.
+- No confetti, sound or neon. Three small bounces remain: the pop when an emoji is picked, the pop when you like a post or undo it, and the pointer settling on Welcome.
 
 **Forms.**
 
@@ -759,7 +768,7 @@ These rules decide what counts. The server owns all of them.
 - No em dashes.
 - Plain, short sentences.
 - No underlined text used as a button; actions are buttons, icons or ink words. Exception today: the grey "Skip for now" on the second sign-up page.
-- No counts that can grow large under posts.
+- No counts that can grow large under posts. Exception: the like count beside the heart on your own post, which only you see.
 - No fake reviews or counters.
 - No vague hero lines.
 - No emoji used as icons.
@@ -783,10 +792,10 @@ These rules decide what counts. The server owns all of them.
 | Accounts | users, refresh_tokens, password_resets, push_tokens |
 | Spin | user_time_zones, user_spin_state, wheel_categories, spins, posted_days, goal_weeks |
 | Posts | entries, entry_photos |
-| Social | follows, blocks, mutes, post_comments, notification_settings, notification_seen |
+| Social | follows, blocks, mutes, post_comments, post_reactions (likes), notification_settings, notification_seen |
 | Safety | user_reports, post_reports, comment_reports, moderation_events (the decision log), second_looks |
 
-Two unused tables remain: email_verification_tokens and post_reactions.
+One unused table remains: email_verification_tokens.
 
 **What is kept, and for how long.**
 
@@ -909,7 +918,7 @@ Some were found while writing this document; others were already in the planning
 6. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
 7. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
 8. **The locked Board's count can be off.** It can include people whose post was deleted, archived, removed, hidden under review or reported by you, while the first names come only from posts you can see.
-9. **Reactions on posts left unused pieces.** The removed feature's server route and table still exist.
+9. **A like outlives an unfollow.** After you unfollow someone, or they remove you as a follower, your like on their post stays and they still see it, but you can no longer open the post to undo it.
 10. **Some of your own comments can't be reached.** After an unfollow, being removed as a follower, a block, an archive, or your own report of the post or of the comment you replied to, your comment there stays, and the app has no list of your comments to delete it from.
 11. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
 12. **After a big time zone change, the countdown's line can say the wrong time.** When a move puts 8 PM less than 12 hours after the last spin, the wheel opens when the 12 hours end, such as 9:50 PM. The countdown counts to that moment and the wheel opens on time, but the line under it still reads "Opens at 8:00 PM."
@@ -993,10 +1002,11 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 19 | The cards make a table: one line per reported thing under the headings Type, What and Reason, each line its own box, with the buttons at the end | "I dont want random boxes floating on my page"; then they picked a table over two mock-ups and asked for more room | Photos are small in the line (each opens full size) |
 | Nov 19 | A person's History lists every report about them, with how it ended, among the decisions, under how often they were reported; it replaces the closed cards | "We should know that this person got reported once", then "the history section, we'll have it there" | A long list for someone reported often |
 | Nov 19 | Second looks are asked in the app, not by email: tapping the removal opens a small page for why it should come back and up to 3 photos, once per removal within its 30 days; the admin answers with Bring it back or Keep it removed, and the bell says which | "Maybe give a little option there, not like something really big ... they can upload their file or something, and the proofs" | Photos only, with no PDFs and no back-and-forth; one ask per removal; a disabled account still asks by email |
+| Nov 24 | A like on friends' posts: a heart beside the comment mark. Only the poster sees how many and who, with a line in the bell and no push | "if they dont comment atleast people can just like it and move on" | A number under your own post, the one exception to the no-counts rule; likes have no switch in Settings |
 
 ## 18. Out of scope and future ideas
 
-**Left out on purpose.** Unlimited re-spins, live-camera-only posts, music on posts, Apple and Google sign-in, and reactions on friends' posts. The moderation pieces left out on purpose are listed in section 8.10.
+**Left out on purpose.** Unlimited re-spins, live-camera-only posts, music on posts, Apple and Google sign-in, and emoji reactions on friends' posts (one like took their place). The moderation pieces left out on purpose are listed in section 8.10.
 
 **Future ideas (not ranked).**
 
@@ -1023,6 +1033,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Skip | Passing on a day for free; final for that day |
 | Late | Posted from noon the day after the spin until the next 8 PM |
 | Board | The friends' page, locked until you post for the day in play |
+| Like | A heart on someone else's post. Only the post's owner sees who liked it and how many. |
 | Day in play | The date the Board's lock is about: the date of the most recent 8 PM that has passed, or today on a new person's first day |
 | Weekly goal | 4 posted days, Monday to Sunday |
 | Bonus spin | An extra spin earned by the weekly goal, used to swap today's word |
@@ -1048,7 +1059,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 | Posts | `POST /entry-photos/upload-url`; `POST /entries`; `GET`, `PATCH /entries/:id`; `POST /entries/:id/archive`, `/unarchive`, `/delete`; `GET /diary` | Post 10; edits 20 |
 | People | `GET /people/search`, `/people/lookup`, `/people/suggestions`, `/people/:user_id`, `/followers`, `/following`; `POST /people/:user_id/mute`, `/unmute`, `/report` | Search 120; person reports 10 |
 | Follows | `GET`, `POST /follows`; `POST /follows/:user_id/unfollow`; `POST /follows/requests/:id/accept`, `/decline`; `POST /followers/:user_id/remove` | 60 to read; 20 for each change |
-| Board and comments | `GET /board`; `GET /posts/:id`; `POST /posts/:id/comments`, `/report`; `POST /comments/:id/delete`, `/hide`, `/unhide`, `/report`; `POST /posts/:id/reaction` (unused) | Comment 20; post reports 10 and comment reports 10, counted apart; reaction 60 |
+| Board and comments | `GET /board`; `GET /posts/:id`; `POST /posts/:id/comments`, `/report`; `POST /comments/:id/delete`, `/hide`, `/unhide`, `/report`; `POST /posts/:id/reaction` (a like: `{"reaction":"love"}`, undone with `{"reaction":null}`) | Comment 20; post reports 10 and comment reports 10, counted apart; likes 60 |
 | Notifications | `GET /notifications`, `/notifications/summary`; `POST /notifications/seen` | 60, 120, 30 |
 | Second looks | `POST /removals/:id/second-look` (the removal's id, from the bell; photos upload first through `POST /entry-photos/upload-url`) | 10 |
 | Web pages | `GET /i/:username` (invite page); `/admin` (admin page; the Removed tab is `GET /admin/removed`, Bring it back is `POST /admin/removed/restore`, and Keep it removed is `POST /admin/removed/keep`); `GET /healthz` | Admin log in 5 per IP, sharing the app's per-account limit; the others have none |

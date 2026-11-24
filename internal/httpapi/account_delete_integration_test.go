@@ -554,7 +554,7 @@ func goneOnEverySurface(t *testing.T, admin bool) {
 		sort.Strings(reacted)
 		return comments, dig(t, got, "card", "comment_count").(float64), reacted
 	}
-	postsList := func() (count float64, latestBy string) {
+	postsList := func() (count float64, latestBy string, likes float64) {
 		t.Helper()
 		items := w.ok(a, http.MethodGet, "/v1/diary", nil)["items"].([]any)
 		row := items[0].(map[string]any)
@@ -566,7 +566,7 @@ func goneOnEverySurface(t *testing.T, admin bool) {
 		if len(latest) != 1 {
 			t.Fatalf("A's posts list: latest comments %v, want the newest one", latest)
 		}
-		return s["comment_count"].(float64), dig(t, latest[0], "author", "id").(string)
+		return s["comment_count"].(float64), dig(t, latest[0], "author", "id").(string), s["like_count"].(float64)
 	}
 	bell := func(p feedPerson) (kindsByB, ids []string) {
 		t.Helper()
@@ -626,11 +626,12 @@ func goneOnEverySurface(t *testing.T, admin bool) {
 	if n := w.boardCount(a, aPost); n != 5 {
 		t.Fatalf("before: the comment count on A's Board card: %v, want 5", n)
 	}
-	if count, latestBy := postsList(); count != 5 || latestBy != b.id {
-		t.Fatalf("before: A's posts list: comment_count %v (want 5), newest comment by %s (want B, %s)", count, latestBy, b.id)
+	if count, latestBy, likes := postsList(); count != 5 || latestBy != b.id || likes != 2 {
+		t.Fatalf("before: A's posts list: comment_count %v (want 5), newest comment by %s (want B, %s), like_count %v (want 2, B's and C's)",
+			count, latestBy, b.id, likes)
 	}
-	if byB, ids := bell(a); !sameList(byB, []string{"comment", "follow", "follow_accepted", "reply"}) || !has(ids, "comment:"+cUnderB) {
-		t.Fatalf("before: A's bell: items by B %v (want comment, follow, follow_accepted, reply), ids %v (want comment:%s among them)", byB, ids, cUnderB)
+	if byB, ids := bell(a); !sameList(byB, []string{"comment", "follow", "follow_accepted", "like", "reply"}) || !has(ids, "comment:"+cUnderB) {
+		t.Fatalf("before: A's bell: items by B %v (want comment, follow, follow_accepted, like, reply), ids %v (want comment:%s among them)", byB, ids, cUnderB)
 	}
 	if byB, _ := bell(c); !sameList(byB, []string{"follow_request"}) {
 		t.Fatalf("before: C's bell: items by B %v, want [follow_request]", byB)
@@ -686,8 +687,9 @@ func goneOnEverySurface(t *testing.T, admin bool) {
 	if n := w.boardCount(a, aPost); n != 2 {
 		t.Fatalf("after: the comment count on A's Board card: %v, want 2", n)
 	}
-	if count, latestBy := postsList(); count != 2 || latestBy != c.id {
-		t.Fatalf("after: A's posts list: comment_count %v (want 2), newest comment by %s (want C, %s)", count, latestBy, c.id)
+	if count, latestBy, likes := postsList(); count != 2 || latestBy != c.id || likes != 1 {
+		t.Fatalf("after: A's posts list: comment_count %v (want 2), newest comment by %s (want C, %s), like_count %v (want 1, C's)",
+			count, latestBy, c.id, likes)
 	}
 	if byB, ids := bell(a); len(byB) != 0 || has(ids, "comment:"+cUnderB) || !has(ids, "comment:"+cTop) {
 		t.Fatalf("after: A's bell: items by B %v (want none), ids %v (want no comment:%s, and comment:%s still there)", byB, ids, cUnderB, cTop)

@@ -167,6 +167,44 @@ func (r *NotificationsRepo) Accepted(ctx context.Context, viewer uuid.UUID, sinc
 		limit $3`, viewer, since, limit)
 }
 
+// Likes implements notifications.Repository by the rules of Comments:
+// nothing on a post an admin removed (postShownTo), and no like by anyone
+// with a block either way or whose account is gone (likeShownTo, the rule
+// of the Likes list). Archived and under-review posts keep theirs, as they
+// keep their comments. An undo deletes the row, so its item goes with it.
+// The item id is like:<entry>:<actor>, and its time the like's last change.
+func (r *NotificationsRepo) Likes(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
+	rows, err := r.pool.Query(ctx, `
+		select pr.entry_id, pr.user_id, pr.updated_at, s.category_name,
+		  (select ep.storage_key from entry_photos ep where ep.entry_id = e.id order by ep.position limit 1)
+		from entries e
+		join post_reactions pr on pr.entry_id = e.id
+		join spins s on s.id = e.spin_id
+		where e.user_id = $1 and pr.updated_at > $2
+		  and `+postShownTo("$1::uuid", "e")+` and `+likeShownTo("$1::uuid", "pr")+`
+		order by pr.updated_at desc, pr.entry_id desc, pr.user_id desc
+		limit $3`, owner, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []notifications.Raw{}
+	for rows.Next() {
+		var entryID, actor uuid.UUID
+		var category string
+		var photoKey *string
+		var at time.Time
+		if err := rows.Scan(&entryID, &actor, &at, &category, &photoKey); err != nil {
+			return nil, err
+		}
+		out = append(out, notifications.Raw{
+			Kind: notifications.KindLike, ID: notifications.KindLike + ":" + entryID.String() + ":" + actor.String(),
+			At: at.UTC(), ActorID: actor, EntryID: &entryID, CategoryName: &category, PhotoKey: photoKey,
+		})
+	}
+	return out, rows.Err()
+}
+
 // Bonuses implements notifications.Repository.
 func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since time.Time) ([]notifications.Bonus, error) {
 	rows, err := r.pool.Query(ctx, `

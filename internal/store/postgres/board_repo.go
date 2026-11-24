@@ -294,12 +294,23 @@ func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) 
 	return c, err
 }
 
+// likeShownTo is a where fragment true when the post's owner o sees the like
+// under alias pr (a post_reactions row, whatever its name): it is not their
+// own, and there is no block either way between them and its maker, whose
+// account is not gone (blockedEither already reads goneAccount for both). It
+// is the one rule for which likes an owner sees and counts, read by
+// Received, DiaryReader.Social and NotificationsRepo.Likes, so the number
+// beside the heart and the Likes list always agree.
+func likeShownTo(o, pr string) string {
+	return `(` + pr + `.user_id <> ` + o + ` and not ` + blockedEither(o, pr+".user_id") + `)`
+}
+
 // Received implements board.Repository.
 func (r *BoardRepo) Received(ctx context.Context, owner, entryID uuid.UUID) ([]board.Received, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+personColumns+`, pr.reaction, pr.updated_at
 		from post_reactions pr join users u on u.id = pr.user_id
-		where pr.entry_id = $2 and pr.user_id <> $1 and not `+blockedEither("$1::uuid", "pr.user_id")+`
+		where pr.entry_id = $2 and `+likeShownTo("$1::uuid", "pr")+`
 		order by pr.updated_at desc, pr.user_id`, owner, entryID)
 	if err != nil {
 		return nil, err
@@ -318,13 +329,19 @@ func (r *BoardRepo) Received(ctx context.Context, owner, entryID uuid.UUID) ([]b
 }
 
 // SetReaction implements board.Repository. A change keeps the first
-// created_at and moves updated_at.
+// created_at and moves updated_at. A like that races the post's or the
+// account's delete (the owner's delete, the removed-post purge or the
+// account purge) is ErrNotFound, as a comment is, so it answers 404 and not
+// 500.
 func (r *BoardRepo) SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) error {
 	_, err := r.pool.Exec(ctx, `
 		insert into post_reactions (entry_id, user_id, reaction, created_at, updated_at)
 		values ($1, $2, $3, $4, $4)
 		on conflict (entry_id, user_id) do update set reaction = excluded.reaction, updated_at = excluded.updated_at
 		where post_reactions.reaction <> excluded.reaction`, entryID, userID, reaction, at)
+	if err != nil && isForeignKeyViolation(err) {
+		return board.ErrNotFound
+	}
 	return err
 }
 

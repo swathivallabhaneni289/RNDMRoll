@@ -47,7 +47,7 @@ The research also named the risks I designed around: a locked feed is empty with
 - **Unlimited re-spins.** They would make the daily pick meaningless. The only extra spin is earned with the weekly goal.
 - **Live-camera-only posts.** These would force people to fake or skip anything that happened earlier in the day.
 - **Music attached to posts.** People post a screenshot of the song as a photo instead, which needs no music service.
-- **Apple and Google sign-in, and reactions on friends' posts.** Email and password are enough for a friend group, and reactions repeated what comments do.
+- **Apple and Google sign-in, and emoji reactions on friends' posts.** Email and password are enough for a friend group. Six reactions repeated what comments do, so a post has one like instead.
 - **A wider backlog, kept for later.** A year-end recap, taste insights ("you rate meals higher on weekends"), a shareable result card and small groups with their own wheel. Version 1 stays on the core loop: spin, post, see friends.
 
 These wait for a real launch:
@@ -76,7 +76,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 
 - **Spin.** The wheel opens at 8 PM. A new person gets their first spin right away. The starting wheel is Meal, Movie, Song, Book, Place and Game, all with the same chance, and you can change it (2 to 12 categories).
 - **Post.** Title, a half-star rating from 0.5 to 5, photos, an optional one-tap reaction and a short line. Edit, delete or archive it later.
-- **Board.** Posts from the people you follow, locked until you've posted that day. Comments, replies and photos in comments.
+- **Board.** Posts from the people you follow, locked until you've posted that day. Likes, comments, replies and photos in comments.
 - **Profile.** Every post you've made, your spins, your week streak and your followers.
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. A post or comment you report is gone for you, and one that 3 people report is hidden until an admin looks. Reports go to an admin web page, one card per reported thing, and the admin gets an email. The admin can disable an account, or remove content, which is kept 30 days in case it should come back; its owner is told in the app and can ask there for a second look, with their words and up to 3 photos.

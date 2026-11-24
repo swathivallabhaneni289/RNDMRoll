@@ -609,6 +609,8 @@ func TestModerationIntegration_ARemovedPostIsGoneForEveryoneAndItsDayStillCounts
 	// O follows someone, so O's Board has cards.
 	w.followAccepted(o, v)
 	vComment := w.reply(v, entry, "Nice", "")["id"].(string)
+	w.ok(v, http.MethodPost, "/v1/posts/"+entry+"/reaction", map[string]any{"reaction": "love"})
+	vLike := "like:" + entry + ":" + v.id
 	answer := w.reply(o, entry, "Thanks", vComment)["id"].(string)
 
 	ctx := context.Background()
@@ -671,8 +673,8 @@ func TestModerationIntegration_ARemovedPostIsGoneForEveryoneAndItsDayStillCounts
 	if names, _ := w.locked(l); !slices.Equal(names, []string{"Olive"}) {
 		t.Fatalf("Lou's locked card before: %v", names)
 	}
-	if got := w.bell(o); !has(got, "comment:"+vComment) {
-		t.Fatalf("O's bell before: %v", got)
+	if got := w.bell(o); !has(got, "comment:"+vComment) || !has(got, vLike) {
+		t.Fatalf("O's bell before: %v, want Vera's comment and like", got)
 	}
 	if got := w.bell(v); !has(got, "reply:"+answer) {
 		t.Fatalf("Vera's bell before: %v", got)
@@ -708,8 +710,8 @@ func TestModerationIntegration_ARemovedPostIsGoneForEveryoneAndItsDayStillCounts
 	if got := recent(); !slices.Equal(got, []string{wednesday}) || tastes() != 1 {
 		t.Fatalf("the summary after: recent %v", got)
 	}
-	if got := w.bell(o); has(got, "comment:"+vComment) {
-		t.Fatalf("O's bell after: %v", got)
+	if got := w.bell(o); has(got, "comment:"+vComment) || has(got, vLike) {
+		t.Fatalf("O's bell after: %v, want neither Vera's comment nor her like", got)
 	}
 	if got := w.pushTo(vComment); len(got) != 0 {
 		t.Fatalf("a push to O about a comment on the removed post: %v", got)

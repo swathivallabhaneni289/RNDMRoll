@@ -47,6 +47,7 @@ type socialRead struct {
 // reads.
 type socialNotes struct {
 	comments, replies, follows, requests, accepted []Raw
+	likes                                          []Raw
 	bonuses                                        []Bonus
 	decisions                                      []Decision
 	seen                                           time.Time
@@ -81,6 +82,11 @@ func (n *socialNotes) Requests(_ context.Context, _ uuid.UUID, limit int) ([]Raw
 func (n *socialNotes) Accepted(_ context.Context, _ uuid.UUID, since time.Time, limit int) ([]Raw, error) {
 	n.read("accepted", since, limit)
 	return n.accepted, nil
+}
+
+func (n *socialNotes) Likes(_ context.Context, _ uuid.UUID, since time.Time, limit int) ([]Raw, error) {
+	n.read("likes", since, limit)
+	return n.likes, nil
 }
 
 func (n *socialNotes) Bonuses(_ context.Context, _ uuid.UUID, since time.Time) ([]Bonus, error) {
@@ -205,10 +211,43 @@ func TestSocialCoverage_TheBellKeepsTheNewest50FromTheLast30Days(t *testing.T) {
 			}
 		}
 	}
-	// Six reads, and the admin's decisions about the viewer's own posts
+	// Seven reads, and the admin's decisions about the viewer's own posts
 	// and comments, which take the same window and limit.
-	if len(notes.reads) != 7 {
-		t.Fatalf("the reads: %+v, want all seven", notes.reads)
+	if len(notes.reads) != 8 {
+		t.Fatalf("the reads: %+v, want all eight", notes.reads)
+	}
+}
+
+// BRD-06 and NOT-03: "<first name> liked your post." shows whatever the
+// switches, Comments, Milestones and the stored Reactions value all off,
+// with its actor, unread, and it lights the dot. No switch turns likes off.
+func TestSocialCoverage_ALikeShowsWhateverTheSwitches(t *testing.T) {
+	bell, notes, people, now, actor := socialBell(t)
+	people.settings.Comments, people.settings.Milestones, people.settings.Reactions = false, false, false
+	entry := uuid.New()
+	photo := "entries/owner/0123456789abcdef.jpg"
+	at := now.Add(-time.Hour).UTC()
+	notes.likes = []Raw{{Kind: KindLike, ID: "like:e:a", At: at, ActorID: actor, EntryID: &entry, PhotoKey: &photo}}
+
+	list, err := bell.List(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := itemByID(list, "like:e:a")
+	if it == nil || it.Kind != KindLike || it.Actor == nil || it.Actor.ID != actor || it.Actor.Username != "ann_actor" ||
+		it.EntryID == nil || *it.EntryID != entry || it.PhotoKey == nil || *it.PhotoKey != photo || !it.At.Equal(at) ||
+		!it.Unread || it.Section != SectionToday || it.AtLabel != "8:00 PM" || !list.Unread {
+		t.Fatalf("the like with every switch off: %+v", list.Items)
+	}
+	if dot, err := bell.Unread(context.Background(), uuid.New()); err != nil || !dot {
+		t.Fatalf("the dot: %v %v, want it lit by the like", dot, err)
+	}
+	reads := []string{}
+	for _, r := range notes.reads {
+		reads = append(reads, r.name)
+	}
+	if !slices.Contains(reads, "likes") || slices.Contains(reads, "comments") {
+		t.Fatalf("the reads with every switch off: %v, want the likes and no comments", reads)
 	}
 }
 

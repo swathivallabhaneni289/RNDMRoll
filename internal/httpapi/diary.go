@@ -43,12 +43,14 @@ type diaryRowView struct {
 	Category  *spin.CategoryRef `json:"category,omitempty"`
 }
 
-// postSocialView is the comments on an entry row's post, sent on every entry
-// row (0 and an empty list when none): the comment count and the newest
-// (diary.LatestCount).
+// postSocialView is the comments and likes on an entry row's post, sent on
+// every entry row (0 and an empty list when none): the comment count, the
+// newest (diary.LatestCount) and the like count. The diary is the caller's
+// own, so only an owner ever gets a count.
 type postSocialView struct {
 	CommentCount   int                 `json:"comment_count"`
 	LatestComments []latestCommentView `json:"latest_comments"`
+	LikeCount      int                 `json:"like_count"`
 }
 
 type latestCommentView struct {
@@ -63,15 +65,16 @@ type latestAuthorView struct {
 	PhotoURL *string `json:"photo_url"`
 }
 
-// newPostSocialView shows the comments on one of the caller's own posts; link
-// signs the writers' profile photos. The reader already left out what the
-// caller may not see.
+// newPostSocialView shows the comments and likes on one of the caller's own
+// posts; link signs the writers' profile photos. The reader already left out
+// what the caller may not see.
 func newPostSocialView(s *diary.PostSocial, link func(string) string) *postSocialView {
 	v := &postSocialView{LatestComments: []latestCommentView{}}
 	if s == nil {
 		return v
 	}
 	v.CommentCount = s.Comments
+	v.LikeCount = s.Likes
 	for _, c := range s.Latest {
 		v.LatestComments = append(v.LatestComments, latestCommentView{
 			Author: latestAuthorView{ID: c.AuthorID, Name: c.Name, Username: c.Username, PhotoURL: photoLinkOf(c.PhotoKey, link)},

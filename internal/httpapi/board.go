@@ -1,6 +1,6 @@
-// Package httpapi: board.go serves the Board, the post page, the one-tap
-// reaction and comments. Every photo link and time label comes from the
-// board service; this file formats instants only as RFC 3339.
+// Package httpapi: board.go serves the Board, the post page, the like (POST
+// /posts/:id/reaction) and comments. Every photo link and time label comes
+// from the board service; this file formats instants only as RFC 3339.
 package httpapi
 
 import (
@@ -18,8 +18,9 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/storage"
 )
 
-// BoardHandler serves GET /board, GET /posts/:id, POST /posts/:id/reaction,
-// POST /posts/:id/comments and POST /comments/:id/delete.
+// BoardHandler serves GET /board, GET /posts/:id, the like (POST
+// /posts/:id/reaction), POST /posts/:id/comments and POST
+// /comments/:id/delete.
 type BoardHandler struct {
 	svc *board.Service
 	// removeFiles deletes photo files once their rows are gone (a deleted
@@ -50,7 +51,9 @@ func (h *BoardHandler) Register(rg *gin.RouterGroup) {
 }
 
 // ReactionRequest is the POST /posts/:id/reaction body. The key must be
-// present: a name sets, null clears.
+// present: a name sets, null clears. The app likes with "love" and undoes
+// with null (developer, 2026-11-24); any of the six names is kept and counts
+// as a like.
 type ReactionRequest struct {
 	Reaction json.RawMessage `json:"reaction"`
 }

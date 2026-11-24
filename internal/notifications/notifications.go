@@ -5,9 +5,9 @@
 // notification is stored and no job runs; the only state is one seen time per
 // person. The notification settings filter the list and the unread flag,
 // except for the decision log's rows, which always show.
-// Reactions on posts make no items (developer, 2026-10-18: reactions were
-// removed from the app; the stored "reactions" switch no longer changes the
-// list).
+// Likes on the person's posts are items too (developer, 2026-11-24, BRD-06),
+// and no switch turns them off: neither comments nor the stored "reactions"
+// value, which still changes nothing.
 package notifications
 
 import (
@@ -35,6 +35,11 @@ const (
 	KindFollowAccepted = "follow_accepted"
 	KindSpinOpen       = "spin_open"
 	KindBonusSpin      = "bonus_spin"
+
+	// A like on the viewer's post (developer, 2026-11-24, BRD-06): "<first
+	// name> liked your post.", a post_reactions row on the viewer's post,
+	// whatever its name. The id is like:<entry>:<actor>.
+	KindLike = "like"
 
 	// The admin's decisions about the viewer's own post or comment
 	// (developer, 2026-11-17): "We removed your post for hate speech." (the
@@ -187,6 +192,10 @@ type Repository interface {
 	Requests(ctx context.Context, owner uuid.UUID, limit int) ([]Raw, error)
 	// Accepted: the viewer's requests that the other person accepted.
 	Accepted(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
+	// Likes on the viewer's posts, one per person and post, dated by when
+	// the like was made or last changed, without anyone with a block either
+	// way and nothing on a removed post.
+	Likes(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	Bonuses(ctx context.Context, viewer uuid.UUID, since time.Time) ([]Bonus, error)
 	// DecisionsAndSeen reads the two things every list needs whatever the
 	// switches, together: the admin's removals and returns of the viewer's
@@ -275,6 +284,10 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 		return List{}, err
 	}
 	if err := add(s.repo.Accepted(ctx, viewer, since, MaxItems)); err != nil {
+		return List{}, err
+	}
+	// Likes have no switch (BRD-06): neither Comments nor Reactions.
+	if err := add(s.repo.Likes(ctx, viewer, since, MaxItems)); err != nil {
 		return List{}, err
 	}
 
