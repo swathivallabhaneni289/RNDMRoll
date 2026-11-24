@@ -43,12 +43,15 @@ func insideGrace(col string) string { return "(" + col + " > " + graceCutoff + "
 func pastGrace(col string) string { return "(" + col + " <= " + graceCutoff + ")" }
 
 // goneAccount is a where fragment true when the users row under alias is
-// gone for everyone else: an admin disabled it (migration 0012), or its owner
+// gone for everyone else: an admin disabled it (migration 0012), its owner
 // asked for it to be deleted (migration 0018), inside the grace period or
-// past it. Every read that hides a disabled account from other people hides
-// an account being deleted the same way.
+// past it, or it is an admin's own account (migration 0022, written at every
+// start by SetAdminAccounts). Every read that hides a disabled account from
+// other people hides an account being deleted, and the admin's, the same
+// way. Log in, the password reset and the admin page do not read it.
 func goneAccount(alias string) string {
-	return "(" + alias + ".disabled_at is not null or " + alias + ".deletion_requested_at is not null)"
+	return "(" + alias + ".disabled_at is not null or " + alias + ".deletion_requested_at is not null" +
+		" or exists (select 1 from admin_accounts adm where adm.user_id = " + alias + ".id))"
 }
 
 var _ user.AccountDeleter = (*UserRepo)(nil)

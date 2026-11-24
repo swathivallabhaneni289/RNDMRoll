@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 23, 2026 |
+| **Last updated** | November 24, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -552,12 +552,14 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ADM-04 | Dismiss a card's reports, remove a post or comment, bring it back within 30 days or keep it removed after a second look, disable or enable an account | P0 | Built |
 | ADM-05 | A record of which admin took each action | P2 | Later (the decision log says what was decided and when, not by whom) |
 | ADM-06 | An email to the admins about new reports and second looks | P1 | Built, sent for real once email is on |
+| ADM-07 | The admin account doesn't show to anyone in the app | P1 | Built |
 
 **Acceptance criteria and rules**
 
 - **ADM-01 who is an admin.** Admins are the accounts listed in the server's settings when it starts. Their email can't be used to sign up.
 - **ADM-01 the session.** An admin logs in with their app email and password and stays logged in for 8 hours, or until their password changes.
 - **ADM-01 protection.** The page runs no scripts and carries strict security headers. Every action needs a form token and a same-site request.
+- **ADM-07 hidden in the app.** No one else meets an admin account anywhere in the app, as if it were disabled: it isn't in search or suggestions, its profile and posts can't be opened, and it can't be followed. It still logs in, to the admin page and to the app, where it sees no one. The server marks the admin accounts each time it starts, and a start without the admin setting keeps them hidden.
 - **ADM-02 the Reports tab.** Every report on the same post, comment or account is one card: why it was reported, who reported it (up to three usernames, then how many more), when, the thing itself and whose it is, with Remove, Dismiss and Open profile.
   - The cards make a table under the headings Type, What and Reason. Each card is one line, a box of its own with room around it: what kind it is, the thing itself with whose it is under it, why, and the buttons at the end, in the same columns on every line. Photos are small in the line, and each opens full size. On a narrower screen the kind moves above the thing, and on a phone a line's parts go under one another. The Removed tab and the person page's reports look the same, and the Disabled tab has headings too.
   - A post or comment card that is hidden under review (SAFE-05) has a "Hidden" tag. This is not the author's Hide (CMT-04).

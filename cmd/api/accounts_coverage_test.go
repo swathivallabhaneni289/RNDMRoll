@@ -305,6 +305,63 @@ func TestAccounts_MainNamesTheAdminAddressesToSignUp(t *testing.T) {
 	}
 }
 
+// The admin's own account is hidden from everyone else in the app only
+// because main stores the accounts the ADMIN_EMAILS addresses have
+// (httpapi.FindAdminAccounts, given cfg.AdminEmails) with
+// SetAdminAccounts before the server is built, and only inside
+// if len(admins) > 0: a start that finds none (ADMIN_EMAILS left out) must
+// not show the admin's account to everyone again.
+func TestAccounts_MainHidesTheAdminAccounts(t *testing.T) {
+	body := accountsMainBody(t)
+	cfg, _, _ := accountsAssignedFrom(body, "config", "MustLoad")
+	if cfg == "" {
+		t.Fatal("main.go: no cfg := config.MustLoad() in main")
+	}
+	admins, find, foundAt := accountsAssignedFrom(body, "httpapi", "FindAdminAccounts")
+	if admins == "" {
+		t.Fatal("main.go: no admins, ... := httpapi.FindAdminAccounts(...) in main's own body (not inside a branch)")
+	}
+	if arg, ok := find.Args[len(find.Args)-1].(*ast.SelectorExpr); !ok || !accountsIdent(arg.X, cfg) || arg.Sel.Name != "AdminEmails" {
+		t.Fatalf("main.go: httpapi.FindAdminAccounts is not given %s.AdminEmails", cfg)
+	}
+	repo, _, _ := accountsAssignedFrom(body, "postgres", "NewAdminRepo")
+	if repo == "" {
+		t.Fatal("main.go: no adminRepo := postgres.NewAdminRepo(...) in main's own body")
+	}
+	depsVar, _ := accountsDeps(t, body)
+	_, serverAt := accountsServerBuilt(t, body, depsVar)
+
+	calls := accountsCalls(body, repo, "SetAdminAccounts", false)
+	if len(calls) != 1 {
+		t.Fatalf("main.go: %s.SetAdminAccounts(...) is called %d times in main, want once", repo, len(calls))
+	}
+	call := calls[0]
+	if call.Pos() < foundAt || call.Pos() > serverAt {
+		t.Fatalf("main.go: %s.SetAdminAccounts is not between httpapi.FindAdminAccounts and httpapi.NewServer", repo)
+	}
+	if len(call.Args) != 2 || !accountsIdent(call.Args[1], admins) {
+		t.Fatalf("main.go: %s.SetAdminAccounts is not given %s, the accounts FindAdminAccounts found", repo, admins)
+	}
+	guarded := false
+	for _, stmt := range body.List {
+		ifs, ok := stmt.(*ast.IfStmt)
+		if !ok || call.Pos() < ifs.Body.Pos() || call.Pos() > ifs.Body.End() {
+			continue
+		}
+		cond, ok := ifs.Cond.(*ast.BinaryExpr)
+		if !ok || cond.Op != token.GTR {
+			continue
+		}
+		size, isCall := cond.X.(*ast.CallExpr)
+		zero, isLit := cond.Y.(*ast.BasicLit)
+		guarded = isCall && isLit && zero.Value == "0" && accountsIdent(size.Fun, "len") &&
+			len(size.Args) == 1 && accountsIdent(size.Args[0], admins)
+	}
+	if !guarded {
+		t.Fatalf("main.go: %s.SetAdminAccounts is not inside if len(%s) > 0 { ... } in main's own body", repo, admins)
+	}
+}
+
 // The process serves the engine of the server built from deps.
 func TestAccounts_MainServesThatServer(t *testing.T) {
 	body := accountsMainBody(t)

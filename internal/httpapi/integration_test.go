@@ -265,6 +265,13 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		if err != nil {
 			t.Fatalf("find the admin accounts: %v", err)
 		}
+		// As cmd/api does: the admins' own accounts are hidden in the app, so
+		// every admin page test runs with the admin hidden.
+		if len(admins) > 0 {
+			if err := postgres.NewAdminRepo(pool).SetAdminAccounts(context.Background(), admins); err != nil {
+				t.Fatalf("store the admin accounts: %v", err)
+			}
+		}
 		deps.Admin = NewAdminHandler(postgres.NewAdminRepo(pool), users, deps.Entry,
 			integrationJWTSecret, admins, false)
 		deps.Admin.clock = frozenClock

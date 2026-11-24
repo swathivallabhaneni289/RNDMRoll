@@ -438,6 +438,12 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 		return Comment{}, err
 	}
 	now = now.UTC()
+	// The writer is looked up before anything is stored: an account hidden
+	// from everyone (the admin's own) is refused here, never after a write.
+	me, err := s.social.Person(ctx, viewer)
+	if err != nil {
+		return Comment{}, err
+	}
 	id, createdAt, made, err := s.repo.InsertComment(ctx, row.ID, viewer, body, now, top, photoKey)
 	if err != nil {
 		return Comment{}, err
@@ -445,10 +451,6 @@ func (s *Service) AddComment(ctx context.Context, viewer, entryID uuid.UUID, tex
 	// A comment sent again was pushed when it was made.
 	if made && s.notify != nil {
 		s.notify.CommentAdded(id)
-	}
-	me, err := s.social.Person(ctx, viewer)
-	if err != nil {
-		return Comment{}, err
 	}
 	return s.commentOf(CommentRow{ID: id, EntryID: row.ID, Author: me, EntryOwner: row.Owner.ID, Body: body, CreatedAt: createdAt, ParentID: top, PhotoKey: photoKey},
 		viewer, row.Owner.ID, now, zone), nil

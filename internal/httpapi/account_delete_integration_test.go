@@ -459,7 +459,7 @@ func TestDeleteAccountIntegration_WrongOrMissingPassword(t *testing.T) {
 
 // B asks for the account to be deleted, and from that moment B is gone for
 // everyone else, as if an admin had disabled the account, everywhere another
-// person could meet B: search, the username lookup, B's page and B's post,
+// person could meet B (goneOnEverySurface): search, the username lookup, B's page and B's post,
 // the Board (B's card, and the count and the names on the locked card), the
 // comments and reactions on A's post (C's reply under B's comment goes with
 // it), the comment counts on the card and in A's own posts list, the bell, a
@@ -470,6 +470,23 @@ func TestDeleteAccountIntegration_WrongOrMissingPassword(t *testing.T) {
 // pass because the surface was empty. Where B was, what is left is what a
 // miss gets, byte for byte. B's own data is hidden, not deleted.
 func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
+	goneOnEverySurface(t, false)
+}
+
+// The admin's own account is gone for everyone else in the very same way
+// (developer, 2026-11-24: "the admin account should not show to anyone"),
+// from the moment the server stores it at start (SetAdminAccounts), on every
+// surface goneOnEverySurface checks. Unlike an account being deleted it
+// keeps working for the admin: its push token stays (and gets nothing), its
+// session still refreshes and it still logs in.
+func TestAdminAccountIntegration_GoneOnEverySurface(t *testing.T) {
+	goneOnEverySurface(t, true)
+}
+
+// goneOnEverySurface is TestDeleteAccountIntegration_GoneOnEverySurface, with
+// B gone because B asked for the account to be deleted, or, when admin is
+// set, because B's is the admin's account.
+func goneOnEverySurface(t *testing.T, admin bool) {
 	w := newDeleteWorld(t)
 	a, _ := w.account("dg_alice", "Alice Ames")
 	b, _ := w.account("dg_bob", "Bob Brown")
@@ -512,6 +529,7 @@ func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
 	missLookup := integrationDo(t, w.engine, http.MethodGet, "/v1/people/lookup?username=dg_nobody", a.token, nil)
 	missPage := integrationDo(t, w.engine, http.MethodGet, "/v1/people/"+uuid.NewString(), a.token, nil)
 	missPost := integrationDo(t, w.engine, http.MethodGet, "/v1/posts/"+uuid.NewString(), a.token, nil)
+	missFollow := integrationDo(t, w.engine, http.MethodPost, "/v1/follows", c.token, map[string]any{"user_id": uuid.NewString()})
 
 	lockedBoard := func() (cards []string, posted float64, names []string) {
 		t.Helper()
@@ -640,7 +658,14 @@ func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
 	}
 	w.wantPushedTo("before: B's phone", b.id, bobsPhone)
 
-	w.askToDelete(b.token)
+	if admin {
+		// What the server does at start when B's address is in ADMIN_EMAILS.
+		if err := postgres.NewAdminRepo(w.pool).SetAdminAccounts(context.Background(), []uuid.UUID{uuid.MustParse(b.id)}); err != nil {
+			t.Fatalf("store B as the admin's account: %v", err)
+		}
+	} else {
+		w.askToDelete(b.token)
+	}
 
 	// After the ask: B is on none of them.
 	if got := w.searchNames(a, "dg_b"); len(got) != 0 {
@@ -650,6 +675,7 @@ func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
 		integrationDo(t, w.engine, http.MethodGet, "/v1/people/lookup?username=dg_bob", a.token, nil), missLookup)
 	wantSameAsMiss(t, "after: B's page as A", integrationDo(t, w.engine, http.MethodGet, "/v1/people/"+b.id, a.token, nil), missPage)
 	wantSameAsMiss(t, "after: B's post as A", integrationDo(t, w.engine, http.MethodGet, "/v1/posts/"+bPost, a.token, nil), missPost)
+	wantSameAsMiss(t, "after: C follows B", integrationDo(t, w.engine, http.MethodPost, "/v1/follows", c.token, map[string]any{"user_id": b.id}), missFollow)
 	if cards, posted, names := lockedBoard(); has(cards, bPost) || posted != 1 || !sameList(names, []string{"Cara"}) {
 		t.Fatalf("after: A's Board: cards %v (want no %s), locked posted_count %v (want 1), names %v (want [Cara])", cards, bPost, posted, names)
 	}
@@ -691,21 +717,43 @@ func TestDeleteAccountIntegration_GoneOnEverySurface(t *testing.T) {
 		t.Fatalf("after: A's following as C: %v, want [dg_cara]", got)
 	}
 
-	// Pushes. The ask deleted B's push token. A phone of B's with a live
-	// session, stored straight into the database as a sign-in that raced the
-	// ask might leave it, is still not pushed to, while the very same rows
-	// for C are.
-	if n := w.countFor(deletePushTokensQ, b.id); n != 0 {
-		t.Fatalf("after: %d push tokens of B kept, want 0", n)
+	// Pushes. The ask deleted B's push token; the admin's stays, unused. A
+	// phone of B's with a live session, stored straight into the database as
+	// a sign-in that raced the ask might leave it, is still not pushed to,
+	// while the very same rows for C are.
+	wantTokens := 0
+	if admin {
+		wantTokens = 1
+	}
+	if n := w.countFor(deletePushTokensQ, b.id); n != wantTokens {
+		t.Fatalf("after: %d push tokens of B kept, want %d", n, wantTokens)
 	}
 	w.wantPushedTo("after: B's phone", b.id)
 	bLive := w.liveSessionBySQL(b.id, "ExponentPushToken[ghostBob]")
 	w.liveSessionBySQL(c.id, "ExponentPushToken[ghostCara]")
 	w.wantPushedTo("after: B, with a live session stored after the ask", b.id)
 	w.wantPushedTo("C, with the same rows", c.id, "ExponentPushToken[ghostCara]")
-	// That live session cannot be refreshed either: 403 account_disabled.
 	rec := integrationDo(t, w.engine, http.MethodPost, "/v1/auth/refresh", "", map[string]any{"refresh_token": bLive})
-	if body := decodeBody(t, rec); rec.Code != http.StatusForbidden || body["error"] != string(CodeAccountDisabled) {
+	if admin {
+		// The admin's account still works for the admin: the session
+		// refreshes, and the right password logs in.
+		if rec.Code != http.StatusOK {
+			t.Fatalf("refresh with a live session of the admin's account: %d %s, want 200", rec.Code, rec.Body.String())
+		}
+		login := w.logIn("dg_bob", deleteTestPassword)
+		if login.Code != http.StatusOK {
+			t.Fatalf("the admin logs in to the app: %d %s, want 200", login.Code, login.Body.String())
+		}
+		admin := feedPerson{name: b.name, token: decodeBody(t, login)["access_token"].(string)}
+		if got := w.ok(admin, http.MethodGet, "/v1/me", nil); got["id"] != b.id {
+			t.Fatalf("the admin's own account: %v, want B", got)
+		}
+		// In the app the admin sees no one.
+		if got := w.searchNames(admin, "dg_"); len(got) != 0 {
+			t.Fatalf("the admin's search for dg_ finds %v, want nobody", got)
+		}
+	} else if body := decodeBody(t, rec); rec.Code != http.StatusForbidden || body["error"] != string(CodeAccountDisabled) {
+		// That live session cannot be refreshed either: 403 account_disabled.
 		t.Fatalf("refresh with a live session of an account being deleted: %d %s, want 403 account_disabled", rec.Code, rec.Body.String())
 	}
 

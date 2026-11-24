@@ -181,21 +181,35 @@ func main() {
 	// transaction, so a change that fails never loses the code.
 	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), mailSender, cfg.JWTSecret)
 	var reportAlerts *adminalert.Alerts
-	if len(cfg.AdminEmails) > 0 {
-		// The admins are the accounts these addresses have now, found once.
-		// An address with no account is no admin until it has one and the
-		// server starts again, and sign-up answers it as taken meanwhile, so
-		// make the account first and add its address after.
-		admins, missing, err := httpapi.FindAdminAccounts(ctx, users, cfg.AdminEmails)
-		if err != nil {
-			logger.Error("failed to look up the ADMIN_EMAILS accounts", "error", err)
+	// The admins are the accounts these addresses have now, found once.
+	// An address with no account is no admin until it has one and the
+	// server starts again, and sign-up answers it as taken meanwhile, so
+	// make the account first and add its address after.
+	admins, missing, err := httpapi.FindAdminAccounts(ctx, users, cfg.AdminEmails)
+	if err != nil {
+		logger.Error("failed to look up the ADMIN_EMAILS accounts", "error", err)
+		os.Exit(1)
+	}
+	// The app hides the admins' own accounts from everyone else (developer,
+	// 2026-11-24): the table its reads check becomes exactly these. A start
+	// that finds none (ADMIN_EMAILS left out, or naming no account) leaves
+	// it as it was, so a forgotten setting never shows the admin to everyone.
+	adminRepo := postgres.NewAdminRepo(pool)
+	if len(admins) > 0 {
+		if err := adminRepo.SetAdminAccounts(ctx, admins); err != nil {
+			logger.Error("failed to store the admin accounts", "error", err)
 			os.Exit(1)
 		}
+		logger.Info("admin accounts hidden in the app", "accounts", len(admins))
+	} else {
+		logger.Info("no admin accounts found: the ones hidden before stay hidden")
+	}
+	if len(cfg.AdminEmails) > 0 {
 		for _, email := range missing {
 			logger.Warn("ADMIN_EMAILS names an address no account has: it is not an admin, and sign-up refuses it. "+
 				"Take it out of ADMIN_EMAILS, sign up with it, put it back and restart.", "email", email)
 		}
-		deps.Admin = httpapi.NewAdminHandler(postgres.NewAdminRepo(pool), users, entryHandler,
+		deps.Admin = httpapi.NewAdminHandler(adminRepo, users, entryHandler,
 			cfg.JWTSecret, admins, cfg.AppEnv != "test")
 		if len(admins) > 0 {
 			// New reports are emailed to the admins (internal/adminalert), with

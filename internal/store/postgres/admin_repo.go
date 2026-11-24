@@ -878,3 +878,28 @@ func (r *AdminRepo) SetDisabled(ctx context.Context, person uuid.UUID, at *time.
 	}
 	return tx.Commit(ctx)
 }
+
+// SetAdminAccounts makes admin_accounts (migration 0022) hold exactly ids,
+// the accounts the ADMIN_EMAILS addresses have when the server starts
+// (FindAdminAccounts), so the app hides them from everyone else
+// (goneAccount). It only hides: the admin page's allowlist is ids, never
+// this table. No ids empties it, so cmd/api calls it only when it found an
+// admin account.
+func (r *AdminRepo) SetAdminAccounts(ctx context.Context, ids []uuid.UUID) error {
+	if ids == nil {
+		ids = []uuid.UUID{} // a nil slice goes as NULL, and = any(NULL) would keep every row
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	if _, err := tx.Exec(ctx, `delete from admin_accounts where not (user_id = any($1::uuid[]))`, ids); err != nil {
+		return fmt.Errorf("clear admin accounts: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `insert into admin_accounts (user_id) select unnest($1::uuid[]) on conflict do nothing`, ids); err != nil {
+		return fmt.Errorf("store admin accounts: %w", err)
+	}
+	return tx.Commit(ctx)
+}
