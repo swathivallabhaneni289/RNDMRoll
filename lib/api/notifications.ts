@@ -6,11 +6,11 @@ import { DECISION_KINDS, type DecisionKind } from '@/lib/notifications/moderatio
  * The list behind the bell (Phase 5, 05-FOLLOW-OVERRIDES section 6). The server builds it, sorts
  * it into sections, writes each time label and says what is unread; the phone prints it. The
  * notification settings already filter it on the server. Every field the app reads is read here.
- * There are no reaction items (reactions on posts were removed, developer, 2026-10-18); a stray one
- * from an older server is dropped like any unknown kind. What moderation did to your own post or
- * comment (removed, back, kept removed after a second look, or hidden while we take a look) comes
- * as eight kinds with no person, whatever the settings say (moderation, 2026-11-17, 2026-11-18 and
- * 2026-11-19; lib/notifications/moderation.ts).
+ * A like on your post (2026-11-24) is its own kind, with the person and the post's photo, like a
+ * comment; anything of a kind this app does not know is dropped. What moderation did to your own
+ * post or comment (removed, back, kept removed after a second look, or hidden while we take a
+ * look) comes as eight kinds with no person, whatever the settings say (moderation, 2026-11-17,
+ * 2026-11-18 and 2026-11-19; lib/notifications/moderation.ts).
  *
  * The paths have no `/v1`: the client adds it.
  */
@@ -18,6 +18,7 @@ import { DECISION_KINDS, type DecisionKind } from '@/lib/notifications/moderatio
 export type NotificationKind =
   | 'comment'
   | 'reply'
+  | 'like'
   | 'follow'
   | 'follow_request'
   | 'follow_accepted'
@@ -47,8 +48,8 @@ export type NotificationItem = {
   /** Set on `follow_request` items (they exist only while the request is pending). */
   request_id: string | null;
   /**
-   * The post's first photo for a comment or reply, and for `post_back` and `post_hidden` while you
-   * can see the post; '' when there is none.
+   * The post's first photo for a comment, a reply or a like, and for `post_back` and `post_hidden`
+   * while you can see the post; '' when there is none.
    */
   photo_url: string;
   /** On an admin's decision: the short ref the admin page shows for it, '' when none. */
@@ -75,6 +76,7 @@ export type NotificationItem = {
 const KINDS: readonly NotificationKind[] = [
   'comment',
   'reply',
+  'like',
   'follow',
   'follow_request',
   'follow_accepted',

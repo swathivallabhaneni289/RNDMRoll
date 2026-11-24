@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ApiError } from '@/lib/api/client';
-import { addComment, deleteComment, getPost, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
+import { addComment, deleteComment, getPost, setLike, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { countAfterComment, placeComment, withoutComment } from '@/lib/board/comments';
 import { isEntryId } from '@/lib/entry/rules';
@@ -33,6 +33,12 @@ export type PostLoad = {
   /** Puts the bar into reply mode for `comment` (each tap is a new choice, so the bar refills). */
   startReply: (comment: Comment) => void;
   cancelReply: () => void;
+  /**
+   * Likes someone else's post, or undoes the like (2026-11-24): the heart changes at once, and the
+   * server ends with the last tap. Nothing on your own post or one you may not like. Returns the
+   * failure line or null; none when the post went away, which is read again.
+   */
+  toggleLike: () => Promise<string | null>;
 };
 
 /**
@@ -40,7 +46,8 @@ export type PostLoad = {
  * Reads again on focus, and on a return from the background once 20 minutes old (its photo links
  * stop working within an hour); what is on screen stays while a later read runs or fails. A 404
  * (deleted, a block, never visible) or an id that is not a UUID is `gone`. A ref keeps each action
- * to one request at a time.
+ * to one request at a time; a like tapped while one is on its way waits for it, and then the
+ * newest choice is sent.
  */
 export function usePost(id: string): PostLoad {
   const valid = isEntryId(id);
@@ -52,6 +59,9 @@ export function usePost(id: string): PostLoad {
   const seqRef = useRef(0);
   const mountedRef = useRef(true);
   const commentingRef = useRef(false);
+  // One like request at a time; wantRef holds the heart the last tap asked for.
+  const likingRef = useRef(false);
+  const wantRef = useRef(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const replyToRef = useRef<Comment | null>(null);
 
@@ -175,5 +185,47 @@ export function usePost(id: string): PostLoad {
     [drop]
   );
 
-  return { status, failure, post, reload: () => void load(), stale, comment, remove, drop, replyTo, startReply, cancelReply };
+  // The heart as the server last answered it. A read that began while the like was on its way
+  // would put the old heart back, so it is dropped.
+  const settle = useCallback(
+    (saved: boolean) => {
+      ++seqRef.current;
+      const now = postRef.current;
+      if (mountedRef.current && now !== null && now.card.liked !== saved) put({ ...now, card: { ...now.card, liked: saved } });
+    },
+    [put]
+  );
+
+  const toggleLike = useCallback(async (): Promise<string | null> => {
+    const now = postRef.current;
+    if (now === null || now.card.mine || !now.can_react) return null;
+    // A read already on its way began before the tap; its answer would put the old heart back.
+    ++seqRef.current;
+    wantRef.current = !now.card.liked;
+    put({ ...now, card: { ...now.card, liked: wantRef.current } });
+    // A request is on its way: it sends the newest choice when it answers.
+    if (likingRef.current) return null;
+    likingRef.current = true;
+    let saved = now.card.liked;
+    try {
+      // It keeps sending after the page closes, so the server ends at the last tap.
+      while (wantRef.current !== saved) saved = await setLike(id, wantRef.current);
+      settle(saved);
+      return null;
+    } catch (err) {
+      wantRef.current = saved;
+      settle(saved);
+      if (err instanceof ApiError && err.code === 'not_found') {
+        // The post went away for you (deleted, a block, no longer followed): it is read again,
+        // which turns the page into its gone line, so no notice.
+        void load();
+        return null;
+      }
+      return socialErrorMessage(err, 'like');
+    } finally {
+      likingRef.current = false;
+    }
+  }, [id, put, load, settle]);
+
+  return { status, failure, post, reload: () => void load(), stale, comment, remove, drop, replyTo, startReply, cancelReply, toggleLike };
 }

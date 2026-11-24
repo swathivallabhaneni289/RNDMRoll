@@ -48,6 +48,8 @@ check('the reminder is not a push', pushTarget({ url: '/(app)/today' }), null);
 check('no data', pushTarget(undefined), null);
 check('comment without entry', pushTarget({ kind: 'comment' }), null);
 check('unknown kind', pushTarget({ kind: 'spin_open' }), null);
+// A like waits in the bell and is never a phone push (2026-11-24).
+check('a like is never a push', pushTarget({ kind: 'like', entry_id: 'e1', own: 'true' }), null);
 
 // The morning note: two hours before late_from, never in the past, none without a waiting spin.
 const noon = Date.parse('2026-10-29T06:30:00.000Z'); // noon in Kolkata

@@ -8,7 +8,9 @@
  * report flows, a reported comment leaving the list, the under review line, the Spin page's removed
  * line, the bell's decision kinds (with the two hidden ones of 2026-11-18, and the reason a removal
  * names, also 2026-11-18), and the second look a removal opens in the app (2026-11-19): who can ask,
- * its words, its page, its refusals, and a send that ends after the person left the page.
+ * its words, its page, its refusals, and a send that ends after the person left the page. Also
+ * likes (2026-11-24, BRD-06): the heart's words, how a like is read and sent, the heart under each
+ * post, the Likes sheet, and the bell's like line.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -18,7 +20,24 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { POST_GONE_LINE, POST_REMOVED_LINE, REPORT_SENT, UNDER_REVIEW, commentFailureLine, reportOutcome } from '../lib/board/text.ts';
+import {
+  LIKED_YOUR_POST,
+  LIKES_CLOSE,
+  LIKES_HINT,
+  LIKES_LOADING,
+  LIKES_TITLE,
+  LIKE_FAILED,
+  LIKE_LABEL,
+  NO_LIKES,
+  POST_GONE_LINE,
+  POST_REMOVED_LINE,
+  REPORT_SENT,
+  UNDER_REVIEW,
+  commentFailureLine,
+  likeCount,
+  likesSpoken,
+  reportOutcome,
+} from '../lib/board/text.ts';
 import { placementStep } from '../lib/board/placement.ts';
 import { afterReplyEnds, countAfterComment, placeComment, withEmoji, withReplyPrefix, withoutComment } from '../lib/board/comments.ts';
 import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
@@ -96,7 +115,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   eq('a reply that failed otherwise', commentFailureLine('server_error', 'reply'), "Couldn't post your reply. Please try again.");
   eq('a delete answered not found never says the post is gone', commentFailureLine('not_found', 'other'), 'Something went wrong. Please try again.');
   for (const code of ['not_found', 'comments_off', 'server_error', null]) {
-    for (const what of ['comment', 'reply', 'other']) {
+    for (const what of ['comment', 'reply', 'like', 'other']) {
       const line = commentFailureLine(code, what);
       check(`no em dash or en dash: ${code} ${what}`, !/[–—]/.test(line), line);
       check(`one plain sentence: ${code} ${what}`, /^[A-Z].*\.$/.test(line), line);
@@ -490,8 +509,8 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   check('each of them is a decision kind', DECISION_KINDS.every((kind) => isDecisionKind(kind)));
   check(
     'no other kind is one',
-    !['comment', 'reply', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', 'hidden', 'kept', ''].some((kind) =>
-      isDecisionKind(kind)
+    !['comment', 'reply', 'like', 'follow', 'follow_request', 'follow_accepted', 'spin_open', 'bonus_spin', 'removed', 'hidden', 'kept', ''].some(
+      (kind) => isDecisionKind(kind)
     )
   );
 
@@ -559,6 +578,180 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   for (const line of reasonSentences) {
     check('a removal with its reason: a plain sentence of at most 60 characters', /^[A-Z][^!]*\.$/.test(line) && line.length <= 60, line);
   }
+}
+
+// ---- likes (BRD-06, 2026-11-24): the words, the reader, the heart, the Likes sheet and the bell ----
+{
+  eq("the heart on someone else's post, for VoiceOver", LIKE_LABEL, 'Like');
+  eq("the Likes sheet's heading", LIKES_TITLE, 'Likes');
+  eq("the Likes sheet's close mark and dim area", LIKES_CLOSE, 'Close likes');
+  eq('the Likes sheet with nobody in it', NO_LIKES, 'No likes yet.');
+  eq('the Likes sheet while your posts list reads it', LIKES_LOADING, 'Loading likes.');
+  eq('the hint on the heart under your own post', LIKES_HINT, 'Opens who liked it.');
+  eq('a like or an undo that would not save', LIKE_FAILED, "Couldn't save that. Please try again.");
+  eq("the bell's line after the first name", LIKED_YOUR_POST, ' liked your post.');
+  eq('the heart under your own post says when nobody liked it', likesSpoken(0), 'No likes yet');
+  eq('one like', likesSpoken(1), '1 like');
+  eq('three likes', likesSpoken(3), '3 likes');
+  eq('no number beside the heart at none', likeCount(0), '');
+  eq('nor below none', likeCount(-1), '');
+  eq('nor when unknown', likeCount(Number.NaN), '');
+  eq('and nothing spoken but none then', likesSpoken(Number.NaN), 'No likes yet');
+  eq('the number beside the heart', likeCount(12), '12');
+  for (const code of ['not_found', 'own_post', 'server_error', null]) {
+    eq(`a like that failed with ${code} gets its one line`, commentFailureLine(code, 'like'), LIKE_FAILED);
+  }
+
+  // Built from escapes so this file holds no dash of its own: the hyphen, U+2010 to U+2015, the minus.
+  const DASH = /[-‐-―−]/;
+  const words = [LIKE_LABEL, LIKES_TITLE, LIKES_CLOSE, NO_LIKES, LIKES_LOADING, LIKES_HINT, LIKE_FAILED, LIKED_YOUR_POST, likesSpoken(0), likesSpoken(1), likesSpoken(3)];
+  for (const line of words) check('no dash of any kind in the like words', !DASH.test(line), line);
+  for (const line of [NO_LIKES, LIKES_LOADING, LIKES_HINT, LIKE_FAILED]) {
+    check('a like line is a short plain sentence: a capital, a full stop, no exclamation mark', /^[A-Z][^!]*\.$/.test(line) && line.length <= 50, line);
+  }
+  for (const line of [LIKE_LABEL, LIKES_TITLE, LIKES_CLOSE]) {
+    check('a like name is short and plain: a capital, no full stop', /^[A-Z][^!.]*$/.test(line) && line.length <= 40, line);
+  }
+
+  // The reader: any stored name counts as a like, and the list keeps the server's order.
+  const board = source('lib/api/board.ts');
+  check(
+    'liked is any name the server sends, never read through the reaction names',
+    /liked: typeof raw\.my_reaction === 'string' && raw\.my_reaction !== '',/.test(board) && !/isReactionName\(raw\.my_reaction\)|reaction\(raw\.my_reaction\)/.test(board)
+  );
+  check('can_react is read only as true', /can_react: raw\.can_react === true,/.test(board));
+  check(
+    "the likes are the server's people in its order, null when it sends no list",
+    /likes: Array\.isArray\(raw\.received\)\s*\? list\(raw\.received\)\s*\.map\(\(row\) => readPerson\(row\.person\)\)\s*\.filter\(\(person\): person is Person => person !== null\)\s*: null,/.test(board)
+  );
+  check(
+    'a like sends love and an undo sends null, to the reaction route, after the id check',
+    /export async function setLike\(entryId: string, liked: boolean\): Promise<boolean> \{\s*checkId\(entryId\);\s*const raw = await api\.post<Raw>\(`\/posts\/\$\{entryId\}\/reaction`, \{ reaction: liked \? 'love' : null \}\);\s*return typeof raw\?\.my_reaction === 'string' && raw\.my_reaction !== '';\s*\}/.test(
+      board
+    )
+  );
+
+  // The hook: the heart changes at once, one request at a time, and the server ends at the last tap.
+  const hook = source('components/board/usePost.ts');
+  const toggle = hook.slice(hook.indexOf('const toggleLike = useCallback('), hook.indexOf('return { status,'));
+  check('nothing on your own post or one you may not like', /if \(now === null \|\| now\.card\.mine \|\| !now\.can_react\) return null;/.test(toggle));
+  check(
+    'a tap drops a read already on its way, then shows the new heart at once',
+    /return null;(?:\s*\/\/[^\n]*)*\s*\+\+seqRef\.current;\s*wantRef\.current = !now\.card\.liked;\s*put\(\{ \.\.\.now, card: \{ \.\.\.now\.card, liked: wantRef\.current \} \}\);/.test(toggle)
+  );
+  check(
+    'one like request at a time: a tap while one is on its way only changes the choice',
+    /if \(likingRef\.current\) return null;\s*likingRef\.current = true;/.test(toggle) && /finally \{\s*likingRef\.current = false;\s*\}/.test(toggle)
+  );
+  check('it sends the newest choice until the server has it', /while \(wantRef\.current !== saved\) saved = await setLike\(id, wantRef\.current\);\s*settle\(saved\);/.test(toggle));
+  check(
+    "the server's answer is kept, and a read that began while the like was out can't flip it back",
+    /const settle = useCallback\(\s*\(saved: boolean\) => \{\s*\+\+seqRef\.current;\s*const now = postRef\.current;\s*if \(mountedRef\.current && now !== null && now\.card\.liked !== saved\) put\(/.test(hook)
+  );
+  check(
+    'a failure puts the heart back; a post gone for you is read again after that, with no line',
+    /catch \(err\) \{\s*wantRef\.current = saved;\s*settle\(saved\);\s*if \(err instanceof ApiError && err\.code === 'not_found'\) \{(?:\s*\/\/[^\n]*)*\s*void load\(\);\s*return null;\s*\}\s*return socialErrorMessage\(err, 'like'\);/.test(
+      toggle
+    )
+  );
+  check('the page gets the toggle', /cancelReply, toggleLike \};/.test(hook) && /toggleLike: \(\) => Promise<string \| null>;/.test(hook));
+
+  // The heart under the photo: ink, an icon and not an emoji, beside the comment mark and never inside it.
+  const caption = source('components/entry/PostCaption.tsx');
+  const commentMark = caption.slice(caption.indexOf('{onComment ? ('), caption.indexOf(') : null}', caption.indexOf('{onComment ? (')));
+  check(
+    'the heart sits before the comment mark, outside it, so comments off hides only the mark',
+    /\{like \|\| onComment \? \(/.test(caption) &&
+      /\{like \? <LikeButton like=\{like\} \/> : null\}\s*\{onComment \? \(/.test(caption) &&
+      commentMark !== '' &&
+      !commentMark.includes('LikeButton')
+  );
+  check('the gap keeps the two hit areas apart', /marginLeft: like \? space\.md : 0,/.test(caption) && (caption.match(/hitSlop=\{8\}/g) ?? []).length === 3);
+  check(
+    "someone else's post: the outline heart fills, in ink both ways, a button that says Like and whether it is liked",
+    /<Ionicons name=\{liked \? 'heart' : 'heart-outline'\} size=\{COMMENT_ICON\} color=\{color\.ink\} \/>/.test(caption) &&
+      /accessibilityLabel=\{LIKE_LABEL\}\s*accessibilityState=\{\{ selected: liked \}\}/.test(caption)
+  );
+  check(
+    'your own post: the outline heart in ink, the number beside it only when there is one, said and hinted',
+    /<Ionicons name="heart-outline" size=\{COMMENT_ICON\} color=\{color\.ink\} \/>\s*\{number !== '' \? \(/.test(caption) &&
+      /const number = likeCount\(like\.count\);/.test(caption) &&
+      /accessibilityLabel=\{likesSpoken\(like\.count\)\}\s*accessibilityHint=\{LIKES_HINT\}/.test(caption)
+  );
+  check(
+    'only a tap pops the heart, and never under Reduce Motion or on the first draw',
+    /const reduceMotion = useReduceMotion\(\);/.test(caption) &&
+      /if \(taps === 0 \|\| reduceMotion\) return;\s*scale\.value = withSequence\(/.test(caption) &&
+      /\}, \[taps\]\);/.test(caption) &&
+      /setTaps\(\(n\) => n \+ 1\);\s*onToggle\(\);/.test(caption)
+  );
+
+  // The Likes sheet.
+  const sheet = source('components/board/LikesSheet.tsx');
+  check('the sheet is headed Likes, a header for VoiceOver', /<AppText role="heading" accessibilityRole="header">\s*\{LIKES_TITLE\}\s*<\/AppText>/.test(sheet));
+  eq('the close mark and the dim area both say Close likes', (sheet.match(/accessibilityLabel=\{LIKES_CLOSE\}/g) ?? []).length, 2);
+  check(
+    "each person's row opens their profile",
+    /<PersonRow person=\{person\} first=\{index === 0\} onPress=\{\(\) => open\(person\)\} pressHint="Opens their profile\." \/>/.test(sheet)
+  );
+  check(
+    'a tap on a person closes the sheet first, so their page never opens under the dim cover',
+    /function open\(person: Person\) \{(?:\s*\/\/[^\n]*)*\s*onClose\(\);\s*setTimeout\(\(\) => openPerson\(person\.id\), 0\);\s*\}/.test(sheet)
+  );
+  check(
+    'nobody yet, the loading line, the gone line and Try again',
+    /\{NO_LIKES\}/.test(sheet) && /\{LIKES_LOADING\}/.test(sheet) && /\{POST_GONE_LINE\}/.test(sheet) && /<StatusMessage\s*kind=\{read\.failure\}/.test(sheet)
+  );
+  check(
+    'with only the post id, the sheet reads it each time it opens, and only the newest answer counts',
+    /if \(!given && entryId !== undefined\) void readLikes\(entryId\);/.test(sheet) &&
+      /const seq = \+\+seqRef\.current;/.test(sheet) &&
+      (sheet.match(/if \(seq !== seqRef\.current\) return;/g) ?? []).length === 2 &&
+      /setRead\(\{ state: 'ready', likes: post\.likes \?\? \[\] \}\);/.test(sheet)
+  );
+  check('under Reduce Motion the sheet appears at once', /if \(reduceMotion\) \{\s*offset\.value = 0;\s*return;\s*\}/.test(sheet));
+
+  // The three pages with the heart.
+  const postView = source('components/board/PostView.tsx');
+  check(
+    "a toggle only on someone else's post you may like, the count only on your own",
+    /if \(post\.card\.mine\) return post\.likes !== null \? \{ mode: 'count', count: post\.likes\.length, onOpen \} : undefined;\s*return post\.can_react \? \{ mode: 'toggle', liked: post\.card\.liked, onToggle \} : undefined;/.test(
+      postView
+    ) && /like=\{likeControl\(post, toggleLike, \(\) => setLikesOpen\(true\)\)\}/.test(postView)
+  );
+  check(
+    'a like that would not save shows its line for a moment under the Back row, not in the page',
+    /void load\.toggleLike\(\)\.then\(\(line\) => \{\s*if \(line !== null\) setReportNotice\(line\);\s*\}\);/.test(postView) && !/setNotice\(line\)/.test(postView)
+  );
+  check('the post page opens Likes with the list it read', /<LikesSheet visible=\{likesOpen\} likes=\{post\?\.likes \?\? \[\]\} onClose=\{\(\) => setLikesOpen\(false\)\} \/>/.test(postView));
+
+  const entryView = source('components/entry/EntryView.tsx');
+  const entryLike = entryView.slice(entryView.indexOf('like={'), entryView.indexOf('onComment={social.status'));
+  check(
+    'your entry page: the count waits for the post read, as the comment mark does, and never asks whether commenting is on',
+    /social\.status === 'ready' && social\.post !== null && social\.post\.likes !== null/.test(entryLike) &&
+      /\{ mode: 'count', count: social\.post\.likes\.length, onOpen: \(\) => setLikesOpen\(true\) \}/.test(entryLike) &&
+      !/can_comment/.test(entryLike)
+  );
+  check('your entry page opens Likes with the list it read', /<LikesSheet visible=\{likesOpen\} likes=\{social\.post\?\.likes \?\? \[\]\} onClose=\{\(\) => setLikesOpen\(false\)\} \/>/.test(entryView));
+
+  const feed = source('components/profile/PostsFeed.tsx');
+  check("your posts list: the diary's like count beside each heart", /like=\{\{ mode: 'count', count: social\.like_count, onOpen: onOpenLikes \}\}/.test(feed));
+  check(
+    'and Likes reads who liked that post when it opens',
+    /onOpenLikes=\{\(\) => setLikesFor\(entry\.id\)\}/.test(feed) &&
+      /<LikesSheet visible=\{likesFor !== null\} entryId=\{likesFor \?\? undefined\} onClose=\{\(\) => setLikesFor\(null\)\} \/>/.test(feed)
+  );
+
+  // The bell: "Maya liked your post.", named by first name like every other row.
+  const bell = source('components/today/NotificationsScreen.tsx');
+  const likeCase = bell.slice(bell.indexOf("case 'like':"), bell.indexOf("case 'follow':"));
+  check(
+    'a like names the person by first name, then "liked your post.", spoken the same',
+    /const name = item\.actor \? firstName\(item\.actor\) : '';/.test(bell) &&
+      /case 'like':(?:\s*\/\/[^\n]*)*\s*return \{ name, rest: LIKED_YOUR_POST, spoken: `\$\{name\}\$\{LIKED_YOUR_POST\}` \};/.test(likeCase) &&
+      !/username/.test(likeCase)
+  );
 }
 
 // ---- moderation: the second look's rules, how a report ends, and a comment leaving the list ------
@@ -783,6 +976,10 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   const api = source('lib/api/notifications.ts');
   check('the bell keeps the eight decision kinds', /'bonus_spin',\s*\.\.\.DECISION_KINDS,\s*\];/.test(api));
   check(
+    'the bell keeps a like, right after a reply, in its kinds and in their type',
+    /'reply',\s*'like',\s*'follow',/.test(api) && /\| 'reply'\s*\| 'like'\s*\| 'follow'/.test(api)
+  );
+  check(
     'the ref, the removal id and its second look are read as strings, empty when missing; no address, and no key named email',
     /ref: typeof raw\.ref === 'string' \? raw\.ref : '',/.test(api) &&
       /removal: typeof raw\.removal === 'string' \? raw\.removal : '',/.test(api) &&
@@ -799,8 +996,10 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     ) && /if \(item\.kind === 'spin_open' \|\| isDecisionKind\(item\.kind\)\) \{/.test(bell)
   );
   check(
-    'a post back or hidden opens your entry page; a comment back or hidden opens the post it is on',
-    /if \(item\.kind === 'comment' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*openEntry\(item\.entry_id\);/.test(bell) &&
+    'a comment, a like, or a post back or hidden opens your entry page; a comment back or hidden opens the post it is on',
+    /if \(item\.kind === 'comment' \|\| item\.kind === 'like' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*openEntry\(item\.entry_id\);/.test(
+      bell
+    ) &&
       /if \(item\.kind === 'reply' \|\| item\.kind === 'comment_back' \|\| item\.kind === 'comment_hidden'\) \{\s*if \(item\.entry_id === null\) return;\s*void openReply\(item\.entry_id\);/.test(bell)
   );
   check(
@@ -836,11 +1035,14 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     )
   );
   check(
-    'a post back or hidden shows its picture; a removed item never does',
-    /\(item\.kind === 'comment' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) &&\s*item\.photo_url !== ''/.test(bell)
+    'a comment, a like, a reply, or a post back or hidden shows its picture; a removed item never does',
+    /\(item\.kind === 'comment' \|\| item\.kind === 'like' \|\| item\.kind === 'reply' \|\| item\.kind === 'post_back' \|\| item\.kind === 'post_hidden'\) &&\s*item\.photo_url !== ''/.test(
+      bell
+    )
   );
   const pushTarget = source('lib/notifications/pushTarget.ts');
   check('no phone push for the decisions', !DECISION_KINDS.some((kind) => pushTarget.includes(kind)));
+  check('no phone push for a like', !pushTarget.includes("'like'"));
 
   // Nothing red: only Log out is.
   for (const rel of [
@@ -848,8 +1050,10 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     'components/board/Comments.tsx',
     'components/board/PostView.tsx',
     'components/board/PostCard.tsx',
+    'components/board/LikesSheet.tsx',
     'components/people/PersonScreen.tsx',
     'components/entry/EntryView.tsx',
+    'components/entry/PostCaption.tsx',
     'components/profile/PostsFeed.tsx',
     'components/today/SettledBlock.tsx',
     'components/today/NotificationsScreen.tsx',

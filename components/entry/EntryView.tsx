@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
+import { LikesSheet } from '@/components/board/LikesSheet';
 import { usePost, type PostLoad } from '@/components/board/usePost';
 import { ActionRow, CaptionText, POST_PHOTO_ASPECT } from '@/components/entry/PostCaption';
 import { editEntryPath, fromName, fromRoot, type EntryFrom } from '@/components/entry/entryFrom';
@@ -153,13 +154,13 @@ const COMMENTS_FAILED_LINE = "Couldn't load comments.";
 
 /**
  * What others did with your post (Phase 5, 05-FOLLOW-OVERRIDES section 5): under the caption, a
- * hairline and the comments (no count line: the number can grow large, developer, 2026-10-18; no
- * reactions on posts), oldest first, each with its replies under it, 'Reply' and 'Hide' under the
- * words and Delete on a long press. Read from GET /posts/{entry_id}; until that answers nothing is
- * drawn here. When the first read fails, one plain line and Try again take its place, as
- * StatusMessage draws them, and Try again shows it is busy while it reads again (`failed`: the read
- * that is running follows a failed one). The comment bar and the comment mark wait for an answer
- * either way.
+ * hairline and the comments (no count line: the number can grow large, developer, 2026-10-18),
+ * oldest first, each with its replies under it, 'Reply' and 'Hide' under the words and Delete on a
+ * long press. Read from GET /posts/{entry_id}; until that answers nothing is drawn here. When the
+ * first read fails, one plain line and Try again take its place, as StatusMessage draws them, and
+ * Try again shows it is busy while it reads again (`failed`: the read that is running follows a
+ * failed one). The comment bar and the comment mark wait for an answer either way, and so do the
+ * heart, its count and Likes (2026-11-24), which stay when commenting is off.
  */
 function OwnPostExtras({
   social,
@@ -220,12 +221,13 @@ function OwnPostExtras({
  * Top to bottom: the Back row (the place the person came from) with a three-dots menu (Edit,
  * Archive, commenting, Delete; the Tabs layout hides the bar for the route name `entry`), the
  * photos edge to edge (4 wide to 5 high), then the same parts as the Profile posts list
- * (developer, 2026-10-18: "make this page match"): the ActionRow (your stars and emoji, and the
- * comment mark, which puts the cursor in the comment box) and the CaptionText. Then the comments
- * and the comment bar pinned at the bottom ('Commenting is off.' in its place when commenting is
- * switched off), all from GET /posts/{id}. The page reloads when it comes back into focus; the
- * Board stack mounts it too (`from` = 'board'). While 3 or more reports wait for the admin, one
- * line over the photos says 'Hidden while we take a look.' (only you see the entry until then).
+ * (developer, 2026-10-18: "make this page match"): the ActionRow (your stars and emoji, the heart
+ * with how many liked it, which opens Likes, and the comment mark, which puts the cursor in the
+ * comment box) and the CaptionText. Then the comments and the comment bar pinned at the bottom
+ * ('Commenting is off.' in its place when commenting is switched off), all from GET /posts/{id}.
+ * The page reloads when it comes back into focus; the Board stack mounts it too (`from` =
+ * 'board'). While 3 or more reports wait for the admin, one line over the photos says 'Hidden
+ * while we take a look.' (only you see the entry until then).
  *
  * Delete asks with the phone's own alert (Cancel, and a red Delete). The delete is POST
  * /entries/{id}/delete; the answer's Today goes into the store; 'not found' counts as done.
@@ -269,6 +271,8 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
 
   // A new number puts the cursor in the comment box (the comment mark under the photo).
   const [focusKey, setFocusKey] = useState(0);
+  // Likes, from the heart under the photo.
+  const [likesOpen, setLikesOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const deletingRef = useRef(false);
@@ -451,6 +455,11 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
             />
             <ActionRow
               entry={entry}
+              like={
+                social.status === 'ready' && social.post !== null && social.post.likes !== null
+                  ? { mode: 'count', count: social.post.likes.length, onOpen: () => setLikesOpen(true) }
+                  : undefined
+              }
               onComment={social.status === 'ready' && social.post?.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
             />
             <CaptionText entry={entry} />
@@ -495,6 +504,7 @@ export function EntryView({ id, from, backLabel }: { id: string; from: EntryFrom
         </View>
       )}
       <MenuSheet visible={menuOpen} items={menuItems} onClose={() => setMenuOpen(false)} />
+      <LikesSheet visible={likesOpen} likes={social.post?.likes ?? []} onClose={() => setLikesOpen(false)} />
     </SafeAreaView>
   );
 }

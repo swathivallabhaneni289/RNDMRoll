@@ -4,9 +4,10 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommentBar, CommentList, CommentsOffBar } from '@/components/board/Comments';
+import { LikesSheet } from '@/components/board/LikesSheet';
 import { usePost } from '@/components/board/usePost';
 import { Gallery } from '@/components/entry/EntryView';
-import { ActionRow, CaptionText, POST_PHOTO_ASPECT, type CaptionPost } from '@/components/entry/PostCaption';
+import { ActionRow, CaptionText, POST_PHOTO_ASPECT, type CaptionPost, type LikeControl } from '@/components/entry/PostCaption';
 import { SizedAvatar } from '@/components/profile/SizedAvatar';
 import { StatusMessage } from '@/components/today/StatusMessage';
 import { AppText } from '@/components/ui/AppText';
@@ -24,12 +25,22 @@ import { color, minTouchTarget, space } from '@/lib/theme/tokens';
 
 const AUTHOR_AVATAR = 32;
 
+/**
+ * The heart under the post (BRD-06): on someone else's post a toggle while you may like it, and on
+ * your own the count, whose tap opens Likes. None otherwise.
+ */
+function likeControl(post: Post, onToggle: () => void, onOpen: () => void): LikeControl | undefined {
+  if (post.card.mine) return post.likes !== null ? { mode: 'count', count: post.likes.length, onOpen } : undefined;
+  return post.can_react ? { mode: 'toggle', liked: post.card.liked, onToggle } : undefined;
+}
+
 function Details({
   post,
   myId,
   onDelete,
   onReported,
   onReply,
+  like,
   onComment,
   onMore,
   onPhotoError,
@@ -39,6 +50,7 @@ function Details({
   onDelete: (id: string) => Promise<string | null>;
   onReported: (id: string) => void;
   onReply: (comment: Comment) => void;
+  like?: LikeControl;
   onComment?: () => void;
   /** Opens the three dots' menu (Report); none on your own post. */
   onMore?: () => void;
@@ -93,7 +105,7 @@ function Details({
       </View>
 
       <Gallery photos={post.photos} title={card.title} aspect={POST_PHOTO_ASPECT} onPhotoError={onPhotoError} />
-      <ActionRow entry={caption} onComment={onComment} whose={card.mine ? 'your' : 'their'} />
+      <ActionRow entry={caption} like={like} onComment={onComment} whose={card.mine ? 'your' : 'their'} />
       <CaptionText entry={caption} time={card.posted_local_time} />
 
       <View style={{ paddingHorizontal: space.lg, paddingBottom: space.xl }}>
@@ -115,11 +127,12 @@ function Details({
  * Someone else's post (05-UI-SPEC section 4, the developer's picture 10), pushed in the Board's
  * stack with no bottom bar: the Back row, the author row, the photos edge to edge (swipe for more),
  * then the same parts as your own posts (developer, 2026-10-18: every post reads the same): the
- * ActionRow (their stars and emoji, and the comment mark, which puts the cursor in the comment
- * box) and the CaptionText with the posted time, then a hairline and the comments oldest first
- * with their replies under each (no count line; no reactions on posts), and
- * the comment bar at the bottom ('Reply' on a comment turns it into a reply). When the owner
- * switched commenting off the bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
+ * ActionRow (their stars and emoji, the heart, and the comment mark, which puts the cursor in the
+ * comment box) and the CaptionText with the posted time, then a hairline and the comments oldest
+ * first with their replies under each (no count line), and the comment bar at the bottom ('Reply'
+ * on a comment turns it into a reply). The heart likes their post and undoes it, and on your own
+ * post shows the count and opens Likes (2026-11-24). When the owner switched commenting off the
+ * bar is replaced by 'Commenting is off.' and 'Reply' is not shown.
  * After a report of the post the page closes, with "Report sent." over the page it returns to: the
  * post is gone for the reporter from then on (moderation, 2026-11-17).
  * The Spin stack mounts it too (`place` 'today', a reply notification on someone else's post).
@@ -136,6 +149,8 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
   // The three dots on someone else's post: Report, then the reasons.
   const [menu, setMenu] = useState<'more' | 'reasons' | null>(null);
   const [notice, setNotice] = useState('');
+  // Likes, from the heart under your own post.
+  const [likesOpen, setLikesOpen] = useState(false);
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace(place === 'today' ? '/(app)/today' : '/(app)/board');
@@ -178,6 +193,16 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
     if (focusedRef.current) goBack();
   }
 
+  /**
+   * A tap on the heart. A like or an undo that would not save says so for a moment under the Back
+   * row (the heart is back as it was), without moving the page.
+   */
+  function toggleLike() {
+    void load.toggleLike().then((line) => {
+      if (line !== null) setReportNotice(line);
+    });
+  }
+
   const menuItems: MenuItem[] =
     menu === 'more'
       ? [{ label: 'Report', onPress: () => setMenu('reasons') }]
@@ -218,6 +243,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
               onDelete={load.remove}
               onReported={load.drop}
               onReply={load.startReply}
+              like={likeControl(post, toggleLike, () => setLikesOpen(true))}
               onComment={post.can_comment ? () => setFocusKey((n) => n + 1) : undefined}
               onMore={post.card.mine ? undefined : () => setMenu('more')}
               onPhotoError={onPhotoError}
@@ -245,6 +271,7 @@ export function PostView({ id, backName, place = 'board' }: { id: string; backNa
         </View>
       )}
       <MenuSheet visible={menu !== null} items={menuItems} onClose={() => setMenu(null)} />
+      <LikesSheet visible={likesOpen} likes={post?.likes ?? []} onClose={() => setLikesOpen(false)} />
     </SafeAreaView>
   );
 }

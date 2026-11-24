@@ -5,8 +5,9 @@ import { isReactionName, type ReactionName } from '@/lib/entry/reactions';
 import { isEntryId } from '@/lib/entry/rules';
 
 /**
- * The Board, a post and its comments (Phase 5, 05-CONTEXT `api_contract` with the
- * follow changes of 05-FOLLOW-OVERRIDES section 6). Every field the app reads is read here, once,
+ * The Board, a post, its comments and its likes (Phase 5, 05-CONTEXT `api_contract` with the
+ * follow changes of 05-FOLLOW-OVERRIDES section 6; likes 2026-11-24, BRD-06, on the old reaction
+ * route, which the app sends only "love" or null). Every field the app reads is read here, once,
  * so a `null` list or a missing key from the server never reaches a screen. The phone prints the
  * server's strings as sent (`posted_local_time`, `at_label`) and works out no date or time.
  *
@@ -30,6 +31,11 @@ export type Card = {
   stars: number;
   /** The author's own reaction. */
   reaction: ReactionName | null;
+  /**
+   * You like this post: the server's my_reaction is set. A like is stored as love; any stored name
+   * counts (2026-11-24).
+   */
+  liked: boolean;
   photo_url: string;
   late: boolean;
   posted_at: string;
@@ -82,6 +88,10 @@ export type Post = {
   /** False when the owner switched commenting off (or the caller may not comment). */
   can_comment: boolean;
   comments_off: boolean;
+  /** You may like it: you see it and it isn't yours; comments off never changes it. */
+  can_react: boolean;
+  /** Who liked your own post, newest first, as the server sends `received`; null on anyone else's. */
+  likes: Person[] | null;
   /**
    * The post's photos in order. Not in the written contract: read when the server sends it,
    * otherwise the one cover photo of the card stands in.
@@ -157,6 +167,7 @@ function readCard(raw: Raw): Card | null {
     title: text(raw.title),
     stars: int(raw.stars),
     reaction: reaction(raw.reaction),
+    liked: typeof raw.my_reaction === 'string' && raw.my_reaction !== '',
     photo_url: text(raw.photo_url),
     late: raw.late === true,
     posted_at: text(raw.posted_at),
@@ -205,6 +216,13 @@ function readPost(raw: Raw): Post {
     comments: Array.isArray(raw.comments) ? readComments(raw.comments) : raw.comments === null ? null : [],
     can_comment: raw.can_comment === true,
     comments_off: raw.comments_off === true,
+    can_react: raw.can_react === true,
+    // In the server's order, whatever name each like is stored under.
+    likes: Array.isArray(raw.received)
+      ? list(raw.received)
+          .map((row) => readPerson(row.person))
+          .filter((person): person is Person => person !== null)
+      : null,
     photos: photos.length > 0 ? photos : card.photo_url !== '' ? [{ id: card.entry_id, url: card.photo_url, position: 0 }] : [],
   };
 }
@@ -269,6 +287,17 @@ export async function getPost(entryId: string): Promise<Post> {
 }
 
 /**
+ * POST /posts/{entry_id}/reaction: a like ({reaction: 'love'}) or its undo ({reaction: null}).
+ * True when the post is liked after it. 404 `not_found` when the post is gone for the caller, 409
+ * `own_post` on your own.
+ */
+export async function setLike(entryId: string, liked: boolean): Promise<boolean> {
+  checkId(entryId);
+  const raw = await api.post<Raw>(`/posts/${entryId}/reaction`, { reaction: liked ? 'love' : null });
+  return typeof raw?.my_reaction === 'string' && raw.my_reaction !== '';
+}
+
+/**
  * POST /posts/{entry_id}/comments {text, parent_id?, photo_key?}: 201 with the stored comment; 409
  * `comments_off`. With `parentId` it is a reply to that comment (404 when that comment is gone).
  * With `photoKey` (a photo uploaded with uploadEntryPhoto) the text may be empty.
@@ -300,10 +329,10 @@ export async function deleteComment(commentId: string): Promise<void> {
 }
 
 /**
- * The line for a failed comment or reply. No red: the screens print it in ink. No connection and
- * too many tries say what the client says; every other line is chosen in lib/board/text.ts.
+ * The line for a failed comment, reply or like. No red: the screens print it in ink. No connection
+ * and too many tries say what the client says; every other line is chosen in lib/board/text.ts.
  */
-export function socialErrorMessage(err: unknown, what: 'comment' | 'reply' | 'other'): string {
+export function socialErrorMessage(err: unknown, what: 'comment' | 'reply' | 'like' | 'other'): string {
   if (err instanceof ApiError && (err.code === 'network_unavailable' || err.code === 'rate_limited')) return err.userMessage;
   return commentFailureLine(err instanceof ApiError ? err.code : null, what);
 }

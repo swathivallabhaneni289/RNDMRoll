@@ -6,8 +6,10 @@ import { useSyncExternalStore } from 'react';
  * overlay in app/(app)/_layout.tsx shows it over whatever page is showing then. The second look's
  * page sets its own line here as it goes back to Notifications: "Sent. We'll take another look."
  * (2026-11-19), or "Second look not sent. Please try again." when a send fails after the page was
- * left. The store clears itself after 2.5 seconds, and a new text restarts the timer. A
- * copy of lib/settings/notice.ts, kept apart because Settings prints any text its own store holds.
+ * left; and the post page sets one for a like that would not save, "Couldn't save that. Please
+ * try again." (2026-11-24). The store clears itself after 2.5 seconds, and a new text restarts the
+ * timer. A copy of lib/settings/notice.ts, kept apart because Settings prints any text its own
+ * store holds.
  */
 
 export const REPORT_NOTICE_MS = 2500;

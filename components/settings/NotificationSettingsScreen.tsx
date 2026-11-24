@@ -27,7 +27,8 @@ import { color, space } from '@/lib/theme/tokens';
 
 /**
  * The switches, in the order the developer gave them (decision D-16). 'Reactions and likes' went
- * with reactions on posts (developer, 2026-10-18); its saved value is kept and sent back as it was.
+ * with reactions on posts (developer, 2026-10-18). Likes came back on 2026-11-24 with no switch:
+ * like follows, they always show in the bell. Its saved value is kept and sent back as it was.
  */
 const ROWS: { key: NotificationSettingKey; label: string }[] = [
   { key: 'comments', label: 'Comments' },

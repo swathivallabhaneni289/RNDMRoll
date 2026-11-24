@@ -22,6 +22,7 @@ import {
 import { photoSource } from '@/lib/api/photoSource';
 import { firstName, follow, getFollows, type Person, type Relation } from '@/lib/api/social';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
+import { LIKED_YOUR_POST } from '@/lib/board/text';
 import {
   SECOND_LOOK_ASKED,
   SECOND_LOOK_HINT,
@@ -70,6 +71,9 @@ function sentence(item: NotificationItem): { name: string; rest: string; spoken:
       const rest = item.text ? ` replied to your comment: "${item.text}"` : ' sent a photo.';
       return { name, rest, spoken: `${name}${rest}` };
     }
+    case 'like':
+      // A like on your post (2026-11-24), named by first name like every other row.
+      return { name, rest: LIKED_YOUR_POST, spoken: `${name}${LIKED_YOUR_POST}` };
     case 'follow':
       return { name, rest: ' started following you.', spoken: `${name} started following you.` };
     case 'follow_request':
@@ -134,7 +138,7 @@ function RowMark({ item }: { item: NotificationItem }) {
   );
 }
 
-/** The post's first photo, small and square, at the right of a comment or reply. */
+/** The post's first photo, small and square, at the right of a comment, reply or like. */
 function Thumb({ item }: { item: NotificationItem }) {
   // The row whose picture would not load: the plain square shows until the list answers again.
   // Every answer brings new rows, so it is then tried once more, with a new link or the same one
@@ -160,21 +164,22 @@ function Thumb({ item }: { item: NotificationItem }) {
  * was removed 2026-10-16), redrawn like Instagram's activity page (developer, 2026-10-17): a slim
  * header with Back and the name, the Follow requests row (a dot when one waits, no name or count),
  * then Today, This week and Earlier. Each row is the person's photo, one short sentence with the
- * time after it in grey, and at the right the post's picture (a comment or reply) or a
- * Follow back, Requested or Following button (a new follower). No lines between rows; an unread
+ * time after it in grey, and at the right the post's picture (a comment, reply or like) or a
+ * Follow back, Requested or Following button (a new follower). A like reads like the other person
+ * rows, their first name and "liked your post." (2026-11-24). No lines between rows; an unread
  * row has a small dot in the left margin. The server builds the list, its sections and every time
  * label. Opening the page marks everything seen, so the bell's dot goes out; the dots it loaded
  * with stay until the person leaves.
  *
- * A tap opens your own entry page (a comment, or your post back after an admin's look), the post a
- * reply or your comment that is back is on (your entry page when it is yours), People on Followers
- * (a new follower) or Following (an accepted request), or the Spin page (your spin is open, a bonus
- * spin). A removed post or comment opens the page to ask for a second look (developer, 2026-11-19),
- * one page per tap, while one can be asked; once one is, "Second look asked." shows under its line,
- * and a tap on it, on one that can't be asked any more, or on a kept one, does nothing. The list is
- * read again when the page comes back into view, and again when a second look sent after the
- * person came back here goes through, so the state is the server's. No bottom bar, so the page
- * keeps all four safe-area edges.
+ * A tap opens your own entry page (a comment, a like, or your post back after an admin's look), the
+ * post a reply or your comment that is back is on (your entry page when it is yours), People on
+ * Followers (a new follower) or Following (an accepted request), or the Spin page (your spin is
+ * open, a bonus spin). A removed post or comment opens the page to ask for a second look
+ * (developer, 2026-11-19), one page per tap, while one can be asked; once one is, "Second look
+ * asked." shows under its line, and a tap on it, on one that can't be asked any more, or on a kept
+ * one, does nothing. The list is read again when the page comes back into view, and again when a
+ * second look sent after the person came back here goes through, so the state is the server's. No
+ * bottom bar, so the page keeps all four safe-area edges.
  */
 export function NotificationsScreen() {
   const router = useRouter();
@@ -305,7 +310,8 @@ export function NotificationsScreen() {
   }
 
   function open(item: NotificationItem) {
-    if (item.kind === 'comment' || item.kind === 'post_back' || item.kind === 'post_hidden') {
+    // A like is always on your own post.
+    if (item.kind === 'comment' || item.kind === 'like' || item.kind === 'post_back' || item.kind === 'post_hidden') {
       if (item.entry_id === null) return;
       openEntry(item.entry_id);
       return;
@@ -344,13 +350,13 @@ export function NotificationsScreen() {
   }
 
   /**
-   * What sits at the right of a row: the post's picture (a comment, a reply, your post back or
-   * hidden while you can see it), a follow button, or nothing. A removed item never shows its
+   * What sits at the right of a row: the post's picture (a comment, a like, a reply, your post back
+   * or hidden while you can see it), a follow button, or nothing. A removed item never shows its
    * picture.
    */
   function rowEnd(item: NotificationItem) {
     if (
-      (item.kind === 'comment' || item.kind === 'reply' || item.kind === 'post_back' || item.kind === 'post_hidden') &&
+      (item.kind === 'comment' || item.kind === 'like' || item.kind === 'reply' || item.kind === 'post_back' || item.kind === 'post_hidden') &&
       item.photo_url !== ''
     ) {
       return (

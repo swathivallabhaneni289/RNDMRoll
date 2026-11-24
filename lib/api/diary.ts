@@ -13,13 +13,18 @@ export type DiaryCategory = { id: string; name: string; removed: boolean };
 
 export type LatestComment = { author: { id: string; name: string; username: string; photo_url: string | null }; text: string };
 
-/** The comments on one of your posts, sent on every entry row (2026-10-17): the count and the newest. */
+/**
+ * The comments and likes on one of your posts, sent on every entry row (2026-10-17): the comment
+ * count, the newest comments and the like count.
+ */
 export type PostSocial = {
   comment_count: number;
   latest_comments: LatestComment[];
+  /** How many people like your post; only you get it (2026-11-24). */
+  like_count: number;
 };
 
-export const NO_SOCIAL: PostSocial = { comment_count: 0, latest_comments: [] };
+export const NO_SOCIAL: PostSocial = { comment_count: 0, latest_comments: [], like_count: 0 };
 
 export type DiaryItem =
   | { kind: 'entry'; entry: Entry; social: PostSocial }
@@ -74,6 +79,7 @@ function readSocial(raw: unknown): PostSocial {
     latest_comments: list<unknown>(s.latest_comments)
       .map(readLatest)
       .filter((c): c is LatestComment => c !== null),
+    like_count: count(s.like_count),
   };
 }
 

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeS
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LikesSheet } from '@/components/board/LikesSheet';
 import { useDiary } from '@/components/diary/useDiary';
 import { Gallery } from '@/components/entry/EntryView';
 import { ActionRow, CaptionText, POST_PHOTO_ASPECT, captionBold, captionLine } from '@/components/entry/PostCaption';
@@ -71,26 +72,29 @@ function CommentLine({ comment, onPress }: { comment: LatestComment; onPress: ()
 
 /**
  * Everything under one post's photo in the list (developer, 2026-10-17 and 2026-10-18), in
- * Instagram's rhythm with this app's own parts: the ActionRow (stars left, comment mark right) and
- * the CaptionText, shared with the entry page; then, close under them, the comments: 'View all
- * comments' (no number) when there is more than one, the newest on one line with the writer's
- * photo, and 'Add a comment' with yours. Groups are set apart by space, not rules.
+ * Instagram's rhythm with this app's own parts: the ActionRow (stars left; heart, then comment
+ * mark, right) and the CaptionText, shared with the entry page; then, close under them, the
+ * comments: 'View all comments' (no number) when there is more than one, the newest on one line
+ * with the writer's photo, and 'Add a comment' with yours. Groups are set apart by space, not rules.
+ * The heart shows how many liked the post (2026-11-24); a tap opens Likes.
  */
 export function PostDetails({
   entry,
   social,
   me,
   onOpenComments,
+  onOpenLikes,
 }: {
   entry: Entry;
   social: PostSocial;
   me: PostMe;
   onOpenComments: () => void;
+  onOpenLikes: () => void;
 }) {
   const latest = social.latest_comments;
   return (
     <View>
-      <ActionRow entry={entry} onComment={onOpenComments} />
+      <ActionRow entry={entry} like={{ mode: 'count', count: social.like_count, onOpen: onOpenLikes }} onComment={onOpenComments} />
       <CaptionText entry={entry} />
       {/* Close under the caption; the link names no number, which can grow large (developer, 2026-10-18). */}
       <View style={{ paddingHorizontal: space.lg, marginTop: space.sm }}>
@@ -117,8 +121,9 @@ export function PostDetails({
  * picture (developer, 2026-10-17: "how Instagram lets you see the pictures you posted"). Each post
  * has a top row with your photo, your username and its three dots (Edit, Archive, commenting,
  * Delete), 'Hidden while we take a look.' while 3 or more reports wait for the admin, the photos to
- * swipe, and PostDetails under them. The diary sends each post's counts
- * and newest comment, so the list makes no read per post. The list pages as the end comes into view.
+ * swipe, and PostDetails under them. The diary sends each post's comment and like counts and
+ * newest comment, so the list makes no read per post (Likes reads who liked a post as it opens).
+ * The list pages as the end comes into view.
  * A picture from past the list's first page has its pages read first, under the loading line, so
  * the list opens at it and never jumps later (lib/board/placement.ts).
  */
@@ -130,6 +135,8 @@ export function PostsFeed({ startId }: { startId: string }) {
   const diary = useDiary(null);
   const posts = diary.rows.flatMap((row) => (row.kind === 'entry' ? [{ entry: row.entry, social: row.social }] : []));
   const menu = useEntryMenu('profile', diary.reload);
+  // The post whose Likes are open, from the heart under it.
+  const [likesFor, setLikesFor] = useState<string | null>(null);
   // A photo that will not load (its link may have run out) reads the posts again, quietly, once they
   // are 20 minutes old.
   const onPhotoError = usePhotoReload(diary.reload, diary.stale);
@@ -224,6 +231,7 @@ export function PostsFeed({ startId }: { startId: string }) {
           social={social}
           me={{ name, photo: user?.avatar_url ?? null }}
           onOpenComments={() => router.push({ pathname: '/(app)/profile/entry', params: { id: entry.id, from: 'profile' } })}
+          onOpenLikes={() => setLikesFor(entry.id)}
         />
       </View>
     );
@@ -284,6 +292,8 @@ export function PostsFeed({ startId }: { startId: string }) {
         </ScrollView>
       )}
       <MenuSheet visible={menu.visible} items={menu.items} onClose={menu.close} />
+      {/* The diary sends only the count, so the sheet reads who liked the post each time it opens. */}
+      <LikesSheet visible={likesFor !== null} entryId={likesFor ?? undefined} onClose={() => setLikesFor(null)} />
     </SafeAreaView>
   );
 }

@@ -6,7 +6,8 @@
  * SPIN-04, SPIN-06, SPIN-08, SPIN-09, POST-05), the photo settings (section 10, Performance), how a
  * report ends, and the server's moderation answers read through the app's own readers (moderation,
  * 2026-11-17; the answers are internal/httpapi/testdata/moderation_contract.json), with a second
- * look sent through the real client (2026-11-19).
+ * look sent through the real client (2026-11-19), and likes read and sent through the same readers
+ * and client (2026-11-24).
  * Not part of the app bundle. Run from the repo root with:
  *   node --experimental-strip-types scripts/check-spinposts-extra.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
@@ -739,10 +740,13 @@ const { ApiError, api, isRetryable } = client;
     const ids = contract.ids;
     const realFetch = globalThis.fetch;
     const asked: string[] = [];
+    // The method and body of each request, in the order of `asked`.
+    const sentWith: { method: string; body: unknown }[] = [];
     // Answers the requests `run` makes with `body`, and keeps the paths they asked for.
     const serve = async (body: unknown, run: () => Promise<any>) => {
-      globalThis.fetch = async (url) => {
+      globalThis.fetch = async (url, init) => {
         asked.push(String(url));
+        sentWith.push({ method: String(init?.method ?? ''), body: init?.body });
         return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
       try {
@@ -845,6 +849,7 @@ const { ApiError, api, isRetryable } = client;
     eq('the Board keeps every card the server sends', cards.length, contract.board_owner.days.reduce((n, day) => n + day.cards.length, 0));
     const own = cards.find((card) => card.entry_id === ids.post);
     check("the owner's card reads as theirs and under review", own?.mine === true && own.under_review === true && own.author.id === ids.owner, JSON.stringify(own));
+    eq("the owner's card is not liked (no one likes their own post)", own?.liked, false);
 
     // The post page: under review for its owner, and for a writer on their own comment only.
     const pages = [
@@ -855,6 +860,10 @@ const { ApiError, api, isRetryable } = client;
       const page = await serve(sent, () => boardApi.getPost(ids.post));
       check(`${who}'s post page reads GET /posts/{id}`, askedFor(`/posts/${ids.post}`), asked.at(-1));
       eq(`${who}'s post page: the card under review only for the owner`, page.card.under_review, owner);
+      // Likes (2026-11-24): only someone else may like it, and only the owner gets the list.
+      eq(`${who}'s post page: can like it only when it isn't theirs`, page.can_react, !owner);
+      eq(`${who}'s post page: the likes, an empty list for the owner and none for anyone else`, JSON.stringify(page.likes), owner ? '[]' : 'null');
+      eq(`${who}'s post page: not liked`, page.card.liked, false);
       eq(`${who}'s post page keeps every comment`, page.comments?.length, sent.comments.length);
       for (const comment of sent.comments) {
         const read = page.comments?.find((item) => item.id === comment.id);
@@ -888,6 +897,82 @@ const { ApiError, api, isRetryable } = client;
       gone.ok && gone.today.entry_removed === true && gone.today.entry === null && gone.today.state === 'posted',
       JSON.stringify({ entry: gone.today?.entry, entry_removed: gone.today?.entry_removed, state: gone.today?.state })
     );
+
+    // Likes (2026-11-24). These answers are made here, not taken from the server's file, so the
+    // golden bell above still holds only the eight decision kinds. Each key is read on its own: a
+    // post page with both a like and a list is not one the server sends.
+    const likedPage = await serve(
+      {
+        ...contract.post_page_writer,
+        card: { ...contract.post_page_writer.card, my_reaction: 'fire' },
+        received: [
+          { person: { id: ids.viewer, name: 'Vera Viewer', username: 'ct_vera', photo_url: 'https://x.test/p.jpg' }, reaction: 'wow', at: '2026-10-08T15:01:00Z' },
+          { person: null },
+        ],
+      },
+      () => boardApi.getPost(ids.post)
+    );
+    eq('a like stored under any name reads as liked', likedPage.card.liked, true);
+    eq('the likes keep each person the server sends, whatever name each like has', likedPage.likes?.length, 1);
+    eq("a liker's id reads as sent", likedPage.likes?.[0]?.id, ids.viewer);
+    eq("a liker's photo reads as sent", likedPage.likes?.[0]?.photo_url, 'https://x.test/p.jpg');
+
+    // A like and an undo, through the real client.
+    eq('a like answered love reads as liked', await serve({ my_reaction: 'love' }, () => boardApi.setLike(ids.post, true)), true);
+    check('a like is POST /posts/{id}/reaction', askedFor(`/posts/${ids.post}/reaction`) && sentWith.at(-1)?.method === 'POST', asked.at(-1));
+    eq('a like sends love', sentWith.at(-1)?.body, JSON.stringify({ reaction: 'love' }));
+    eq('an undo answered null reads as not liked', await serve({ my_reaction: null }, () => boardApi.setLike(ids.post, false)), false);
+    check('an undo is POST /posts/{id}/reaction', askedFor(`/posts/${ids.post}/reaction`) && sentWith.at(-1)?.method === 'POST', asked.at(-1));
+    eq('an undo sends null', sentWith.at(-1)?.body, JSON.stringify({ reaction: null }));
+    const askedBefore = asked.length;
+    let refused = null;
+    try {
+      await serve({ my_reaction: 'love' }, () => boardApi.setLike('not-a-uuid', true));
+    } catch (err) {
+      refused = err;
+    }
+    check('a like on an id that is not a UUID is answered not found', refused instanceof ApiError && refused.code === 'not_found', String(refused?.code));
+    eq('and it sends no request', asked.length, askedBefore);
+
+    // The bell's like line: kept, every key as sent (the actor's keys in the order the reader makes them).
+    const likeItem = {
+      id: `like:${ids.post}:${ids.writer}`,
+      kind: 'like',
+      at: '2026-10-08T15:01:00Z',
+      at_label: '8:31 PM',
+      section: 'today',
+      unread: true,
+      actor: { id: ids.writer, name: 'Wren Writer', username: 'ct_wren', photo_url: 'https://x.test/w.jpg' },
+      entry_id: ids.post,
+      category_name: 'Meal',
+      text: null,
+      request_id: null,
+      photo_url: firstPhoto,
+    };
+    const likeBell = await serve({ unread: true, items: [likeItem] }, () => notifications.getNotifications());
+    eq('the bell keeps a like', likeBell.items.length, 1);
+    for (const key of Object.keys(likeItem)) {
+      eq(`a like: ${key} reads as sent`, JSON.stringify(likeBell.items[0]?.[key]), JSON.stringify(likeItem[key]));
+    }
+
+    // Your posts list: the like count beside each heart, 0 when the server sends none.
+    const diaryApi = await load('lib/api/diary.ts');
+    const diaryPage = await serve(
+      {
+        items: [
+          { kind: 'entry', entry: { id: 'liked-post' }, social: { comment_count: 1, latest_comments: [], like_count: 2 } },
+          { kind: 'entry', entry: { id: 'older-server' }, social: { comment_count: 0, latest_comments: [] } },
+          { kind: 'entry', entry: { id: 'no-social' } },
+        ],
+        next_cursor: null,
+        categories: [],
+      },
+      () => diaryApi.getDiary()
+    );
+    check('the posts list reads GET /diary', askedFor('/diary'), asked.at(-1));
+    eq('a post with likes reads its like count', diaryPage.items[0]?.social?.like_count, 2);
+    eq('a post sent without a like count reads 0', diaryPage.items[1]?.social?.like_count, 0);
+    eq('a row sent without social reads 0 too', diaryPage.items[2]?.social?.like_count, 0);
   }
 }
 

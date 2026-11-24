@@ -1,9 +1,14 @@
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { StarDisplay } from '@/components/entry/StarDisplay';
 import type { Entry } from '@/lib/api/entries';
+import { LIKE_LABEL, LIKES_HINT, likeCount, likesSpoken } from '@/lib/board/text';
 import { REACTIONS } from '@/lib/entry/reactions';
 import { starsSpoken } from '@/lib/entry/stars';
+import { EASE_OUT } from '@/lib/motion/primitives';
+import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
 import { dateLineLong } from '@/lib/wheel/format';
 
@@ -49,17 +54,93 @@ function plainDate(localDate: string): string {
 }
 
 /**
+ * The heart under a post: on someone else's post a toggle (`liked`, and a tap likes it or undoes
+ * it), on your own the count, whose tap opens the Likes list.
+ */
+export type LikeControl =
+  | { mode: 'toggle'; liked: boolean; onToggle: () => void }
+  | { mode: 'count'; count: number; onOpen: () => void };
+
+/**
+ * The heart, 24 like the comment mark and ink whether it is filled or not (no red, no emoji). A
+ * toggle pops on each tap, the same grow and settle as an emoji being picked (ReactionPicker), and
+ * never on the first draw, under Reduce Motion, or when a like that would not save puts the heart
+ * back. The count has no pop, no number at none, and stays a button at none.
+ */
+function LikeButton({ like }: { like: LikeControl }) {
+  const reduceMotion = useReduceMotion();
+  const scale = useSharedValue(1);
+  const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  // Each tap counts here, so only a tap pops the heart.
+  const [taps, setTaps] = useState(0);
+  useEffect(() => {
+    if (taps === 0 || reduceMotion) return;
+    scale.value = withSequence(
+      withTiming(1.25, { duration: 120, easing: EASE_OUT }),
+      withSpring(1, { damping: 12, stiffness: 260 }),
+    );
+    // A tap alone starts it: Reduce Motion turning off afterwards never does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taps]);
+
+  if (like.mode === 'count') {
+    const number = likeCount(like.count);
+    return (
+      <Pressable
+        onPress={like.onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={likesSpoken(like.count)}
+        accessibilityHint={LIKES_HINT}
+        hitSlop={8}
+        style={{ height: minTouchTarget, flexDirection: 'row', alignItems: 'center' }}
+      >
+        <Ionicons name="heart-outline" size={COMMENT_ICON} color={color.ink} />
+        {number !== '' ? (
+          <Text maxFontSizeMultiplier={1.3} style={[captionLine, { marginLeft: space.xs }]}>
+            {number}
+          </Text>
+        ) : null}
+      </Pressable>
+    );
+  }
+  const { liked, onToggle } = like;
+  return (
+    <Pressable
+      onPress={() => {
+        setTaps((n) => n + 1);
+        onToggle();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={LIKE_LABEL}
+      accessibilityState={{ selected: liked }}
+      hitSlop={8}
+      style={{ height: minTouchTarget, justifyContent: 'center' }}
+    >
+      <Animated.View style={popStyle}>
+        <Ionicons name={liked ? 'heart' : 'heart-outline'} size={COMMENT_ICON} color={color.ink} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
  * The row right under the photo, where Instagram keeps its icons: your stars and own emoji at the
- * left, and the comment mark at the right (`onComment`: the list opens the post, the entry page
- * puts the cursor in the comment box). Only things that work here; there are no likes or
- * reactions on posts (developer, 2026-10-18).
+ * left, and at the right the heart, then the comment mark (`onComment`: the list opens the post,
+ * the entry page puts the cursor in the comment box). The heart (`like`, developer, 2026-11-24: "if
+ * they dont comment atleast people can just like it and move on") likes someone else's post and
+ * undoes it, with a short pop (none under Reduce Motion); on your own post it shows how many liked
+ * it, with no number at none, and opens the Likes list. It stays when comments are off. The emoji
+ * at the left is the author's own pick, not a like.
  */
 export function ActionRow({
   entry,
+  like,
   onComment,
   whose = 'your',
 }: {
   entry: CaptionPost;
+  /** The heart; none until the post's likes are known. */
+  like?: LikeControl;
   onComment?: () => void;
   /** Whose emoji it is, for a screen reader: yours, or the author's on someone else's post. */
   whose?: 'your' | 'their';
@@ -81,16 +162,23 @@ export function ActionRow({
           </Text>
         ) : null}
       </View>
-      {onComment ? (
-        <Pressable
-          onPress={onComment}
-          accessibilityRole="button"
-          accessibilityLabel="Comments"
-          hitSlop={8}
-          style={{ marginLeft: 'auto', height: minTouchTarget, justifyContent: 'center' }}
-        >
-          <Ionicons name="chatbubble-outline" size={COMMENT_ICON} color={color.ink} />
-        </Pressable>
+      {like || onComment ? (
+        // The heart never waits on the comment mark: with comments off only the mark goes. The gap
+        // keeps the two hit areas apart.
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center' }}>
+          {like ? <LikeButton like={like} /> : null}
+          {onComment ? (
+            <Pressable
+              onPress={onComment}
+              accessibilityRole="button"
+              accessibilityLabel="Comments"
+              hitSlop={8}
+              style={{ marginLeft: like ? space.md : 0, height: minTouchTarget, justifyContent: 'center' }}
+            >
+              <Ionicons name="chatbubble-outline" size={COMMENT_ICON} color={color.ink} />
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );

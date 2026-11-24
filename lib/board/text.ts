@@ -1,7 +1,7 @@
 /**
- * The words of the Board, the post page, reports and Notifications (Phase 5, with the follow wording
- * of 05-FOLLOW-OVERRIDES section 6). Pure: no React and no imports, so a node script can read it.
- * The phone works nothing out: every count, label and date comes from the server.
+ * The words of the Board, the post page, likes, reports and Notifications (Phase 5, with the follow
+ * wording of 05-FOLLOW-OVERRIDES section 6). Pure: no React and no imports, so a node script can
+ * read it. The phone works nothing out: every count, label and date comes from the server.
  */
 
 /**
@@ -66,13 +66,50 @@ export function cardSpoken(a: { title: string; stars: number; category: string; 
 export const POST_GONE_LINE = "This post isn't here any more.";
 
 /**
- * The line for a failed comment, reply or delete, by the server's error code (null when the failure
- * has none). No connection and too many tries keep the client's own words: socialErrorMessage in
+ * The like (BRD-06, developer, 2026-11-24): a heart beside the comment mark. On someone else's post
+ * a tap likes it and a second tap undoes it; on your own post it shows how many liked it and opens
+ * the Likes list. What VoiceOver says for the heart, the Likes sheet's words, and the line when a
+ * like would not save.
+ */
+export const LIKE_LABEL = 'Like';
+export const LIKES_TITLE = 'Likes';
+export const LIKES_CLOSE = 'Close likes';
+export const NO_LIKES = 'No likes yet.';
+export const LIKES_LOADING = 'Loading likes.';
+export const LIKES_HINT = 'Opens who liked it.';
+export const LIKE_FAILED = "Couldn't save that. Please try again.";
+
+/** The bell's line after the person's first name, as every row names them: "Maya liked your post." */
+export const LIKED_YOUR_POST = ' liked your post.';
+
+/** A like count as a whole number, 0 when there is none or it is unknown. */
+function wholeLikes(n: number): number {
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/** The number beside the heart on your own post: "3"; nothing at 0 or when unknown. */
+export function likeCount(n: number): string {
+  const count = wholeLikes(n);
+  return count > 0 ? String(count) : '';
+}
+
+/** What VoiceOver says for the heart on your own post: "No likes yet", "1 like", "3 likes". */
+export function likesSpoken(n: number): string {
+  const count = wholeLikes(n);
+  if (count === 0) return 'No likes yet';
+  return count === 1 ? '1 like' : `${count} likes`;
+}
+
+/**
+ * The line for a failed comment, reply, like or delete, by the server's error code (null when the
+ * failure has none). A like that would not save always gets LIKE_FAILED, whatever the code. No
+ * connection and too many tries keep the client's own words: socialErrorMessage in
  * lib/api/board.ts gives those first. A comment answered `not_found` means the post went away for
  * the viewer (deleted, archived, a block, or no longer followed): commenting being off is answered
  * before it, so nothing else gives it.
  */
-export function commentFailureLine(code: string | null, what: 'comment' | 'reply' | 'other'): string {
+export function commentFailureLine(code: string | null, what: 'comment' | 'reply' | 'like' | 'other'): string {
+  if (what === 'like') return LIKE_FAILED;
   if (code === 'comments_off') return 'Commenting is off.';
   if (code === 'not_found' && what === 'reply') return "That comment isn't here any more.";
   if (code === 'not_found' && what === 'comment') return POST_GONE_LINE;
