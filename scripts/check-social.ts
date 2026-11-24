@@ -648,11 +648,13 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
     "the server's answer is kept, and a read that began while the like was out can't flip it back",
     /const settle = useCallback\(\s*\(saved: boolean\) => \{\s*\+\+seqRef\.current;\s*const now = postRef\.current;\s*if \(mountedRef\.current && now !== null && now\.card\.liked !== saved\) put\(/.test(hook)
   );
+  // A like whose answer never came may still have been saved: the read after the rollback shows
+  // the heart the server holds, so the owner's Likes list and the liker's heart agree.
   check(
-    'a failure puts the heart back; a post gone for you is read again after that, with no line',
-    /catch \(err\) \{\s*wantRef\.current = saved;\s*settle\(saved\);\s*if \(err instanceof ApiError && err\.code === 'not_found'\) \{(?:\s*\/\/[^\n]*)*\s*void load\(\);\s*return null;\s*\}\s*return socialErrorMessage\(err, 'like'\);/.test(
+    'a failure puts the heart back; then a post gone for you is read again with no line, and no answer or a server failure reads it again with the line',
+    /catch \(err\) \{\s*wantRef\.current = saved;\s*settle\(saved\);\s*if \(err instanceof ApiError && err\.code === 'not_found'\) \{(?:\s*\/\/[^\n]*)*\s*void load\(\);\s*return null;\s*\}(?:\s*\/\/[^\n]*)*\s*if \(isRetryable\(err\)\) void load\(\);\s*return socialErrorMessage\(err, 'like'\);/.test(
       toggle
-    )
+    ) && /import \{ ApiError, isRetryable \} from '@\/lib\/api\/client';/.test(hook)
   );
   check('the page gets the toggle', /cancelReply, toggleLike \};/.test(hook) && /toggleLike: \(\) => Promise<string \| null>;/.test(hook));
 

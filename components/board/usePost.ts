@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, isRetryable } from '@/lib/api/client';
 import { addComment, deleteComment, getPost, setLike, socialErrorMessage, type Comment, type Post } from '@/lib/api/board';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
 import { countAfterComment, placeComment, withoutComment } from '@/lib/board/comments';
@@ -36,7 +36,8 @@ export type PostLoad = {
   /**
    * Likes someone else's post, or undoes the like (2026-11-24): the heart changes at once, and the
    * server ends with the last tap. Nothing on your own post or one you may not like. Returns the
-   * failure line or null; none when the post went away, which is read again.
+   * failure line or null; none when the post went away, which is read again. With no answer or a
+   * server failure the post is read again too, since the like may have been saved anyway.
    */
   toggleLike: () => Promise<string | null>;
 };
@@ -221,6 +222,10 @@ export function usePost(id: string): PostLoad {
         void load();
         return null;
       }
+      // No answer came (no connection, the 10 second limit) or the server failed, so the like may
+      // have been saved anyway: the post is read again and the heart shows what the server holds.
+      // A read that fails too keeps the heart as it is.
+      if (isRetryable(err)) void load();
       return socialErrorMessage(err, 'like');
     } finally {
       likingRef.current = false;
