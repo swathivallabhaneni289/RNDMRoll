@@ -522,3 +522,106 @@ func TestPushRepo_ALateSaveFromAnOlderLiveSessionLeavesTheNewerOnesToken(t *test
 	save(other.ID, others)
 	tiedTo(others, "another person's live session")
 }
+
+// The like push goes to the post's owner by the bell's rule for likes
+// (NotificationsRepo.Likes), read when the push runs: the like must still be
+// there, on a post an admin did not remove, by someone else with no block
+// either way, and neither account disabled, being deleted or an admin's. An
+// archived post keeps its likes, as in the bell. A deleted post, or an
+// account deleted for good, takes the like with it.
+func TestPushRepo_LikeTargetFollowsTheBellsRuleForLikes(t *testing.T) {
+	pool := requireTestPool(t)
+	ctx := context.Background()
+	users := postgres.NewUserRepo(pool)
+	owner := mustCreateUser(t, users, "like-push-owner@example.com")
+	liker := mustCreateUser(t, users, "like-push-liker@example.com")
+	entry := postOf(t, pool, owner.ID, "Dune")
+	repo := postgres.NewPushRepo(pool)
+	likes := postgres.NewBoardRepo(pool)
+	exec := func(what, q string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, q, args...); err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+	}
+	like := func(who uuid.UUID) {
+		t.Helper()
+		if _, err := likes.SetReaction(ctx, entry, who, "love", time.Now().UTC()); err != nil {
+			t.Fatalf("like: %v", err)
+		}
+	}
+	want := func(what string, wantOK bool) {
+		t.Helper()
+		got, ok, err := repo.LikeTarget(ctx, entry, liker.ID)
+		if err != nil || ok != wantOK || (ok && got != owner.ID) {
+			t.Fatalf("%s: owner %v ok %v (err %v), want ok %v", what, got, ok, err, wantOK)
+		}
+	}
+
+	want("no like yet", false)
+	like(liker.ID)
+	want("a like", true)
+
+	// A block either way.
+	for _, pair := range [][2]uuid.UUID{{owner.ID, liker.ID}, {liker.ID, owner.ID}} {
+		exec("block", `insert into blocks (blocker_id, blocked_id, created_at) values ($1, $2, now())`, pair[0], pair[1])
+		want("a block", false)
+		exec("unblock", `delete from blocks where blocker_id = $1 and blocked_id = $2`, pair[0], pair[1])
+	}
+	want("after the unblocks", true)
+
+	// Either account disabled by an admin, or being deleted by its owner.
+	for _, id := range []uuid.UUID{liker.ID, owner.ID} {
+		for _, col := range []string{"disabled_at", "deletion_requested_at"} {
+			exec(col, `update users set `+col+` = now() where id = $1`, id)
+			want(col+" set", false)
+			exec(col, `update users set `+col+` = null where id = $1`, id)
+		}
+	}
+	want("both accounts back", true)
+
+	// Either one an admin's account, which the app hides from everyone.
+	admins := postgres.NewAdminRepo(pool)
+	for _, id := range []uuid.UUID{liker.ID, owner.ID} {
+		if err := admins.SetAdminAccounts(ctx, []uuid.UUID{id}); err != nil {
+			t.Fatalf("SetAdminAccounts: %v", err)
+		}
+		want("an admin's account", false)
+	}
+	if err := admins.SetAdminAccounts(ctx, nil); err != nil {
+		t.Fatalf("SetAdminAccounts: %v", err)
+	}
+	want("no admin accounts", true)
+
+	// A post an admin removed has no like line, so no push; an archived one
+	// keeps both.
+	exec("remove", `update entries set removed_at = now() where id = $1`, entry)
+	want("a removed post", false)
+	exec("bring back", `update entries set removed_at = null where id = $1`, entry)
+	exec("archive", `update entries set archived_at = now() where id = $1`, entry)
+	want("an archived post", true)
+	exec("unarchive", `update entries set archived_at = null where id = $1`, entry)
+
+	// The owner's own like (the route refuses it) never goes to the owner.
+	like(owner.ID)
+	if _, ok, err := repo.LikeTarget(ctx, entry, owner.ID); err != nil || ok {
+		t.Fatalf("the owner's own like: ok %v (err %v), want not ok", ok, err)
+	}
+
+	// Undone before the push ran.
+	if err := likes.ClearReaction(ctx, entry, liker.ID); err != nil {
+		t.Fatalf("undo: %v", err)
+	}
+	want("an undone like", false)
+
+	// A deleted post, then an account deleted for good.
+	like(liker.ID)
+	want("liked again", true)
+	exec("delete the post", `delete from entries where id = $1`, entry)
+	want("a deleted post", false)
+	entry = postOf(t, pool, owner.ID, "Arrival")
+	like(liker.ID)
+	want("a like on the next post", true)
+	exec("delete the liker for good", `delete from users where id = $1`, liker.ID)
+	want("an account deleted for good", false)
+}

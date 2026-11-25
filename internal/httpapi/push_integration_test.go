@@ -147,7 +147,7 @@ func TestPushIntegration_TokenRoutes(t *testing.T) {
 	}
 }
 
-func TestPushIntegration_FourEventsSettingsBlocksAndSelf(t *testing.T) {
+func TestPushIntegration_FiveEventsSettingsBlocksAndSelf(t *testing.T) {
 	w := newPushWorld(t)
 	alice := w.member("pe_alice", "Alice Ames")
 	bob := w.member("pe_bob", "Bob Brown")
@@ -183,9 +183,13 @@ func TestPushIntegration_FourEventsSettingsBlocksAndSelf(t *testing.T) {
 	w.post(cara, day)
 	w.expect("posts")
 
-	// A like is never a phone notification (BRD-06): it waits in the bell.
+	// A like on Alice's post (2026-11-25): the bell's words, and a tap opens
+	// the owner's own entry page.
 	w.ok(bob, http.MethodPost, "/v1/posts/"+entry+"/reaction", map[string]any{"reaction": "love"})
-	w.expect("like")
+	if d := w.lastData(); d["kind"] != "like" || d["entry_id"] != entry || d["own"] != "true" || d["actor_id"] != bob.id {
+		t.Fatalf("like data %v", d)
+	}
+	w.expect("like", "pe_alice: Bob liked your post.")
 
 	// A comment on Alice's post.
 	bobsComment := w.reply(bob, entry, "Love it", "")["id"].(string)
@@ -231,6 +235,59 @@ func TestPushIntegration_FourEventsSettingsBlocksAndSelf(t *testing.T) {
 	w.ok(alice, http.MethodPost, "/v1/me/blocks", map[string]any{"user_id": bob.id})
 	w.reply(cara, entry, "Still here", bobsComment)
 	w.expect("block")
+}
+
+// A like is pushed to the post's owner once per person and post: only the
+// like that makes the row (the same like sent again, or a change of its
+// stored name, is not news), and not again when it is undone and made again
+// within a day. The Likes switch (the stored reactions value) turns like
+// pushes off, and a like that sent nothing leaves no mark, so the next one
+// is pushed. A like on your own post is refused, and nothing is pushed.
+func TestPushIntegration_ALikePushesOncePerPersonAndPost(t *testing.T) {
+	w := newPushWorld(t)
+	alice := w.member("pl_alice", "Alice Ames")
+	bob := w.member("pl_bob", "Bob Brown")
+	cara := w.member("pl_cara", "Cara Cole")
+	w.followAccepted(bob, alice)
+	w.followAccepted(cara, alice)
+	w.expect("follows", "pl_alice: Bob wants to follow you.", "pl_alice: Cara wants to follow you.",
+		"pl_bob: Alice accepted your follow request.", "pl_cara: Alice accepted your follow request.")
+	const day = "2026-10-08"
+	entry := w.post(alice, day)
+	w.post(bob, day)
+	w.post(cara, day)
+	w.expect("posts")
+	path := "/v1/posts/" + entry + "/reaction"
+	like := func(p feedPerson, name any) {
+		t.Helper()
+		w.ok(p, http.MethodPost, path, map[string]any{"reaction": name})
+	}
+
+	like(bob, "love")
+	if d := w.lastData(); d["kind"] != "like" || d["entry_id"] != entry || d["own"] != "true" || d["actor_id"] != bob.id {
+		t.Fatalf("like data %v", d)
+	}
+	w.expect("a like", "pl_alice: Bob liked your post.")
+	like(bob, "love")
+	w.expect("the same like sent again")
+	like(bob, "fire")
+	w.expect("a change of the stored name")
+	like(bob, nil)
+	like(bob, "love")
+	w.expect("undone and made again within a day")
+
+	// The Likes switch off: Cara's like sends nothing, and leaves no mark.
+	w.ok(alice, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"reactions": false})
+	like(cara, "love")
+	w.expect("the Likes switch off")
+	w.ok(alice, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"reactions": true})
+	like(cara, nil)
+	like(cara, "love")
+	w.expect("the Likes switch on again", "pl_alice: Cara liked your post.")
+
+	// Alice's own post: refused, and nothing pushed.
+	w.call(alice, http.MethodPost, path, map[string]any{"reaction": "love"}, http.StatusConflict)
+	w.expect("a like on your own post")
 }
 
 // Follow requests sent at once notify once: the push goes only from the

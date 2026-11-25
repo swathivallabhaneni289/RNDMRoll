@@ -106,6 +106,8 @@ type Blocked struct {
 
 // Settings are the three notification switches; all true by default.
 type Settings struct {
+	// Reactions is the Likes switch (2026-11-25): the like lines in the bell
+	// and the like pushes. The name is from before likes.
 	Reactions  bool
 	Comments   bool
 	Milestones bool

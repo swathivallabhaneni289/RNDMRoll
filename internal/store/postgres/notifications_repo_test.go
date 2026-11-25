@@ -80,12 +80,19 @@ func TestNotificationsRepo_RoundTripsOfTheBell(t *testing.T) {
 	want("Unread, both switches on", trips.of(dot), 18)
 
 	// Both switches off, with an empty decision log: the zone, the
-	// switches, Follows, Requests, Accepted, Likes (no switch turns them
-	// off), and the decisions with the seen time in one batch.
+	// switches, Follows, Requests, Accepted, Likes (the Likes switch is
+	// still on), and the decisions with the seen time in one batch.
 	off := false
 	if _, err := soc.UpdateSettings(ctx, u.ID, social.SettingsPatch{Comments: &off, Milestones: &off}); err != nil {
 		t.Fatal(err)
 	}
 	want("List, both switches off", trips.of(list), 7)
 	want("Unread, both switches off", trips.of(dot), 7)
+
+	// The Likes switch off too: Likes is not read.
+	if _, err := soc.UpdateSettings(ctx, u.ID, social.SettingsPatch{Reactions: &off}); err != nil {
+		t.Fatal(err)
+	}
+	want("List, every switch off", trips.of(list), 6)
+	want("Unread, every switch off", trips.of(dot), 6)
 }

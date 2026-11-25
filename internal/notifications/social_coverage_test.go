@@ -218,16 +218,26 @@ func TestSocialCoverage_TheBellKeepsTheNewest50FromTheLast30Days(t *testing.T) {
 	}
 }
 
-// BRD-06 and NOT-03: "<first name> liked your post." shows whatever the
-// switches, Comments, Milestones and the stored Reactions value all off,
-// with its actor, unread, and it lights the dot. No switch turns likes off.
-func TestSocialCoverage_ALikeShowsWhateverTheSwitches(t *testing.T) {
+// BRD-06 and NOT-03: "<first name> liked your post." follows the Likes
+// switch, the stored Reactions value (developer, 2026-11-25), and no other.
+// With Comments and Milestones off it still shows, with its actor, unread,
+// and it lights the dot. With Likes off the likes are not even read: no line
+// and no dot.
+func TestSocialCoverage_ALikeFollowsTheLikesSwitchOnly(t *testing.T) {
 	bell, notes, people, now, actor := socialBell(t)
-	people.settings.Comments, people.settings.Milestones, people.settings.Reactions = false, false, false
+	people.settings.Comments, people.settings.Milestones = false, false
 	entry := uuid.New()
 	photo := "entries/owner/0123456789abcdef.jpg"
 	at := now.Add(-time.Hour).UTC()
 	notes.likes = []Raw{{Kind: KindLike, ID: "like:e:a", At: at, ActorID: actor, EntryID: &entry, PhotoKey: &photo}}
+	readNames := func() []string {
+		names := []string{}
+		for _, r := range notes.reads {
+			names = append(names, r.name)
+		}
+		notes.reads = nil
+		return names
+	}
 
 	list, err := bell.List(context.Background(), uuid.New())
 	if err != nil {
@@ -237,17 +247,35 @@ func TestSocialCoverage_ALikeShowsWhateverTheSwitches(t *testing.T) {
 	if it == nil || it.Kind != KindLike || it.Actor == nil || it.Actor.ID != actor || it.Actor.Username != "ann_actor" ||
 		it.EntryID == nil || *it.EntryID != entry || it.PhotoKey == nil || *it.PhotoKey != photo || !it.At.Equal(at) ||
 		!it.Unread || it.Section != SectionToday || it.AtLabel != "8:00 PM" || !list.Unread {
-		t.Fatalf("the like with every switch off: %+v", list.Items)
+		t.Fatalf("the like with Comments and Milestones off: %+v", list.Items)
 	}
 	if dot, err := bell.Unread(context.Background(), uuid.New()); err != nil || !dot {
 		t.Fatalf("the dot: %v %v, want it lit by the like", dot, err)
 	}
-	reads := []string{}
-	for _, r := range notes.reads {
-		reads = append(reads, r.name)
+	if reads := readNames(); !slices.Contains(reads, "likes") || slices.Contains(reads, "comments") {
+		t.Fatalf("the reads with Comments and Milestones off: %v, want the likes and no comments", reads)
 	}
-	if !slices.Contains(reads, "likes") || slices.Contains(reads, "comments") {
-		t.Fatalf("the reads with every switch off: %v, want the likes and no comments", reads)
+
+	// The Likes switch off: not read, no line, no dot.
+	people.settings.Reactions = false
+	list, err = bell.List(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if itemByID(list, "like:e:a") != nil || len(list.Items) != 0 || list.Unread {
+		t.Fatalf("the list with every switch off: %+v, want no like and nothing unread", list.Items)
+	}
+	if dot, err := bell.Unread(context.Background(), uuid.New()); err != nil || dot {
+		t.Fatalf("the dot with every switch off: %v %v, want it dark", dot, err)
+	}
+	if reads := readNames(); slices.Contains(reads, "likes") {
+		t.Fatalf("the reads with the Likes switch off: %v, want no likes read", reads)
+	}
+
+	// On again, with the others still off: the like is back.
+	people.settings.Reactions = true
+	if list, err = bell.List(context.Background(), uuid.New()); err != nil || itemByID(list, "like:e:a") == nil {
+		t.Fatalf("the Likes switch on again: %+v (err %v), want the like", list.Items, err)
 	}
 }
 

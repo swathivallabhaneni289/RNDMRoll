@@ -333,16 +333,27 @@ func (r *BoardRepo) Received(ctx context.Context, owner, entryID uuid.UUID) ([]b
 // account's delete (the owner's delete, the removed-post purge or the
 // account purge) is ErrNotFound, as a comment is, so it answers 404 and not
 // 500.
-func (r *BoardRepo) SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) error {
-	_, err := r.pool.Exec(ctx, `
+//
+// inserted is true only when the statement made the row: xmax is 0 on a row
+// version an insert made, and set on one an on conflict update made. The same
+// name sent again changes nothing, so the update's where clause returns no
+// row at all (pgx.ErrNoRows), and a change of name returns the updated row.
+// Both are false, so only a new like is pushed.
+func (r *BoardRepo) SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) (bool, error) {
+	var inserted bool
+	err := r.pool.QueryRow(ctx, `
 		insert into post_reactions (entry_id, user_id, reaction, created_at, updated_at)
 		values ($1, $2, $3, $4, $4)
 		on conflict (entry_id, user_id) do update set reaction = excluded.reaction, updated_at = excluded.updated_at
-		where post_reactions.reaction <> excluded.reaction`, entryID, userID, reaction, at)
-	if err != nil && isForeignKeyViolation(err) {
-		return board.ErrNotFound
+		where post_reactions.reaction <> excluded.reaction
+		returning (xmax = 0)`, entryID, userID, reaction, at).Scan(&inserted)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	return err
+	if err != nil && isForeignKeyViolation(err) {
+		return false, board.ErrNotFound
+	}
+	return inserted, err
 }
 
 // ClearReaction implements board.Repository.

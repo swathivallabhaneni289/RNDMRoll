@@ -481,8 +481,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 |---|---|---|---|
 | NOT-01 | An in-app list behind the bell on the Spin page | P0 | Built |
 | NOT-02 | A Follow requests page with Accept and Decline | P0 | Built |
-| NOT-03 | Switches for comment and milestone notifications and for the reminder | P1 | Built |
-| NOT-04 | Phone notifications for comments, replies, follow requests and accepted requests | P1 | Built, off until Apple and Expo credentials exist |
+| NOT-03 | Switches for like, comment and milestone notifications and for the reminder | P1 | Built |
+| NOT-04 | Phone notifications for comments, replies, likes, follow requests and accepted requests | P1 | Built, off until Apple and Expo credentials exist |
 | NOT-05 | Grouping ("Maya and 2 others") and marking one item read | P2 | Later |
 
 **Acceptance criteria and rules**
@@ -502,8 +502,8 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Items from the last 30 days, at most 50. A removal that can still be asked about stays past the 50, since its line is the only way to ask.
   - A dot on the bell while anything is unread. Opening the page marks all as seen.
 - **NOT-02.** The first row of the list shows only a dot when a request waits, never a count or a name.
-- **NOT-03.** "Comments" and "Milestones and bonus spins" are saved on the server. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications, likes and the admin's decisions can't be turned off.
-- **NOT-04.** A push token is tied to the login it came from and stops working when that login ends. Pushes never go to yourself or across a block. The admin's decisions and likes are never pushed; they wait in the bell.
+- **NOT-03.** "Likes", "Comments" and "Milestones and bonus spins" are saved on the server. "Likes" comes first and turns off both the like lines in the bell and like pushes. The Likes list and the count on your own post stay. "Remind me to spin and post" (the 8 PM reminder and the 10 AM note) is saved on the phone. Follow notifications and the admin's decisions can't be turned off.
+- **NOT-04.** A push token is tied to the login it came from and stops working when that login ends. Pushes never go to yourself or across a block. A like is pushed as "{first name} liked your post.", and tapping it opens your post. Each person's like on a post is pushed once: liking it again after an undo within a day sends nothing. The admin's decisions are never pushed; they wait in the bell.
 
 ### 8.10 Safety and moderation
 
@@ -1003,6 +1003,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 19 | A person's History lists every report about them, with how it ended, among the decisions, under how often they were reported; it replaces the closed cards | "We should know that this person got reported once", then "the history section, we'll have it there" | A long list for someone reported often |
 | Nov 19 | Second looks are asked in the app, not by email: tapping the removal opens a small page for why it should come back and up to 3 photos, once per removal within its 30 days; the admin answers with Bring it back or Keep it removed, and the bell says which | "Maybe give a little option there, not like something really big ... they can upload their file or something, and the proofs" | Photos only, with no PDFs and no back-and-forth; one ask per removal; a disabled account still asks by email |
 | Nov 24 | A like on friends' posts: a heart beside the comment mark. Only the poster sees how many and who, with a line in the bell and no push | "if they dont comment atleast people can just like it and move on" | A number under your own post, the one exception to the no-counts rule; likes have no switch in Settings |
+| Nov 25 | Likes send a phone notification too, with a Likes switch in Settings | "it should send notifications" | One more kind of push, once per person and post a day; the Likes switch turns it off |
 
 ## 18. Out of scope and future ideas
 

@@ -59,7 +59,11 @@ type Repository interface {
 	// newest change first, without people who have a block with the owner or
 	// whose account is gone.
 	Received(ctx context.Context, owner, entryID uuid.UUID) ([]Received, error)
-	SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) error
+	// SetReaction stores userID's like on the entry under the name reaction.
+	// inserted is true only when this call made the row: the same name sent
+	// again, or a change of the stored name, is false. ErrNotFound when the
+	// entry or the account went away meanwhile.
+	SetReaction(ctx context.Context, entryID, userID uuid.UUID, reaction string, at time.Time) (inserted bool, err error)
 	ClearReaction(ctx context.Context, entryID, userID uuid.UUID) error
 	// InsertComment writes a comment; parentID is the top-level comment of a
 	// reply, nil for a top-level comment. ErrNotFound when the entry or the
@@ -112,13 +116,18 @@ type Service struct {
 	reports social.ReportNotifier
 }
 
-// CommentNotifier hears about every new comment and reply (the phone push,
-// internal/push). It works in the background and never fails the request.
+// CommentNotifier hears about every new comment and reply, and every new
+// like (the phone push, internal/push). It works in the background and never
+// fails the request. Liked is told only when the like's row was made: a like
+// sent again with the same name, or one whose stored name changed, is not
+// news.
 type CommentNotifier interface {
 	CommentAdded(commentID uuid.UUID)
+	Liked(entryID, likerID uuid.UUID)
 }
 
-// SetCommentNotifier sets who hears about new comments; nil for no one.
+// SetCommentNotifier sets who hears about new comments, replies and likes;
+// nil for no one. The name stayed from before likes were pushed.
 func (s *Service) SetCommentNotifier(n CommentNotifier) {
 	s.notify = n
 }
@@ -380,8 +389,11 @@ func (s *Service) commentPhotoURL(key *string) string {
 // SetReaction sets (a name) or clears (nil) the viewer's reaction, which is
 // the like (BRD-06: the app sends "love" or nil). Order: the post must be
 // visible, not the viewer's own, then the name valid. Comments being off
-// never refuses it, and a like is never pushed: it waits in the owner's
-// bell.
+// never refuses it. A new like is also pushed to the post's owner
+// (developer, 2026-11-25: "it should send notifications"), in the background
+// by the bell's rules and the Likes switch (internal/push, Notifier.Liked):
+// only when the row was made, so the same like sent again, or a change of
+// its stored name, is never pushed.
 func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, reaction *string) (*string, error) {
 	row, f, err := s.visible(ctx, viewer, entryID)
 	if err != nil {
@@ -396,8 +408,12 @@ func (s *Service) SetReaction(ctx context.Context, viewer, entryID uuid.UUID, re
 	if !spin.IsReaction(*reaction) {
 		return nil, &FieldProblem{Field: "reaction", Reason: "invalid"}
 	}
-	if err := s.repo.SetReaction(ctx, row.ID, viewer, *reaction, s.clk.NowFor(viewer.String()).UTC()); err != nil {
+	inserted, err := s.repo.SetReaction(ctx, row.ID, viewer, *reaction, s.clk.NowFor(viewer.String()).UTC())
+	if err != nil {
 		return nil, err
+	}
+	if inserted && s.notify != nil {
+		s.notify.Liked(row.ID, viewer)
 	}
 	name := *reaction
 	return &name, nil

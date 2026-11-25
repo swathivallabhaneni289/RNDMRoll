@@ -5,9 +5,11 @@
 // notification is stored and no job runs; the only state is one seen time per
 // person. The notification settings filter the list and the unread flag,
 // except for the decision log's rows, which always show.
-// Likes on the person's posts are items too (developer, 2026-11-24, BRD-06),
-// and no switch turns them off: neither comments nor the stored "reactions"
-// value, which still changes nothing.
+// Likes on the person's posts are items too (developer, 2026-11-24, BRD-06).
+// The Likes switch, the stored "reactions" value, turns them off, and their
+// phone pushes with them (developer, 2026-11-25); the comments switch does
+// not. It changes only what the person is told: the Likes list and the
+// count on their own post stay.
 package notifications
 
 import (
@@ -286,9 +288,12 @@ func (s *Service) List(ctx context.Context, viewer uuid.UUID) (List, error) {
 	if err := add(s.repo.Accepted(ctx, viewer, since, MaxItems)); err != nil {
 		return List{}, err
 	}
-	// Likes have no switch (BRD-06): neither Comments nor Reactions.
-	if err := add(s.repo.Likes(ctx, viewer, since, MaxItems)); err != nil {
-		return List{}, err
+	// Likes follow the Likes switch (the stored Reactions value), never
+	// Comments. Off, they are not read, so they make no line and no dot.
+	if settings.Reactions {
+		if err := add(s.repo.Likes(ctx, viewer, since, MaxItems)); err != nil {
+			return List{}, err
+		}
 	}
 
 	ids := make([]uuid.UUID, 0, len(raws))

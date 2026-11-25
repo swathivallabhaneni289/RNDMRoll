@@ -1,9 +1,10 @@
 # Push notifications: what you need to do
 
-The app can now send a phone notification while it is closed, for four things:
+The app can now send a phone notification while it is closed, for five things:
 
 - someone comments on your post ("Alice commented: "nice"", or "Alice sent a photo.")
 - someone replies to your comment ("Alice replied to your comment: ...")
+- someone likes your post ("Alice liked your post.")
 - someone sends you a follow request ("Alice wants to follow you.")
 - someone accepts your follow request ("Alice accepted your follow request.")
 
@@ -50,14 +51,15 @@ The code is all in place, but it is switched off. Until you do the steps below, 
 
 1. Install the new build on a real iPhone, sign in, and say Allow when it asks about notifications. (If you said Don't Allow before, turn notifications on for RNDMRoll in the phone's Settings.)
 2. Check that the phone's token arrived and is tied to its session: `select user_id, platform, last_seen_at, refresh_token_id is not null as has_session from push_tokens;` shows one row, with `has_session` true. A row with `has_session` false gets nothing until the app sends its token again (sign out and in once).
-3. Close the app. From a second account, comment on a post of the first account, or send it a follow request.
+3. Close the app. From a second account, comment on or like a post of the first account, or send it a follow request.
 4. The phone shows the notification within a few seconds. Tap it: it opens the post, the follow requests page, or the person's profile.
 5. Quick check without the app: paste the token from the table into expo.dev/notifications and send a test.
 6. If nothing comes, look in the server log for lines starting with `push:`.
 
 ## Good to know
 
-- Comment and reply notifications follow the "Comments" switch in Settings > Notifications. Follow requests and accepted requests are always sent.
+- Comment and reply notifications follow the "Comments" switch in Settings > Notifications, and like notifications follow the "Likes" switch. Follow requests and accepted requests are always sent.
+- A like is sent once per person and post. The same like sent again, or one undone and made again within a day, sends nothing more. A restart of the server forgets that day, so a like made again after one can be sent once more.
 - Nobody is notified about their own comment, and nothing is sent between two people with a block.
 - A phone's token follows the session it was sent from. Pushes go to it only while that session lasts, and stop on their own, even if the phone never reaches the server again, when:
   - the person logs out (the app also deletes the token),

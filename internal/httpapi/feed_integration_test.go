@@ -884,13 +884,22 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	if got["reactions"] != false || got["comments"] != true || got["milestones"] != true {
 		t.Fatalf("patch: %v", got)
 	}
-	// The stored switch stays and changes nothing: likes have no switch.
-	if k := kinds(t, w.notes(b)); !has(k, "like") || !has(k, "comment") {
+	// The Likes switch (the stored reactions value, 2026-11-25) hides the
+	// like line, and only it: the comment stays.
+	if k := kinds(t, w.notes(b)); has(k, "like") || !has(k, "comment") {
 		t.Fatalf("reactions off: %v", k)
 	}
+	// It changes only what B is told: the Likes list and the count on B's
+	// own post stay.
+	if got := w.ok(b, http.MethodGet, "/v1/posts/"+bEntry, nil); len(got["received"].([]any)) != 1 {
+		t.Fatalf("the Likes list with reactions off: %v", got["received"])
+	}
+	if n := w.likeCount(b, bEntry); n != 1 {
+		t.Fatalf("B's posts list with reactions off: like_count %v, want 1", n)
+	}
 	w.ok(b, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"comments": false, "milestones": false})
-	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || !has(k, "like") || !has(k, "follow_request") {
-		t.Fatalf("all off, follow items and the like stay: %v", k)
+	if k := kinds(t, w.notes(b)); has(k, "comment") || has(k, "spin_open") || has(k, "like") || !has(k, "follow_request") {
+		t.Fatalf("all off, only the follow items stay: %v", k)
 	}
 	if got := w.ok(b, http.MethodGet, "/v1/me/notification-settings", nil); got["reactions"] != false || got["comments"] != false || got["milestones"] != false {
 		t.Fatalf("stored: %v", got)
@@ -921,6 +930,11 @@ func TestNotificationIntegration_SettingsFilterTheList(t *testing.T) {
 	items := w.notes(b)["items"].([]any)
 	if dig(t, items[0], "text") != "Again" || dig(t, items[0], "unread") != true || dig(t, items[1], "unread") != false {
 		t.Fatalf("unread only after seen: %v", items)
+	}
+	// Likes on again: the like's line is back.
+	w.ok(b, http.MethodPatch, "/v1/me/notification-settings", map[string]any{"reactions": true})
+	if k := kinds(t, w.notes(b)); !has(k, "like") {
+		t.Fatalf("likes on again: %v", k)
 	}
 }
 

@@ -78,6 +78,7 @@ func TestPostIntegration_APhotoInAComment(t *testing.T) {
 
 // commentPushes is a board.CommentNotifier that counts the comments it hears
 // about. AddComment calls it before it answers, so the count is ready then.
+// Likes are not counted.
 type commentPushes struct {
 	mu sync.Mutex
 	n  int
@@ -88,6 +89,8 @@ func (c *commentPushes) CommentAdded(uuid.UUID) {
 	defer c.mu.Unlock()
 	c.n++
 }
+
+func (c *commentPushes) Liked(uuid.UUID, uuid.UUID) {}
 
 func (c *commentPushes) count() int {
 	c.mu.Lock()
