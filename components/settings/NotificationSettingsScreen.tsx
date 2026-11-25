@@ -27,10 +27,13 @@ import { color, space } from '@/lib/theme/tokens';
 
 /**
  * The switches, in the order the developer gave them (decision D-16). 'Reactions and likes' went
- * with reactions on posts (developer, 2026-10-18). Likes came back on 2026-11-24 with no switch:
- * like follows, they always show in the bell. Its saved value is kept and sent back as it was.
+ * with reactions on posts (developer, 2026-10-18), and likes came back on 2026-11-24. Since
+ * 2026-11-25 a like is also a phone push, and 'Likes' is the first switch again, where 'Reactions
+ * and likes' sat. It keeps the saved `reactions` value: off, no like lines in the bell and no like
+ * pushes. The Likes list and the count on your own post stay either way.
  */
 const ROWS: { key: NotificationSettingKey; label: string }[] = [
+  { key: 'reactions', label: 'Likes' },
   { key: 'comments', label: 'Comments' },
   { key: 'milestones', label: 'Milestones and bonus spins' },
 ];

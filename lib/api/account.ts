@@ -54,7 +54,7 @@ export async function deleteAccount(password: string): Promise<AccountDeletion> 
  * here and not in `types.ts` so that plan can land its server without this app file moving.
  */
 export type NotificationSettings = {
-  /** Reactions and likes on their posts. */
+  /** Likes on their posts: the Likes switch (the bell's like lines and the like pushes). */
   reactions: boolean;
   /** Comments on their posts. */
   comments: boolean;

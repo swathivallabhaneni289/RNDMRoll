@@ -3,7 +3,8 @@
  * Throwaway checks for the pure Settings rules and the notice store (plan 02.1-02 Task 1), the
  * username lines of sign-up and the Edit page, the birthday's line on a tap of the grey Continue,
  * and what sign-up, Edit, Password and Delete account do on a tap of their grey button (pinned as
- * written, as there is no React here to run them). Not part of the app bundle. Run from the repo
+ * written, as there is no React here to run them), and the order of the Notifications switches
+ * (Likes first since 2026-11-25). Not part of the app bundle. Run from the repo
  * root with:
  *   node --experimental-strip-types <this file>
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
@@ -333,6 +334,19 @@ for (const text of [
       /function showProblem\(\) \{\s*setPasswordError\(PASSWORD_REQUIRED_MESSAGE\);\s*announceProblem\(PASSWORD_REQUIRED_MESSAGE, 'Password'\);\s*bringIntoView\(scrollRef\.current, passwordFieldRef\.current\);\s*passwordBoxRef\.current\?\.focus\(\);/.test(page)
   );
   check('Delete account: its Still needed hint', /blockedHint=\{stillNeeded\(\['password'\]\)\}/.test(page));
+}
+{
+  // Settings > Notifications (D-16 order, 2026-11-25): Likes first, kept in the saved reactions value,
+  // then Comments, then Milestones and bonus spins.
+  const page = source('components/settings/NotificationSettingsScreen.tsx');
+  const rows = page.match(/const ROWS: \{ key: NotificationSettingKey; label: string \}\[\] = \[([\s\S]*?)\];/)?.[1] ?? '';
+  const order = [...rows.matchAll(/\{ key: '(\w+)', label: '([^']+)' \}/g)].map((m) => `${m[1]}:${m[2]}`);
+  eq(
+    'Notifications: the switches are Likes, Comments, then Milestones',
+    order.join(' | '),
+    'reactions:Likes | comments:Comments | milestones:Milestones and bonus spins'
+  );
+  check('Notifications: no comment says likes have no switch', !/with no switch|likes have no switch/i.test(page));
 }
 
 // The notice store: set, read, clear by timer, restart on a new text, clear at once on ''.

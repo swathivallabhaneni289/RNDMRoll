@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const { pushTarget } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/pushTarget.ts')).href);
+const { pushTarget, PUSH_KINDS } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/pushTarget.ts')).href);
 const { POST_NOTE_TITLE, postNoteBody, postNoteDate } = await import(pathToFileURL(join(process.cwd(), 'lib/notifications/postNote.ts')).href);
 
 let checks = 0;
@@ -48,8 +48,13 @@ check('the reminder is not a push', pushTarget({ url: '/(app)/today' }), null);
 check('no data', pushTarget(undefined), null);
 check('comment without entry', pushTarget({ kind: 'comment' }), null);
 check('unknown kind', pushTarget({ kind: 'spin_open' }), null);
-// A like waits in the bell and is never a phone push (2026-11-24).
-check('a like is never a push', pushTarget({ kind: 'like', entry_id: 'e1', own: 'true' }), null);
+// A like is a phone push too (2026-11-25): a tap opens your own entry page, as the bell's like line does.
+check('like opens your entry', pushTarget({ kind: 'like', entry_id: 'e1', own: 'true', actor_id: 'u1' }), {
+  pathname: '/(app)/today/entry',
+  params: { id: 'e1' },
+});
+check('like without entry', pushTarget({ kind: 'like', own: 'true', actor_id: 'u1' }), null);
+check('the five push kinds', PUSH_KINDS, ['comment', 'reply', 'like', 'follow_request', 'follow_accepted']);
 
 // The morning note: two hours before late_from, never in the past, none without a waiting spin.
 const noon = Date.parse('2026-10-29T06:30:00.000Z'); // noon in Kolkata

@@ -10,7 +10,8 @@
  * names, also 2026-11-18), and the second look a removal opens in the app (2026-11-19): who can ask,
  * its words, its page, its refusals, and a send that ends after the person left the page. Also
  * likes (2026-11-24, BRD-06): the heart's words, how a like is read and sent, the heart under each
- * post, the Likes sheet, and the bell's like line.
+ * post, the Likes sheet, and the bell's like line, and where a tap on a like's phone push goes
+ * (2026-11-25).
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -1044,7 +1045,12 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
   const pushTarget = source('lib/notifications/pushTarget.ts');
   check('no phone push for the decisions', !DECISION_KINDS.some((kind) => pushTarget.includes(kind)));
-  check('no phone push for a like', !pushTarget.includes("'like'"));
+  // A like is a phone push since 2026-11-25, and its tap opens your own entry page, as the bell's line does.
+  check(
+    'a like push opens your own entry page, like a comment push',
+    /case 'comment':\s*case 'like':\s*return entryId === '' \? null : \{ pathname: '\/\(app\)\/today\/entry', params: \{ id: entryId \} \};/.test(pushTarget)
+  );
+  check('a like is one of the push kinds', /export const PUSH_KINDS = \[[^\]]*'like'[^\]]*\] as const;/.test(pushTarget));
 
   // Nothing red: only Log out is.
   for (const rel of [
