@@ -879,7 +879,7 @@ const lines = [];
   check('sign-up says a taken email in the same words', /const EMAIL_TAKEN_MESSAGE = 'That email is already in use\.';/.test(form));
   lines.push('RNDMRoll is for ages 13 and up.');
   const restoredAfter = (page: string, call: string) =>
-    new RegExp(`${call.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')}\\s*(lostSignupRef\\.current = null;\\s*)?(//[^\\n]*\\n\\s*)*sayIfRestored\\(result\\);`).test(page);
+    new RegExp(`${call.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')}\\s*(clearPendingSignup\\(\\);\\s*)?(//[^\\n]*\\n\\s*)*sayIfRestored\\(result\\);`).test(page);
   check('Log in says a kept account right after it signs in', restoredAfter(source('app/(auth)/login.tsx'), 'await signIn(result);'));
   // A reset signs nobody in (developer, 2026-11-23, after OWASP), so its done step says it.
   const resetPage = source('app/(auth)/forgot-password.tsx');
@@ -889,7 +889,23 @@ const lines = [];
       /\{restored \? \(\s*<View style=\{\{ marginTop: space\.sm \}\}>\s*<AppText role="body">\{RESTORED_MESSAGE\}<\/AppText>/.test(resetPage) &&
       !/signIn|sayIfRestored|useSession/.test(resetPage)
   );
-  check("sign-up's way back to its lost account does too", restoredAfter(form, 'await signIn(result, { extras: extrasPage });'));
+  check("sign-up's way back to its lost account does too", restoredAfter(form, 'await signIn(result, { extras: opensExtras(lost, result) });'));
+  check('and so does the sign-up code page', restoredAfter(source('app/(auth)/signup-code.tsx'), 'await signIn(result, { extras });'));
+  // The sign-up code page's lines; scripts/check-auth-today.ts checks each word for word.
+  const signupCode = await import(pathToFileURL(join(root, 'lib/auth/signupCode.ts')).href);
+  lines.push(
+    signupCode.SHORT_CODE,
+    signupCode.WRONG_CODE,
+    signupCode.REPLACED,
+    signupCode.EXPIRED,
+    signupCode.NO_MORE_CODES,
+    signupCode.EMAIL_TAKEN,
+    signupCode.USERNAME_TAKEN,
+    signupCode.TOO_MANY,
+    signupCode.GENERIC,
+    signupCode.sentLine('sam@example.com', false),
+    signupCode.sentLine('sam@example.com', true)
+  );
 
   const del = source('components/settings/DeleteAccountScreen.tsx');
   check('Delete account asks once', /const CONFIRM_TITLE = 'Delete your account\?';/.test(del) && /Alert\.alert\(\s*CONFIRM_TITLE,/.test(del));

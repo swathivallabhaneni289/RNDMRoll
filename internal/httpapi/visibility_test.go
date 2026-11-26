@@ -14,11 +14,11 @@ import (
 // the real middleware chain (RequireAuth, RequireUser, the limiters) is in
 // play.
 
-// visibilitySignUp signs a person up through the full server and returns the
-// decoded response and the access token.
+// visibilitySignUp signs a person up through the full server, code and all,
+// and returns the decoded response and the access token.
 func visibilitySignUp(t *testing.T, srv *Server, email, username, birthday string) (map[string]any, string) {
 	t.Helper()
-	rec := serveFrom(t, srv, integrationRemote(), http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
+	rec := signUpWithCode(t, srv.Engine(), integrationRemote(), signupBody(map[string]any{
 		"email":    email,
 		"username": username,
 		"birthday": birthday,

@@ -38,6 +38,7 @@ import (
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/social"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/spin"
 	"github.com/swathivallabhaneni289/RNDMRoll/internal/store/postgres"
+	"github.com/swathivallabhaneni289/RNDMRoll/internal/user"
 )
 
 // integrationTestDatabaseURL is set from TEST_DATABASE_URL in TestMain.
@@ -98,7 +99,10 @@ func integrationRepoRoot() string {
 
 // requireIntegrationPool skips the calling test when TEST_DATABASE_URL is
 // unset, otherwise returns a fresh pool and truncates every account table
-// on cleanup so tests do not leak state into one another.
+// on cleanup so tests do not leak state into one another. The sign-ups
+// waiting for their code are truncated with them: no foreign key ties them
+// to users, so the cascade never reaches them, and a sign-up left over
+// would count against the next test's cap of 5 an hour per email.
 //
 // NOTE on running this package's tests alongside internal/store/postgres's:
 // both packages truncate the same `users` table against the same
@@ -126,12 +130,12 @@ func requireIntegrationPool(t *testing.T) *pgxpool.Pool {
 	// left behind by a prior run that crashed or was interrupted before its
 	// own t.Cleanup ran, which would otherwise surface as a spurious
 	// user.ErrEmailTaken on this run's first signup.
-	if _, err := pool.Exec(context.Background(), "truncate users cascade"); err != nil {
+	if _, err := pool.Exec(context.Background(), "truncate users, pending_signups cascade"); err != nil {
 		pool.Close()
 		t.Fatalf("httpapi integration: entry truncate failed: %v", err)
 	}
 	t.Cleanup(func() {
-		if _, err := pool.Exec(context.Background(), "truncate users cascade"); err != nil {
+		if _, err := pool.Exec(context.Background(), "truncate users, pending_signups cascade"); err != nil {
 			t.Logf("httpapi integration: cleanup truncate failed: %v", err)
 		}
 		pool.Close()
@@ -176,6 +180,9 @@ type integrationOptions struct {
 	// mail keeps the password-changed emails of a change made in Settings.
 	// nil means a fresh one that nobody holds.
 	mail *captureSender
+	// signupMail keeps the sign-up code emails. nil means a fresh one, which
+	// integrationSignUp still reads through the engine.
+	signupMail *captureSender
 }
 
 // buildIntegrationServerWith is buildIntegrationServer with the spin slice's
@@ -231,6 +238,17 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	// have gone out.
 	t.Cleanup(accountHandler.Wait)
 
+	// Sign-up's code step over the real store, as cmd/api wires it. Its
+	// emails go to a box of their own, so no other count of emails moves,
+	// and go out after the answer: the test ends only once they have.
+	signupMail := opts.signupMail
+	if signupMail == nil {
+		signupMail = &captureSender{}
+	}
+	signups := NewSignupCodeHandler(users, postgres.NewPendingSignupRepo(pool), signupMail, integrationJWTSecret)
+	signups.now = frozenClock
+	t.Cleanup(signups.Wait)
+
 	socialSvc := social.NewService(postgres.NewSocialRepo(pool), spinClock)
 	boardSvc := board.NewService(postgres.NewBoardRepo(pool), socialSvc, spinSvc, spinClock, entryPhotos.Link)
 	notificationsSvc := notifications.NewService(postgres.NewNotificationsRepo(pool), socialSvc, spinSvc)
@@ -239,6 +257,7 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 		Auth:          authHandler,
 		Profile:       profileHandler,
 		Username:      usernameHandler,
+		SignupCode:    signups,
 		Account:       accountHandler,
 		Spin:          NewSpinHandler(spinSvc),
 		Wheel:         NewWheelHandler(spinSvc),
@@ -283,7 +302,9 @@ func buildIntegrationServerWith(t *testing.T, pool *pgxpool.Pool, opts integrati
 	if opts.wire != nil {
 		opts.wire(socialSvc, boardSvc, &deps)
 	}
-	return NewServer(deps)
+	server := NewServer(deps)
+	registerSignupBox(t, server.Engine(), signups, signupMail)
+	return server
 }
 
 // integrationDoAuthedRequest mirrors auth_test.go's doJSONRequest but also
@@ -309,8 +330,8 @@ func integrationDoAuthedRequest(t *testing.T, router *gin.Engine, method, path, 
 	return rec
 }
 
-// integrationSession is the access/refresh pair a one-request sign-up
-// returns.
+// integrationSession is the access/refresh pair a finished sign-up (its
+// verify) returns.
 type integrationSession struct {
 	AccessToken  string
 	RefreshToken string
@@ -384,12 +405,35 @@ func integrationAtOnce(engine *gin.Engine, reqs []*http.Request) []*httptest.Res
 	return recs
 }
 
-// integrationOnboardAccount signs an account up in ONE request, leaving it
-// complete and signed in (the response carries the session).
+// integrationSignUp signs a person up with body over the real server, as the
+// app does: POST /auth/signup, the code from the email that sign-up sent
+// (the server's sign-up mail box, which buildIntegrationServerWith
+// registers), then POST /auth/signup/verify. It fails the test unless the
+// start answers 200, and returns the verify's answer: on success, the
+// session log in answers.
+func integrationSignUp(t *testing.T, engine *gin.Engine, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	start := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", body)
+	if start.Code != http.StatusOK {
+		t.Fatalf("sign-up start: expected 200, got %d: %s", start.Code, start.Body.String())
+	}
+	started := decodeBody(t, start)
+	token, _ := started["signup_token"].(string)
+	email, _ := started["email"].(string)
+	if token == "" || email == "" {
+		t.Fatalf("sign-up start: expected a signup_token and the email, got %v", started)
+	}
+	return integrationDo(t, engine, http.MethodPost, "/v1/auth/signup/verify", "",
+		map[string]any{"signup_token": token, "code": signupCode(t, engine, email)})
+}
+
+// integrationOnboardAccount signs an account up with its code
+// (integrationSignUp), leaving it complete and signed in (the verify's
+// answer carries the session).
 func integrationOnboardAccount(t *testing.T, engine *gin.Engine, email, password, name, username string) integrationSession {
 	t.Helper()
 
-	rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", map[string]any{
+	rec := integrationSignUp(t, engine, map[string]any{
 		"email":    email,
 		"password": password,
 		"birthday": validBirthday,
@@ -419,9 +463,10 @@ func integrationUserCount(t *testing.T, pool *pgxpool.Pool) int {
 }
 
 // TestFullOnboardingFlow walks the whole sign-up through HTTP: public
-// username checks with no token, ONE sign-up request that returns a signed-in
-// session, then GET /v1/me reporting onboarding_complete. It exercises every
-// handler and both cross-cutting middlewares over the real Server.
+// username checks with no token, the sign-up and the code it emailed, whose
+// verify returns a signed-in session, then GET /v1/me reporting
+// onboarding_complete. It exercises every handler and both cross-cutting
+// middlewares over the real Server.
 func TestFullOnboardingFlow(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	server := buildIntegrationServer(t, pool)
@@ -440,7 +485,7 @@ func TestFullOnboardingFlow(t *testing.T) {
 		t.Fatalf("available: %d %s", availableRec.Code, availableRec.Body.String())
 	}
 
-	signupRec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", map[string]any{
+	signupRec := integrationSignUp(t, engine, map[string]any{
 		"email":    "onboarding-flow@example.com",
 		"password": "Correct-horse-battery-staple1",
 		"birthday": validBirthday,
@@ -457,8 +502,8 @@ func TestFullOnboardingFlow(t *testing.T) {
 		t.Fatalf("signup: expected access_token, got: %v", signupBody)
 	}
 	signupUser, _ := signupBody["user"].(map[string]any)
-	if signupUser["onboarding_complete"] != true || signupUser["email_verified"] != false {
-		t.Fatalf("signup user: expected complete and unverified, got %v", signupUser)
+	if signupUser["onboarding_complete"] != true || signupUser["email_verified"] != true {
+		t.Fatalf("signup user: expected complete and verified by the code, got %v", signupUser)
 	}
 
 	meRec := integrationDo(t, engine, http.MethodGet, "/v1/me", accessToken, nil)
@@ -473,10 +518,13 @@ func TestFullOnboardingFlow(t *testing.T) {
 		t.Fatalf("expected /v1/me to reflect the sign-up, got: %v", meBody)
 	}
 
-	// The birthday really is stored, and only the server knows it.
-	var stored string
-	if err := pool.QueryRow(context.Background(), `select birthday::text from users where email = $1`, "onboarding-flow@example.com").Scan(&stored); err != nil || stored != validBirthday {
-		t.Fatalf("stored birthday = %q, err = %v, want %q", stored, err, validBirthday)
+	// The birthday really is stored, and only the server knows it. The
+	// email is verified, through the one source the check allows.
+	var stored, via string
+	var verified bool
+	if err := pool.QueryRow(context.Background(), `select birthday::text, email_verified, email_verified_via from users where email = $1`,
+		"onboarding-flow@example.com").Scan(&stored, &verified, &via); err != nil || stored != validBirthday || !verified || via != "password_flow" {
+		t.Fatalf("stored birthday = %q, verified %v via %q, err = %v, want %q, true via password_flow", stored, verified, via, err, validBirthday)
 	}
 }
 
@@ -515,13 +563,23 @@ func TestSessionSurvivesRelaunch(t *testing.T) {
 
 // TestUnverifiedAccountCanLogInRefreshAndUseTheApp proves the gate is a valid
 // token for an account that exists, nothing more: an account whose email was
-// never verified logs in, refreshes (Redeem), and reaches /me complete.
+// never verified (as every account made before sign-up emailed a code was)
+// logs in, refreshes (Redeem), and reaches /me complete.
 func TestUnverifiedAccountCanLogInRefreshAndUseTheApp(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
-	integrationOnboardAccount(t, engine, "unverified-profile@example.com", "Correct-horse-battery-staple1", "Unverified Person", "unverified_person")
+	hash, err := auth.HashPassword("Correct-horse-battery-staple1")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if _, err := postgres.NewUserRepo(pool).CreateComplete(context.Background(), user.NewAccount{
+		Email: "unverified-profile@example.com", PasswordHash: hash, Birthday: validBirthday,
+		Name: "Unverified Person", Username: "unverified_person",
+	}); err != nil {
+		t.Fatalf("seed an unverified account: %v", err)
+	}
 	var verified bool
 	if err := pool.QueryRow(context.Background(), `select email_verified from users where email = $1`, "unverified-profile@example.com").Scan(&verified); err != nil || verified {
 		t.Fatalf("expected an unverified account, verified = %v, err = %v", verified, err)
@@ -763,46 +821,49 @@ func TestIntegrationSignup_UsernameTakenStoresNothingNew(t *testing.T) {
 	}
 }
 
-// Two sign-ups with different emails race for one username. The unique index
-// decides: exactly one wins, the other is 409 username_taken, and the loser
-// leaves no row behind.
+// Sign-ups with different emails race for one username. A sign-up waiting
+// for its code holds no username, so every start is let through, and the
+// race is run by the codes: the unique index decides, exactly one verify
+// wins, every other is 409 username_taken with suggestions, and the losers
+// leave no account behind (their sign-ups still wait).
 func TestIntegrationSignup_UsernameRaceLeavesExactlyOneAccount(t *testing.T) {
 	pool := requireIntegrationPool(t)
 	server := buildIntegrationServer(t, pool)
 	engine := server.Engine()
 
 	const racers = 6
-	codes := make([]int, racers)
-	var wg sync.WaitGroup
-	start := make(chan struct{})
-	for i := 0; i < racers; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			rec := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
-				"email":    fmt.Sprintf("racer%d@example.com", i),
-				"username": "race_winner",
-			}))
-			codes[i] = rec.Code
-		}(i)
+	reqs := make([]*http.Request, racers)
+	for i := range reqs {
+		email := fmt.Sprintf("racer%d@example.com", i)
+		start := integrationDo(t, engine, http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
+			"email":    email,
+			"username": "race_winner",
+		}))
+		if start.Code != http.StatusOK {
+			t.Fatalf("start %d: %d %s", i, start.Code, start.Body.String())
+		}
+		token, _ := decodeBody(t, start)["signup_token"].(string)
+		reqs[i] = integrationRequest(t, http.MethodPost, "/v1/auth/signup/verify", "",
+			map[string]any{"signup_token": token, "code": signupCode(t, engine, email)})
 	}
-	close(start)
-	wg.Wait()
 
 	wins, conflicts := 0, 0
-	for _, c := range codes {
-		switch c {
+	for i, rec := range integrationAtOnce(engine, reqs) {
+		switch rec.Code {
 		case http.StatusOK:
 			wins++
 		case http.StatusConflict:
+			body := decodeBody(t, rec)
+			if suggestions, _ := body["suggestions"].([]any); body["error"] != "username_taken" || len(suggestions) != 3 {
+				t.Fatalf("verify %d: %s, want username_taken with 3 suggestions", i, rec.Body.String())
+			}
 			conflicts++
 		default:
-			t.Fatalf("unexpected status %d in %v", c, codes)
+			t.Fatalf("verify %d: unexpected %d %s", i, rec.Code, rec.Body.String())
 		}
 	}
 	if wins != 1 || conflicts != racers-1 {
-		t.Fatalf("wins = %d, conflicts = %d, want 1 and %d (%v)", wins, conflicts, racers-1, codes)
+		t.Fatalf("wins = %d, conflicts = %d, want 1 and %d", wins, conflicts, racers-1)
 	}
 	if n := integrationUserCount(t, pool); n != 1 {
 		t.Fatalf("account count = %d, want 1", n)

@@ -68,7 +68,9 @@ func repoRoot() string {
 
 // requireTestPool skips the calling test when TEST_DATABASE_URL is unset,
 // otherwise returns a fresh pool and truncates every account table on
-// cleanup so tests do not leak state into one another.
+// cleanup so tests do not leak state into one another, the sign-ups waiting
+// for their code too (no foreign key ties them to users, so the cascade
+// never reaches them).
 func requireTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testDatabaseURL == "" {
@@ -79,7 +81,7 @@ func requireTestPool(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("postgres: NewPool: %v", err)
 	}
 	t.Cleanup(func() {
-		_, err := pool.Exec(context.Background(), "truncate users cascade")
+		_, err := pool.Exec(context.Background(), "truncate users, pending_signups cascade")
 		if err != nil {
 			t.Logf("postgres: cleanup truncate failed: %v", err)
 		}
@@ -314,7 +316,7 @@ func TestEmailVerificationRepo_ConsumeByHash_SecondCallReturnsErrTokenConsumed(t
 	}
 }
 
-// --- one-request sign-up and the birthday ---
+// --- the finished account's one insert and the birthday ---
 
 func countUsers(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
@@ -328,6 +330,22 @@ func countUsers(t *testing.T, pool *pgxpool.Pool) int {
 func newAccount(email, username string) user.NewAccount {
 	bio := "a short bio"
 	return user.NewAccount{Email: email, PasswordHash: "bcrypt-hash", Birthday: "1990-06-15", Name: "Full Name", Username: username, Bio: &bio}
+}
+
+// The account a sign-up's code makes is stored verified, through the one
+// source the check constraint allows; any other is stored unverified
+// (StoresEveryColumnInOneInsert).
+func TestUserRepo_CreateComplete_StoresTheVerifiedFlag(t *testing.T) {
+	pool := requireTestPool(t)
+	in := newAccount("verified@example.com", "verified_user")
+	in.EmailVerified = true
+	u, err := postgres.NewUserRepo(pool).CreateComplete(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreateComplete: %v", err)
+	}
+	if !u.EmailVerified || u.EmailVerifiedVia == nil || *u.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
+		t.Fatalf("verified = %v via %v, want true via password_flow", u.EmailVerified, u.EmailVerifiedVia)
+	}
 }
 
 func TestUserRepo_CreateComplete_StoresEveryColumnInOneInsert(t *testing.T) {

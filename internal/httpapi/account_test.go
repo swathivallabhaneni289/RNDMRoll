@@ -91,7 +91,7 @@ type accountSession struct {
 
 func (r *accountRig) signUp(t *testing.T, email, username, password string) accountSession {
 	t.Helper()
-	rec := serveFrom(t, r.srv, integrationRemote(), http.MethodPost, "/v1/auth/signup", "", signupBody(map[string]any{
+	rec := signUpWithCode(t, r.srv.Engine(), integrationRemote(), signupBody(map[string]any{
 		"email": email, "username": username, "password": password,
 	}))
 	if rec.Code != http.StatusOK {

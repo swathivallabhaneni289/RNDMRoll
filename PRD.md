@@ -167,7 +167,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 ### Journey 1: first evening
 
 1. **Welcome.** "one spin. one real moment." with the spinning wheel logo and Get started.
-2. **Sign up, page 1, "Create your account."** Email, password, birthday, name and username, with a line above Continue that links the Terms of Use and the Privacy Policy. Continue makes the account and signs the person in.
+2. **Sign up, page 1, "Create your account."** Email, password, birthday, name and username, with a line above Continue that links the Terms of Use and the Privacy Policy. Continue emails a 6-digit code, typed on a "Check your email" page; once it is right, the account is made and the person is signed in.
 3. **Page 2, "Make it yours."** An optional photo and bio, then Continue or Skip for now. Shown once.
 4. **Find your friends.** Invite friends (a link through the share sheet), Suggested for you and search. Done goes to the Spin page.
 5. **The first spin.** A new person can spin at once, at any hour; before 8 PM the page says "Your first spin is ready." They tap the centre of the wheel; it turns for about 4 seconds and lands; the word rises.
@@ -215,20 +215,20 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | ID | Requirement | Priority | Status |
 |---|---|---|---|
 | ACC-01 | A Welcome page shows the spinning wheel logo and Get started, which leads to Sign up or Log in | P1 | Built |
-| ACC-02 | A new person signs up on one page with email, password, birthday, name and username; one request creates the account and signs them in | P0 | Built |
+| ACC-02 | A new person signs up on one page with email, password, birthday, name and username, then types the 6-digit code emailed to them; only then is the account made and signed in | P0 | Built |
 | ACC-03 | People under 13 cannot make an account | P0 | Built |
 | ACC-04 | A second page, shown once, offers an optional photo and bio | P1 | Built |
 | ACC-05 | Find your friends is shown once after sign-up | P1 | Built |
 | ACC-06 | A person logs in with an email or a username, and a password | P0 | Built |
 | ACC-07 | Forgot password sends a 6-digit code by email, checks the code, and only then lets the person set a new password. An email typed on Log in is filled in. The person then logs in with the new password. | P0 | Built; real email is Launch |
 | ACC-08 | Sign-up shows the Terms of Use and Privacy Policy before Continue | P0 | Built |
-| ACC-09 | The email address is verified | P1 | Launch |
+| ACC-09 | The email address is checked at sign-up with a 6-digit code | P1 | Built (November 24, 2026); real email is Launch |
 | ACC-10 | A person can delete their account in the app | P0 | Built (October 25, 2026) |
 | ACC-11 | A person can download a copy of their data | P2 | Later (by email request until then) |
 
 **Acceptance criteria and rules**
 
-- **ACC-02 email.** One plain address of at most 254 characters, in plain ASCII at sign-up. Unique, ignoring capitals. A taken email shows "That email is already in use." The server holds that answer for at least 300 ms. The one exception is a retry: when an earlier try got no answer or a server failure, and the email and password are the same, the app logs in to that account instead. The photo-and-bio page follows only when it is the account that try made.
+- **ACC-02 email.** One plain address of at most 254 characters, in plain ASCII at sign-up. Unique, ignoring capitals. A taken email shows "That email is already in use." The server holds that answer for at least 300 ms. The one exception is a retry: when the code page's Verify code got no answer or a server failure, the account may exist already, so a later Verify code, or a later Continue with the same email and password, logs in to it instead. The photo-and-bio page follows only when it is the account that sign-up asked for.
 - **ACC-02 password.** 8 to 72 characters, with a capital letter, a number and a symbol. A four-line checklist turns green as each rule is met. Typed once; there is no confirm box.
 - **ACC-02 name and username.**
   - Name: 1 to 50 characters.
@@ -248,6 +248,12 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The page always moves to the code step, whether or not the email has an account.
   - A code lasts 30 minutes and allows 5 wrong tries. Asking again within a minute sends nothing. A newer code replaces the old one, and wrong tries carry over.
   - Only a hash of the code is stored.
+- **ACC-09 the code.**
+  - After Continue on the first page, a "Check your email" page asks for the 6-digit code sent to that address. Nothing is stored as an account until the code is right. Then the account is made and signed in, and the photo-and-bio page follows.
+  - A code lasts 30 minutes and allows 5 wrong tries, which carry over to a new code. Asking again within a minute sends nothing, and one sign-up gets at most 5 codes. One email can start at most 5 sign-ups an hour.
+  - Only a hash of the code is stored, tied to that one sign-up, so a code typed on someone else's phone finishes nothing.
+  - Limits: verify and Send a new code share 10 a minute per IP address, and 5 per address and sign-up.
+  - Accounts made before November 24, 2026 were never checked, and nothing changes for them.
 - **ACC-07 the result.** A reset ends every session, on every phone, and signs nobody in, as OWASP advises. The page says "Password changed", and its Log in opens Log in with the email filled in. An email then tells the account that its password changed.
 - **ACC-10, like Instagram.**
   - Settings, then Delete account. The page says what goes and when, asks for the password, and confirms once: "Delete your account?"
@@ -687,7 +693,7 @@ These rules decide what counts. The server owns all of them.
 - The decision log keeps, for each Remove, Bring it back, Keep it removed, Dismiss that shows something again, Disable and Enable, and each report that hides something: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons and the reason picked at Remove. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
 - A second look keeps the owner's words with the decision log while their account exists, and its photos until 30 days after the removal. Only admins see them, on the admin page.
 - The app asks for the camera, the photo library and notifications only, and never for location or contacts.
-- Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any reset code, is printed to the server log.
+- Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any code, is printed to the server log.
 - Photos are in a private bucket. The server gives a signed photo link only to someone allowed to see that photo, and each link stops working within an hour. A link already given out works until it runs out.
 - **Launch:** removal of photo metadata for every file type.
 - The Privacy Policy describes the real data practices, including today's limits.
@@ -789,7 +795,7 @@ These rules decide what counts. The server owns all of them.
 
 | Area | Tables |
 |---|---|
-| Accounts | users, refresh_tokens, password_resets, push_tokens |
+| Accounts | users, refresh_tokens, password_resets, pending_signups, push_tokens |
 | Spin | user_time_zones, user_spin_state, wheel_categories, spins, posted_days, goal_weeks |
 | Posts | entries, entry_photos |
 | Social | follows, blocks, mutes, post_comments, post_reactions (likes), notification_settings, notification_seen |
@@ -855,7 +861,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 - [x] A real contact email for the Terms and the Privacy Policy: the admin's email (developer, 2026-11-23).
 - [x] Account deletion in the app (Apple requires it for apps with sign-up). Built October 25, 2026.
 - [ ] Record the accepted terms version, and tell people when the terms change.
-- [ ] Verify email addresses at sign-up.
+- [x] Verify email addresses at sign-up: a 6-digit code (developer, 2026-11-24).
 
 **Infrastructure**
 
@@ -1002,6 +1008,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 19 | The cards make a table: one line per reported thing under the headings Type, What and Reason, each line its own box, with the buttons at the end | "I dont want random boxes floating on my page"; then they picked a table over two mock-ups and asked for more room | Photos are small in the line (each opens full size) |
 | Nov 19 | A person's History lists every report about them, with how it ended, among the decisions, under how often they were reported; it replaces the closed cards | "We should know that this person got reported once", then "the history section, we'll have it there" | A long list for someone reported often |
 | Nov 19 | Second looks are asked in the app, not by email: tapping the removal opens a small page for why it should come back and up to 3 photos, once per removal within its 30 days; the admin answers with Bring it back or Keep it removed, and the bell says which | "Maybe give a little option there, not like something really big ... they can upload their file or something, and the proofs" | Photos only, with no PDFs and no back-and-forth; one ask per removal; a disabled account still asks by email |
+| Nov 24 | A 6-digit email code at sign-up, typed on a "Check your email" page after the first page; the account is made only once the code is right | "i want mine to work like any other website", then "lets add it" (Instagram emails a code during sign-up) | One more step, once; until real email is on, the code prints to the server log |
 | Nov 24 | A like on friends' posts: a heart beside the comment mark. Only the poster sees how many and who, with a line in the bell and no push | "if they dont comment atleast people can just like it and move on" | A number under your own post, the one exception to the no-counts rule; likes have no switch in Settings |
 | Nov 25 | Likes send a phone notification too, with a Likes switch in Settings | "it should send notifications" | One more kind of push, once per person and post a day; the Likes switch turns it off |
 
@@ -1054,7 +1061,7 @@ All routes below start with `/v1` unless they are web pages. Limits are per pers
 
 | Area | Routes | Limits |
 |---|---|---|
-| Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/forgot`, `/auth/password/verify`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot, verify and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
+| Sign-up and log in | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/signup/verify`, `/auth/signup/resend`, `/auth/password/forgot`, `/auth/password/verify`, `/auth/password/reset`; `GET /usernames/suggest`, `/usernames/available` | Sign-up 10 per IP, then 3 per IP and email; its verify and resend 10 per IP and 5 per IP and sign-up, shared; log in 20 per IP, 5 per IP and name, 5 per IP and account; refresh and log out 60 per IP each; forgot, verify and reset 10 per IP and 5 per IP and email, shared; usernames 90 per IP |
 | Me | `GET`, `PATCH /me`; `POST /me/avatar/upload-url`; `POST /me/password`; `POST /me/delete`; `GET`, `PATCH /me/notification-settings`; `GET`, `POST /me/blocks`; `DELETE /me/blocks/:user_id`; `GET /me/archive`; `GET /me/summary`; `POST`, `DELETE /me/push-tokens` | Profile edit 30; password 5 per person and 20 per IP; delete 5 per person; `GET /me` and the photo upload link have no limit |
 | Spin | `POST /time-zone` (its answer carries the Spin page's state too); `GET /today`; `POST /spin`, `/spin/bonus`, `/spin/skip`; `GET`, `PATCH /wheel` | Spin, bonus and skip 10; today 60; wheel save 20 |
 | Posts | `POST /entry-photos/upload-url`; `POST /entries`; `GET`, `PATCH /entries/:id`; `POST /entries/:id/archive`, `/unarchive`, `/delete`; `GET /diary` | Post 10; edits 20 |

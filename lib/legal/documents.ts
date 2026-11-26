@@ -29,9 +29,9 @@ const EFFECTIVE = 'November 23, 2026';
  * The Privacy Policy's own date, since it can change without the Terms (it did for what admins see,
  * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13, for reports, hiding
  * and removals on 2026-11-17, and for second looks and password resets by 2026-11-23, the day they
- * went public.
+ * went public. The Privacy Policy changed again for the sign-up code on 2026-11-24.
  */
-const PRIVACY_EFFECTIVE = 'November 23, 2026';
+const PRIVACY_EFFECTIVE = 'November 24, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };
@@ -227,9 +227,9 @@ export const PRIVACY: LegalDocument = {
       heading: 'How we use it',
       blocks: [
         list(
-          'To run RNDMRoll: make your account, open your spin at 8 PM your time, save your posts and show them to the people allowed to see them.',
+          'To run RNDMRoll: check with an emailed code that your email address is yours, make your account, open your spin at 8 PM your time, save your posts and show them to the people allowed to see them.',
           'To count your week: posted days, the weekly goal, bonus spins and your week streak.',
-          'To send what you asked for: the 8 PM reminder, notifications in the app, phone notifications when they are on, and password reset codes by email, then an email once your password has changed.',
+          'To send what you asked for: the 8 PM reminder, notifications in the app, phone notifications when they are on, and sign-up and password reset codes by email, then an email once your password has changed.',
           'To keep people safe: limit repeated tries, review reports and second looks, hide reported posts and comments, remove content or disable accounts that break the Terms of Use, and keep a record of those decisions.',
           'To find and fix problems.',
         ),
@@ -270,7 +270,7 @@ export const PRIVACY: LegalDocument = {
         paragraph('A few companies help run RNDMRoll. We give them only what they need to provide their service to us:'),
         list(
           'Supabase keeps our database and photos in Singapore, so it stores the information in this policy. Your phone sends and loads photos directly with Supabase, so it also sees your IP address. Our server runs on a computer we control, and its logs stay there.',
-          'Resend sends password reset codes, and the email that your password has changed. It receives your email address and what the email says.',
+          'Resend sends sign-up and password reset codes, and the email that your password has changed. It receives your email address and what the email says.',
           "Expo and Apple deliver phone notifications when those are on. They receive your push token, your phone's device token, the words of the notification, such as a friend's first name and the start of their comment, and the ID numbers the app uses to open the right page.",
         ),
       ],
@@ -307,7 +307,7 @@ export const PRIVACY: LegalDocument = {
           "A record of each decision we make about your posts, comments or account: what we decided and when, the post's title or the comment's words at the time, and the reasons it was reported. It is kept while your account exists, so we can answer you about a decision, and deleted with your account.",
           'If you ask for a second look, your words are kept with the record of that decision, so we can look back at them, and deleted with your account. The photos you add are deleted 30 days after the removal, whatever we decide, or with your account if that is sooner.',
           'A login ends 30 days after you last used the app. Records of past logins, with the details your phone sent, are kept while your account exists, to help protect it.',
-          "A password reset code stops working after 30 minutes or 5 wrong tries. It's deleted once it's used, or replaced when you ask for a new one.",
+          "A sign-up or password reset code stops working after 30 minutes or 5 wrong tries. It's deleted once it's used, or replaced when you ask for a new one. If you don't finish signing up, what you typed is deleted within a few hours.",
           "Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, including any search words, and are kept only as long as we need them to fix problems and keep RNDMRoll safe. Supabase also keeps its own logs of requests to our database and photo storage for a short time.",
           'A disabled account is kept, hidden from everyone else on RNDMRoll, in case the decision is reviewed, until its owner asks us to delete it.',
         ),
@@ -342,7 +342,7 @@ export const PRIVACY: LegalDocument = {
       heading: 'Security',
       blocks: [
         paragraph(
-          'On our server, passwords, login tokens and reset codes are stored only as hashes. On your phone, your login is kept in the iPhone keychain. The token that keeps you logged in changes every time it is renewed, reset codes stop working after 30 minutes, and repeated tries are limited. Your information travels to our database and photo storage over encrypted connections, and Supabase encrypts it where it is stored. No system is perfectly secure, so if you think someone got into your account, change your password and email us.',
+          'On our server, passwords, login tokens, and sign-up and reset codes are stored only as hashes. On your phone, your login is kept in the iPhone keychain. The token that keeps you logged in changes every time it is renewed, codes stop working after 30 minutes, and repeated tries are limited. Your information travels to our database and photo storage over encrypted connections, and Supabase encrypts it where it is stored. No system is perfectly secure, so if you think someone got into your account, change your password and email us.',
         ),
       ],
     },

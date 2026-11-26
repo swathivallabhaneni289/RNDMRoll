@@ -59,6 +59,12 @@ type Deps struct {
 	Admin *AdminHandler
 	// PasswordReset is Forgot password (public); nil mounts nothing.
 	PasswordReset *PasswordResetHandler
+	// SignupCode finishes a sign-up with the code it emailed (developer,
+	// 2026-11-24): POST /auth/signup stores each sign-up through it, and it
+	// serves POST /auth/signup/verify and /auth/signup/resend (public). nil
+	// mounts nothing, and sign-up then answers 500 rather than make an
+	// account without its code.
+	SignupCode *SignupCodeHandler
 	// PushTokens is POST and DELETE /me/push-tokens; nil mounts nothing.
 	PushTokens *PushTokenHandler
 	// SecondLooks is POST /removals/:id/second-look, the owner asking for a
@@ -107,14 +113,17 @@ type Server struct {
 //     in, refuses a body over 16 KB. AuthHandler mounts directly on it and
 //     writes its own "/auth/..." route strings (POST /auth/signup,
 //     POST /auth/login, etc.).
-//   - /v1 (public subgroup): the username suggest and availability checks.
-//     The sign-up page calls them before any account exists, so they need
-//     no token; they are limited per IP instead.
+//   - /v1 (public subgroup): the username suggest and availability checks,
+//     and sign-up's verify and resend when Deps carries a
+//     SignupCodeHandler. The sign-up pages call them before any account
+//     exists, so they need no token; they are limited per IP instead.
 //   - /v1 (signed-in subgroup, `authed`): RequireAuth (a valid token) then
 //     RequireUser (the account row still exists, else 401 token_invalid) are
 //     applied at this group -- not per route -- so ProfileHandler inherits
 //     both by construction, and so does any future route mounted here
-//     (T-01-SRV-03). There is no verified check: sign-up has no email step.
+//     (T-01-SRV-03). There is no verified check: sign-up now makes an
+//     account only with the code it emailed, but the accounts made before
+//     that (2026-11-24) were never checked.
 //     The change-password route (POST /me/password) is mounted on this group
 //     when Deps carries an AccountHandler, and delete account
 //     (POST /me/delete) when it carries a DeleteAccountHandler. The daily spin routes (time zone,
@@ -151,6 +160,12 @@ func NewServer(deps Deps) *Server {
 	if deps.DeleteAccount != nil {
 		deps.Auth.deletions = deps.DeleteAccount.deletions
 	}
+	if deps.SignupCode != nil {
+		// Sign-up stores its sign-ups through it, and a sign-up its code
+		// finishes is answered with log in's session.
+		deps.Auth.signups = deps.SignupCode
+		deps.SignupCode.auth = deps.Auth
+	}
 	deps.Auth.photoLink = deps.PhotoLink
 	deps.Profile.photoLink = deps.PhotoLink
 	if deps.Account != nil {
@@ -163,6 +178,9 @@ func NewServer(deps Deps) *Server {
 
 	public := v1.Group("")
 	deps.Username.Register(public)
+	if deps.SignupCode != nil {
+		deps.SignupCode.Register(public)
+	}
 	if deps.PasswordReset != nil {
 		deps.PasswordReset.Register(public)
 	}

@@ -1,7 +1,8 @@
 // @ts-nocheck
 /**
- * Throwaway checks for Log in's "@name", sign-up's way back to an account its lost answer made,
- * where Today shows Edit wheel, and the end of underlined text links. Not part of the app bundle.
+ * Throwaway checks for Log in's "@name", sign-up's code page and its way back to an account a lost
+ * answer made, where Today shows Edit wheel, and the end of underlined text links. Not part of the
+ * app bundle.
  * Run from the repo root with:  node --experimental-strip-types scripts/check-auth-today.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -10,6 +11,21 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loginName } from '../lib/auth/loginName.ts';
+import { clearPendingSignup, lostSignup, pendingSignup, setLostSignup, setPendingSignup } from '../lib/auth/pendingSignup.ts';
+import {
+  answerLine,
+  codeLine,
+  EMAIL_TAKEN,
+  EXPIRED,
+  GENERIC,
+  NO_MORE_CODES,
+  REPLACED,
+  sentLine,
+  SHORT_CODE,
+  TOO_MANY,
+  USERNAME_TAKEN,
+  WRONG_CODE,
+} from '../lib/auth/signupCode.ts';
 import { opensExtras, shouldTryLogin, signupAnswerLost } from '../lib/auth/signupRetry.ts';
 import { editWheelLinkShown } from '../components/today/editWheelLink.ts';
 
@@ -54,10 +70,12 @@ check(
 );
 check('Log in no longer sends the raw box', !/login: login\.trim\(\)/.test(login));
 
-// ---- Sign-up: the account a lost answer made ------------------------------------------------
+// ---- Sign-up: the account a lost verify answer made -----------------------------------------
 
 const lost = { email: 'Sam@Example.com', password: 'Spin!2026', username: 'sam' };
 const taken = { status: 409, code: 'email_taken' };
+// The code page's verify once the sign-up is gone: its 30 minutes are up, or a verify finished it.
+const expired = { status: 400, code: 'validation_failed', reason: 'expired' };
 
 check('no answer is a lost answer', signupAnswerLost({ status: 0, code: 'network_unavailable' }));
 check('a server failure is a lost answer', signupAnswerLost({ status: 500, code: 'server_error' }));
@@ -79,6 +97,15 @@ check(
   'a second lost answer does not log in',
   !shouldTryLogin(lost, 'sam@example.com', 'Spin!2026', { status: 0, code: 'network_unavailable' })
 );
+check('an expired sign-up after a lost verify logs in', shouldTryLogin(lost, 'Sam@Example.com', 'Spin!2026', expired));
+check('an expired sign-up with another password does not log in', !shouldTryLogin(lost, 'Sam@Example.com', 'Spin!2027', expired));
+check('an expired sign-up that was not lost does not log in', !shouldTryLogin(null, 'Sam@Example.com', 'Spin!2026', expired));
+for (const reason of ['wrong_code', 'replaced', 'invalid']) {
+  check(
+    `a code answered ${reason} after a lost verify does not log in`,
+    !shouldTryLogin(lost, 'Sam@Example.com', 'Spin!2026', { status: 400, code: 'validation_failed', reason })
+  );
+}
 
 check('the lost try\'s own account opens the photo-and-bio page', opensExtras(lost, { user: { username: 'sam' } }));
 check(
@@ -88,21 +115,143 @@ check(
 check('an older account with that email signs in like Log in', !opensExtras(lost, { user: { username: 'sam_old' } }));
 check('an account with no username signs in like Log in', !opensExtras(lost, { user: { username: null } }));
 
+// The sign-up in progress, in memory only (lib/auth/pendingSignup.ts).
+eq('no sign-up is in progress when the app starts', pendingSignup(), null);
+eq('and none is lost', lostSignup(), null);
+setPendingSignup(lost, 'token-1');
+eq('Continue keeps the sign-up with its token', JSON.stringify(pendingSignup()), JSON.stringify({ ...lost, token: 'token-1' }));
+eq('a started sign-up is not lost', lostSignup(), null);
+setLostSignup(pendingSignup());
+eq('a verify that may have made the account is remembered', lostSignup()?.email, lost.email);
+setPendingSignup({ ...lost, username: 'sam_2' }, 'token-2');
+eq('a new Continue takes the place of the sign-up in progress', pendingSignup()?.token, 'token-2');
+eq('and keeps the lost one, whose account the server may still finish', lostSignup()?.username, 'sam');
+clearPendingSignup();
+check('signing in forgets both', pendingSignup() === null && lostSignup() === null);
+const pendingModule = source('lib/auth/pendingSignup.ts');
+check('the sign-up in progress loads nothing (a type import only), so it never reaches storage', !/^import (?!type )/m.test(pendingModule));
+
 const form = source('components/profile/ProfileForm.tsx');
 check(
-  'a lost or unreadable sign-up answer is remembered',
-  /if \(!\(err instanceof ApiError\) \|\| signupAnswerLost\(err\)\) \{\s*lostSignupRef\.current = thisTry;\s*throw err;/.test(form)
+  'Continue only starts the sign-up, keeps it in memory and opens the code page',
+  /started = await api\.post<SignupStart>\('\/auth\/signup', body, \{ auth: false \}\);/.test(form) &&
+    /setPendingSignup\(thisTry, started\.signup_token\);\s*router\.push\('\/signup-code'\);/.test(form)
+);
+check('a start whose answer was lost needs nothing, as it made no account', !/signupAnswerLost|setLostSignup/.test(form));
+check(
+  'email_taken after a lost verify logs in, then opens the page opensExtras picks',
+  /const lost = lostSignup\(\);\s*if \(lost === null \|\| !shouldTryLogin\(lost, thisTry\.email, password, err\)\) throw err;/.test(form) &&
+    /await signIn\(result, \{ extras: opensExtras\(lost, result\) \}\);\s*clearPendingSignup\(\);/.test(form)
+);
+
+const codePage = source('app/(auth)/signup-code.tsx');
+check(
+  'a verify that made the account is remembered until signed in',
+  /\{ signup_token: signup\.token, code: digits \},\s*\{ auth: false \}\s*\);\s*(\/\/[^\n]*\n\s*)*setLostSignup\(signup\);/.test(codePage) &&
+    /await signIn\(result, \{ extras \}\);\s*clearPendingSignup\(\);/.test(codePage)
 );
 check(
-  'email_taken after a lost try logs in, then opens the page opensExtras picks',
-  /shouldTryLogin\(lost, thisTry\.email, password, err\)/.test(form) &&
-    /extrasPage = opensExtras\(lost, result\);/.test(form) &&
-    /await signIn\(result, \{ extras: extrasPage \}\);\s*lostSignupRef\.current = null;/.test(form)
+  'a lost or unreadable verify answer is remembered',
+  /if \(!\(err instanceof ApiError\) \|\| signupAnswerLost\(err\)\) \{\s*setLostSignup\(signup\);\s*throw err;/.test(codePage)
 );
 check(
-  'a refused log in gives back the email_taken answer, one that could pass shows itself',
-  /throw isRetryable\(err\) \? err : taken;/.test(form)
+  '"expired" or email_taken after a lost verify logs in, then opens the page opensExtras picks',
+  /const lost = lostSignup\(\);\s*if \(lost === null \|\| !shouldTryLogin\(lost, signup\.email, signup\.password, err\)\) throw err;/.test(codePage) &&
+    /extras = opensExtras\(lost, result\);/.test(codePage)
 );
+check('the code signs in as Continue once did, with the photo-and-bio page next', /let extras = true;/.test(codePage));
+check(
+  'a refused log in gives back the answer that led to it, one that could pass shows itself',
+  [form, codePage].every((page) => /throw isRetryable\(err\) \? err : taken;/.test(page))
+);
+check(
+  'a line about the code goes under the Code box, any other under the page',
+  /if \(err instanceof ApiError && err\.field === 'code'\) setCodeError\(codeLine\(err\.reason\)\);\s*else setFormError\(failure\(err\)\);/.test(codePage) &&
+    /return err\.code === 'network_unavailable' \? err\.userMessage : answerLine\(err\);/.test(codePage)
+);
+check(
+  'a second tap, on either button, sends nothing',
+  (codePage.match(/if \(sendingRef\.current\) return;/g) ?? []).length === 2 &&
+    (codePage.match(/sendingRef\.current = true;/g) ?? []).length === 2 &&
+    (codePage.match(/finally \{\s*sendingRef\.current = false;/g) ?? []).length === 2
+);
+check(
+  'the sign-up is read once, on mount, and without one the page hands over to page 1',
+  /const \[signup\] = useState\(pendingSignup\);\s*if \(signup === null\) return <Redirect href="\/make-it-yours" \/>;/.test(codePage) &&
+    !/useLocalSearchParams|useGlobalSearchParams/.test(codePage)
+);
+check('Back goes to page 1', /if \(router\.canGoBack\(\)\) router\.back\(\);\s*else router\.replace\('\/make-it-yours'\);/.test(codePage));
+check(
+  'the code page is its own screen, with the swipe back while signed out',
+  /<Stack\.Screen name="signup-code" options=\{\{ gestureEnabled: !signedIn \}\} \/>/.test(source('app/(auth)/_layout.tsx'))
+);
+{
+  const start = codePage.indexOf('label="Code"');
+  const box = start < 0 ? '' : codePage.slice(start, codePage.indexOf('/>', start));
+  check(
+    'the Code box: digits only, the number pad, the code from Messages or Mail, 6 at most, keyboard up',
+    /setCode\(next\.replace\(\/\\D\/g, ''\)\.slice\(0, 6\)\)/.test(box) &&
+      ['keyboardType="number-pad"', 'autoComplete="one-time-code"', 'textContentType="oneTimeCode"', 'maxLength={6}', 'autoFocus'].every((prop) =>
+        box.includes(prop)
+      )
+  );
+}
+check(
+  'the words: heading, line, Verify code, and Send a new code as a button like the Forgot password one',
+  /<AppText role="heading" accessibilityRole="header">\s*Check your email\s*<\/AppText>/.test(codePage) &&
+    /<AppText role="body" tone="muted">\s*\{sentLine\(signup\.email, resent\)\}\s*<\/AppText>/.test(codePage) &&
+    /<PrimaryButton label="Verify code" onPress=\{verifyCode\} loading=\{busy\} disabled=\{busy\} \/>/.test(codePage) &&
+    [codePage, source('app/(auth)/forgot-password.tsx')].every((page) => page.includes('<AppText role="button">Send a new code</AppText>'))
+);
+
+// ---- Sign-up: the code page's lines -----------------------------------------------------------
+
+eq('the line under the heading names the address', sentLine('sam@example.com', false), 'We sent a code to sam@example.com.');
+eq('and says when a new code went', sentLine('sam@example.com', true), 'We sent a new code to sam@example.com.');
+eq('a code that is not 6 digits', codeLine('invalid'), 'Enter the 6-digit code from the email.');
+eq(
+  'a wrong code, or its 5 tries used up',
+  codeLine('wrong_code'),
+  "That code isn't right. After 5 wrong tries, go back and tap Continue for a new code."
+);
+eq('a code a newer one replaced', codeLine('replaced'), 'That code was replaced by a newer one. Use the newest code in your email.');
+eq('a sign-up that is gone', codeLine('expired'), 'That code has expired. Go back and tap Continue for a new one.');
+eq('no reason reads as a wrong code', codeLine(undefined), WRONG_CODE);
+eq('a reason the app does not know reads as a wrong code', codeLine('something_new'), WRONG_CODE);
+eq(
+  'Send a new code once the sign-up is over',
+  answerLine({ status: 400, code: 'validation_failed', field: 'signup_token', reason: 'expired' }),
+  'No more codes for this sign-up. Go back and tap Continue.'
+);
+eq('an email an account got meanwhile', answerLine(taken), 'That email is already in use.');
+eq(
+  'a username someone took meanwhile',
+  answerLine({ status: 409, code: 'username_taken' }),
+  'Someone just took that username. Go back and pick another.'
+);
+eq('too many requests', answerLine({ status: 429, code: 'rate_limited' }), 'Too many requests. Wait a minute and try again.');
+eq('a 429 without the usual body', answerLine({ status: 429, code: 'server_error' }), TOO_MANY);
+eq('a server failure', answerLine({ status: 500, code: 'server_error' }), 'Something went wrong. Please try again.');
+eq(
+  'a token the server did not take',
+  answerLine({ status: 400, code: 'validation_failed', field: 'signup_token', reason: 'invalid' }),
+  GENERIC
+);
+for (const line of [
+  SHORT_CODE,
+  WRONG_CODE,
+  REPLACED,
+  EXPIRED,
+  NO_MORE_CODES,
+  EMAIL_TAKEN,
+  USERNAME_TAKEN,
+  TOO_MANY,
+  GENERIC,
+  sentLine('sam@example.com', false),
+  sentLine('sam@example.com', true),
+]) {
+  check(`copy rules (no dash, no !, ends with a period): ${line}`, !/[—–!]/.test(line) && /\.$/.test(line) && !line.includes('  '));
+}
 
 // ---- Today: where Edit wheel shows ------------------------------------------------------------
 

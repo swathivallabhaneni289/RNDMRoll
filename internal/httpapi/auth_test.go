@@ -25,7 +25,10 @@ import (
 // newAuthTestHandler builds a fresh router, handler, and set of in-memory
 // fakes for a single test. Each test gets its own instance -- sharing one
 // router across a table-driven test would let the signup/login rate limits
-// (3/min per address and email, 5/min on login) reject later subtests.
+// (3/min per address and email, 5/min on login) reject later subtests. The
+// sign-up code routes are mounted too, as NewServer wires them, over a fake
+// sign-up store, and their emails go to a captureSender registered for the
+// router (signUpWithCode reads the code from it).
 func newAuthTestHandler(t *testing.T) (*gin.Engine, *AuthHandler, TestDeps) {
 	t.Helper()
 	deps := TestDeps{
@@ -38,7 +41,50 @@ func newAuthTestHandler(t *testing.T) (*gin.Engine, *AuthHandler, TestDeps) {
 	handler.clock = frozenClock
 	rg := router.Group("/v1")
 	handler.Register(rg)
+	box := &captureSender{}
+	codes := NewSignupCodeHandler(deps.Users, newFakeSignupStore(deps.Users), box, []byte("test-secret"))
+	codes.now = frozenClock
+	handler.signups, codes.auth = codes, handler
+	codes.Register(rg)
+	t.Cleanup(codes.Wait)
+	registerSignupBox(t, router, codes, box)
 	return router, handler, deps
+}
+
+// signUpWithCode signs a person up through engine as the app does: POST
+// /auth/signup with body, the code from the email that sign-up sent (read
+// from the rig's sign-up mail box), then POST /auth/signup/verify, both
+// from remote ("" keeps httptest's own address). It fails the test unless
+// the start answers 200, and returns the verify's answer: on success, the
+// session log in answers.
+func signUpWithCode(t *testing.T, engine *gin.Engine, remote string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	send := func(path string, body any) *httptest.ResponseRecorder {
+		t.Helper()
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal request body: %v", err)
+		}
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
+		if remote != "" {
+			req.RemoteAddr = remote
+		}
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		return rec
+	}
+	start := send("/v1/auth/signup", body)
+	if start.Code != http.StatusOK {
+		t.Fatalf("sign-up start: expected 200, got %d: %s", start.Code, start.Body.String())
+	}
+	started := decodeBody(t, start)
+	token, _ := started["signup_token"].(string)
+	email, _ := started["email"].(string)
+	if token == "" || email == "" {
+		t.Fatalf("sign-up start: expected a signup_token and the email, got %v", started)
+	}
+	return send("/v1/auth/signup/verify", map[string]any{"signup_token": token, "code": signupCode(t, engine, email)})
 }
 
 func doJSONRequest(t *testing.T, router *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
@@ -138,10 +184,16 @@ func assertFieldError(t *testing.T, rec *httptest.ResponseRecorder, field string
 	}
 }
 
-func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+// waitingSignups is how many sign-ups wait for their code in the fake store
+// of a handler newAuthTestHandler built.
+func waitingSignups(h *AuthHandler) int { return h.signups.store.(*fakeSignupStore).count() }
 
-	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"bio": "hello there"}))
+// A valid body, then its code, makes the account: the answer is a session
+// and every field is stored, the email verified by the code.
+func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T) {
+	router, h, deps := newAuthTestHandler(t)
+
+	rec := signUpWithCode(t, router, "", signupBody(map[string]any{"bio": "hello there"}))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -156,8 +208,8 @@ func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T
 	if userBody["email"] != "new-user@example.com" || userBody["name"] != "New User" || userBody["username"] != "new_user" || userBody["bio"] != "hello there" {
 		t.Errorf("unexpected user body: %v", userBody)
 	}
-	if userBody["email_verified"] != false {
-		t.Errorf("email_verified = %v, want false (no email check)", userBody["email_verified"])
+	if userBody["email_verified"] != true {
+		t.Errorf("email_verified = %v, want true (the code proved the email)", userBody["email_verified"])
 	}
 	if userBody["onboarding_complete"] != true {
 		t.Errorf("onboarding_complete = %v, want true", userBody["onboarding_complete"])
@@ -170,8 +222,11 @@ func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T
 	if stored.PasswordHash == nil || *stored.PasswordHash == "" || *stored.PasswordHash == "Correct-horse-battery1" {
 		t.Fatal("expected a bcrypt hash, not the plaintext password")
 	}
-	if stored.EmailVerified {
-		t.Fatal("expected email_verified to be false after signup")
+	if !stored.EmailVerified || stored.EmailVerifiedVia == nil || *stored.EmailVerifiedVia != user.VerifiedViaPasswordFlow {
+		t.Fatalf("expected the email verified through password_flow, got %v via %v", stored.EmailVerified, stored.EmailVerifiedVia)
+	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("%d sign-ups still wait after the account was made", n)
 	}
 	if !stored.HasBirthday {
 		t.Fatal("expected a birthday on file")
@@ -184,7 +239,7 @@ func TestSignup_ValidBody_Returns200WithASessionAndStoresEverything(t *testing.T
 func TestSignup_ResponseHasTheSameKeysAsLogin(t *testing.T) {
 	router, _, _ := newAuthTestHandler(t)
 
-	signup := decodeBody(t, doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)))
+	signup := decodeBody(t, signUpWithCode(t, router, "", signupBody(nil)))
 	login := decodeBody(t, doJSONRequest(t, router, http.MethodPost, "/v1/auth/login", LoginRequest{
 		Email:    "new-user@example.com",
 		Password: "Correct-horse-battery1",
@@ -211,7 +266,7 @@ func TestSignup_ResponseHasTheSameKeysAsLogin(t *testing.T) {
 func TestSignup_TrimsNameAndStoresEmptyBioAsNone(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
 
-	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"name": "  Padded Name  ", "bio": "   "}))
+	rec := signUpWithCode(t, router, "", signupBody(map[string]any{"name": "  Padded Name  ", "bio": "   "}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -274,11 +329,14 @@ func TestSignup_BadFieldsReturn400NamingTheFieldAndStoreNothing(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			router, _, deps := newAuthTestHandler(t)
+			router, h, deps := newAuthTestHandler(t)
 			rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(tc.mods))
 			assertFieldError(t, rec, tc.field)
 			if n := deps.Users.(*fakeUserRepo).count(); n != 0 {
 				t.Fatalf("a rejected signup stored %d account(s)", n)
+			}
+			if n := waitingSignups(h); n != 0 {
+				t.Fatalf("a rejected signup left %d sign-up(s) waiting", n)
 			}
 		})
 	}
@@ -288,7 +346,7 @@ func TestSignup_BadFieldsReturn400NamingTheFieldAndStoreNothing(t *testing.T) {
 // account, and not "email taken" either.
 func TestSignup_LookAlikeOfATakenEmailIsRefused(t *testing.T) {
 	router, _, deps := newAuthTestHandler(t)
-	if rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)); rec.Code != http.StatusOK {
+	if rec := signUpWithCode(t, router, "", signupBody(nil)); rec.Code != http.StatusOK {
 		t.Fatalf("first signup: %d %s", rec.Code, rec.Body.String())
 	}
 	for _, lookAlike := range []string{"new-user@example.com\u00a0", "new-user\u200b@example.com"} {
@@ -311,7 +369,7 @@ func TestSignup_LookAlikeOfATakenEmailIsRefused(t *testing.T) {
 func TestSignup_AnAdminAddressIsAnsweredAsTaken(t *testing.T) {
 	router, h, deps := newAuthTestHandler(t)
 	h.SetAdminEmails([]string{" Boss@Example.com ", "taken-boss@example.com"})
-	if rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil)); rec.Code != http.StatusOK {
+	if rec := signUpWithCode(t, router, "", signupBody(nil)); rec.Code != http.StatusOK {
 		t.Fatalf("first signup: %d %s", rec.Code, rec.Body.String())
 	}
 	taken := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"username": "other_one"}))
@@ -327,6 +385,9 @@ func TestSignup_AnAdminAddressIsAnsweredAsTaken(t *testing.T) {
 	}
 	if n := deps.Users.(*fakeUserRepo).count(); n != 1 {
 		t.Fatalf("%d accounts, want only the first", n)
+	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("an admin address left %d sign-up(s) waiting", n)
 	}
 }
 
@@ -369,7 +430,7 @@ func TestSignup_ErrorBodiesNeverEchoInputOrDatabaseText(t *testing.T) {
 }
 
 func TestSignup_UnderThirteenIs403AndStoresNothing(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+	router, h, deps := newAuthTestHandler(t)
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"birthday": birthdayYearsAgo(12)}))
 
@@ -381,6 +442,9 @@ func TestSignup_UnderThirteenIs403AndStoresNothing(t *testing.T) {
 	}
 	if n := deps.Users.(*fakeUserRepo).count(); n != 0 {
 		t.Fatalf("an under-13 signup stored %d account(s)", n)
+	}
+	if n := waitingSignups(h); n != 0 || signupBoxOf(t, router).mail.count() != 0 {
+		t.Fatalf("an under-13 signup left %d sign-up(s) waiting or emailed a code", n)
 	}
 }
 
@@ -400,7 +464,7 @@ func TestSignup_UnderThirteenIsJudgedBeforeTheUsername(t *testing.T) {
 func TestSignup_ExactlyThirteenToday_IsAccepted(t *testing.T) {
 	router, _, _ := newAuthTestHandler(t)
 
-	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"birthday": birthdayYearsAgo(13)}))
+	rec := signUpWithCode(t, router, "", signupBody(map[string]any{"birthday": birthdayYearsAgo(13)}))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for someone who turns 13 today, got %d: %s", rec.Code, rec.Body.String())
@@ -408,7 +472,7 @@ func TestSignup_ExactlyThirteenToday_IsAccepted(t *testing.T) {
 }
 
 func TestSignup_DayBeforeThirteenth_IsRefused(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+	router, h, deps := newAuthTestHandler(t)
 	// One day short of 13: the day after the date exactly 13 years ago.
 	exact, _ := time.Parse("2006-01-02", birthdayYearsAgo(13))
 	birthday := exact.AddDate(0, 0, 1).Format("2006-01-02")
@@ -421,10 +485,13 @@ func TestSignup_DayBeforeThirteenth_IsRefused(t *testing.T) {
 	if n := deps.Users.(*fakeUserRepo).count(); n != 0 {
 		t.Fatalf("stored %d account(s)", n)
 	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("left %d sign-up(s) waiting", n)
+	}
 }
 
 func TestSignup_TomorrowAsBirthdayStoresNothing(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+	router, h, deps := newAuthTestHandler(t)
 	tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
 
 	rec := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"birthday": tomorrow}))
@@ -437,12 +504,15 @@ func TestSignup_TomorrowAsBirthdayStoresNothing(t *testing.T) {
 	if n := deps.Users.(*fakeUserRepo).count(); n != 0 {
 		t.Fatalf("stored %d account(s)", n)
 	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("left %d sign-up(s) waiting", n)
+	}
 }
 
 func TestSignup_DuplicateEmailDifferentCase_Returns409EmailTakenAndStoresNothingNew(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+	router, h, deps := newAuthTestHandler(t)
 
-	first := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(map[string]any{"email": "Dup@Example.com"}))
+	first := signUpWithCode(t, router, "", signupBody(map[string]any{"email": "Dup@Example.com"}))
 	if first.Code != http.StatusOK {
 		t.Fatalf("expected first signup to succeed, got %d: %s", first.Code, first.Body.String())
 	}
@@ -461,12 +531,15 @@ func TestSignup_DuplicateEmailDifferentCase_Returns409EmailTakenAndStoresNothing
 	if n := deps.Users.(*fakeUserRepo).count(); n != 1 {
 		t.Fatalf("account count = %d, want 1", n)
 	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("the refused signup left %d sign-up(s) waiting", n)
+	}
 }
 
 func TestSignup_DuplicateUsername_Returns409WithSuggestionsAndStoresNothingNew(t *testing.T) {
-	router, _, deps := newAuthTestHandler(t)
+	router, h, deps := newAuthTestHandler(t)
 
-	first := doJSONRequest(t, router, http.MethodPost, "/v1/auth/signup", signupBody(nil))
+	first := signUpWithCode(t, router, "", signupBody(nil))
 	if first.Code != http.StatusOK {
 		t.Fatalf("expected first signup to succeed, got %d: %s", first.Code, first.Body.String())
 	}
@@ -488,6 +561,9 @@ func TestSignup_DuplicateUsername_Returns409WithSuggestionsAndStoresNothingNew(t
 	}
 	if _, err := deps.Users.GetByEmailCI(context.Background(), "second@example.com"); err == nil {
 		t.Fatal("the refused signup left an account behind")
+	}
+	if n := waitingSignups(h); n != 0 {
+		t.Fatalf("the refused signup left %d sign-up(s) waiting", n)
 	}
 }
 
@@ -1229,9 +1305,10 @@ func TestLogout_MissingRefreshToken_Returns400ValidationFailed(t *testing.T) {
 }
 
 // Every 409 email_taken comes no sooner than the floor after the request came
-// in: a taken email (which runs the insert) and an ADMIN_EMAILS address
+// in: a taken email (which runs the lookup) and an ADMIN_EMAILS address
 // (which does not) wait the same, so the timing cannot tell them apart. The
-// other answers do not wait.
+// other answers do not wait, the start of a new sign-up and its verify
+// included.
 func TestSignup_EmailTakenWaitsForTheFloor(t *testing.T) {
 	router, h, _ := newAuthTestHandler(t)
 	if h.floor != resetAnswerFloor {
@@ -1240,6 +1317,9 @@ func TestSignup_EmailTakenWaitsForTheFloor(t *testing.T) {
 	h.SetAdminEmails([]string{"boss@example.com"})
 	var waits []time.Duration
 	h.sleep = func(d time.Duration) { waits = append(waits, d) }
+	if rec := signUpWithCode(t, router, "", signupBody(nil)); rec.Code != http.StatusOK || len(waits) != 0 {
+		t.Fatalf("a new account: %d %s, waits %v, want 200 and none", rec.Code, rec.Body.String(), waits)
+	}
 	send := func(what string, mods map[string]any, want int, wantWaits ...time.Duration) {
 		t.Helper()
 		waits = nil
@@ -1251,10 +1331,10 @@ func TestSignup_EmailTakenWaitsForTheFloor(t *testing.T) {
 			t.Fatalf("%s: waits %v, want %v", what, waits, wantWaits)
 		}
 	}
-	send("a new account", nil, http.StatusOK)
 	send("a taken email", map[string]any{"username": "other_one"}, http.StatusConflict, resetAnswerFloor)
 	send("an admin address", map[string]any{"email": "boss@example.com", "username": "boss_try"}, http.StatusConflict, resetAnswerFloor)
 	send("a taken username", map[string]any{"email": "fresh@example.com"}, http.StatusConflict)
+	send("a new sign-up's start", map[string]any{"email": "fresh@example.com", "username": "fresh_one"}, http.StatusOK)
 }
 
 // Refresh and log out are each limited to 60 a minute per address: the 61st

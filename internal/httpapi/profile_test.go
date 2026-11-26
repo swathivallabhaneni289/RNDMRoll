@@ -553,7 +553,7 @@ func TestProfile_TheProfilePhotoIsSentAsASignedLink(t *testing.T) {
 // its signed link, never the key itself.
 func TestProfile_TheTicketsKeyComesBackAsASignedLinkEverywhere(t *testing.T) {
 	rig := newFullTestRig(t, newFakeUserRepo())
-	signup := serveFrom(t, rig.srv, remoteN(31), http.MethodPost, "/v1/auth/signup", "", signupBody(nil))
+	signup := signUpWithCode(t, rig.srv.Engine(), remoteN(31), signupBody(nil))
 	if signup.Code != http.StatusOK {
 		t.Fatalf("signup: %d %s", signup.Code, signup.Body.String())
 	}

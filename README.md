@@ -52,8 +52,7 @@ The research also named the risks I designed around: a locked feed is empty with
 
 These wait for a real launch:
 
-- **An email check at sign-up.** Sign-up asks for no code, so the app doesn't know that an email address really belongs to the person.
-- **Real email.** It's built and off, so a Forgot password code prints to the server log instead of arriving by email.
+- **Real email.** It's built and off, so the sign-up and Forgot password codes print to the server log instead of arriving by email.
 - **Phone pushes.** Built and off until there are Apple and Expo accounts. The 8 PM reminder and the 10 AM note are made on the phone itself, so they work today.
 - **Hosting.** The server runs on my Mac for now. The database and photos are on Supabase's free plan in Singapore.
 - **The App Store.** The app runs in the iOS Simulator. Invite links open a web page with an "Open in RNDMRoll" button, because opening the app straight from a link needs a domain.
@@ -81,7 +80,7 @@ The app isn't released, so there's no usage data yet. These are the numbers I'd 
 - **People.** Search, follow requests with Accept and Decline, invite links and suggestions.
 - **Safety.** Block, mute, and report a person, post or comment. A post or comment you report is gone for you, and one that 3 people report is hidden until an admin looks. Reports go to an admin web page, one card per reported thing, and the admin gets an email. The admin can disable an account, or remove content, which is kept 30 days in case it should come back; its owner is told in the app and can ask there for a second look, with their words and up to 3 photos.
 - **Notifications.** A list in the app, an 8 PM reminder on the phone and a 10 AM note when a spin isn't posted yet, and phone notifications for comments, replies, likes and follow requests (built, off for now). Likes, comments and milestones each have a switch in Settings.
-- **Accounts.** Two short sign-up pages, Forgot password with a 6-digit emailed code (checked before you pick a new password; email is built but off for now, so the code prints to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in or reset your password.
+- **Accounts.** Two short sign-up pages with a 6-digit emailed code that checks the email address is yours, Forgot password with the same kind of code (checked before you pick a new password; email is built but off for now, so the codes print to the server log), the Terms of Use and Privacy Policy, and Delete account in Settings: like Instagram, the account is hidden at once and deleted for good after 30 days unless you log back in or reset your password.
 
 ## How I built it with Claude
 
@@ -116,7 +115,7 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 | Server | Go 1.26, Gin, PostgreSQL on Supabase (Singapore) through pgx and the session pooler, 21 SQL migrations |
 | Photos | A private Supabase Storage bucket through its S3 API: signed uploads, and signed photo links that stop working within an hour, made only for people allowed to see the photo (a private MinIO bucket when running locally) |
 | Sign-in | bcrypt password hashes, short-lived JWT access tokens and refresh tokens, rate limits |
-| Email and push | Built for Resend (email) and the Expo push service (phone notifications), and switched off for now: Forgot password codes print to the server log, and no phone pushes are sent |
+| Email and push | Built for Resend (email) and the Expo push service (phone notifications), and switched off for now: the sign-up and Forgot password codes print to the server log, and no phone pushes are sent |
 
 A few things that took real care:
 
@@ -129,7 +128,7 @@ A few things that took real care:
 
 You need macOS with Xcode and the iOS Simulator, Node, Go 1.26, PostgreSQL, [golang-migrate](https://github.com/golang-migrate/migrate) and [MinIO](https://min.io) for photos.
 
-1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as Forgot password codes) to the server log instead of sending them, and `APP_ENV=test`, which lets the admin page's login cookie work on plain `http://localhost`.
+1. **Settings.** Copy `.env.example` to `.env`. Set `DATABASE_URL`, `TEST_DATABASE_URL` and a long random `JWT_SECRET`. Keep `MAIL_DRIVER=log`, which prints emails (such as the sign-up and Forgot password codes) to the server log instead of sending them, and `APP_ENV=test`, which lets the admin page's login cookie work on plain `http://localhost`.
 2. **Photo storage.** Start MinIO, create a private bucket (no public read access), and point the `S3_*` lines in `.env` at it (for example `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_REGION=us-east-1`). For Supabase, turn on the S3 connection in Storage settings, make a private bucket, and use the endpoint, region and access keys from that page. Keep the keys on the server only.
 3. **Database.**
    ```sh

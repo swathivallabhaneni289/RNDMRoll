@@ -10,7 +10,8 @@
 // The purge runs in the background on a timer, one account at a time, and
 // nothing it deletes can be brought back. Each run then purges, the same
 // way, the posts and comments an admin removed whose grace is over
-// (removed.go).
+// (removed.go), then the second-look photos that are due (second_looks.go),
+// and last the sign-ups that were never finished (signups.go).
 package purge
 
 import (
@@ -100,8 +101,11 @@ type Purger struct {
 	removed      RemovedStore
 	itemDeadline time.Duration
 	// proofs, when set (SetSecondLooks), is the store of the second looks
-	// whose proof photos each run deletes, last.
+	// whose proof photos each run deletes, after the removed posts.
 	proofs ProofStore
+	// signups, when set (SetSignups), is the store of the sign-ups waiting
+	// for their code, which each run sweeps last.
+	signups SignupStore
 
 	wg sync.WaitGroup
 }
@@ -216,8 +220,9 @@ func deletable(photo CommentPhoto, purged uuid.UUID) bool {
 // after Start, then one every `every` after the previous run ended, so runs
 // never overlap, until ctx is done. Each run purges the accounts, then what
 // an admin removed (SetRemoved), then the second-look proof photos that are
-// due (SetSecondLooks). A panic in a run is logged and the
-// loop goes on. To stop it, cancel ctx and then call Wait.
+// due (SetSecondLooks), then the unfinished sign-ups (SetSignups). A panic in
+// a run is logged and the loop goes on. To stop it, cancel ctx and then call
+// Wait.
 func (p *Purger) Start(ctx context.Context) {
 	p.wg.Add(1)
 	go func() {
@@ -236,6 +241,7 @@ func (p *Purger) Start(ctx context.Context) {
 			p.runSafely(ctx)
 			p.runRemovedSafely(ctx)
 			p.runSecondLooksSafely(ctx)
+			p.runSignupsSafely(ctx)
 			timer.Reset(p.every)
 		}
 	}()

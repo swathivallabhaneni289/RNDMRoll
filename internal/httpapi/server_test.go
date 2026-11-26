@@ -59,6 +59,11 @@ type fullTestRig struct {
 	// without it; emails keeps its emails unless rigOptions.sender took them.
 	account *AccountHandler
 	emails  *captureSender
+	// signups finishes the sign-ups over the fake store signupStore, and
+	// signupMail keeps its code emails (signUpWithCode reads them).
+	signups     *SignupCodeHandler
+	signupStore *fakeSignupStore
+	signupMail  *captureSender
 }
 
 // rigOptions changes how newFullTestRigWith wires the spin slice.
@@ -121,16 +126,26 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 	spinSvc := spin.NewService(spinRepo, spinClock, rnd)
 	entryPhotos := &fakeEntryPhotoStore{}
 
+	// Sign-up's code step, as cmd/api wires it, over a fake store whose
+	// accounts go to usersRepo. Its emails go to a box of its own, so no
+	// other count of emails moves.
+	signupStore := newFakeSignupStore(usersRepo)
+	signupMail := &captureSender{}
+	signups := NewSignupCodeHandler(usersRepo, signupStore, signupMail, testServerJWTSecret)
+	signups.now = frozenClock
+	t.Cleanup(signups.Wait)
+
 	deps := Deps{
-		Auth:      authHandler,
-		Profile:   profileHandler,
-		Username:  usernameHandler,
-		Spin:      NewSpinHandler(spinSvc),
-		Wheel:     NewWheelHandler(spinSvc),
-		Entry:     NewEntryHandler(spinSvc, entryPhotos),
-		Users:     usersRepo,
-		JWTSecret: testServerJWTSecret,
-		Logger:    logger,
+		Auth:       authHandler,
+		Profile:    profileHandler,
+		Username:   usernameHandler,
+		SignupCode: signups,
+		Spin:       NewSpinHandler(spinSvc),
+		Wheel:      NewWheelHandler(spinSvc),
+		Entry:      NewEntryHandler(spinSvc, entryPhotos),
+		Users:      usersRepo,
+		JWTSecret:  testServerJWTSecret,
+		Logger:     logger,
 	}
 	// As cmd/api does: profile photos are signed by the photo store.
 	deps.PhotoLink = entryPhotos.Link
@@ -157,8 +172,10 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		t.Cleanup(deps.Account.Wait)
 	}
 
+	srv := NewServer(deps)
+	registerSignupBox(t, srv.Engine(), signups, signupMail)
 	return &fullTestRig{
-		srv:      NewServer(deps),
+		srv:      srv,
 		users:    usersRepo,
 		refresh:  refreshSvc,
 		tokens:   tokens,
@@ -170,6 +187,10 @@ func newFullTestRigWith(t *testing.T, usersRepo user.Repository, opts rigOptions
 		entryPhotos: entryPhotos,
 		account:     deps.Account,
 		emails:      emails,
+
+		signups:     signups,
+		signupStore: signupStore,
+		signupMail:  signupMail,
 	}
 }
 
@@ -221,10 +242,11 @@ func TestServer_HealthzReturns200WithoutTouchingAnyDependency(t *testing.T) {
 	}
 }
 
+// The start, and the verify that finishes it, need no token.
 func TestServer_SignupIsReachableWithoutAuthentication(t *testing.T) {
 	srv := newFullTestServer(t, newFakeUserRepo())
 
-	w := serveFrom(t, srv, remoteN(1), http.MethodPost, "/v1/auth/signup", "", signupBody(nil))
+	w := signUpWithCode(t, srv.Engine(), remoteN(1), signupBody(nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected signup to succeed without a token, got %d: %s", w.Code, w.Body.String())
@@ -286,7 +308,7 @@ func TestServer_MeAllowsVerifiedAccount(t *testing.T) {
 func TestServer_SignedUpAccountCanRefreshAndUseMe(t *testing.T) {
 	srv := newFullTestServer(t, newFakeUserRepo())
 
-	signup := serveFrom(t, srv, remoteN(5), http.MethodPost, "/v1/auth/signup", "", signupBody(nil))
+	signup := signUpWithCode(t, srv.Engine(), remoteN(5), signupBody(nil))
 	if signup.Code != http.StatusOK {
 		t.Fatalf("signup: %d %s", signup.Code, signup.Body.String())
 	}
@@ -294,7 +316,7 @@ func TestServer_SignedUpAccountCanRefreshAndUseMe(t *testing.T) {
 
 	refresh := serveFrom(t, srv, remoteN(6), http.MethodPost, "/v1/auth/refresh", "", map[string]any{"refresh_token": refreshToken})
 	if refresh.Code != http.StatusOK {
-		t.Fatalf("refresh of an unverified account: %d %s", refresh.Code, refresh.Body.String())
+		t.Fatalf("refresh of a new account: %d %s", refresh.Code, refresh.Body.String())
 	}
 	access, _ := decodeBody(t, refresh)["access_token"].(string)
 
@@ -303,8 +325,8 @@ func TestServer_SignedUpAccountCanRefreshAndUseMe(t *testing.T) {
 		t.Fatalf("/me: %d %s", me.Code, me.Body.String())
 	}
 	body := decodeBody(t, me)
-	if body["onboarding_complete"] != true || body["email_verified"] != false {
-		t.Fatalf("expected complete and unverified, got %v", body)
+	if body["onboarding_complete"] != true || body["email_verified"] != true {
+		t.Fatalf("expected complete and verified by the code, got %v", body)
 	}
 }
 
@@ -359,6 +381,8 @@ func TestServer_OversizeBodiesAre413OnSignupLoginAndPatchMe(t *testing.T) {
 		{http.MethodPost, "/v1/auth/signup", ""},
 		{http.MethodPost, "/v1/auth/login", ""},
 		{http.MethodPatch, "/v1/me", token},
+		{http.MethodPost, "/v1/auth/signup/verify", ""},
+		{http.MethodPost, "/v1/auth/signup/resend", ""},
 	}
 	for i, tg := range targets {
 		for _, chunked := range []bool{false, true} {
@@ -608,14 +632,24 @@ func TestServer_NoResponseBodyCarriesABirthdayKey(t *testing.T) {
 		return rec
 	}
 
-	// Sign-up that sets a birthday, then everything that can echo a user.
-	signup := check("signup", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup", "", signupBody(nil)))
+	// Sign-up that sets a birthday, finished with its code, then everything
+	// that can echo a user.
+	signup := check("signup", signUpWithCode(t, rig.srv.Engine(), next(), signupBody(nil)))
 	if signup.Code != http.StatusOK {
 		t.Fatalf("signup: %d %s", signup.Code, signup.Body.String())
 	}
 	sBody := decodeBody(t, signup)
 	access, _ := sBody["access_token"].(string)
 	refreshToken, _ := sBody["refresh_token"].(string)
+	// The start of another, and the code routes' other answers.
+	started := check("signup start", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup", "",
+		signupBody(map[string]any{"email": "third@example.com", "username": "third_one"})))
+	token, _ := decodeBody(t, started)["signup_token"].(string)
+	check("resend", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup/resend", "", map[string]any{"signup_token": token}))
+	check("verify wrong code", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup/verify", "",
+		map[string]any{"signup_token": token, "code": otherCode(signupCode(t, rig.srv.Engine(), "third@example.com"))}))
+	check("verify expired", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/signup/verify", "",
+		map[string]any{"signup_token": "made-up", "code": "123456"}))
 
 	check("login", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "new-user@example.com", "password": "Correct-horse-battery1"}))
 	check("login wrong", serveFrom(t, rig.srv, next(), http.MethodPost, "/v1/auth/login", "", map[string]any{"email": "new-user@example.com", "password": "nope"}))

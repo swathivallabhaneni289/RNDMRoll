@@ -20,10 +20,15 @@ type ProfilePatch struct {
 	AccountVisibility *string
 }
 
-// NewAccount is everything a one-request sign-up stores. Birthday is a
-// validated "YYYY-MM-DD" date. Bio is optional (nil stores NULL).
-// AccountVisibility is the starting value (see DefaultVisibility); an empty
-// string is stored as VisibilityPublic, so no caller can store an empty value.
+// NewAccount is everything a finished account is made with: what the sign-up
+// page took, kept while its email code is on its way (PendingSignup), then
+// stored in one insert. Birthday is a validated "YYYY-MM-DD" date. Bio is
+// optional (nil stores NULL). AccountVisibility is the starting value (see
+// DefaultVisibility); an empty string is stored as VisibilityPublic, so no
+// caller can store an empty value. EmailVerified is true for an account made
+// with the code its sign-up emailed (developer, 2026-11-24), stored with
+// VerifiedViaPasswordFlow; false stores an unverified account, as every
+// account made before that day is.
 type NewAccount struct {
 	Email             string
 	PasswordHash      string
@@ -32,7 +37,23 @@ type NewAccount struct {
 	Username          string
 	Bio               *string
 	AccountVisibility string
+	EmailVerified     bool
 }
+
+// PendingSignup is a sign-up waiting for its email code (migration 0023):
+// the account it will make, every field but AccountVisibility, which is
+// judged on the day the code is typed, and EmailVerified, which the code
+// itself proves. ID is the row's, and the code is bound to it.
+type PendingSignup struct {
+	ID uuid.UUID
+	NewAccount
+}
+
+// SignupCapWindow is the window of the cap on sign-ups started per email: a
+// start counts the sign-ups of its email made within it, and the purge
+// sweeps a sign-up only once it is older than this and its code has expired,
+// so none leaves the count early.
+const SignupCapWindow = time.Hour
 
 // Repository is the storage contract for account and profile data. Handler
 // plans code against this interface; no handler plan needs to write SQL.
@@ -47,10 +68,12 @@ type Repository interface {
 	UsernameTaken(ctx context.Context, username string) (bool, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID, via VerificationSource) error
 	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfilePatch) (*User, error)
-	// CreateComplete inserts a finished, unverified account in ONE statement
-	// (every column at once), so any failure stores nothing. Unique
-	// violations map to ErrEmailTaken and ErrUsernameTaken; a check
-	// violation maps to *FieldError.
+	// CreateComplete inserts a finished account in ONE statement (every
+	// column at once), so any failure stores nothing: verified only when
+	// in.EmailVerified is set. Sign-up no longer calls it (its account is
+	// made with the code, in the transaction that spends it); seeds and
+	// tests do. Unique violations map to ErrEmailTaken and ErrUsernameTaken;
+	// a check violation maps to *FieldError.
 	CreateComplete(ctx context.Context, in NewAccount) (*User, error)
 }
 

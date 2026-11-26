@@ -10,7 +10,7 @@ import (
 )
 
 // TestSpinIntegration_FullDayOverPostgres walks a person through the day over
-// HTTP against the real database: a one-request sign-up, the zone report, the
+// HTTP against the real database: a sign-up with its code, the zone report, the
 // wait, the spin and its retry, a pretend week, the bonus spin and the wheel.
 // It proves the pieces fit together with the real repository (jsonb
 // snapshots, the partial unique index, the state row lock) and that the

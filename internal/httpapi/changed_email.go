@@ -14,8 +14,8 @@ import (
 )
 
 // emailWorkDeadline bounds the work a handler runs after its answer
-// (emailer.background): Forgot password's lookup, store and code email, and
-// the password-changed email.
+// (emailer.background): Forgot password's lookup, store and code email, the
+// password-changed email, and sign-up's code emails.
 const emailWorkDeadline = 15 * time.Second
 
 // changedMessage is the email sent once a password changed (developer,

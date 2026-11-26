@@ -27,11 +27,12 @@ var ErrNoUserInContext = errors.New("middleware: no user in context")
 // still exists. A valid token for an account since deleted aborts with 401
 // token_invalid.
 //
-// There is deliberately no email-verified check: sign-up is one page with
-// no email check, so an unverified account must be able to use the app. On
-// success the loaded *user.User is stored in the request context for
-// UserFromContext, so downstream handlers reuse the record instead of
-// issuing a second lookup for the same row.
+// There is deliberately no email-verified check: sign-up now makes an
+// account only with the code it emailed (developer, 2026-11-24), but the
+// accounts made before that day were never checked, and they must still be
+// able to use the app. On success the loaded *user.User is stored in the
+// request context for UserFromContext, so downstream handlers reuse the
+// record instead of issuing a second lookup for the same row.
 //
 // This gate says only "a person with an account"; a route that needs a
 // finished profile must also check User.OnboardingComplete().

@@ -51,12 +51,18 @@ const (
 	reasonIncorrect = "incorrect"
 	reasonUnchanged = "unchanged"
 	// reasonWrongCode: a Forgot password code that is wrong, expired or used
-	// up, or an email with no account or a disabled one. reasonReplaced: the
-	// code a newer one replaced (only someone who got the earlier email can
-	// know it). reasonUsed: the right code, which another request used first.
+	// up, or an email with no account or a disabled one; a sign-up code that
+	// is wrong, or any sign-up code once its tries are used up.
+	// reasonReplaced: the code a newer one replaced, at either (only someone
+	// who got the earlier email can know it). reasonUsed: the right Forgot
+	// password code, which another request used first. reasonExpired: no
+	// sign-up waits for that token any more (never started, its code expired,
+	// or its account was made), or it can have no new code; the app starts
+	// the sign-up again.
 	reasonWrongCode = "wrong_code"
 	reasonReplaced  = "replaced"
 	reasonUsed      = "used"
+	reasonExpired   = "expired"
 )
 
 var fieldReasonText = map[string]string{
@@ -72,6 +78,7 @@ var fieldReasonText = map[string]string{
 	reasonWrongCode: "That code isn't right or has expired.",
 	reasonReplaced:  "That code was replaced by a newer one. Use the newest code in your email.",
 	reasonUsed:      "That code has already been used.",
+	reasonExpired:   "This sign-up has expired. Start again to get a new code.",
 }
 
 // Respond writes body as JSON with status.
@@ -113,9 +120,10 @@ func RespondError(c *gin.Context, err error) {
 // RespondFieldError writes a 400 validation_failed response that names the
 // request field that failed. field is one of email, password, birthday,
 // name, username, bio, avatar_key, account_visibility, current_password,
-// new_password or code; reason is one of the fixed reason constants above,
-// and is sent as "reason" (the app's ApiError.reason) so a screen can tell
-// two refusals of one field apart. The message is fixed text.
+// new_password, code or signup_token; reason is one of the fixed reason
+// constants above, and is sent as "reason" (the app's ApiError.reason) so a
+// screen can tell two refusals of one field apart. The message is fixed
+// text.
 func RespondFieldError(c *gin.Context, field, reason string) {
 	text, ok := fieldReasonText[reason]
 	if !ok {

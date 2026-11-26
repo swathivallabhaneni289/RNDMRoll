@@ -31,7 +31,8 @@ export interface SessionTokens {
 }
 
 /**
- * The session body POST /auth/login and /auth/signup return.
+ * The session body POST /auth/login and POST /auth/signup/verify return. POST /auth/signup itself
+ * makes no account and no session (SignupStart).
  * /auth/refresh returns only the three token fields (SessionTokens), no user.
  * No user object anywhere carries a birthday.
  */
@@ -43,6 +44,18 @@ export type AuthResult = SessionTokens & {
    */
   restored?: boolean;
 };
+
+/**
+ * The answer of POST /auth/signup (developer, 2026-11-24): the sign-up has started and a 6-digit
+ * code is on its way to the email, but there is no account yet and no session. POST
+ * /auth/signup/verify makes the account once the code is right, and answers with an AuthResult.
+ */
+export interface SignupStart {
+  /** Names this sign-up at /auth/signup/verify and /auth/signup/resend. Kept in memory only. */
+  signup_token: string;
+  /** The address the code goes to. */
+  email: string;
+}
 
 /**
  * The answer of POST /auth/password/reset: the password is set and every session ended, with no
@@ -99,8 +112,12 @@ export interface ApiErrorBody {
    * wrong, expired or used-up code, a code a reset already spent, or an email with no account or a
    * disabled one: the same answer for each), "replaced" (the code the newest code replaced; no try
    * is counted), "used" (reset only: the right code, but another request used it first; no try is
-   * counted) or "invalid" (not 6 digits). And on the 400 of POST /me/delete with field "password":
-   * "incorrect" (a wrong password) or "required".
+   * counted) or "invalid" (not 6 digits). On the 400 of POST /auth/signup/verify with field "code":
+   * "invalid" (not 6 digits), "wrong_code" (wrong, or the 5 tries are used up), "replaced" (a newer
+   * code replaced it) or "expired" (the sign-up is gone: 30 minutes passed, or it already made the
+   * account). On the 400 of POST /auth/signup/resend with field "signup_token": "expired" (the
+   * sign-up is over). And on the 400 of POST /me/delete with field "password": "incorrect" (a wrong
+   * password) or "required".
    */
   reason?: string;
   /** Set on a 400 wheel_invalid: which row of the sent list is wrong, counted from 0. */

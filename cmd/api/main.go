@@ -41,8 +41,8 @@ const (
 	writeTimeout      = 30 * time.Second
 	// shutdownTimeout bounds how long an in-flight request (for example a
 	// mid-write signup), and then the background work requests started
-	// (phone pushes, Forgot password emails), get to finish before the
-	// process exits on SIGINT or SIGTERM (T-01-SRV-06).
+	// (phone pushes, Forgot password and sign-up code emails), get to finish
+	// before the process exits on SIGINT or SIGTERM (T-01-SRV-06).
 	shutdownTimeout = 15 * time.Second
 )
 
@@ -98,9 +98,10 @@ func main() {
 	authHandler := httpapi.NewAuthHandler(users, refreshSvc, cfg.JWTSecret, cfg.AccessTokenTTL)
 	profileHandler := httpapi.NewProfileHandler(users, avatarStore)
 	usernameHandler := httpapi.NewUsernameHandler(users)
-	// Every email goes out through mailSender: Forgot password's codes, the
-	// password-changed emails and the report alerts. It prints them to the log
-	// in test mode (MAIL_DRIVER=log) and sends them with Resend otherwise.
+	// Every email goes out through mailSender: sign-up's and Forgot
+	// password's codes, the password-changed emails and the report alerts. It
+	// prints them to the log in test mode (MAIL_DRIVER=log) and sends them
+	// with Resend otherwise.
 	var mailSender mail.Sender
 	if cfg.MailDriver == "log" {
 		mailSender = mail.NewLogSender(os.Stdout)
@@ -180,6 +181,12 @@ func main() {
 	// The reset store spends a code and changes the password in one
 	// transaction, so a change that fails never loses the code.
 	deps.PasswordReset = httpapi.NewPasswordResetHandler(users, postgres.NewPasswordResetRepo(pool), mailSender, cfg.JWTSecret)
+	// Sign-up emails a 6-digit code, and the account is made only once the
+	// code is typed into the app (developer, 2026-11-24). The store keeps
+	// each sign-up waiting for its code and makes the account in the
+	// transaction that spends it; the codes are bound to their sign-ups with
+	// the server's secret, as the reset's are.
+	deps.SignupCode = httpapi.NewSignupCodeHandler(users, postgres.NewPendingSignupRepo(pool), mailSender, cfg.JWTSecret)
 	var reportAlerts *adminalert.Alerts
 	// The admins are the accounts these addresses have now, found once.
 	// An address with no account is no admin until it has one and the
@@ -253,9 +260,13 @@ func main() {
 	// admin removed once admin.RemovalGrace has passed: in the same loop,
 	// after the accounts, so the two never hold rows of one account at once.
 	purger.SetRemoved(postgres.NewRemovedPurgeRepo(pool))
-	// And last, the photos owners added to a second look, 30 days after the
+	// Then the photos owners added to a second look, 30 days after the
 	// removal whatever the answer (developer, 2026-11-19).
 	purger.SetSecondLooks(postgres.NewSecondLookPurgeRepo(pool))
+	// And last, the sign-ups never finished: each holds a password hash, a
+	// name and a birthday, so it goes once its code has expired and it is an
+	// hour old (the hourly cap per email counts it until then).
+	purger.SetSignups(postgres.NewPendingSignupRepo(pool))
 	purger.Start(purgeCtx)
 
 	httpServer := &http.Server{
@@ -301,7 +312,7 @@ func main() {
 			// Then the work the requests left running gets the rest of that
 			// time. Only after a clean Shutdown: no handler can start more
 			// while this waits.
-			waits := []func(){deps.PasswordReset.Wait, accountHandler.Wait, purger.Wait}
+			waits := []func(){deps.PasswordReset.Wait, deps.SignupCode.Wait, accountHandler.Wait, purger.Wait}
 			if pushNotifier != nil {
 				waits = append(waits, pushNotifier.Wait)
 			}

@@ -5,13 +5,20 @@ package postgres
 // change (changePassword), a Forgot password reset (resetPassword, through
 // endSessions), a password set from the terminal (UserRepo.SetPassword, also
 // through endSessions), an admin's disable, a deletion request
-// (UserRepo.RequestDeletion), the purge (PurgeRepo.Purge), and the phone
-// saving or deleting its push token (PushRepo). So that no two of them can ever wait
+// (UserRepo.RequestDeletion), the purge (PurgeRepo.Purge), the phone
+// saving or deleting its push token (PushRepo), and a sign-up's code making
+// its account (PendingSignupRepo.Finish). So that no two of them can ever wait
 // on each other in a circle (Postgres would end one of them with a deadlock
 // error), each takes rows in this order and never goes back to an earlier
 // table once it holds a later one:
 //
-//	password_resets, users, refresh_tokens, push_tokens
+//	pending_signups, password_resets, users, refresh_tokens, push_tokens
+//
+// pending_signups comes first because the account a sign-up makes is the
+// users row the code is spent for: Finish holds every waiting sign-up of the
+// email before it inserts the account, and nothing that holds a users row
+// ever reaches for a sign-up. Its other writers (the start, a try, a new
+// code, the sweep) touch that table alone.
 //
 // A plain read takes no lock, so reading a table out of turn is fine. So is
 // the key share a write to push_tokens takes on the refresh token it names

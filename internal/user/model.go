@@ -10,9 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// VerificationSource records how a user's email was verified: through the
-// old password-signup verification email (no longer sent; kept so existing
-// rows and the check constraint stay valid).
+// VerificationSource records how a user's email was verified. The one value
+// the check constraint allows, password_flow, once named the old sign-up
+// verification link (never sent again) and now names the 6-digit code
+// sign-up emails (developer, 2026-11-24): an account made with that code is
+// stored verified, through it.
 type VerificationSource string
 
 const (
@@ -62,8 +64,9 @@ type User struct {
 }
 
 // OnboardingComplete reports whether the account has a name and a username.
-// Email verification is not part of it: sign-up is one request with no email
-// check, so an unverified account is complete once those two are set.
+// Email verification is not part of it: the accounts made before sign-up
+// emailed a code (2026-11-24) were never checked, so an unverified account is
+// complete once those two are set, like one made with the code.
 // This is the sole authority for the "land in the app" condition: the API
 // exposes it and the mobile root layout routes on it.
 func (u *User) OnboardingComplete() bool {
@@ -101,6 +104,15 @@ var (
 	// got the code can meet either.
 	ErrResetCodeReplaced = errors.New("user: reset code replaced")
 	ErrResetCodeUsed     = errors.New("user: reset code already used")
+	// ErrSignupExpired: no live sign-up has that token (migration 0023): it
+	// was never started, its code expired, or its account was made (by
+	// another request with the right code, perhaps); for a new code, also a
+	// sign-up whose tries or codes are used up. The app starts the sign-up
+	// again. ErrSignupCodeReplaced: the sign-up code was right, but a newer
+	// code replaced it before the account could be made. Only someone who
+	// got the code can meet the second.
+	ErrSignupExpired      = errors.New("user: sign-up expired")
+	ErrSignupCodeReplaced = errors.New("user: sign-up code replaced")
 )
 
 // FieldError reports that a stored value broke a database check constraint,

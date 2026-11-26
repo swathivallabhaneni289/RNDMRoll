@@ -19,9 +19,10 @@ import { FIELD_VIEW_ID } from '@/components/ui/useKeepFocusedInputInView';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
 import { api, ApiError, isRetryable } from '@/lib/api/client';
 import { fileSize, updateProfile, uploadAvatar, type ProfilePatch } from '@/lib/api/profile';
-import type { AuthResult, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
+import type { AuthResult, SignupStart, UsernameAvailability, UsernameSuggestion } from '@/lib/api/types';
+import { clearPendingSignup, lostSignup, setPendingSignup } from '@/lib/auth/pendingSignup';
 import { sayIfRestored } from '@/lib/auth/restored';
-import { opensExtras, shouldTryLogin, signupAnswerLost, type SignupTry } from '@/lib/auth/signupRetry';
+import { opensExtras, shouldTryLogin, type SignupTry } from '@/lib/auth/signupRetry';
 import { announceProblem } from '@/lib/forms/announce';
 import { bringIntoView } from '@/lib/forms/bringIntoView';
 import { stillNeeded } from '@/lib/forms/rules';
@@ -47,7 +48,8 @@ import { useSession } from '@/lib/session/store';
 
 /**
  * The one profile page, in three modes (plans 01-19 and 01-20):
- *   signup: signed out. Email, password, birthday, name, username. Continue.
+ *   signup: signed out. Email, password, birthday, name, username. Continue emails a code, and
+ *           the page after it (app/(auth)/signup-code.tsx) makes the account once it is typed in.
  *   extras: signed in, right after signup. Photo and bio, both optional. Continue
  *           or Skip for now. Shown once, in place of the landing page.
  *   edit:   signed in and complete. Photo, name, username, bio. Save changes, Log out.
@@ -152,8 +154,9 @@ export function ProfileForm({
   const extras = mode === 'extras';
   const pushedEdit = edit && pushed;
 
-  // What is stored right now. A signup has nothing stored; after its signIn the session
-  // user appears, but this page is already on its way out, so it keeps reading blanks.
+  // What is stored right now. A signup has nothing stored; after its signIn (on the code page, or
+  // here after a lost verify) the session user appears, but this page is already on its way out,
+  // so it keeps reading blanks.
   const initialName = signup ? '' : (user?.name ?? '');
   const initialUsername = signup ? '' : (user?.username ?? '');
   const initialBio = signup ? '' : (user?.bio ?? '');
@@ -208,10 +211,6 @@ export function ProfileForm({
   // A photo that already uploaded is remembered by its local file, with the key it got, so a
   // retry after a failed later step never uploads it twice.
   const uploadedRef = useRef<{ uri: string; key: string } | null>(null);
-  // The last sign-up try that may have made an account this phone is not signed in to: its answer
-  // was lost, or the session it brought could not be kept. A later email_taken for the same email
-  // and password logs in to that account (lib/auth/signupRetry.ts). Cleared once signed in.
-  const lostSignupRef = useRef<SignupTry | null>(null);
   // A tap on the grey button scrolls to the first field with a problem (the view around its label,
   // box and line) and puts the cursor in its box. Each view carries FIELD_VIEW_ID, so the keyboard
   // that comes up then leaves all of it in view, the username's chips and the password checklist too.
@@ -664,33 +663,33 @@ export function ProfileForm({
     };
     const thisTry: SignupTry = { email: body.email, password, username };
 
-    let result: AuthResult;
-    // The landing route opens on the photo-and-bio page for this one sign-in.
-    let extrasPage = true;
+    let started: SignupStart;
     try {
-      result = await api.post<AuthResult>('/auth/signup', body, { auth: false });
-      // The account exists now: should this phone fail to keep its session, the next Continue is
-      // answered email_taken and logs in to it.
-      lostSignupRef.current = thisTry;
+      // No account yet (developer, 2026-11-24): the server keeps the sign-up and emails a 6-digit
+      // code, and the code page makes the account once that code is typed in.
+      started = await api.post<SignupStart>('/auth/signup', body, { auth: false });
     } catch (err) {
-      // No answer, a server failure, or an answer that could not be read: the server may have
-      // made the account all the same.
-      if (!(err instanceof ApiError) || signupAnswerLost(err)) {
-        lostSignupRef.current = thisTry;
-        throw err;
-      }
-      const lost = lostSignupRef.current;
+      // A start makes no account, so one whose answer was lost needs nothing: the next Continue
+      // starts again. But a verify whose answer was lost may have made one, before the person came
+      // back here, and then this email_taken is most likely their own new account
+      // (lib/auth/signupRetry.ts).
+      if (!(err instanceof ApiError)) throw err;
+      const lost = lostSignup();
       if (lost === null || !shouldTryLogin(lost, thisTry.email, password, err)) throw err;
-      // Most likely the person's own new account. If the name or username changed between the two
-      // tries, they land in the account with the first try's details, which they can edit on Profile.
-      result = await logInToLostSignup(thisTry, err);
-      extrasPage = opensExtras(lost, result);
+      // If the name or username changed since that sign-up, they land in the account with its
+      // details, which they can edit on Profile.
+      const result = await logInToLostSignup(thisTry, err);
+      await signIn(result, { extras: opensExtras(lost, result) });
+      clearPendingSignup();
+      // Only a log in can bring an account back from deletion: said once, as on the Log in page.
+      sayIfRestored(result);
+      return;
     }
 
-    await signIn(result, { extras: extrasPage });
-    lostSignupRef.current = null;
-    // Only a log in can bring an account back from deletion: said once, as on the Log in page.
-    sayIfRestored(result);
+    // In memory only (lib/auth/pendingSignup.ts): the code page reads it, and its Back comes back
+    // to this page as it was typed.
+    setPendingSignup(thisTry, started.signup_token);
+    router.push('/signup-code');
   }
 
   // Logs in with a try's email and password. A refusal (the email is someone else's, or the
@@ -1103,7 +1102,7 @@ export function ProfileForm({
         ) : null}
 
         {signup ? (
-          // Above Continue, so it is read before the tap that makes the account. The two names open
+          // Above Continue, so it is read before the tap that starts the sign-up. The two names open
           // their pages: ink in the line's own size, never underlined (developer, 2026-10-18).
           // VoiceOver cannot tap a word inside a line, so they are also the line's two actions.
           <View style={{ marginTop: space.lg }}>

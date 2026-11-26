@@ -1,8 +1,9 @@
 // Package httpapi (this file): the four password-path authentication
 // endpoints -- signup, login, refresh, logout -- and their route
-// registration. Sign-up is one request: it takes every field of the
-// "Make it yours." page and answers with a signed-in session, with no code
-// and no email check. This is ACCT-01's core HTTP surface.
+// registration. Sign-up takes every field of the "Make it yours." page and
+// emails a 6-digit code: the account is made, and signed in, only once the
+// code is typed into the app (developer, 2026-11-24; signup_code.go serves
+// that step). This is ACCT-01's core HTTP surface.
 package httpapi
 
 import (
@@ -57,6 +58,10 @@ type AuthHandler struct {
 	// inside its grace period. NewServer hands over the delete account
 	// route's; nil cancels nothing, so such an account cannot log in.
 	deletions user.AccountDeleter
+	// signups stores each sign-up Signup has checked and emails its code
+	// (Deps.SignupCode; NewServer sets it). Nil stores none: Signup then
+	// answers 500, and never makes an account no code was typed for.
+	signups *SignupCodeHandler
 	// clock is the time every limit of these routes counts by; nil is the
 	// real clock. A test sets it before sending anything.
 	clock func() time.Time
@@ -74,7 +79,7 @@ type AuthHandler struct {
 
 // emailTakenFloor is how long after it came in sign-up answers 409
 // email_taken at the soonest: the reset's floor (resetAnswerFloor). An
-// ADMIN_EMAILS address is answered without the insert a taken email runs,
+// ADMIN_EMAILS address is answered without the lookup a taken email runs,
 // so without the floor it would answer sooner and tell a stranger that the
 // address is on the list rather than signed up.
 const emailTakenFloor = resetAnswerFloor
@@ -85,8 +90,8 @@ const loginAccountTries = 5
 
 // NewAuthHandler constructs an AuthHandler. accessTTL is the lifetime of
 // each minted access token; the refresh token's lifetime lives on refresh
-// itself (see auth.NewRefreshService). There is no mailer: sign-up sends no
-// email.
+// itself (see auth.NewRefreshService). There is no mailer here: sign-up's
+// code emails go out through the SignupCodeHandler NewServer hands it.
 func NewAuthHandler(users user.Repository, refresh *auth.RefreshService, jwtSecret []byte, accessTTL time.Duration) *AuthHandler {
 	h := &AuthHandler{
 		users:     users,
@@ -318,21 +323,26 @@ func hasControlChar(s string, allowLineBreaks bool) bool {
 	return false
 }
 
-// Signup creates a finished account in one request and signs it in. Order:
-// each field is validated (400 validation_failed plus the field name); then
-// the age (under 13 is 403 under_minimum_age and nothing is stored, nothing
-// about the person is logged); then the username; then the password is
-// hashed; then ONE insert writes every column, so any failure stores
-// nothing. A duplicate email is 409 email_taken, a duplicate username 409
-// username_taken with suggestions (including a race, which the unique index
-// decides). Success answers with the same body as Login. The email is NOT
-// verified and no mail is sent. The account starts public, or private when the
-// person is under 18 that day (account_visibility in the body). An
-// ADMIN_EMAILS address is answered as taken (SetAdminEmails), and every 409
-// email_taken comes no sooner than emailTakenFloor after the request came in.
-// signupWorkDeadline bounds the account insert, which runs to its end even if the client hangs up.
+// signupWorkDeadline bounds sign-up's work that runs to its end even if the
+// client hangs up: the start's lookups and its store, and at verify and
+// resend the lookup, the try, the new code and the account's insert.
 const signupWorkDeadline = 15 * time.Second
 
+// Signup starts a sign-up: it checks every field of the sign-up page, stores
+// the sign-up to wait for its code, and emails a 6-digit code. The account is
+// made only once that code is typed into the app (developer, 2026-11-24;
+// SignupCodeHandler.verify). Order: each field is validated (400
+// validation_failed plus the field name); then the age (under 13 is 403
+// under_minimum_age and nothing is stored, nothing about the person is
+// logged); then the username; then the password is hashed; then an
+// ADMIN_EMAILS address (SetAdminEmails) and an email an account has are 409
+// email_taken, each no sooner than emailTakenFloor after the request came
+// in; then a username an account has is 409 username_taken with suggestions.
+// Both are found by lookup: a sign-up waiting for its code holds neither, so
+// the account's unique indexes still decide when the code makes it (a race
+// for a username is answered there). Last the sign-up is stored, unless its
+// email has started 5 this hour (429 rate_limited), and the answer is 200
+// {"signup_token", "email"} with no session.
 func (h *AuthHandler) Signup(c *gin.Context) {
 	start := h.now()
 	var req SignupRequest
@@ -416,35 +426,46 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	// A new account starts public, except that one under 18 on the day it is
-	// made starts private (user.DefaultVisibility is the whole rule). The
-	// person can switch it either way in Settings.
 	// Not the request's context: a client that half-closes its connection cancels it, which
 	// would turn a taken email into a 500 while a reserved admin email still answers 409.
-	createCtx, cancelCreate := context.WithTimeout(context.WithoutCancel(c.Request.Context()), signupWorkDeadline)
-	defer cancelCreate()
-	u, err := h.users.CreateComplete(createCtx, user.NewAccount{
-		Email:             req.Email,
-		PasswordHash:      hash,
-		Birthday:          birth.Format("2006-01-02"),
-		Name:              name,
-		Username:          req.Username,
-		Bio:               bio,
-		AccountVisibility: user.DefaultVisibility(age),
-	})
-	if err != nil {
-		if errors.Is(err, user.ErrUsernameTaken) {
-			respondUsernameTaken(c, h.users, req.Username)
-			return
-		}
-		if errors.Is(err, user.ErrEmailTaken) {
-			holdUntil(h.now, h.sleep, start, h.floor)
-		}
+	ctx, cancelWork := context.WithTimeout(context.WithoutCancel(c.Request.Context()), signupWorkDeadline)
+	defer cancelWork()
+	switch _, err := h.users.GetByEmailCI(ctx, req.Email); {
+	case err == nil:
+		holdUntil(h.now, h.sleep, start, h.floor)
+		RespondError(c, user.ErrEmailTaken)
+		return
+	case !errors.Is(err, user.ErrNotFound):
 		RespondError(c, err)
 		return
 	}
+	taken, err := h.users.UsernameTaken(ctx, req.Username)
+	if err != nil {
+		RespondError(c, err)
+		return
+	}
+	if taken {
+		respondUsernameTaken(c, h.users, req.Username)
+		return
+	}
 
-	h.issueSession(c, u, http.StatusOK, false)
+	if h.signups == nil {
+		// Nowhere to keep the sign-up (NewServer was given no SignupCode): a
+		// server error, never an account made without its code.
+		log.Printf("httpapi: signup: no sign-up store is wired")
+		Respond(c, http.StatusInternalServerError, gin.H{"error": string(CodeServerError)})
+		return
+	}
+	// The account's visibility is judged when the code makes it, on that
+	// day (SignupCodeHandler.verify).
+	h.signups.start(ctx, c, user.NewAccount{
+		Email:        req.Email,
+		PasswordHash: hash,
+		Birthday:     birth.Format("2006-01-02"),
+		Name:         name,
+		Username:     req.Username,
+		Bio:          bio,
+	})
 }
 
 // hashSignupPassword hashes the sign-up password. On failure it has
@@ -562,8 +583,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 	}
 
-	// No verified check: sign-up sends no email, so an unverified account
-	// logs in like any other.
+	// No verified check: the accounts made before sign-up emailed a code
+	// (2026-11-24) were never checked, and they log in like any other.
 	h.issueSession(c, u, http.StatusOK, restored)
 }
 

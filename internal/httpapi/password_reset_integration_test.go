@@ -40,8 +40,9 @@ func (s *captureSender) Send(_ context.Context, to, subject, _ string, text stri
 	return nil
 }
 
-// lastCode is the code in the last code email to `to`. The email a reset
-// sends once the password changed has no code, so it is passed over.
+// lastCode is the code in the last code email to `to`, a reset's or a
+// sign-up's. The email a reset sends once the password changed has no code,
+// so it is passed over.
 func (s *captureSender) lastCode(t *testing.T, to string) string {
 	t.Helper()
 	s.mu.Lock()

@@ -138,20 +138,45 @@ func (r *UserRepo) Create(ctx context.Context, email string, passwordHash *strin
 }
 
 // CreateComplete inserts every column of a finished account in a single
-// statement, so a failure of any kind (taken email, taken username, a check
-// violation) stores nothing. The account is unverified: sign-up has no email
-// check. An empty AccountVisibility is stored as 'public'.
+// statement (insertAccount), so a failure of any kind (taken email, taken
+// username, a check violation) stores nothing. Sign-up makes its accounts
+// with the same insert, inside the transaction that spends the code
+// (PendingSignupRepo.Finish).
 func (r *UserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (*user.User, error) {
+	return insertAccount(ctx, r.pool, in)
+}
+
+// rowQuerier is a transaction or the pool.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// insertAccountQ inserts every column of a finished account ($1 to $9) and
+// returns it as userColumns.
+var insertAccountQ = `
+	insert into users (email, password_hash, name, username, bio, birthday, email_verified, email_verified_via, account_visibility)
+	values ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, $7::boolean, $8::text, $9::text)
+	returning ` + userColumns
+
+// insertAccount inserts the finished account in in ONE statement, through q
+// (the pool, or the transaction that spends a sign-up's code), so a failure
+// of any kind stores nothing. It is verified, through
+// user.VerifiedViaPasswordFlow (the one source the check constraint allows),
+// only when in.EmailVerified is set; otherwise both columns stay as an
+// unverified account has them. An empty AccountVisibility is stored as
+// 'public'. Unique and check violations map as mapWriteError says.
+func insertAccount(ctx context.Context, q rowQuerier, in user.NewAccount) (*user.User, error) {
 	visibility := in.AccountVisibility
 	if visibility == "" {
 		visibility = user.VisibilityPublic
 	}
-	q := `
-		insert into users (email, password_hash, name, username, bio, birthday, email_verified, email_verified_via, account_visibility)
-		values ($1::text, $2::text, $3::text, $4::text, $5::text, $6::date, false, null, $7::text)
-		returning ` + userColumns + `
-	`
-	row := r.pool.QueryRow(ctx, q, in.Email, in.PasswordHash, in.Name, in.Username, in.Bio, in.Birthday, visibility)
+	var via *string
+	if in.EmailVerified {
+		source := string(user.VerifiedViaPasswordFlow)
+		via = &source
+	}
+	row := q.QueryRow(ctx, insertAccountQ, in.Email, in.PasswordHash, in.Name, in.Username, in.Bio, in.Birthday,
+		in.EmailVerified, via, visibility)
 	u, err := scanUser(row)
 	if err != nil {
 		return nil, mapWriteError(err)

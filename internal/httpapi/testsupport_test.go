@@ -128,6 +128,12 @@ func (f *fakeUserRepo) CreateComplete(ctx context.Context, in user.NewAccount) (
 		UpdatedAt:         now,
 		AccountVisibility: visibility,
 	}
+	// Verified, as the real insert stores it, only when the sign-up's code
+	// made the account.
+	if in.EmailVerified {
+		via := user.VerifiedViaPasswordFlow
+		u.EmailVerified, u.EmailVerifiedVia = true, &via
+	}
 	f.users[u.ID] = u
 	f.birthdays[u.ID] = in.Birthday
 	stored := *u
@@ -327,6 +333,177 @@ var (
 	_ user.Repository      = (*fakeUserRepo)(nil)
 	_ user.PasswordChanger = (*fakeUserRepo)(nil)
 )
+
+// --- fakeSignupStore: in-memory SignupStore ---
+
+// fakeSignup is one sign-up waiting for its code, as a pending_signups row
+// holds it.
+type fakeSignup struct {
+	p         user.PendingSignup
+	tokenHash string
+	codeHash  string
+	// previousHash is the code the live one replaced, "" for none.
+	previousHash string
+	expiresAt    time.Time
+	codeAt       time.Time
+	codes        int
+	attempts     int
+	createdAt    time.Time
+}
+
+// fakeSignupStore is postgres.PendingSignupRepo in memory, with the same cap,
+// tries, codes and answers. Finish makes the account through users'
+// CreateComplete and deletes every sign-up of its email under one lock, so it
+// is all or nothing, as the transaction is.
+type fakeSignupStore struct {
+	mu    sync.Mutex
+	users user.Repository
+	rows  map[uuid.UUID]*fakeSignup
+}
+
+func newFakeSignupStore(users user.Repository) *fakeSignupStore {
+	return &fakeSignupStore{users: users, rows: make(map[uuid.UUID]*fakeSignup)}
+}
+
+func (f *fakeSignupStore) Start(_ context.Context, p user.PendingSignup, tokenHash, codeHash []byte,
+	expiresAt, at, countSince time.Time, maxStarts int) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	started := 0
+	for _, r := range f.rows {
+		if strings.EqualFold(r.p.Email, p.Email) && r.createdAt.After(countSince) {
+			started++
+		}
+	}
+	if started >= maxStarts {
+		return false, nil
+	}
+	f.rows[p.ID] = &fakeSignup{p: p, tokenHash: string(tokenHash), codeHash: string(codeHash),
+		expiresAt: expiresAt, codeAt: at, codes: 1, createdAt: at}
+	return true, nil
+}
+
+func (f *fakeSignupStore) Find(_ context.Context, tokenHash []byte, at time.Time) (*user.PendingSignup, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if r.tokenHash == string(tokenHash) && r.expiresAt.After(at) {
+			p := r.p
+			return &p, nil
+		}
+	}
+	return nil, user.ErrSignupExpired
+}
+
+func (f *fakeSignupStore) Try(_ context.Context, id uuid.UUID, codeHash []byte, at time.Time, maxTries int) (bool, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.rows[id]
+	if !ok || !r.expiresAt.After(at) {
+		return false, false, user.ErrSignupExpired
+	}
+	if r.attempts >= maxTries {
+		return false, false, nil
+	}
+	right := r.codeHash == string(codeHash)
+	replaced := !right && r.previousHash != "" && r.previousHash == string(codeHash)
+	if !right && !replaced {
+		r.attempts++
+	}
+	return right, replaced, nil
+}
+
+func (f *fakeSignupStore) Reissue(_ context.Context, id uuid.UUID, codeHash []byte,
+	expiresAt, at, freshSince time.Time, maxTries, maxCodes int) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.rows[id]
+	switch {
+	case !ok || !r.expiresAt.After(at) || r.attempts >= maxTries:
+		return false, user.ErrSignupExpired
+	case r.codeAt.After(freshSince):
+		return false, nil
+	case r.codes >= maxCodes:
+		return false, user.ErrSignupExpired
+	}
+	r.previousHash, r.codeHash = r.codeHash, string(codeHash)
+	r.expiresAt, r.codeAt = expiresAt, at
+	r.codes++
+	return true, nil
+}
+
+func (f *fakeSignupStore) Finish(ctx context.Context, id uuid.UUID, codeHash []byte, in user.NewAccount) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.rows[id]
+	if !ok {
+		return nil, user.ErrSignupExpired
+	}
+	if r.codeHash != string(codeHash) {
+		return nil, user.ErrSignupCodeReplaced
+	}
+	u, err := f.users.CreateComplete(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	for other, row := range f.rows {
+		if strings.EqualFold(row.p.Email, in.Email) {
+			delete(f.rows, other)
+		}
+	}
+	return u, nil
+}
+
+// count is how many sign-ups wait for their code.
+func (f *fakeSignupStore) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.rows)
+}
+
+var _ SignupStore = (*fakeSignupStore)(nil)
+
+// --- the sign-up codes a rig emailed ---
+
+// signupBox is where a rig's sign-up codes go: the handler that emails them
+// and the captureSender that keeps them.
+type signupBox struct {
+	h    *SignupCodeHandler
+	mail *captureSender
+}
+
+// signupBoxes holds the signupBox of every engine a rig built while its test
+// runs, so a helper handed only the engine (signUpWithCode,
+// integrationOnboardAccount) can read the code a sign-up emailed.
+var signupBoxes sync.Map // *gin.Engine -> signupBox
+
+// registerSignupBox makes the codes h emails into box readable through
+// engine until the test ends.
+func registerSignupBox(t *testing.T, engine *gin.Engine, h *SignupCodeHandler, box *captureSender) {
+	t.Helper()
+	signupBoxes.Store(engine, signupBox{h: h, mail: box})
+	t.Cleanup(func() { signupBoxes.Delete(engine) })
+}
+
+// signupBoxOf is the signupBox of engine; the test fails when no rig
+// registered one.
+func signupBoxOf(t *testing.T, engine *gin.Engine) signupBox {
+	t.Helper()
+	box, ok := signupBoxes.Load(engine)
+	if !ok {
+		t.Fatal("this engine has no sign-up mail box: build it with a rig that registers one (registerSignupBox)")
+	}
+	return box.(signupBox)
+}
+
+// signupCode is the code the sign-up of email was emailed last through
+// engine, once every email the handler started has gone out.
+func signupCode(t *testing.T, engine *gin.Engine, email string) string {
+	t.Helper()
+	box := signupBoxOf(t, engine)
+	box.h.Wait()
+	return box.mail.lastCode(t, email)
+}
 
 // --- fakeRefreshRepo: in-memory user.RefreshTokenRepository ---
 
