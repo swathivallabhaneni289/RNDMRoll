@@ -347,7 +347,9 @@ type Repository interface {
 	Posts(ctx context.Context, person uuid.UUID) ([]Post, error)
 	// Removed is every post and comment removed inside RemovalGrace: those
 	// with an open second look first, then the most recently removed first.
-	// RemovedCount is how many there are.
+	// A comment whose post or the comment it answers was removed and is past
+	// RemovalGrace is left out: it can't come back, and the purge takes it
+	// with them. RemovedCount is how many there are.
 	Removed(ctx context.Context) ([]RemovedItem, error)
 	RemovedCount(ctx context.Context) (int, error)
 	// DismissItem closes the open reports of kind with these ids that are

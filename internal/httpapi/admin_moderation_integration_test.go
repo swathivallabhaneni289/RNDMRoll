@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -735,6 +736,77 @@ func TestAdminModerationIntegration_ACommentComesBackOnlyAfterWhatItIsUnder(t *t
 	}
 	if got := loggedActions(t, w.pool, cw.id); !slices.Equal(got, []string{"removed comment " + reply, "restored comment " + reply}) {
 		t.Fatalf("the writer's log: %v", got)
+	}
+}
+
+// A removed comment goes off the Removed tab, and out of its number, at the
+// moment its removed post, or the removed comment it answers, passes its 30
+// days: that one can't come back, so neither can it, and the hourly purge
+// takes it with them. An hour short it is still listed with 1 day left. A
+// Bring it back from a tab drawn before the line says it is gone, never to
+// bring back its post first.
+func TestAdminModerationIntegration_ACommentLeavesTheRemovedTabWithWhatItIsUnder(t *testing.T) {
+	w := newAdminModWorld(t)
+	ps := w.people("aw_bea", "aw_cal", "aw_dot", "aw_eli")
+	b, cw, qw, rw := ps[0], ps[1], ps[2], ps[3]
+	for _, p := range ps[1:] {
+		w.followAccepted(p, b)
+	}
+	w.followAccepted(rw, qw)
+	const day = "2026-10-08"
+	post := w.post(b, day)
+	other := w.post(qw, day)
+	w.post(cw, day)
+	w.post(rw, day)
+	comment := w.reply(cw, post, "Rude words", "")["id"].(string)
+	parent := w.reply(qw, other, "First words", "")["id"].(string)
+	reply := w.reply(rw, other, "Mean reply", parent)["id"].(string)
+	w.removeNow("comment", comment, cw)
+	w.removeNow("comment", reply, rw)
+	w.removeNow("comment", parent, qw)
+	tabs := func(want int) {
+		t.Helper()
+		if list := w.page("/admin"); !strings.Contains(list, "Removed<span class=\"n\">"+strconv.Itoa(want)+"</span>") {
+			t.Fatalf("the Reports tab's Removed number, want %d: %s", want, list)
+		}
+	}
+
+	// The comment under the post: an hour short of the post's 30 days it is
+	// listed, with the post's day left; at the 30 days it is not.
+	w.removeNow("post", post, b)
+	w.exec(`update entries set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, post)
+	if card := adminReportOf(t, w.page("/admin/removed"), "Rude words"); !strings.Contains(card, `</span></p><p class="by">1 day left · Ref: `) {
+		t.Fatalf("an hour short of the post's 30 days, want the comment with 1 day left: %s", card)
+	}
+	tabs(4)
+	w.exec(`update entries set removed_at = now() - interval '30 days' where id = $1`, post)
+	if tab := w.page("/admin/removed"); strings.Contains(tab, "Rude words") || strings.Contains(tab, "<h3>Dune</h3>") ||
+		strings.Contains(tab, `<p class="by">0 days left`) || !strings.Contains(tab, "Removed<span class=\"n\">2</span>") {
+		t.Fatalf("at the post's 30 days the tab still offers the post or its comment: %s", tab)
+	}
+	tabs(2)
+	if got := w.restoreAnyway("comment", comment, cw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on the comment at its post's 30 days: %q, want gone", got)
+	}
+
+	// The reply, on another post, under the comment it answers: the same.
+	w.exec(`update post_comments set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, parent)
+	if card := adminReportOf(t, w.page("/admin/removed"), "Mean reply"); !strings.Contains(card, `</span></p><p class="by">1 day left · Ref: `) {
+		t.Fatalf("an hour short of its parent's 30 days, want the reply with 1 day left: %s", card)
+	}
+	w.exec(`update post_comments set removed_at = now() - interval '30 days' where id = $1`, parent)
+	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Nothing removed in the last 30 days.") ||
+		!strings.Contains(tab, "Removed<span class=\"n\">0</span>") {
+		t.Fatalf("at its parent's 30 days the tab still offers the reply: %s", tab)
+	}
+	tabs(0)
+	if got := w.restoreAnyway("comment", reply, rw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on the reply at its parent's 30 days: %q, want gone", got)
+	}
+	for _, id := range []string{comment, reply} {
+		if w.one(`select (removed_at is not null)::text from post_comments where id = $1`, id) != "true" {
+			t.Fatalf("a refused Bring it back brought %s back", id)
+		}
 	}
 }
 
