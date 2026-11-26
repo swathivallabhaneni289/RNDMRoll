@@ -238,7 +238,8 @@ func (r *NotificationsRepo) Bonuses(ctx context.Context, viewer uuid.UUID, since
 // the log), so there is nothing to ask; else closed when asking would be
 // refused, by the lines SecondLookRepo.Ask holds to: the removal is past
 // the grace, or its post or comment is deleted, not removed or past the
-// grace; else none.
+// grace (a comment by its line, commentInsideRemovalGrace: past its post's
+// or its parent's 30 days); else none.
 // Each carries its post while that is in the database, whether the viewer
 // can see it now (postVisibleTo, the whole of social.CanView), and the
 // post's first photo, read only for a post that is back or hidden (never
@@ -261,7 +262,7 @@ var decisionsSQL = `
 	            and ` + insideRemovalGrace("mi.removed_at") + `
 	          union all
 	          select 1 from post_comments mi where me.item = 'comment' and mi.id = me.item_id and mi.user_id = me.owner_id
-	            and ` + insideRemovalGrace("mi.removed_at") + `) then 'closed' end,
+	            and ` + commentInsideRemovalGrace("mi") + `) then 'closed' end,
 	      '') else '' end as second_look,
 	    row_number() over (order by me.at desc, me.id desc) as n
 	  from moderation_events me

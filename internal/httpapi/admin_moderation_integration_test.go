@@ -742,7 +742,10 @@ func TestAdminModerationIntegration_ACommentComesBackOnlyAfterWhatItIsUnder(t *t
 // days: that one can't come back, so neither can it, and the hourly purge
 // takes it with them. An hour short it is still listed with 1 day left. A
 // Bring it back from a tab drawn before the line says it is gone, never to
-// bring back its post first.
+// bring back its post first, and so does a Keep it removed of the second
+// look its writer asked, which stays unanswered. In the app the same line
+// holds: the bell offers a second look an hour short and not at the line,
+// where asking is too late.
 func TestAdminModerationIntegration_ACommentLeavesTheRemovedTabWithWhatItIsUnder(t *testing.T) {
 	w := newAdminModWorld(t)
 	ps := w.people("aw_bea", "aw_cal", "aw_dot", "aw_eli")
@@ -759,14 +762,28 @@ func TestAdminModerationIntegration_ACommentLeavesTheRemovedTabWithWhatItIsUnder
 	comment := w.reply(cw, post, "Rude words", "")["id"].(string)
 	parent := w.reply(qw, other, "First words", "")["id"].(string)
 	reply := w.reply(rw, other, "Mean reply", parent)["id"].(string)
-	w.removeNow("comment", comment, cw)
-	w.removeNow("comment", reply, rw)
+	commentRemoval := w.removeNow("comment", comment, cw)
+	replyRemoval := w.removeNow("comment", reply, rw)
 	w.removeNow("comment", parent, qw)
+	w.askLook(cw, commentRemoval, "It was a joke.")
 	tabs := func(want int) {
 		t.Helper()
 		if list := w.page("/admin"); !strings.Contains(list, "Removed<span class=\"n\">"+strconv.Itoa(want)+"</span>") {
 			t.Fatalf("the Reports tab's Removed number, want %d: %s", want, list)
 		}
+	}
+	// bellLook is the second look the bell shows p on removal: "" while one
+	// can be asked.
+	bellLook := func(p feedPerson, removal string) string {
+		t.Helper()
+		for _, it := range w.ok(p, http.MethodGet, "/v1/notifications", nil)["items"].([]any) {
+			if item := it.(map[string]any); item["id"] == "comment_removed:"+removal {
+				look, _ := item["second_look"].(string)
+				return look
+			}
+		}
+		t.Fatalf("no removal %s in the bell of %s", removal, p.name)
+		return ""
 	}
 
 	// The comment under the post: an hour short of the post's 30 days it is
@@ -786,13 +803,30 @@ func TestAdminModerationIntegration_ACommentLeavesTheRemovedTabWithWhatItIsUnder
 	if got := w.restoreAnyway("comment", comment, cw); got != "/admin/removed?n=gone" {
 		t.Fatalf("Bring it back on the comment at its post's 30 days: %q, want gone", got)
 	}
+	if got := w.keepAnyway("comment", comment, w.lookOf(commentRemoval), cw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Keep it removed on the comment at its post's 30 days: %q, want gone", got)
+	}
+	if got := w.lookState(commentRemoval); got != "open" ||
+		w.one(`select count(*)::text from moderation_events where owner_id = $1 and action = 'kept'`, cw.id) != "0" {
+		t.Fatalf("a refused Keep it removed: the second look %s, or it logged kept", got)
+	}
 
 	// The reply, on another post, under the comment it answers: the same.
 	w.exec(`update post_comments set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, parent)
 	if card := adminReportOf(t, w.page("/admin/removed"), "Mean reply"); !strings.Contains(card, `</span></p><p class="by">1 day left · Ref: `) {
 		t.Fatalf("an hour short of its parent's 30 days, want the reply with 1 day left: %s", card)
 	}
+	if got := bellLook(rw, replyRemoval); got != "" {
+		t.Fatalf("an hour short of its parent's 30 days, the bell's second look on the reply: %q, want one to ask", got)
+	}
 	w.exec(`update post_comments set removed_at = now() - interval '30 days' where id = $1`, parent)
+	if got := bellLook(rw, replyRemoval); got != "closed" {
+		t.Fatalf("at its parent's 30 days, the bell's second look on the reply: %q, want closed", got)
+	}
+	if got := w.call(rw, http.MethodPost, "/v1/removals/"+replyRemoval+"/second-look", map[string]any{"text": "Why", "photo_keys": []string{}},
+		http.StatusConflict); got["error"] != "second_look_too_late" {
+		t.Fatalf("a second look on the reply at its parent's 30 days: %v, want too late", got)
+	}
 	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Nothing removed in the last 30 days.") ||
 		!strings.Contains(tab, "Removed<span class=\"n\">0</span>") {
 		t.Fatalf("at its parent's 30 days the tab still offers the reply: %s", tab)

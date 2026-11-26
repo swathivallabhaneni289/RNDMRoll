@@ -411,14 +411,25 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 		"a bad kind":   {"kind": {"entry"}, "id": {a.String()}, "person": {person.String()}},
 		"no person":    {"kind": {admin.KindPost}, "id": {a.String()}},
 		"too many ids": {"kind": {admin.KindPost}, "id": tooMany, "person": {person.String()}},
-		// A person's card without the times it drew, or not one per id.
-		"a person's with no time":     {"kind": {admin.KindPerson}, "id": {a.String()}, "person": {person.String()}},
+		// A person's card with a time it never drew, or not one per id.
 		"a person's with a bad time":  {"kind": {admin.KindPerson}, "id": {a.String()}, "at": {"yesterday"}, "person": {person.String()}},
 		"a person's with one time":    {"kind": {admin.KindPerson}, "id": {a.String(), b.String()}, "at": {at}, "person": {person.String()}},
 		"a person's with three times": {"kind": {admin.KindPerson}, "id": {a.String()}, "at": {at, at, at}, "person": {person.String()}},
 	} {
 		if _, to := dismiss(form); to != "/admin" {
 			t.Errorf("%s: %q, want the list", name, to)
+		}
+	}
+	// A person's card drawn before the cards sent their times (a page left
+	// open across that update) closes nothing either, and says the page was
+	// out of date, back where it came from.
+	for from, want := range map[string]string{
+		"":     "/admin/people/" + person.String() + "?n=stale",
+		"list": "/admin?n=stale",
+	} {
+		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String(), b.String()}, "person": {person.String()},
+			"from": {from}}); to != want {
+			t.Errorf("a person's with no times, from %q: %q, want %q", from, to, want)
 		}
 	}
 	if r.repo.resolved != before {

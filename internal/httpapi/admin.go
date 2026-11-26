@@ -992,8 +992,18 @@ func (h *AdminHandler) dismiss(c *gin.Context) {
 	person, err := uuid.Parse(c.PostForm("person"))
 	raw, rawAt := c.PostFormArray("id"), c.PostFormArray("at")
 	if err != nil || len(raw) == 0 || len(raw) > adminDismissMost ||
-		(kind != admin.KindPerson && kind != admin.KindPost && kind != admin.KindComment) ||
-		(kind == admin.KindPerson && len(rawAt) != len(raw)) {
+		(kind != admin.KindPerson && kind != admin.KindPost && kind != admin.KindComment) {
+		c.Redirect(http.StatusSeeOther, "/admin")
+		return
+	}
+	// A person's card drawn before the cards sent their times (a page left
+	// open across the update that added them) closes nothing and says the
+	// page was out of date, as an old page's CSRF token does.
+	if kind == admin.KindPerson && len(rawAt) == 0 {
+		backTo(c, person, "stale")
+		return
+	}
+	if kind == admin.KindPerson && len(rawAt) != len(raw) {
 		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}

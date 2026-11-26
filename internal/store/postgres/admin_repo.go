@@ -775,11 +775,19 @@ func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
+	// A comment goes by its line (commentInsideRemovalGrace, the table's
+	// bare name being the row held): past its post's or its parent's 30 days
+	// it is gone, as Bring it back says, though a tab drawn before that
+	// still offers its Keep.
+	within := insideRemovalGrace("removed_at")
+	if kind == admin.KindComment {
+		within = commentInsideRemovalGrace(m.table)
+	}
 	var snapshot string
 	var entry uuid.UUID
 	var removed, inside bool
 	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null,
-		removed_at is not null and `+insideRemovalGrace("removed_at")+`
+		removed_at is not null and `+within+`
 		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &removed, &inside)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.ErrNotFound
