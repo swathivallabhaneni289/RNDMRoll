@@ -280,6 +280,22 @@ check(
 );
 check('the fading copy of the wheel draws no link', /\{frozen \? null : editLink\}/.test(today));
 
+// After a big time zone change the next spin can open later than 8:00 PM (PRD known issue 12): every
+// line that says when names the moment the countdown counts to (opensAtTime), never a fixed time.
+const countdown = source('components/today/CountdownBlock.tsx');
+const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+check('the countdown works its time out from the opening and the window', /const opensAt = opensAtTime\(nextOpenAt, todayWindow\);/.test(countdown));
+check('the line under the countdown names it', countdown.includes('{`Opens at ${opensAt}.`}'));
+check(
+  'so do both spoken lines',
+  countdown.includes('? `Your next spin opens at ${opensAt}.`') && countdown.includes(', at ${opensAt}.`')
+);
+check('the countdown names no fixed time', !/\d:\d\d\s?[AP]M/.test(code(countdown)), code(countdown).match(/\d:\d\d\s?[AP]M.*/)?.[0]);
+check('Spin works the same time out from its answer', /const opensAt = view !== null \? opensAtTime\(view\.next_open_at, view\.window\) : null;/.test(today));
+check("the hub's hint while waiting names it", /hubHint=\{viewState === 'waiting' && opensAt !== null \? `Opens at \$\{opensAt\}\.` : undefined\}/.test(today));
+check("so does Skipped's line", /nextSpinLine\(view\.spin\?\.local_date \?\? view\.local_date, view\.local_date, view\.next_open_weekday, opensAt\)/.test(today));
+check('Spin names no fixed opening time', !/Opens at \d|opens at \d/.test(code(today)));
+
 // ---- No underlined text used as a button (PRD section 11, copy rules) ---------------------------
 
 const underlined: string[] = [];

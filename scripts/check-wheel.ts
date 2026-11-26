@@ -24,7 +24,7 @@ import {
   wedgeStarts,
   wedgeUnderPointer,
 } from '../lib/wheel/geometry.ts';
-import { msUntil, nextWaitMs, opensAtTime, parseInstant, spokenMinutes, split } from '../lib/wheel/countdown.ts';
+import { msUntil, nextWaitMs, opensAtFromAnswer, opensAtTime, parseInstant, spokenMinutes, split } from '../lib/wheel/countdown.ts';
 import { dateLine, dateLineLong } from '../lib/wheel/format.ts';
 import { NAME_EMPTY_LINE, NAME_TAKEN_LINE, nameProblems } from '../lib/wheel/categoryNames.ts';
 import { readFileSync } from 'node:fs';
@@ -293,6 +293,19 @@ check('truncate counts letters not bytes', truncate('Café au lait', 4) === 'Caf
       opensAtTime(null, undefined) === '8:00 PM'
   );
   check('opening time: a plain space before PM, as the line had', opensAtTime(ny.opens_at, ny).charCodeAt(4) === 0x20);
+
+  // The Board reads the time from Today's last answer (opensAtFromAnswer): only while that answer's
+  // opening is still ahead, so a stale answer never names an evening that is over.
+  const answer = { next_open_at: '2026-10-09T01:50:00.000Z', window: ny };
+  const at9 = { serverMs: parseInstant('2026-10-09T01:00:00.000Z'), mark: 1000 };
+  const fromAnswer = (name: string, got: string | null, want: string | null) => check(`the Board: ${name}`, got === want, String(got));
+  fromAnswer('a gap that ends at 9:50, asked at 9:00', opensAtFromAnswer(answer, at9, 1000), '9:50 PM');
+  fromAnswer('the same answer 49 minutes on', opensAtFromAnswer(answer, at9, 1000 + 49 * 60000), '9:50 PM');
+  fromAnswer('once that opening has passed, nothing (8:00 PM)', opensAtFromAnswer(answer, at9, 1000 + 50 * 60000), null);
+  fromAnswer('no anchor (just back to the front), nothing', opensAtFromAnswer(answer, null, 1000), null);
+  fromAnswer('no answer, nothing', opensAtFromAnswer(null, at9, 1000), null);
+  fromAnswer('an opening that does not parse, nothing', opensAtFromAnswer({ next_open_at: 'soon', window: ny }, at9, 1000), null);
+  fromAnswer("tomorrow's 8 PM", opensAtFromAnswer({ next_open_at: '2026-10-10T00:00:00.000Z', window: ny }, at9, 1000), '8:00 PM');
 }
 
 // ---- Edit wheel: category names and the grey Save wheel (2026-11-16) -------------------------------

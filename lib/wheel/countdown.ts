@@ -128,6 +128,23 @@ export function opensAtTime(
 }
 
 /**
+ * `opensAtTime` for a page other than Spin that reads Today's last answer (the Board's locked
+ * card): null when there is no answer, no anchor (the app has just come back to the front and asks
+ * again), or that answer's opening has passed. A stale answer then never names an evening that is
+ * over, and the page says 8:00 PM as before.
+ */
+export function opensAtFromAnswer(
+  today: { next_open_at: string; window: { opens_at: string; closes_at: string } } | null,
+  anchor: { serverMs: number; mark: number } | null,
+  perfNow: number
+): string | null {
+  if (today === null || anchor === null) return null;
+  const left = msUntil(today.next_open_at, anchor, perfNow);
+  if (left === null || left <= 0) return null;
+  return opensAtTime(today.next_open_at, today.window);
+}
+
+/**
  * The shortest wait, in milliseconds, to the next of `instants` that is still ahead of the
  * server's now (nearest first), or null when none is. Used to re-arm the refetch timer after
  * every answer.

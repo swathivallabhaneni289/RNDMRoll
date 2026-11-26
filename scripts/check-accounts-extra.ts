@@ -984,6 +984,21 @@ const idsMatch = (w) => w.keychain.get(INSTALL) !== undefined && w.keychain.get(
   eq('so the next launch keeps that sign in', next.status(), 'authenticated');
 }
 {
+  // Found again on each restore while it will not go, with no connection to end it: kept once.
+  const w = await newWorld('a reinstall the keychain will not clear, offline', OLD_LOGIN);
+  w.keychainDeleteFails = true;
+  w.mount();
+  await settle();
+  w.appState('background');
+  w.appState('active');
+  await settle();
+  w.appState('background');
+  w.appState('active');
+  await settle();
+  eq('still signed out after two returns to the front', w.status(), 'unauthenticated');
+  eq('the stuck old session is kept to be ended once, not once a try', w.keychain.get(PENDING), JSON.stringify([{ refresh_token: 'r-old', access_token: null, push_token: null }]));
+}
+{
   const w = await signedInWorld('a log out keeps the install id', (call) => (call.path === '/auth/logout' ? noContent() : offline()));
   const id = w.keychain.get(INSTALL);
   await w.value.signOut();

@@ -438,7 +438,11 @@ function checkInstall(): Promise<InstallCheck> {
         const entry: PendingLogout = { refresh_token: refreshToken, access_token: null, push_token: null };
         mayHavePendingLogouts = true;
         logoutsKept += 1;
-        await changePendingLogouts((list) => [...list, entry]);
+        // Once only: a login the keychain would not let go is found again on each restore, and a
+        // second copy would push a log out with a push token to DELETE off the kept list.
+        await changePendingLogouts((list) =>
+          list.some((kept) => kept.refresh_token === refreshToken) ? null : [...list, entry]
+        );
         if (signInEpoch !== epoch) return 'unknown';
       }
       // The deletes count as a refresh's writes, so a sign in begun from here on waits for them
