@@ -30,10 +30,16 @@ export function lockedButton(action: 'log' | 'spin' | 'wait', category: string |
 /**
  * The quiet line under the locked card's text. The space before PM never breaks. The late line
  * shows once a post made now counts as late (the server's `post_late`, from noon the day after
- * the spin), not from midnight.
+ * the spin), not from midnight. While waiting it names the time Spin's countdown counts to
+ * (`opensAt`, "8:00 PM" when left out): after a big time zone change the next spin can open later
+ * that evening, "Your next spin opens at 9:50 PM."
  */
-export function lockedFootnote(action: 'log' | 'spin' | 'wait', postLate: boolean): string | null {
-  if (action === 'wait') return 'Your next spin opens at 8:00 PM.';
+export function lockedFootnote(
+  action: 'log' | 'spin' | 'wait',
+  postLate: boolean,
+  opensAt: string | null = null
+): string | null {
+  if (action === 'wait') return `Your next spin opens at ${(opensAt ?? '8:00 PM').replace(' ', '\u00A0')}.`;
   if (action === 'log' && postLate) return 'Fashionably late is fine until 8:00 PM.';
   return null;
 }

@@ -269,6 +269,14 @@ const NBSP = '\u00A0';
   check('no weekday sent (null)', nextSpinLine('2026-10-08', '2026-10-08', null) === without);
   check('no weekday sent (undefined)', nextSpinLine('2026-10-08', '2026-10-08', undefined) === without);
   check('no weekday sent (empty)', nextSpinLine('2026-10-08', '2026-10-08', '') === without);
+  // After a big time zone change the next spin can open later that evening: the line names the
+  // countdown's time (opensAtTime), with the same no-break space.
+  check('the countdown time 8:00 PM reads as before', nextSpinLine('2026-10-08', '2026-10-08', 'Friday', '8:00 PM') === withDay);
+  check('no countdown time (null) reads 8:00 PM', nextSpinLine('2026-10-07', '2026-10-08', 'Friday', null) === without);
+  const later = nextSpinLine('2026-10-07', '2026-10-08', 'Friday', '9:50 PM');
+  check('a later opening is named', later === `Your next spin opens at 9:50${NBSP}PM.`, later);
+  const laterDay = nextSpinLine('2026-10-08', '2026-10-08', 'Friday', '11:05 PM');
+  check('a later opening with the weekday', laterDay === `Your next spin opens Friday at 11:05${NBSP}PM.`, laterDay);
 
   check('settled label is today all day', SETTLED_LABEL === "Today's spin was", SETTLED_LABEL);
   check('board open line', BOARD_OPEN_LINE === "You're in. The Board is open.", BOARD_OPEN_LINE);

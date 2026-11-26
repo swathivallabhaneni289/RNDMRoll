@@ -6,7 +6,10 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextButton } from '@/components/ui/TextButton';
 import type { BoardLocked } from '@/lib/api/board';
 import { LOCKED_BODY, NO_FOLLOWS_LINE, NO_FOLLOWS_TITLE, SKIPPED_LINE, lockedButton, lockedFootnote, postedLine } from '@/lib/board/text';
+import { useSession } from '@/lib/session/store';
 import { color, elevation, radius, space, type } from '@/lib/theme/tokens';
+import { opensAtFromAnswer } from '@/lib/wheel/countdown';
+import { useTodaySnapshot } from '@/lib/wheel/todayStore';
 
 const TILE_ASPECT = 7 / 8;
 const BAR_HEIGHT = 8;
@@ -39,7 +42,9 @@ function TileRow({ names, width }: { names: string[]; width: number }) {
  * Locked (05-UI-SPEC 3.6, the developer's picture 08): up to four grey tiles with the first names of
  * people you follow who posted, and the card over them. The tiles never show a photo, title or
  * stars. The button follows the server's `action`: log opens the entry screen, spin goes to the
- * Spin page, wait draws no button.
+ * Spin page, wait draws no button. While waiting, the footnote names the time Spin's countdown
+ * counts to, from Today's last answer (`opensAtFromAnswer`): after a big time zone change that can
+ * be later than 8:00 PM.
  */
 export function LockedBlock({
   locked,
@@ -57,7 +62,10 @@ export function LockedBlock({
   const second = names.slice(2, 4);
   const tileHeight = Math.round(columnWidth / TILE_ASPECT);
   const button = lockedButton(locked.action, locked.category);
-  const footnote = lockedFootnote(locked.action, locked.post_late);
+  const { user } = useSession();
+  const today = useTodaySnapshot(user?.id ?? null);
+  const opensAt = opensAtFromAnswer(today.today, today.anchor, performance.now());
+  const footnote = lockedFootnote(locked.action, locked.post_late, opensAt);
   const heading = postedLine(locked.posted_count);
 
   const card = (

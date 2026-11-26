@@ -52,19 +52,23 @@ export function stillNeededLine(missing: readonly MissingPart[]): string {
  * The sentence under Skipped's heading. When the shown spin is today's (`spinLocalDate` equals
  * `localDate`, a plain string comparison) it names the server's weekday: "Your next spin opens
  * Friday at 8:00 PM." Otherwise (a spin from the date before, after midnight), or when the server sent
- * no weekday, it leaves the weekday out. The space before "PM." is a no-break space (U+00A0) so
- * "PM." never stands alone on a line.
+ * no weekday, it leaves the weekday out. The time is the countdown's (`opensAt`, "8:00 PM" when left
+ * out): after a big time zone change the next spin can open later that evening, "Your next spin
+ * opens at 9:50 PM." The space before "PM." is a no-break space (U+00A0) so "PM." never stands
+ * alone on a line.
  */
 export function nextSpinLine(
   spinLocalDate: string,
   localDate: string,
-  nextOpenWeekday: string | null | undefined
+  nextOpenWeekday: string | null | undefined,
+  opensAt: string | null = null
 ): string {
+  const time = (opensAt ?? '8:00 PM').replace(' ', '\u00A0');
   const hasWeekday = typeof nextOpenWeekday === 'string' && nextOpenWeekday.trim().length > 0;
   if (spinLocalDate === localDate && hasWeekday) {
-    return `Your next spin opens ${nextOpenWeekday} at 8:00\u00A0PM.`;
+    return `Your next spin opens ${nextOpenWeekday} at ${time}.`;
   }
-  return 'Your next spin opens at 8:00\u00A0PM.';
+  return `Your next spin opens at ${time}.`;
 }
 
 /**

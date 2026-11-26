@@ -187,6 +187,13 @@ const { ApiError, api, isRetryable } = client;
   eq('an on-time post has none', lockedFootnote('log', false), null);
   eq('Spin first has none, late', lockedFootnote('spin', true), null);
   eq('Spin first has none', lockedFootnote('spin', false), null);
+  // After a big time zone change the next spin can open later that evening: the footnote names the
+  // countdown's time (opensAtFromAnswer), with the same no-break space.
+  eq('while waiting, the countdown time 8:00 PM reads as before', lockedFootnote('wait', false, '8:00 PM'), `Your next spin opens at 8:00${NBSP}PM.`);
+  eq('while waiting, no countdown time reads 8:00 PM', lockedFootnote('wait', false, null), `Your next spin opens at 8:00${NBSP}PM.`);
+  eq('while waiting, a later opening is named', lockedFootnote('wait', false, '9:50 PM'), `Your next spin opens at 9:50${NBSP}PM.`);
+  eq('a later opening changes no late footnote', lockedFootnote('log', true, '9:50 PM'), `Fashionably late is fine until 8:00${NBSP}PM.`);
+  eq('nor gives Spin first one', lockedFootnote('spin', false, '9:50 PM'), null);
 
   eq('nobody posted yet', postedLine(0), 'No one you follow has posted yet.');
   eq('one person posted', postedLine(1), '1 person you follow posted today.');
@@ -233,8 +240,12 @@ const { ApiError, api, isRetryable } = client;
   check(
     'the locked card takes its words from the rules above',
     /lockedButton\(locked\.action, locked\.category\)/.test(blocks) &&
-      /lockedFootnote\(locked\.action, locked\.post_late\)/.test(blocks) &&
+      /lockedFootnote\(locked\.action, locked\.post_late, opensAt\)/.test(blocks) &&
       /postedLine\(locked\.posted_count\)/.test(blocks)
+  );
+  check(
+    "the locked card's footnote takes the countdown's time from Today's last answer",
+    /const today = useTodaySnapshot\(user\?\.id \?\? null\);\s*const opensAt = opensAtFromAnswer\(today\.today, today\.anchor, performance\.now\(\)\);/.test(blocks)
   );
   const skipped = functionText(blocks, 'function SkippedBlock(') ?? '';
   check('the skipped day shows its line with Go to Spin', skipped.includes('{SKIPPED_LINE}') && /<TextButton label="Go to Spin" onPress=\{onGoToSpin\} \/>/.test(skipped));

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'expo-image';
 import { AppState } from 'react-native';
@@ -21,6 +22,7 @@ import {
   registerPushToken,
   unregisterPushToken,
 } from '@/lib/notifications/pushToken';
+import { installStep } from '@/lib/session/install';
 import type { ApiUser, AuthResult } from '@/lib/api/types';
 
 /**
@@ -28,7 +30,9 @@ import type { ApiUser, AuthResult } from '@/lib/api/types';
  * that touches session credentials: every credential (access and refresh token) is
  * written to and read from the OS keychain here, and nowhere else, including React
  * state that survives a reload or any logging call. (The 8 PM reminder keeps its two
- * on/off flags in the keychain too, through its own import; no credential.)
+ * on/off flags in the keychain too, through its own import; no credential.) It also keeps
+ * this install's id, in AsyncStorage and beside the tokens, so a login an earlier install
+ * left in the keychain is never used (checkInstall).
  */
 
 const ACCESS_TOKEN_KEY = 'rndmroll.access_token';
@@ -40,6 +44,11 @@ const REFRESH_TOKEN_KEY = 'rndmroll.refresh_token';
 const PENDING_LOGOUT_KEY = 'rndmroll.pending_logout';
 /** The most log outs kept waiting; an older one beyond this is dropped. */
 const PENDING_LOGOUT_LIMIT = 10;
+/**
+ * This install's id (lib/session/install.ts says why): kept in AsyncStorage, which iOS deletes with
+ * the app, and the same id in the keychain beside the tokens, which iOS keeps.
+ */
+const INSTALL_ID_KEY = 'rndmroll.install_id';
 
 const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -343,6 +352,145 @@ export function requestWorked(): void {
   void drainPendingLogouts();
 }
 
+// ---------------------------------------------------------------------------
+// This install's login. iOS keeps keychain items after the app is deleted, so
+// a login an earlier install left there goes before the restore reads it.
+// ---------------------------------------------------------------------------
+
+/**
+ * True once this run knows the keychain login is this install's and the id beside it says so: the
+ * check at launch found it (or made it) so, or a sign in stamped its own tokens.
+ */
+let installSettled = false;
+
+/** The check and the stamps run one after another, so two never write different ids. */
+let installQueue: Promise<void> = Promise.resolve();
+
+function queueInstall<T>(task: () => Promise<T>): Promise<T> {
+  const run = installQueue.then(task);
+  installQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+/** Not a secret: it only has to differ from an earlier install's. */
+function newInstallId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/**
+ * Writes this install's id: in AsyncStorage first (a new one when storedId is null), then the same
+ * id in the keychain. In that order a launch cut short between the two finds no id in the keychain,
+ * which keeps the login, and never an id that is not this install's, which would clear it. Throws
+ * when a write fails.
+ */
+async function stampInstall(storedId: string | null): Promise<void> {
+  const id = storedId ?? newInstallId();
+  if (storedId === null) await AsyncStorage.setItem(INSTALL_ID_KEY, id);
+  await SecureStore.setItemAsync(INSTALL_ID_KEY, id, KEYCHAIN_OPTIONS);
+}
+
+/**
+ * 'ok': the keychain login, if any, is this install's. 'stale': an earlier install left it and the
+ * keychain would not let it go, so this run counts as signed out. 'unknown': a read failed (the
+ * keychain is locked while the phone is, say) or a sign in began meanwhile, so nothing was decided
+ * and the restore goes on as before.
+ */
+type InstallCheck = 'ok' | 'stale' | 'unknown';
+
+/**
+ * Makes sure the keychain login is this install's before the restore reads it (and before the log
+ * outs left over go out at launch), by the rules in lib/session/install.ts. It runs at launch, and
+ * again with each restore (a return to the front) until it has settled. A login an earlier install
+ * left goes: its tokens and its id are deleted, and its session is kept as a log out to send
+ * (drainPendingLogouts), so the server ends it and its pushes stop coming to this phone. A login
+ * from before install ids is kept and stamped, so an update never logs anyone out. A read that
+ * fails decides nothing: an id read as missing could clear a login that is this install's. Never
+ * throws.
+ */
+function checkInstall(): Promise<InstallCheck> {
+  if (installSettled) return Promise.resolve('ok');
+  return queueInstall(async (): Promise<InstallCheck> => {
+    if (installSettled) return 'ok';
+    const epoch = signInEpoch;
+    let storedId: string | null;
+    let keychainId: string | null;
+    let accessToken: string | null;
+    let refreshToken: string | null;
+    try {
+      [storedId, keychainId, accessToken, refreshToken] = await Promise.all([
+        AsyncStorage.getItem(INSTALL_ID_KEY),
+        SecureStore.getItemAsync(INSTALL_ID_KEY),
+        SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
+        SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
+      ]);
+    } catch {
+      return 'unknown';
+    }
+    // A sign in while the keychain was read has tokens of its own, which are this install's; it
+    // stamps them itself (stampAfterSignIn).
+    if (signInEpoch !== epoch) return 'unknown';
+    const step = installStep(storedId, keychainId, accessToken !== null || refreshToken !== null);
+    if (step === 'clear') {
+      if (refreshToken !== null) {
+        const entry: PendingLogout = { refresh_token: refreshToken, access_token: null, push_token: null };
+        mayHavePendingLogouts = true;
+        logoutsKept += 1;
+        // Once only: a login the keychain would not let go is found again on each restore, and a
+        // second copy would push a log out with a push token to DELETE off the kept list.
+        await changePendingLogouts((list) =>
+          list.some((kept) => kept.refresh_token === refreshToken) ? null : [...list, entry]
+        );
+        if (signInEpoch !== epoch) return 'unknown';
+      }
+      // The deletes count as a refresh's writes, so a sign in begun from here on waits for them
+      // and its tokens land after them.
+      let landed = () => {};
+      const landing = new Promise<void>((resolve) => {
+        landed = resolve;
+      });
+      refreshWrites.add(landing);
+      try {
+        await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+        await SecureStore.deleteItemAsync(INSTALL_ID_KEY);
+      } catch {
+        // Still there: not used this run, and the next restore tries again.
+        return 'stale';
+      } finally {
+        refreshWrites.delete(landing);
+        landed();
+      }
+    }
+    if (step !== 'keep') {
+      try {
+        await stampInstall(storedId);
+      } catch {
+        // Not written: the login stays as decided, and the next restore, sign in or launch stamps.
+        return 'ok';
+      }
+    }
+    installSettled = true;
+    return 'ok';
+  }).catch((): InstallCheck => 'unknown');
+}
+
+/**
+ * A sign in wrote its tokens, so they are this install's: when the check has not settled that
+ * (a read failed at launch, or an earlier install's login would not go), the id goes beside them
+ * now. Never throws.
+ */
+function stampAfterSignIn(): void {
+  if (installSettled) return;
+  void queueInstall(async () => {
+    if (installSettled) return;
+    await stampInstall(await AsyncStorage.getItem(INSTALL_ID_KEY));
+    installSettled = true;
+  }).catch(() => undefined);
+}
+
 interface SessionHandlers {
   refreshSession: (epoch: number) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -469,6 +617,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionEpoch = epoch;
         unsaved = null;
         setAccessToken(result.access_token);
+        stampAfterSignIn();
         // The push token goes to the server again now, with the new access token, even for the
         // same person: a password change or reset makes the server forget every token of the
         // account, this phone's too.
@@ -809,6 +958,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const epoch = signInEpoch;
     const signedInSince = () => signInEpoch !== epoch;
     try {
+      // A login an earlier install of the app left in the keychain goes before it is read here.
+      // One the keychain would not let go is not used: this run starts signed out.
+      const install = await checkInstall();
+      if (signedInSince()) return;
+      if (install === 'stale') {
+        if (mountedRef.current) setStatus('unauthenticated');
+        return;
+      }
       let storedRefreshToken: string | null;
       try {
         storedRefreshToken = await sessionRefreshToken();
@@ -862,8 +1019,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     mountedRef.current = true;
     restore();
-    // A log out from before that could not reach the server goes out now if it can.
-    void drainPendingLogouts();
+    // A log out from before that could not reach the server goes out now if it can, after the
+    // install check (checkInstall), which adds the session of a login an earlier install left.
+    void checkInstall().then(() => drainPendingLogouts());
 
     // System sheets (permission prompts, the photo picker) only move the app to inactive,
     // so a retry waits for a real return from the background. A start in the background (iOS can
