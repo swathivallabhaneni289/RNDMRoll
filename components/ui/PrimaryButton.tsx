@@ -31,7 +31,9 @@ type PrimaryButtonProps = {
  * behind it rather than merging into it. `variant="outline"` is the first
  * screen's Log in button beside the black Sign up (UI-SPEC revision 15,
  * 2026-10-09 follow-up): Dominant fill, a 1px Ink border and no shadow, with
- * the same `md` radius cap and press feedback. All variants stay strictly
+ * the same `md` radius cap and press feedback. It is also Skip for now on the
+ * photo page and on Find your friends (developer, 2026-11-25, in place of
+ * grey text). All variants stay strictly
  * inside the existing Ink/Dominant pair.
  *
  * A grey button with `onBlockedPress` keeps its grey look and gets no press

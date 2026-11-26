@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +37,10 @@ function messageFor(err: unknown): string {
  * Find your friends (developer, 2026-10-19): with the box empty the page shows 'Invite friends'
  * (the phone's share sheet with your username) and 'Suggested for you' (people who follow you, then
  * people the people you follow follow). `welcome` is the same page once after sign-up: a title
- * 'Find your friends' in place of Back, no keyboard at first, and 'Done' to go on to the Spin page.
+ * 'Find your friends' in place of Back, no keyboard at first, and 'Skip for now' to go on to the
+ * Spin page (developer, 2026-11-25: "done doesn't make sense"): an outlined button, as on the photo
+ * page before it, under a line saying where to find friends later. Once the person follows someone
+ * or sends the invite link here, it is the black 'Continue' instead.
  */
 export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const router = useRouter();
@@ -50,6 +53,9 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState('');
   const [menu, setMenu] = useState<Person | null>(null);
+  // Find your friends: the person followed someone or sent the invite link on this page, so the
+  // button at the bottom says Continue, not Skip for now.
+  const [acted, setActed] = useState(false);
   const seqRef = useRef(0);
   const busyRef = useRef(false);
   // A new number reads the page again, the suggestions and the search in the box: on a return from
@@ -116,7 +122,7 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
     else router.replace('/(app)/board');
   }
 
-  function done() {
+  function goToSpin() {
     router.replace('/(app)/today');
   }
 
@@ -127,7 +133,11 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
       username !== ''
         ? `Join me on RNDMRoll, one spin a day. Follow me here: ${inviteLink(username)}`
         : 'Join me on RNDMRoll, one spin a day.';
-    void Share.share({ message }).catch(() => undefined);
+    void Share.share({ message })
+      .then((result) => {
+        if (result.action === Share.sharedAction) setActed(true);
+      })
+      .catch(() => undefined);
   }
 
   function patch(personId: string, next: Partial<SearchHit>) {
@@ -151,7 +161,10 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   }
 
   function doFollow(person: Person) {
-    void act(async () => patch(person.id, { relation: await follow(person.id) }));
+    void act(async () => {
+      patch(person.id, { relation: await follow(person.id) });
+      setActed(true);
+    });
   }
 
   function doUnfollow(person: Person) {
@@ -215,14 +228,14 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
   const trimmed = query.trim().replace(/^@/, '');
 
   return (
-    // Find your friends has no bottom bar, so it adds the bottom inset itself and Done clears the home
-    // indicator. On Board search the bar shows and adds that inset.
+    // Find your friends has no bottom bar, so it adds the bottom inset itself and its button clears the
+    // home indicator. On Board search the bar shows and adds that inset.
     <Screen edges={welcome ? undefined : ['top', 'left', 'right']} scroll={false}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         // The keyboard's top is measured from the top of the phone, but this view's place is measured
         // from just under the top safe area. Passing that inset lines the two up. Without it, the view
-        // pads too little and the keyboard covers the end of the list and the Done button.
+        // pads too little and the keyboard covers the end of the list and the button at the bottom.
         keyboardVerticalOffset={insets.top}
         style={{ flex: 1 }}
       >
@@ -359,7 +372,16 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
         </ScrollView>
         {welcome ? (
           <View style={{ paddingVertical: space.md }}>
-            <PrimaryButton label="Done" onPress={done} />
+            <Text maxFontSizeMultiplier={1.3} style={{ ...type.body, color: color.muted, textAlign: 'center' }}>
+              Find friends any time with the search on your Board.
+            </Text>
+            <View style={{ marginTop: space.md }}>
+              {acted ? (
+                <PrimaryButton label="Continue" arrow onPress={goToSpin} />
+              ) : (
+                <PrimaryButton variant="outline" label="Skip for now" onPress={goToSpin} />
+              )}
+            </View>
           </View>
         ) : null}
       </KeyboardAvoidingView>

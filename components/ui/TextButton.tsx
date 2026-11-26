@@ -12,7 +12,7 @@ type TextButtonProps = {
 const HIT_SLOP = minTouchTarget / 2;
 
 /**
- * The "Skip for now" / "Resend email" treatment: plain text, no fill,
+ * The plain text treatment ("Go to Spin", "Try again", "Log out"): no fill,
  * no border, no shadow. Reaches the minimum tap-target size via
  * `hitSlop` rather than a visible container.
  */

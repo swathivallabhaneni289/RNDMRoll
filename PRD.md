@@ -169,7 +169,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 1. **Welcome.** "one spin. one real moment." with the spinning wheel logo and Get started.
 2. **Sign up, page 1, "Create your account."** Email, password, birthday, name and username, with a line above Continue that links the Terms of Use and the Privacy Policy. Continue emails a 6-digit code, typed on a "Check your email" page; once it is right, the account is made and the person is signed in.
 3. **Page 2, "Make it yours."** An optional photo and bio, then Continue or Skip for now. Shown once.
-4. **Find your friends.** Invite friends (a link through the share sheet), Suggested for you and search. Done goes to the Spin page.
+4. **Find your friends.** Invite friends (a link through the share sheet), Suggested for you and search. Skip for now goes to the Spin page; once the person follows someone or sends the link, it is Continue.
 5. **The first spin.** A new person can spin at once, at any hour; before 8 PM the page says "Your first spin is ready." They tap the centre of the wheel; it turns for about 4 seconds and lands; the word rises.
 6. **Log it.** Photos, a title, stars, an optional emoji and an optional note, then Save. The page shows "Posted." with "You're in. The Board is open." and a "See the Board" button, and stays that way until the next spin at 8 PM.
 7. **The Board.** With no follows yet, it shows "See your friends' spins" and Find people.
@@ -238,7 +238,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **ACC-02 feedback.** Email, password, birthday and name show a green "Looks good." when they're right, and a free username shows a green "Available". Continue stays grey until all of it is right, and a tap on it then shows what is wrong (section 11, Forms). A birthday never picked says "Pick your birthday.", and the date scroller opens when it is the first problem. Limits: 10 sign-ups a minute per IP address, and 3 a minute per address and email.
 - **ACC-03 birthday.** Picked on the iPhone's date scroller; a real date from 1900 on. Under 13, the field says "You must be at least 13 to use RNDMRoll." and Continue stays off. If the server still refuses, the app says "RNDMRoll is for ages 13 and up." Nothing is stored. The birthday is never shown to anyone and can't be changed in the app.
 - **ACC-04.** The bio is at most 160 characters. Skip for now discards anything typed.
-- **ACC-05.** The page offers Invite friends, Suggested for you and search, and Done goes to the Spin page.
+- **ACC-05.** The page offers Invite friends, Suggested for you and search. At the bottom, under the line "Find friends any time with the search on your Board.", an outlined Skip for now goes to the Spin page. Once the person follows someone or sends the link there, it is a black Continue instead.
 - **ACC-06.**
   - A username can be typed as the app shows it, with one leading @ ("@name").
   - A wrong password and an unknown account get the same answer: "That email, username or password isn't right."
@@ -1011,6 +1011,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 24 | A 6-digit email code at sign-up, typed on a "Check your email" page after the first page; the account is made only once the code is right | "i want mine to work like any other website", then "lets add it" (Instagram emails a code during sign-up) | One more step, once; until real email is on, the code prints to the server log |
 | Nov 24 | A like on friends' posts: a heart beside the comment mark. Only the poster sees how many and who, with a line in the bell and no push | "if they dont comment atleast people can just like it and move on" | A number under your own post, the one exception to the no-counts rule; likes have no switch in Settings |
 | Nov 25 | Likes send a phone notification too, with a Likes switch in Settings | "it should send notifications" | One more kind of push, once per person and post a day; the Likes switch turns it off |
+| Nov 25 | Find your friends ends with Skip for now, as the photo page does, in place of Done; it turns into Continue once the person follows someone or sends the link. Both pages' Skip for now is an outlined button, like Log in on the first screen, not grey text, and Find your friends has a line above it saying where to find friends later | "instead of doing done, you should add skip for now again for this one also, because done doesn't make sense", then "instead of keeping it grey can we do something more better in detail" (picked from three looks) | None recorded |
 
 ## 18. Out of scope and future ideas
 
