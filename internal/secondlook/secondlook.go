@@ -38,7 +38,8 @@ var (
 	ErrNotFound = errors.New("secondlook: not found")
 	// ErrAsked is a removal with a request already: one each.
 	ErrAsked = errors.New("secondlook: asked already")
-	// ErrTooLate is a removal past admin.RemovalGrace, purged or not yet.
+	// ErrTooLate is a removal past admin.RemovalGrace, purged or not yet,
+	// and a removed comment whose post or the comment it answers is.
 	ErrTooLate = errors.New("secondlook: too late")
 	// ErrBack is a removal a Bring it back answered already.
 	ErrBack = errors.New("secondlook: brought back already")

@@ -105,13 +105,20 @@ func (r *SecondLookRepo) Ask(ctx context.Context, owner, removal uuid.UUID, body
 	var askedKeys []string
 	var answered, past, removed, inside bool
 	var entry *uuid.UUID
+	// A comment goes by its line (commentInsideRemovalGrace): past its
+	// post's or its parent's 30 days it can't come back, the Removed tab no
+	// longer lists it, and the purge takes it with them.
+	within := insideRemovalGrace("x.removed_at")
+	if kind == admin.KindComment {
+		within = commentInsideRemovalGrace("x")
+	}
 	err = tx.QueryRow(ctx, `
 		select sl.id is not null, coalesce(sl.body, ''), coalesce(sl.photo_keys, '{}'),
 		  exists (select 1 from moderation_events later where later.owner_id = $2 and later.item_id = $3
 		          and later.action in ('`+admin.LogRemoved+`', '`+admin.LogRestored+`') and later.created_at > $4),
 		  `+pastRemovalGrace("$4::timestamptz")+`,
 		  coalesce((select x.removed_at is not null from `+m.table+` x where x.id = $3 and x.user_id = $2), false),
-		  coalesce((select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+` from `+m.table+` x
+		  coalesce((select x.removed_at is not null and `+within+` from `+m.table+` x
 		            where x.id = $3 and x.user_id = $2), false),
 		  (select x.`+m.entry+` from `+m.table+` x where x.id = $3 and x.user_id = $2)
 		from (select 1) one

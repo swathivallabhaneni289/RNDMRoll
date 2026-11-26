@@ -299,10 +299,10 @@ func (r *AdminRepo) Posts(ctx context.Context, person uuid.UUID) ([]admin.Post, 
 // The newest removal is the one a second look can be open about (an older
 // one was answered by the Bring it back after it), so each item carries the
 // request about it while nobody has answered it, and those come first
-// (developer, 2026-11-19). A comment's days left run from the earliest
-// removal of it, its post and the comment it answers (least skips the
-// nulls): the purge of a post takes its comments, and of a comment its
-// replies.
+// (developer, 2026-11-19). A comment's days left run from its line
+// (commentGoesFrom), and once that is past it is left out: its post or the
+// comment it answers can no longer come back, so neither can it, and the
+// next purge takes it with them.
 func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	rows, err := r.pool.Query(ctx, `
 		select `+adminPersonColumns+`, x.kind, x.id, x.title, x.local_date, x.note, x.photo_keys, x.body, x.photo_key,
@@ -317,9 +317,8 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 			from entries e where `+insideRemovalGrace("e.removed_at")+`
 			union all
 			select 'comment', c.id, c.user_id, '', '', '', array[]::text[], c.body, coalesce(c.photo_key, ''), c.removed_at,
-			       least(c.removed_at, (select mge.removed_at from entries mge where mge.id = c.entry_id),
-			             (select mgp.removed_at from post_comments mgp where mgp.id = c.parent_id))
-			from post_comments c where `+insideRemovalGrace("c.removed_at")+`
+			       `+commentGoesFrom("c")+`
+			from post_comments c where `+commentInsideRemovalGrace("c")+`
 		) x
 		join users u on u.id = x.user_id
 		left join lateral (
@@ -356,13 +355,34 @@ func (r *AdminRepo) Removed(ctx context.Context) ([]admin.RemovedItem, error) {
 	return out, rows.Err()
 }
 
-// RemovedCount implements admin.Repository.
+// RemovedCount implements admin.Repository, by Removed's rule, so the tab's
+// number on the other pages is what the tab lists.
 func (r *AdminRepo) RemovedCount(ctx context.Context) (int, error) {
 	var n int
 	err := r.pool.QueryRow(ctx, `select
 		(select count(*) from entries where `+insideRemovalGrace("removed_at")+`) +
-		(select count(*) from post_comments where `+insideRemovalGrace("removed_at")+`)`).Scan(&n)
+		(select count(*) from post_comments c where `+commentInsideRemovalGrace("c")+`)`).Scan(&n)
 	return n, err
+}
+
+// commentGoesFrom is the line a removed comment under alias x goes by: the
+// earliest removal of it, its post and the comment it answers (least skips
+// the nulls), since the purge of a post takes its comments, and of a
+// comment its replies. Replies are one level deep (migration 0009), so
+// nothing sits above the comment a reply answers.
+func commentGoesFrom(x string) string {
+	return "least(" + x + ".removed_at, (select mge.removed_at from entries mge where mge.id = " + x + ".entry_id), " +
+		"(select mgp.removed_at from post_comments mgp where mgp.id = " + x + ".parent_id))"
+}
+
+// commentInsideRemovalGrace is true when the comment under alias x is
+// removed and inside admin.RemovalGrace by its own removal and by
+// commentGoesFrom: what the Removed tab lists. Past that line its post or
+// the comment it answers is past the grace and can't come back, so neither
+// can it, and the purge takes it with them (2026-11-26: the tab offered it
+// with 0 days left until the next hourly purge).
+func commentInsideRemovalGrace(x string) string {
+	return "(" + insideRemovalGrace(x+".removed_at") + " and " + insideRemovalGrace(commentGoesFrom(x)) + ")"
 }
 
 // moderatedItem is a post or a comment in SQL, for the actions on it: its
@@ -445,8 +465,8 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 }
 
 // DismissItem implements admin.Repository. A dismissal of reports about a
-// person only closes them: people are never hidden. For a post or a comment,
-// in one transaction:
+// person only closes them (dismissPerson): people are never hidden. For a
+// post or a comment, in one transaction:
 //  1. the posts or comments the open ones among the ids are on are held for
 //     update, in id order. A report of one holds it for key share through
 //     its foreign key (and keepReport for no key update), so none lands until
@@ -462,11 +482,10 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 // counts is whether it was hidden just before and is not just after. A
 // comment that stayed hidden under its post shows again, unlogged, when the
 // post's own reports are dismissed later: its writer is not told.
-func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (int, bool, error) {
+func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, at, loggedAt time.Time) (int, bool, error) {
 	if kind == admin.KindPerson {
-		tag, err := r.pool.Exec(ctx, `update user_reports set resolved_at = $3, resolution = 'dismissed'
-			where reporter_id = any($1::uuid[]) and reported_id = $2 and resolved_at is null`, ids, person, at)
-		return int(tag.RowsAffected()), false, err
+		closed, err := r.dismissPerson(ctx, ids, drawn, person, at)
+		return closed, false, err
 	}
 	m, ok := moderatedItems[kind]
 	if !ok {
@@ -555,6 +574,45 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 		return 0, false, err
 	}
 	return len(closed), len(shown) > 0, nil
+}
+
+// dismissPerson closes the open reports about person that the card drew:
+// one per reporter (ids), each only while it still has the time the card
+// drew it with (drawn, in the same order). A second report by the same
+// person replaces the first in place, with a new reason and time
+// (SocialRepo.Report), so the reporter alone would also close a report made
+// after the page was drawn, which nobody read (2026-11-26). The time is the
+// reporter's own clock, which the test tools can move back, so it is matched
+// exactly, never as "up to". The update waits for a report being made again
+// at the same moment and then reads its new time, so that one stays open.
+// The outer select reads the rows as they were before the update: a
+// reporter on the card with an open report at another time reported again
+// since, and when that left nothing to close it is admin.ErrNewerReport.
+func (r *AdminRepo) dismissPerson(ctx context.Context, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, at time.Time) (int, error) {
+	if len(drawn) != len(ids) {
+		return 0, fmt.Errorf("postgres: %d report times for %d reporters", len(drawn), len(ids))
+	}
+	var closed int
+	var newer bool
+	err := r.pool.QueryRow(ctx, `
+		with shown as (select * from unnest($1::uuid[], $4::timestamptz[]) as s(reporter_id, created_at)),
+		closed as (
+			update user_reports ur set resolved_at = $3, resolution = 'dismissed'
+			from shown
+			where ur.reporter_id = shown.reporter_id and ur.created_at = shown.created_at
+			  and ur.reported_id = $2 and ur.resolved_at is null
+			returning 1)
+		select (select count(*) from closed)::int,
+		       exists (select 1 from user_reports nr join shown on nr.reporter_id = shown.reporter_id
+		               where nr.reported_id = $2 and nr.resolved_at is null and nr.created_at <> shown.created_at)`,
+		ids, person, at, drawn).Scan(&closed, &newer)
+	if err != nil {
+		return 0, err
+	}
+	if closed == 0 && newer {
+		return 0, admin.ErrNewerReport
+	}
+	return closed, nil
 }
 
 // collect reads a query's one column, closing its rows.
@@ -717,11 +775,19 @@ func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
+	// A comment goes by its line (commentInsideRemovalGrace, the table's
+	// bare name being the row held): past its post's or its parent's 30 days
+	// it is gone, as Bring it back says, though a tab drawn before that
+	// still offers its Keep.
+	within := insideRemovalGrace("removed_at")
+	if kind == admin.KindComment {
+		within = commentInsideRemovalGrace(m.table)
+	}
 	var snapshot string
 	var entry uuid.UUID
 	var removed, inside bool
 	err = tx.QueryRow(ctx, `select `+m.snapshot+`, `+m.entry+`, removed_at is not null,
-		removed_at is not null and `+insideRemovalGrace("removed_at")+`
+		removed_at is not null and `+within+`
 		from `+m.table+` where id = $1 and user_id = $2 for update`, target, person).Scan(&snapshot, &entry, &removed, &inside)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return admin.ErrNotFound
@@ -758,20 +824,22 @@ func (r *AdminRepo) KeepRemoved(ctx context.Context, kind string, target, person
 }
 
 // whyNotBack says why Bring it back brought nothing back: a comment inside
-// the grace whose post (admin.ErrPostRemoved, named first) or the comment it
+// the grace (commentInsideRemovalGrace: past its post's or its parent's
+// line it is gone, as a Removed tab drawn before that line may still offer
+// it) whose post (admin.ErrPostRemoved, named first) or the comment it
 // answers (admin.ErrParentRemoved) is still removed; one that is back, with
 // a Bring it back as the newest decision about it (admin.ErrAlreadyDone: the
 // second click of a double click; a hide by reports since is no decision);
 // or else admin.ErrNotFound. Newest is by created_at, the database's clock,
 // as adminPersonColumns reads the log.
 func whyNotBack(ctx context.Context, tx pgx.Tx, m moderatedItem, kind string, target, person uuid.UUID) error {
-	post, parent := "false", "false"
+	within, post, parent := insideRemovalGrace("x.removed_at"), "false", "false"
 	if kind == admin.KindComment {
-		post, parent = postOfCommentRemoved("x"), parentRemoved("x")
+		within, post, parent = commentInsideRemovalGrace("x"), postOfCommentRemoved("x"), parentRemoved("x")
 	}
 	var inside, postGone, parentGone, back bool
 	err := tx.QueryRow(ctx, `
-		select x.removed_at is not null and `+insideRemovalGrace("x.removed_at")+`, `+post+`, `+parent+`,
+		select x.removed_at is not null and `+within+`, `+post+`, `+parent+`,
 		       x.removed_at is null and coalesce((select me.action = '`+admin.LogRestored+`' from moderation_events me
 		                                          where me.owner_id = x.user_id and me.item_id = x.id
 		                                            and me.action <> '`+admin.LogHidden+`'

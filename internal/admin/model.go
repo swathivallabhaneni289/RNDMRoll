@@ -41,6 +41,11 @@ var (
 // maybe asked about again. Nothing changes, and nothing is logged.
 var ErrNoRequest = errors.New("admin: no second look asked")
 
+// ErrNewerReport is a Dismiss of a person's card that closed nothing because
+// a reporter on it reported them again after the page was drawn: the newer
+// report, which the admin has not read, stays open.
+var ErrNewerReport = errors.New("admin: reported again since the page was drawn")
+
 // Report kinds.
 const (
 	KindPerson  = "person"
@@ -347,7 +352,9 @@ type Repository interface {
 	Posts(ctx context.Context, person uuid.UUID) ([]Post, error)
 	// Removed is every post and comment removed inside RemovalGrace: those
 	// with an open second look first, then the most recently removed first.
-	// RemovedCount is how many there are.
+	// A comment whose post or the comment it answers was removed and is past
+	// RemovalGrace is left out: it can't come back, and the purge takes it
+	// with them. RemovedCount is how many there are.
 	Removed(ctx context.Context) ([]RemovedItem, error)
 	RemovedCount(ctx context.Context) (int, error)
 	// DismissItem closes the open reports of kind with these ids that are
@@ -356,8 +363,12 @@ type Repository interface {
 	// item was hidden while under review before and is not after (and is
 	// not removed, and for a comment its post and the comment it answers are
 	// neither hidden under review nor removed), it logs that it shows
-	// again: shownAgain.
-	DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (closed int, shownAgain bool, err error)
+	// again: shownAgain. For a person the ids are the reporters, and drawn
+	// the times of their reports as the card showed them, in the same
+	// order: a report made again since is not the one the admin read and
+	// stays open, and ErrNewerReport is one that left nothing to close.
+	// drawn is unused for a post or a comment.
+	DismissItem(ctx context.Context, kind string, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, at, loggedAt time.Time) (closed int, shownAgain bool, err error)
 	// RemoveItem removes person's post or comment (kind KindPost or
 	// KindComment): it is gone for everyone, its owner too, from now on the
 	// database's clock. Every report still open on it is closed as Removed,
@@ -385,7 +396,9 @@ type Repository interface {
 	// for the owner's bell. ErrNoRequest when it is not, and when the post
 	// or comment is not removed (a Bring it back answered it); ErrAlreadyDone
 	// when a Keep closed it already (the second click of a double click);
-	// ErrNotFound when it is not there, or is past RemovalGrace.
+	// ErrNotFound when it is not there, or is past RemovalGrace (a comment
+	// also once its post or the comment it answers is, as Removed leaves it
+	// out).
 	KeepRemoved(ctx context.Context, kind string, target, person, look uuid.UUID, loggedAt time.Time) error
 	// ResolvePerson closes every open report about the person.
 	ResolvePerson(ctx context.Context, person uuid.UUID, resolution string, at time.Time) error

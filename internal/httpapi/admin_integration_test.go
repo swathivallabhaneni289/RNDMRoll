@@ -322,8 +322,12 @@ func TestAdminIntegration_OnlyReportedOrDisabledPeopleOpen(t *testing.T) {
 	if strings.Contains(page.Body.String(), "example.com") {
 		t.Fatalf("the person page shows an email address: %s", page.Body.String())
 	}
-	rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie,
-		url.Values{"csrf": {csrf}, "kind": {"person"}, "id": {a.id}, "person": {reported.id}}, "")
+	form := dismissForm(adminReportOf(t, page.Body.String(), "Reported by @ad_alice"),
+		url.Values{"csrf": {csrf}, "kind": {"person"}, "person": {reported.id}})
+	if !slices.Equal(form["id"], []string{a.id}) || len(form["at"]) != 1 {
+		t.Fatalf("the card's Dismiss: %v, want ad_alice's report and its time", form)
+	}
+	rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie, form, "")
 	if rec.Header().Get("Location") != "/admin/people/"+reported.id+"?n=dismissed" {
 		t.Fatalf("dismiss: %d %q", rec.Code, rec.Header().Get("Location"))
 	}

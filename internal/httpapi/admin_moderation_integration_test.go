@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,16 +69,14 @@ func (w *adminModWorld) page(path string) string {
 // cardForm is the Remove or Dismiss form ("remove" or "dismiss") of the one
 // card on owner's page that holds mark, as the page draws it: Remove with
 // the report id it carries and the reason its Reason list has selected,
-// Dismiss with every id on the card.
+// Dismiss with every id on the card (and on a person's card every time).
 func (w *adminModWorld) cardForm(action, kind string, owner feedPerson, mark string) url.Values {
 	w.t.Helper()
 	page := w.page("/admin/people/" + owner.id)
 	card := adminReportOf(w.t, page, mark)
 	form := url.Values{"csrf": {csrfOf(w.t, page)}, "kind": {kind}, "person": {owner.id}}
 	if action == "dismiss" {
-		for _, m := range dismissIDs.FindAllStringSubmatch(card[strings.Index(card, `action="/admin/reports/dismiss"`):], -1) {
-			form.Add("id", m[1])
-		}
+		dismissForm(card, form)
 	} else {
 		form.Set("id", adminReportID(w.t, card))
 		form.Set("reason", adminRemoveReason(w.t, card))
@@ -738,6 +737,111 @@ func TestAdminModerationIntegration_ACommentComesBackOnlyAfterWhatItIsUnder(t *t
 	}
 }
 
+// A removed comment goes off the Removed tab, and out of its number, at the
+// moment its removed post, or the removed comment it answers, passes its 30
+// days: that one can't come back, so neither can it, and the hourly purge
+// takes it with them. An hour short it is still listed with 1 day left. A
+// Bring it back from a tab drawn before the line says it is gone, never to
+// bring back its post first, and so does a Keep it removed of the second
+// look its writer asked, which stays unanswered. In the app the same line
+// holds: the bell offers a second look an hour short and not at the line,
+// where asking is too late.
+func TestAdminModerationIntegration_ACommentLeavesTheRemovedTabWithWhatItIsUnder(t *testing.T) {
+	w := newAdminModWorld(t)
+	ps := w.people("aw_bea", "aw_cal", "aw_dot", "aw_eli")
+	b, cw, qw, rw := ps[0], ps[1], ps[2], ps[3]
+	for _, p := range ps[1:] {
+		w.followAccepted(p, b)
+	}
+	w.followAccepted(rw, qw)
+	const day = "2026-10-08"
+	post := w.post(b, day)
+	other := w.post(qw, day)
+	w.post(cw, day)
+	w.post(rw, day)
+	comment := w.reply(cw, post, "Rude words", "")["id"].(string)
+	parent := w.reply(qw, other, "First words", "")["id"].(string)
+	reply := w.reply(rw, other, "Mean reply", parent)["id"].(string)
+	commentRemoval := w.removeNow("comment", comment, cw)
+	replyRemoval := w.removeNow("comment", reply, rw)
+	w.removeNow("comment", parent, qw)
+	w.askLook(cw, commentRemoval, "It was a joke.")
+	tabs := func(want int) {
+		t.Helper()
+		if list := w.page("/admin"); !strings.Contains(list, "Removed<span class=\"n\">"+strconv.Itoa(want)+"</span>") {
+			t.Fatalf("the Reports tab's Removed number, want %d: %s", want, list)
+		}
+	}
+	// bellLook is the second look the bell shows p on removal: "" while one
+	// can be asked.
+	bellLook := func(p feedPerson, removal string) string {
+		t.Helper()
+		for _, it := range w.ok(p, http.MethodGet, "/v1/notifications", nil)["items"].([]any) {
+			if item := it.(map[string]any); item["id"] == "comment_removed:"+removal {
+				look, _ := item["second_look"].(string)
+				return look
+			}
+		}
+		t.Fatalf("no removal %s in the bell of %s", removal, p.name)
+		return ""
+	}
+
+	// The comment under the post: an hour short of the post's 30 days it is
+	// listed, with the post's day left; at the 30 days it is not.
+	w.removeNow("post", post, b)
+	w.exec(`update entries set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, post)
+	if card := adminReportOf(t, w.page("/admin/removed"), "Rude words"); !strings.Contains(card, `</span></p><p class="by">1 day left · Ref: `) {
+		t.Fatalf("an hour short of the post's 30 days, want the comment with 1 day left: %s", card)
+	}
+	tabs(4)
+	w.exec(`update entries set removed_at = now() - interval '30 days' where id = $1`, post)
+	if tab := w.page("/admin/removed"); strings.Contains(tab, "Rude words") || strings.Contains(tab, "<h3>Dune</h3>") ||
+		strings.Contains(tab, `<p class="by">0 days left`) || !strings.Contains(tab, "Removed<span class=\"n\">2</span>") {
+		t.Fatalf("at the post's 30 days the tab still offers the post or its comment: %s", tab)
+	}
+	tabs(2)
+	if got := w.restoreAnyway("comment", comment, cw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on the comment at its post's 30 days: %q, want gone", got)
+	}
+	if got := w.keepAnyway("comment", comment, w.lookOf(commentRemoval), cw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Keep it removed on the comment at its post's 30 days: %q, want gone", got)
+	}
+	if got := w.lookState(commentRemoval); got != "open" ||
+		w.one(`select count(*)::text from moderation_events where owner_id = $1 and action = 'kept'`, cw.id) != "0" {
+		t.Fatalf("a refused Keep it removed: the second look %s, or it logged kept", got)
+	}
+
+	// The reply, on another post, under the comment it answers: the same.
+	w.exec(`update post_comments set removed_at = now() - interval '30 days' + interval '1 hour' where id = $1`, parent)
+	if card := adminReportOf(t, w.page("/admin/removed"), "Mean reply"); !strings.Contains(card, `</span></p><p class="by">1 day left · Ref: `) {
+		t.Fatalf("an hour short of its parent's 30 days, want the reply with 1 day left: %s", card)
+	}
+	if got := bellLook(rw, replyRemoval); got != "" {
+		t.Fatalf("an hour short of its parent's 30 days, the bell's second look on the reply: %q, want one to ask", got)
+	}
+	w.exec(`update post_comments set removed_at = now() - interval '30 days' where id = $1`, parent)
+	if got := bellLook(rw, replyRemoval); got != "closed" {
+		t.Fatalf("at its parent's 30 days, the bell's second look on the reply: %q, want closed", got)
+	}
+	if got := w.call(rw, http.MethodPost, "/v1/removals/"+replyRemoval+"/second-look", map[string]any{"text": "Why", "photo_keys": []string{}},
+		http.StatusConflict); got["error"] != "second_look_too_late" {
+		t.Fatalf("a second look on the reply at its parent's 30 days: %v, want too late", got)
+	}
+	if tab := w.page("/admin/removed"); !strings.Contains(tab, "Nothing removed in the last 30 days.") ||
+		!strings.Contains(tab, "Removed<span class=\"n\">0</span>") {
+		t.Fatalf("at its parent's 30 days the tab still offers the reply: %s", tab)
+	}
+	tabs(0)
+	if got := w.restoreAnyway("comment", reply, rw); got != "/admin/removed?n=gone" {
+		t.Fatalf("Bring it back on the reply at its parent's 30 days: %q, want gone", got)
+	}
+	for _, id := range []string{comment, reply} {
+		if w.one(`select (removed_at is not null)::text from post_comments where id = $1`, id) != "true" {
+			t.Fatalf("a refused Bring it back brought %s back", id)
+		}
+	}
+}
+
 // Dismiss of a hidden post shows it again for everyone but its reporters,
 // logs it once on the owner's clock and says so; the Reports tab put the
 // hidden card first, with its tag, even ahead of violence. One that was
@@ -980,7 +1084,7 @@ func TestAdminModerationIntegration_ADismissThatADisableBeatLogsNothing(t *testi
 	}
 	dismissed := make(chan outcome, 1)
 	go func() {
-		closed, shown, err := postgres.NewAdminRepo(w.pool).DismissItem(ctx, "post", ids, uuid.MustParse(b.id), time.Now().UTC(), w.clk.NowFor(b.id))
+		closed, shown, err := postgres.NewAdminRepo(w.pool).DismissItem(ctx, "post", ids, nil, uuid.MustParse(b.id), time.Now().UTC(), w.clk.NowFor(b.id))
 		dismissed <- outcome{closed, shown, err}
 	}()
 	waitForARowLock(t, w.pool)

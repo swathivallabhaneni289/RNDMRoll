@@ -56,6 +56,12 @@ func TestGroupReports_OneCardPerPostCommentOrAccount(t *testing.T) {
 		open[2].ReportedBy() != "@jon_p and @tess_r" {
 		t.Fatalf("order: %s, %s (%d reports)", open[1].Kind, open[2].Kind, len(open[2].IDs))
 	}
+	// The account card's Dismiss sends each report's time with its id, in
+	// the same order.
+	if got := open[2].AtValues(); !slices.Equal(got, []string{"2026-11-16T14:00:00Z", "2026-11-16T08:00:00Z"}) ||
+		open[2].IDs[0] != reports[1].ID || open[2].IDs[1] != reports[3].ID {
+		t.Fatalf("the account card's times: %v for %v", got, open[2].IDs)
+	}
 	if !open[3].OldestAt.Equal(cardAt(5, 0)) || !open[4].OldestAt.Equal(cardAt(6, 0)) || len(open[3].IDs) != 1 {
 		t.Fatalf("gone posts: %v then %v", open[3].OldestAt, open[4].OldestAt)
 	}
@@ -342,6 +348,8 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 		t.Fatalf("a comment's dismissal: %+v, want it logged at the owner's %v", got, adminRigNow)
 	}
 	// From the person's page, the Removed tab, or a made-up place.
+	drawnAt := cardAt(14, 0).Add(123456 * time.Microsecond)
+	at := drawnAt.Format(time.RFC3339Nano)
 	for from, want := range map[string]string{
 		"":                      "/admin/people/" + person.String() + "?n=dismissed",
 		"https://evil.example/": "/admin/people/" + person.String() + "?n=dismissed",
@@ -349,10 +357,28 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 		"disabled":              "/admin/disabled?n=dismissed",
 		"removed":               "/admin/removed?n=dismissed",
 	} {
-		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "person": {person.String()}, "from": {from}}); to != want {
+		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "at": {at}, "person": {person.String()}, "from": {from}}); to != want {
 			t.Fatalf("from %q: %q, want %q", from, to, want)
 		}
 	}
+	// A person's card sends each report's time with its reporter, in the
+	// same order, and only those close; one that left nothing to close
+	// because a reporter reported them again says the page was out of date.
+	later := drawnAt.Add(time.Hour)
+	dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String(), b.String()}, "at": {at, later.Format(time.RFC3339Nano)},
+		"person": {person.String()}, "from": {"list"}})
+	if got := r.repo.dismissals[len(r.repo.dismissals)-1]; !slices.Equal(got.ids, []uuid.UUID{a, b}) ||
+		len(got.drawn) != 2 || !got.drawn[0].Equal(drawnAt) || !got.drawn[1].Equal(later) {
+		t.Fatalf("a person's dismissal: %+v, want both reporters with the times the card drew", got)
+	}
+	r.repo.dismissErr = admin.ErrNewerReport
+	if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "at": {at}, "person": {person.String()}, "from": {"list"}}); to != "/admin?n=stale" {
+		t.Fatalf("reported again since the page was drawn: %q, want stale", to)
+	}
+	if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String()}, "at": {at}, "person": {person.String()}}); to != "/admin/people/"+person.String()+"?n=stale" {
+		t.Fatalf("reported again, from their page: %q, want stale", to)
+	}
+	r.repo.dismissErr = nil
 	// It showed a hidden post again.
 	r.repo.shownAgain = true
 	if _, to := dismiss(url.Values{"kind": {admin.KindPost}, "id": {a.String()}, "person": {person.String()}, "from": {"list"}}); to != "/admin?n=shownagain" {
@@ -385,9 +411,25 @@ func TestAdminDismiss_ClosesEveryReportOnTheCard(t *testing.T) {
 		"a bad kind":   {"kind": {"entry"}, "id": {a.String()}, "person": {person.String()}},
 		"no person":    {"kind": {admin.KindPost}, "id": {a.String()}},
 		"too many ids": {"kind": {admin.KindPost}, "id": tooMany, "person": {person.String()}},
+		// A person's card with a time it never drew, or not one per id.
+		"a person's with a bad time":  {"kind": {admin.KindPerson}, "id": {a.String()}, "at": {"yesterday"}, "person": {person.String()}},
+		"a person's with one time":    {"kind": {admin.KindPerson}, "id": {a.String(), b.String()}, "at": {at}, "person": {person.String()}},
+		"a person's with three times": {"kind": {admin.KindPerson}, "id": {a.String()}, "at": {at, at, at}, "person": {person.String()}},
 	} {
 		if _, to := dismiss(form); to != "/admin" {
 			t.Errorf("%s: %q, want the list", name, to)
+		}
+	}
+	// A person's card drawn before the cards sent their times (a page left
+	// open across that update) closes nothing either, and says the page was
+	// out of date, back where it came from.
+	for from, want := range map[string]string{
+		"":     "/admin/people/" + person.String() + "?n=stale",
+		"list": "/admin?n=stale",
+	} {
+		if _, to := dismiss(url.Values{"kind": {admin.KindPerson}, "id": {a.String(), b.String()}, "person": {person.String()},
+			"from": {from}}); to != want {
+			t.Errorf("a person's with no times, from %q: %q, want %q", from, to, want)
 		}
 	}
 	if r.repo.resolved != before {

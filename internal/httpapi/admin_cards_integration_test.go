@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -51,6 +52,23 @@ func (h *heardReports) hiding() []string {
 }
 
 var dismissIDs = regexp.MustCompile(`<input type="hidden" name="id" value="([0-9a-f-]{36})">`)
+
+// dismissAts are the report times a person card's Dismiss sends, in its ids'
+// order.
+var dismissAts = regexp.MustCompile(`<input type="hidden" name="at" value="([^"]+)">`)
+
+// dismissForm is the Dismiss form of card as the page draws it: every id
+// and, on a person's card, every time.
+func dismissForm(card string, form url.Values) url.Values {
+	tail := card[strings.Index(card, `action="/admin/reports/dismiss"`):]
+	for _, m := range dismissIDs.FindAllStringSubmatch(tail, -1) {
+		form.Add("id", m[1])
+	}
+	for _, m := range dismissAts.FindAllStringSubmatch(tail, -1) {
+		form.Add("at", m[1])
+	}
+	return form
+}
 
 // The Reports tab on the database: one card per reported post and per
 // reported account, across people, the most urgent first; a report kept is
@@ -106,13 +124,9 @@ func TestAdminIntegration_TheReportsTabHasOneCardPerReportedThing(t *testing.T) 
 	}
 
 	// Dismiss on the account card closes both of its reports.
-	ids := dismissIDs.FindAllStringSubmatch(account[strings.Index(account, `action="/admin/reports/dismiss"`):], -1)
-	form := url.Values{"csrf": {csrfOf(t, list)}, "kind": {"person"}, "person": {b.id}, "from": {"list"}}
-	for _, m := range ids {
-		form.Add("id", m[1])
-	}
-	if len(ids) != 2 {
-		t.Fatalf("the account card's Dismiss sends %d ids, want 2: %s", len(ids), account)
+	form := dismissForm(account, url.Values{"csrf": {csrfOf(t, list)}, "kind": {"person"}, "person": {b.id}, "from": {"list"}})
+	if len(form["id"]) != 2 || len(form["at"]) != 2 {
+		t.Fatalf("the account card's Dismiss sends %d ids and %d times, want 2 of each: %s", len(form["id"]), len(form["at"]), account)
 	}
 	rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie, form, "")
 	if rec.Header().Get("Location") != "/admin?n=dismissed" {
@@ -145,4 +159,88 @@ func TestAdminIntegration_TheReportsTabHasOneCardPerReportedThing(t *testing.T) 
 	if list := adminDo(t, w, http.MethodGet, "/admin", cookie, nil, "").Body.String(); strings.Contains(list, `<article class="card`) {
 		t.Fatalf("disabling closed every report about them, yet the list has cards: %s", list)
 	}
+}
+
+// A Dismiss closes only the reports its card was drawn with. A person's
+// page does not redraw itself, and a second report by the same person
+// replaces their first in place, so the card sends each report's time with
+// its reporter. Drawn with two reports, sent after one reporter reported
+// again (an hour later, a new reason), it closes the other one only, the
+// newer report stays open and the page shows it. Drawn again, sent after
+// that reporter reported once more on a clock moved back (the test tools
+// can do that), it closes nothing and says the page was out of date. A
+// fresh card then closes it, and the same form again finds it closed.
+func TestAdminIntegration_ADismissFromAnOldPageClosesOnlyWhatItShowed(t *testing.T) {
+	pool := requireIntegrationPool(t)
+	w, _ := newAdminWorldOn(t, pool)
+	a := w.person("ad_alice", "Alice Ames")
+	c := w.person("ad_cara", "Cara Cole")
+	b := w.person("ad_bob", "Bob Brown")
+	w.followAccepted(a, b)
+	w.followAccepted(c, b)
+	// A real clock reads to the nanosecond and the database keeps the
+	// microsecond, so the times the card sends must match on that.
+	w.clk.Advance(123456789 * time.Nanosecond)
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "harassment"})
+	w.ok(c, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "harassment"})
+	cookie := adminLogin(t, w, "ad_boss@example.com", adminTestPassword)
+	personPage := "/admin/people/" + b.id
+	draw := func(mark string) url.Values {
+		t.Helper()
+		page := adminDo(t, w, http.MethodGet, personPage, cookie, nil, "").Body.String()
+		return dismissForm(adminReportOf(t, page, mark), url.Values{"csrf": {csrfOf(t, page)}, "kind": {"person"}, "person": {b.id}})
+	}
+	send := func(form url.Values, notice string) string {
+		t.Helper()
+		rec := adminDo(t, w, http.MethodPost, "/admin/reports/dismiss", cookie, form, "")
+		if rec.Header().Get("Location") != personPage+"?n="+notice {
+			t.Fatalf("dismiss: %d %q, want %s", rec.Code, rec.Header().Get("Location"), notice)
+		}
+		return adminDo(t, w, http.MethodGet, rec.Header().Get("Location"), cookie, nil, "").Body.String()
+	}
+	report := func(p feedPerson) (reason string, open bool) {
+		t.Helper()
+		if err := pool.QueryRow(context.Background(), `select reason, resolved_at is null from user_reports
+			where reporter_id = $1 and reported_id = $2`, p.id, b.id).Scan(&reason, &open); err != nil {
+			t.Fatal(err)
+		}
+		return reason, open
+	}
+
+	old := draw("Bullying or harassment")
+	if len(old["id"]) != 2 || len(old["at"]) != 2 {
+		t.Fatalf("the card's Dismiss: %v, want both reports and their times", old)
+	}
+	w.clk.Advance(time.Hour)
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "impersonation"})
+	page := send(old, "dismissed")
+	if reason, open := report(a); reason != "impersonation" || !open {
+		t.Fatalf("the newer report: %s, open %v; want it open", reason, open)
+	}
+	if _, open := report(c); open {
+		t.Fatal("the report the card showed is still open")
+	}
+	if card := adminReportOf(t, page, "Pretending to be someone else"); !strings.Contains(card, "Reported by @ad_alice</p>") ||
+		!strings.Contains(card, `action="/admin/reports/dismiss"`) {
+		t.Fatalf("the page after, want the newer report open: %s", card)
+	}
+
+	again := draw("Pretending to be someone else")
+	w.clk.Advance(-3 * time.Hour)
+	w.ok(a, http.MethodPost, "/v1/people/"+b.id+"/report", map[string]any{"reason": "spam"})
+	page = send(again, "stale")
+	if reason, open := report(a); reason != "spam" || !open {
+		t.Fatalf("the report made on a clock moved back: %s, open %v; want it open", reason, open)
+	}
+	if !strings.Contains(page, `<div class="note">That page was out of date. Try again.</div>`) ||
+		!strings.Contains(adminReportOf(t, page, "Spam"), "Reported by @ad_alice</p>") {
+		t.Fatalf("the page after, want the notice and the newest report: %s", page)
+	}
+
+	fresh := draw("Spam")
+	send(fresh, "dismissed")
+	if _, open := report(a); open {
+		t.Fatal("a Dismiss drawn with the newest report left it open")
+	}
+	send(fresh, "nothingopen")
 }

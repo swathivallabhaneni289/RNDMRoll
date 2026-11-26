@@ -78,6 +78,7 @@ type fakeAdminRepo struct {
 type adminDismiss struct {
 	kind     string
 	ids      []uuid.UUID
+	drawn    []time.Time
 	person   uuid.UUID
 	loggedAt time.Time
 }
@@ -145,9 +146,9 @@ func (f *fakeAdminRepo) RemovedCount(context.Context) (int, error) {
 	return len(f.removed), nil
 }
 
-func (f *fakeAdminRepo) DismissItem(_ context.Context, kind string, ids []uuid.UUID, person uuid.UUID, _, loggedAt time.Time) (int, bool, error) {
+func (f *fakeAdminRepo) DismissItem(_ context.Context, kind string, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, _, loggedAt time.Time) (int, bool, error) {
 	f.resolved++
-	f.dismissals = append(f.dismissals, adminDismiss{kind: kind, ids: slices.Clone(ids), person: person, loggedAt: loggedAt})
+	f.dismissals = append(f.dismissals, adminDismiss{kind: kind, ids: slices.Clone(ids), drawn: slices.Clone(drawn), person: person, loggedAt: loggedAt})
 	if f.dismissErr != nil {
 		return 0, false, f.dismissErr
 	}
@@ -610,7 +611,8 @@ func TestAdminCSRF_AnOlderPagesTokenGoesBackToTheList(t *testing.T) {
 	at := time.Now()
 	first, second := r.session(at), r.session(at.Add(time.Second))
 	form := func(cookie string) url.Values {
-		return url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {uuid.NewString()}, "person": {uuid.NewString()}}
+		return url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {uuid.NewString()},
+			"at": {at.UTC().Format(time.RFC3339Nano)}, "person": {uuid.NewString()}}
 	}
 	noToken := form(second)
 	noToken.Del("csrf")
