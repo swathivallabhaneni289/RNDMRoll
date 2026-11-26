@@ -169,9 +169,10 @@ func (r *NotificationsRepo) Accepted(ctx context.Context, viewer uuid.UUID, sinc
 
 // Likes implements notifications.Repository by the rules of Comments:
 // nothing on a post an admin removed (postShownTo), and no like by anyone
-// with a block either way or whose account is gone (likeShownTo, the rule
-// of the Likes list). Archived and under-review posts keep theirs, as they
-// keep their comments. An undo deletes the row, so its item goes with it.
+// with a block either way, whose account is gone or who no longer follows
+// the owner (likeShownTo, the rule of the Likes list). Archived and
+// under-review posts keep theirs, as they keep their comments. An undo
+// deletes the row, so its item goes with it.
 // The item id is like:<entry>:<actor>, and its time the like's last change.
 func (r *NotificationsRepo) Likes(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]notifications.Raw, error) {
 	rows, err := r.pool.Query(ctx, `

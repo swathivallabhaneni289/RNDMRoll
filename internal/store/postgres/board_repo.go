@@ -303,13 +303,18 @@ func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) 
 
 // likeShownTo is a where fragment true when the post's owner o sees the like
 // under alias pr (a post_reactions row, whatever its name): it is not their
-// own, and there is no block either way between them and its maker, whose
-// account is not gone (blockedEither already reads goneAccount for both). It
-// is the one rule for which likes an owner sees and counts, read by
-// Received, DiaryReader.Social and NotificationsRepo.Likes, so the number
-// beside the heart and the Likes list always agree.
+// own, its maker still follows them (accepted), and there is no block either
+// way between them and its maker, whose account is not gone (blockedEither
+// already reads goneAccount for both). After an unfollow, or once the owner
+// removes them as a follower, its maker can no longer open the post to undo
+// the like, so the owner stops seeing it too. The row is kept, so a follow
+// accepted again brings it back. It is the one rule for which likes an owner
+// sees and counts, read by Received, DiaryReader.Social,
+// NotificationsRepo.Likes and PushRepo.LikeTarget, so the number beside the
+// heart, the Likes list, the bell and the push always agree.
 func likeShownTo(o, pr string) string {
-	return `(` + pr + `.user_id <> ` + o + ` and not ` + blockedEither(o, pr+".user_id") + `)`
+	return `(` + pr + `.user_id <> ` + o + ` and not ` + blockedEither(o, pr+".user_id") + `
+		and exists (select 1 from follows mlf where mlf.follower_id = ` + pr + `.user_id and mlf.followee_id = ` + o + ` and mlf.status = 'accepted'))`
 }
 
 // Received implements board.Repository.

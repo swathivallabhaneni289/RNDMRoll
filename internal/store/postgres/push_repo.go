@@ -286,10 +286,11 @@ func (r *PushRepo) CommentTargets(ctx context.Context, commentID uuid.UUID) ([]p
 // LikeTarget implements push.Repository with the bell's rule for likes
 // (NotificationsRepo.Likes) for this one like: the like row is there, the
 // post is not one an admin removed (postShownTo, read as the owner), and the
-// owner would see the like (likeShownTo): not their own, no block either way
-// with its maker, and neither account disabled, being deleted or an admin's.
-// Archived and under-review posts keep their likes, as in the bell. It is
-// read when the push runs, so a like undone before then is not ok.
+// owner would see the like (likeShownTo): not their own, by someone who still
+// follows them (accepted), no block either way with its maker, and neither
+// account disabled, being deleted or an admin's. Archived and under-review
+// posts keep their likes, as in the bell. It is read when the push runs, so
+// a like undone before then is not ok.
 func (r *PushRepo) LikeTarget(ctx context.Context, entryID, likerID uuid.UUID) (uuid.UUID, bool, error) {
 	var owner uuid.UUID
 	err := r.pool.QueryRow(ctx, `

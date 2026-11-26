@@ -58,8 +58,8 @@ type Repository interface {
 	// comment is not there.
 	Comments(ctx context.Context, viewer, entryID uuid.UUID) ([]CommentRow, error)
 	// Received are the likes on owner's entry (any stored name counts),
-	// newest change first, without people who have a block with the owner or
-	// whose account is gone.
+	// newest change first, without people who have a block with the owner,
+	// whose account is gone or who no longer follow the owner.
 	Received(ctx context.Context, owner, entryID uuid.UUID) ([]Received, error)
 	// SetReaction stores userID's like on the entry under the name reaction.
 	// inserted is true only when this call made the row: the same name sent
