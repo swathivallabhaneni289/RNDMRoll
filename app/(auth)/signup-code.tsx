@@ -18,6 +18,7 @@ import {
 import { sayIfRestored } from '@/lib/auth/restored';
 import { answerLine, codeLine, GENERIC, sentLine, SHORT_CODE } from '@/lib/auth/signupCode';
 import { opensExtras, shouldTryLogin, signupAnswerLost, type SignupTry } from '@/lib/auth/signupRetry';
+import { invites } from '@/lib/people/invite';
 import { useSession } from '@/lib/session/store';
 import { color, space } from '@/lib/theme/tokens';
 
@@ -97,11 +98,16 @@ function CodeStep({ signup }: { signup: PendingSignup }) {
         extras = opensExtras(lost, result);
       }
 
+      // An invite link kept from before: a new account opens it after Find your friends, which
+      // makes it ready. One that signs in like Log in lands on the Spin page, so it is ready now.
+      // Before signIn: the page can open as the session lands.
+      if (!extras) invites.arm();
       await signIn(result, { extras });
       clearPendingSignup();
       // Only a log in can bring an account back from deletion: said once, as on the Log in page.
       sayIfRestored(result);
     } catch (err) {
+      invites.disarm();
       if (err instanceof ApiError && err.field === 'code') setCodeError(codeLine(err.reason));
       else setFormError(failure(err));
     } finally {

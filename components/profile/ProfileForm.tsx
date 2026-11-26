@@ -27,6 +27,7 @@ import { announceProblem } from '@/lib/forms/announce';
 import { bringIntoView } from '@/lib/forms/bringIntoView';
 import { stillNeeded } from '@/lib/forms/rules';
 import { showAccessOff } from '@/lib/media/showAccessOff';
+import { invites } from '@/lib/people/invite';
 import {
   BIRTHDAY_MESSAGES,
   birthdayBoxToFix,
@@ -679,6 +680,10 @@ export function ProfileForm({
       // If the name or username changed since that sign-up, they land in the account with its
       // details, which they can edit on Profile.
       const result = await logInToLostSignup(thisTry, err);
+      // An invite link kept from before: a new account opens it after Find your friends, which
+      // makes it ready. One that signs in like Log in lands on the Spin page, so it is ready now.
+      // Before signIn: the page can open as the session lands (handleSubmit undoes it on a failure).
+      if (!opensExtras(lost, result)) invites.arm();
       await signIn(result, { extras: opensExtras(lost, result) });
       clearPendingSignup();
       // Only a log in can bring an account back from deletion: said once, as on the Log in page.
@@ -776,6 +781,8 @@ export function ProfileForm({
       else if (extras) await submitExtras();
       else await submitEdit();
     } catch (err) {
+      // A sign-up's log in to its lost account that did not sign in: its invite is not ready.
+      if (signup) invites.disarm();
       handleSubmitError(err);
     } finally {
       submittingRef.current = false;

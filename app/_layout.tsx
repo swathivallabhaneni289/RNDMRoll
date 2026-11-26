@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { OfflineScreen } from '@/components/session/OfflineScreen';
 import { clearResetTries } from '@/lib/auth/clearResetTries';
+import { invites } from '@/lib/people/invite';
 import { SessionProvider, useSession } from '@/lib/session/store';
 import { useAppFonts } from '@/lib/theme/fonts';
 import { useIntroSeen } from '@/lib/onboarding/intro-seen';
@@ -39,6 +40,15 @@ function RootNavigator() {
       SplashScreen.hideAsync();
     }
   }, [gateSettled]);
+
+  // An invite link kept while signed out (lib/people/invite.ts) is forgotten when a session is
+  // restored at launch (it came while signed in, and opens as it always has) and on Log out or any
+  // other way out of a session. A sign in from the signed-out pages keeps it for the Spin page.
+  const lastStatusRef = useRef(status);
+  useEffect(() => {
+    invites.sessionChanged(lastStatusRef.current, status);
+    lastStatusRef.current = status;
+  }, [status]);
 
   // The Stack (and the "index" route inside it) must always render, even
   // before gateSettled: expo-router's linking resolver matches the initial

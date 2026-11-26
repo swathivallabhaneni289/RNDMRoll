@@ -11,7 +11,8 @@
  * its words, its page, its refusals, and a send that ends after the person left the page. Also
  * likes (2026-11-24, BRD-06): the heart's words, how a like is read and sent, the heart under each
  * post, the Likes sheet, and the bell's like line, and where a tap on a like's phone push goes
- * (2026-11-25).
+ * (2026-11-25). Also an invite link opened while signed out (2026-11-26): kept for a day, opened
+ * once over the Spin page after Log in or after Find your friends, and forgotten on Log out.
  * Not part of the app bundle. Run with:  node --experimental-strip-types scripts/check-social.ts
  * It prints one line per failure and a summary; a clean run prints no line that starts with FAIL.
  * (The nocheck line is for the same reason as in check-wheel.ts: Node needs the .ts extension on
@@ -40,6 +41,7 @@ import {
   reportOutcome,
 } from '../lib/board/text.ts';
 import { placementStep } from '../lib/board/placement.ts';
+import { INVITE_KEEP_MS, INVITE_KEY, createInviteStore, endsInvite, inviteUsername } from '../lib/people/inviteLink.ts';
 import { afterReplyEnds, countAfterComment, placeComment, withEmoji, withReplyPrefix, withoutComment } from '../lib/board/comments.ts';
 import { COMMENT_EMOJIS } from '../lib/entry/reactions.ts';
 import { COMMENT_MAX } from '../lib/entry/rules.ts';
@@ -173,7 +175,9 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
 
 // ---- an invite link that leads to no one ---------------------------------------------------------
 {
-  const route = source('app/(app)/board/person.tsx');
+  // The Board's person route and the Spin page's share one body since invite links are kept from
+  // before signing in (2026-11-26); each names its own way back.
+  const route = source('components/people/PersonRoute.tsx');
   check('the person route never hands the profile an empty id', !/setId\(/.test(route) && !/id=\{[^}]*\?\? ''/.test(route));
   check(
     'the profile is opened only with the given id or the id the lookup found',
@@ -181,7 +185,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
   check(
     'a username the lookup does not find shows the gone line, with no Try again',
-    /if \(!username \|\| lookup\.state === 'gone'\) \{\s*return \(\s*<LinkPage>\s*<AppText role="body">\{GONE_LINE\}<\/AppText>/.test(route) &&
+    /if \(!username \|\| lookup\.state === 'gone'\) \{\s*return \(\s*<LinkPage home=\{home\}>\s*<AppText role="body">\{GONE_LINE\}<\/AppText>/.test(route) &&
       /const GONE_LINE = "This account isn't available\.";/.test(route)
   );
   check(
@@ -190,7 +194,245 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
       /setAttempt\(\(n\) => n \+ 1\);/.test(route) &&
       /\}, \[given, username, own, router, attempt\]\);/.test(route)
   );
-  check('the gone and failed pages have a way back', /router\.replace\('\/\(app\)\/board'\)/.test(route));
+  check(
+    'the gone and failed pages have a way back, to the first page of their own tab',
+    /else router\.replace\(home\);/.test(route) &&
+      (route.match(/<LinkPage home=\{home\}>/g) ?? []).length === 2 &&
+      /export type PersonRouteHome = '\/\(app\)\/board' \| '\/\(app\)\/today';/.test(route)
+  );
+  check('the Board opens it with the Board as home', /return <PersonRoute home="\/\(app\)\/board" \/>;/.test(source('app/(app)/board/person.tsx')));
+  check(
+    'the Spin page opens it with the Spin page as home, ids from a push as before',
+    /return <PersonRoute home="\/\(app\)\/today" \/>;/.test(source('app/(app)/today/person.tsx')) &&
+      /if \(given\) return <PersonScreen id=\{given\} \/>;/.test(route)
+  );
+}
+
+// ---- an invite link opened while signed out (PRD known issue 1, 2026-11-26) ---------------------
+{
+  eq('the button link gives its username', inviteUsername('rndmroll://u/Maya_K'), 'maya_k');
+  eq('with a slash at the end too', inviteUsername('rndmroll://u/maya/'), 'maya');
+  eq('and as a bare path', inviteUsername('/u/leah'), 'leah');
+  eq('a username too short is no invite', inviteUsername('rndmroll://u/ab'), null);
+  eq('a username too long is no invite', inviteUsername(`rndmroll://u/${'a'.repeat(21)}`), null);
+  eq('a dot is no username', inviteUsername('rndmroll://u/maya.k'), null);
+  eq('another link is no invite', inviteUsername('rndmroll://board/person?username=maya'), null);
+  eq('the plain launch is no invite', inviteUsername('rndmroll:///'), null);
+
+  // The phone's store, in memory, with a clock the checks move. Each change is logged.
+  function phone(start: Record<string, string> = {}, slowRead = false) {
+    const items = new Map(Object.entries(start));
+    const log: string[] = [];
+    let release = () => {};
+    const gate = slowRead ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
+    return {
+      items,
+      log,
+      release: () => release(),
+      storage: {
+        async getItem(key: string) {
+          await gate;
+          return items.has(key) ? items.get(key) : null;
+        },
+        async setItem(key: string, value: string) {
+          log.push(`set ${value}`);
+          items.set(key, value);
+        },
+        async removeItem(key: string) {
+          log.push('remove');
+          items.delete(key);
+        },
+      },
+    };
+  }
+  const T0 = Date.parse('2026-11-26T09:00:00.000Z');
+  let clock = T0;
+  const now = () => clock;
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  // After Log in: kept while signed out, opened once the sign in makes it ready, then forgotten.
+  {
+    clock = T0;
+    const p = phone();
+    const store = createInviteStore(p.storage, now);
+    await store.ready();
+    store.note('Maya');
+    eq('a link is kept by its username', store.peek()?.username, 'maya');
+    eq('nothing opens before a sign in makes it ready', store.take('sam'), null);
+    eq('and it is still kept', store.peek()?.username, 'maya');
+    store.arm();
+    eq('ready: the Spin page opens the inviter', store.take('sam'), 'maya');
+    eq('once', store.take('sam'), null);
+    store.arm();
+    eq('a later Spin page visit opens nothing', store.take('sam'), null);
+    await settled();
+    eq('and the phone no longer has it', p.items.has(INVITE_KEY), false);
+  }
+
+  // A second link takes the place of the first; a sign in that failed is not ready.
+  {
+    clock = T0;
+    const store = createInviteStore(phone().storage, now);
+    await store.ready();
+    store.note('maya');
+    store.note('leah');
+    store.arm();
+    store.disarm();
+    eq('a sign in that failed opens nothing', store.take('sam'), null);
+    store.arm();
+    eq('the newest link is the one that opens', store.take('sam'), 'leah');
+  }
+
+  // Your own link, and one over a day old, open nothing and are forgotten.
+  {
+    clock = T0;
+    const store = createInviteStore(phone().storage, now);
+    await store.ready();
+    store.note('sam');
+    store.arm();
+    eq('your own link opens nothing', store.take('Sam'), null);
+    eq('and is forgotten', store.peek(), null);
+    store.note('maya');
+    store.arm();
+    eq('with no username yet, a link still opens', store.take(null), 'maya');
+    store.note('maya');
+    clock = T0 + INVITE_KEEP_MS;
+    store.arm();
+    eq('a day old still opens', store.take('sam'), 'maya');
+    clock = T0;
+    store.note('maya');
+    clock = T0 + INVITE_KEEP_MS + 1;
+    store.arm();
+    eq('over a day old opens nothing', store.take('sam'), null);
+    eq('and is forgotten', store.peek(), null);
+  }
+
+  // Kept on the phone: a sign-up survives the app being closed while the person reads the code.
+  {
+    clock = T0;
+    const p = phone();
+    const first = createInviteStore(p.storage, now);
+    await first.ready();
+    first.note('maya');
+    await settled();
+    eq('the phone keeps the username and the time', p.items.get(INVITE_KEY), JSON.stringify({ username: 'maya', at: T0 }));
+    clock = T0 + 60 * 60 * 1000;
+    const second = createInviteStore(p.storage, now);
+    await second.ready();
+    eq('the next start reads it back', second.peek()?.username, 'maya');
+    second.arm();
+    eq('and opens it once ready', second.take('sam'), 'maya');
+    await settled();
+    eq('then it is off the phone', p.items.has(INVITE_KEY), false);
+
+    const old = phone({ [INVITE_KEY]: JSON.stringify({ username: 'maya', at: T0 }) });
+    clock = T0 + INVITE_KEEP_MS + 1;
+    const later = createInviteStore(old.storage, now);
+    await later.ready();
+    eq('a start a day later reads nothing', later.peek(), null);
+    eq('and clears it off the phone', old.items.has(INVITE_KEY), false);
+    const junk = phone({ [INVITE_KEY]: '{"username":"a.b","at":1}' });
+    const fromJunk = createInviteStore(junk.storage, now);
+    await fromJunk.ready();
+    eq('an unreadable one is read as none', fromJunk.peek(), null);
+    eq('and cleared too', junk.items.has(INVITE_KEY), false);
+  }
+
+  // A link that comes while the phone's read is on its way (a cold start from the link) wins.
+  {
+    clock = T0;
+    const p = phone({ [INVITE_KEY]: JSON.stringify({ username: 'leah', at: T0 - 1000 }) }, true);
+    const store = createInviteStore(p.storage, now);
+    store.note('maya');
+    p.release();
+    await store.ready();
+    await settled();
+    eq('the new link stays in memory', store.peek()?.username, 'maya');
+    eq('and on the phone', JSON.parse(p.items.get(INVITE_KEY)).username, 'maya');
+  }
+
+  // A forget while the phone's read is on its way still clears the phone.
+  {
+    clock = T0;
+    const p = phone({ [INVITE_KEY]: JSON.stringify({ username: 'leah', at: T0 - 1000 }) }, true);
+    const store = createInviteStore(p.storage, now);
+    store.sessionChanged('loading', 'authenticated');
+    p.release();
+    await store.ready();
+    await settled();
+    eq('nothing is read back', store.peek(), null);
+    eq('and the phone is cleared', p.items.has(INVITE_KEY), false);
+  }
+
+  // The session's changes: a restored session and every way out forget it; a sign in keeps it.
+  eq('a restored session at launch ends it (the link came while signed in)', endsInvite('loading', 'authenticated'), true);
+  eq('so does one restored after the offline page', endsInvite('offline', 'authenticated'), true);
+  eq('Log out, and any other way out, ends it', endsInvite('authenticated', 'unauthenticated'), true);
+  eq('a signed-out launch keeps it', endsInvite('loading', 'unauthenticated'), false);
+  eq('a refused session after the offline page keeps it', endsInvite('offline', 'unauthenticated'), false);
+  eq('a sign in from the signed-out pages keeps it', endsInvite('unauthenticated', 'authenticated'), false);
+  eq('no change keeps it', endsInvite('authenticated', 'authenticated'), false);
+  eq('going offline keeps it', endsInvite('loading', 'offline'), false);
+  {
+    clock = T0;
+    const store = createInviteStore(phone().storage, now);
+    await store.ready();
+    store.note('maya');
+    store.sessionChanged('loading', 'unauthenticated');
+    store.sessionChanged('unauthenticated', 'authenticated');
+    store.arm();
+    eq('signed-out launch, then Log in: it opens', store.take('sam'), 'maya');
+    store.note('maya');
+    store.arm();
+    store.sessionChanged('authenticated', 'unauthenticated');
+    eq('Log out forgets it, ready or not', store.peek(), null);
+    store.arm();
+    eq('so nothing opens after the next sign in', store.take('sam'), null);
+    store.note('maya');
+    store.sessionChanged('loading', 'authenticated');
+    store.arm();
+    eq('a session restored at launch forgets a link from that launch', store.take('sam'), null);
+  }
+
+  // The app's wiring, as written.
+  const intent = source('app/+native-intent.tsx');
+  check(
+    'a link is kept only while no one is signed in on this phone, and its path is as before',
+    /const username = inviteUsername\(path\);\s*if \(username === null\) return path;\s*if \(getAccessToken\(\) === null\) invites\.note\(username\);\s*return `\/board\/person\?username=\$\{username\}`;/.test(intent)
+  );
+  check('the app keeps it on the phone with AsyncStorage', /export const invites = createInviteStore\(AsyncStorage\);/.test(source('lib/people/invite.ts')));
+  check(
+    'the root layout tells it each change of the session',
+    /useEffect\(\(\) => \{\s*invites\.sessionChanged\(lastStatusRef\.current, status\);\s*lastStatusRef\.current = status;\s*\}, \[status\]\);/.test(source('app/_layout.tsx'))
+  );
+  const login = source('app/(auth)/login.tsx');
+  check('Log in makes it ready before it signs in', /invites\.arm\(\);(?:\s*\/\/[^\n]*)*\s*await signIn\(result\);/.test(login));
+  check('and a failed log in undoes that', /\} catch \(err\) \{\s*invites\.disarm\(\);/.test(login));
+  const codePage = source('app/(auth)/signup-code.tsx');
+  check(
+    'the code page makes it ready only when no first-time pages follow',
+    /if \(!extras\) invites\.arm\(\);\s*await signIn\(result, \{ extras \}\);/.test(codePage) && /\} catch \(err\) \{\s*invites\.disarm\(\);/.test(codePage)
+  );
+  const form = source('components/profile/ProfileForm.tsx');
+  check(
+    "sign-up's log in to its lost account does the same",
+    /if \(!opensExtras\(lost, result\)\) invites\.arm\(\);\s*await signIn\(result, \{ extras: opensExtras\(lost, result\) \}\);/.test(form) &&
+      /\} catch \(err\) \{(?:\s*\/\/[^\n]*)*\s*if \(signup\) invites\.disarm\(\);\s*handleSubmitError\(err\);/.test(form)
+  );
+  check("the photo-and-bio page leaves it for Find your friends", (form.match(/invites\.arm\(\)/g) ?? []).length === 1);
+  check(
+    'Find your friends makes it ready as it goes on to the Spin page',
+    /function goToSpin\(\) \{\s*invites\.arm\(\);\s*router\.replace\('\/\(app\)\/today'\);\s*\}/.test(source('components/people/SearchScreen.tsx'))
+  );
+  check('a password change makes nothing ready', !/invites/.test(source('components/settings/PasswordScreen.tsx')));
+  check('the Spin page opens it', /export default function TodayRoute\(\) \{\s*useOpenInvite\(\);/.test(source('app/(app)/today/index.tsx')));
+  const opener = source('lib/people/invite.ts');
+  check(
+    'over the Spin page, by username, so Back comes back to it',
+    /const username = invites\.take\(own\);\s*if \(username !== null\) router\.push\(\{ pathname: '\/\(app\)\/today\/person', params: \{ username \} \}\);/.test(opener) &&
+      /useFocusEffect\(/.test(opener) &&
+      /void invites\.ready\(\)\.then\(\(\) => \{(?:\s*\/\/[^\n]*)*\s*if \(!alive\) return;/.test(opener)
+  );
 }
 
 // ---- where your posts list opens -----------------------------------------------------------------
