@@ -223,23 +223,30 @@ func (r *BoardRepo) MyReactions(ctx context.Context, viewer uuid.UUID, entryIDs 
 var followedClause = `exists (select 1 from follows f where f.follower_id = $1 and f.followee_id = u.id and f.status = 'accepted')
 		and not ` + blockedEither("$1::uuid", "u.id")
 
+// lockedDayPosts is the from and where of the locked Board for viewer $1 and
+// date $2: the posts the day will show $1 once they post. It is Cards' rule
+// (visibleOwner and notMuted) without the probe of $1's own posted day, which
+// a locked viewer does not have yet. PostedCount counts these posts and
+// NamesOnDay names them, so the number and the names always agree: a post
+// that was deleted, archived, removed, is under review or that $1 reported
+// is in neither. One entry a person a day (entries_one_per_day), so a count
+// of posts is a count of people.
+var lockedDayPosts = `
+	from entries e join users u on u.id = e.user_id
+	where e.local_date = $2::date and e.archived_at is null and ` + followedClause + ` and ` + notMuted("u.id") + `
+	  and ` + postShownTo("$1::uuid", "e")
+
 // PostedCount implements board.Repository.
 func (r *BoardRepo) PostedCount(ctx context.Context, viewer uuid.UUID, date string) (int, error) {
 	var n int
-	err := r.pool.QueryRow(ctx, `
-		select count(*) from posted_days p join users u on u.id = p.user_id
-		where p.local_date = $2::date and `+followedClause+` and `+notMuted("u.id"), viewer, date).Scan(&n)
+	err := r.pool.QueryRow(ctx, `select count(*) `+lockedDayPosts, viewer, date).Scan(&n)
 	return n, err
 }
 
-// NamesOnDay implements board.Repository. A post moderation keeps from the
-// viewer gives no name; its posted day still counts in PostedCount, as a
-// deleted post's does.
+// NamesOnDay implements board.Repository.
 func (r *BoardRepo) NamesOnDay(ctx context.Context, viewer uuid.UUID, date string, limit int) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `
-		select coalesce(u.name, '') from entries e join users u on u.id = e.user_id
-		where e.local_date = $2::date and e.archived_at is null and `+followedClause+` and `+notMuted("u.id")+`
-		  and `+postShownTo("$1::uuid", "e")+`
+		select coalesce(u.name, '') `+lockedDayPosts+`
 		order by e.created_at, e.id
 		limit $3`, viewer, date, limit)
 	if err != nil {
@@ -296,13 +303,18 @@ func scanComment(row interface{ Scan(...any) error }) (board.CommentRow, error) 
 
 // likeShownTo is a where fragment true when the post's owner o sees the like
 // under alias pr (a post_reactions row, whatever its name): it is not their
-// own, and there is no block either way between them and its maker, whose
-// account is not gone (blockedEither already reads goneAccount for both). It
-// is the one rule for which likes an owner sees and counts, read by
-// Received, DiaryReader.Social and NotificationsRepo.Likes, so the number
-// beside the heart and the Likes list always agree.
+// own, its maker still follows them (accepted), and there is no block either
+// way between them and its maker, whose account is not gone (blockedEither
+// already reads goneAccount for both). After an unfollow, or once the owner
+// removes them as a follower, its maker can no longer open the post to undo
+// the like, so the owner stops seeing it too. The row is kept, so a follow
+// accepted again brings it back. It is the one rule for which likes an owner
+// sees and counts, read by Received, DiaryReader.Social,
+// NotificationsRepo.Likes and PushRepo.LikeTarget, so the number beside the
+// heart, the Likes list, the bell and the push always agree.
 func likeShownTo(o, pr string) string {
-	return `(` + pr + `.user_id <> ` + o + ` and not ` + blockedEither(o, pr+".user_id") + `)`
+	return `(` + pr + `.user_id <> ` + o + ` and not ` + blockedEither(o, pr+".user_id") + `
+		and exists (select 1 from follows mlf where mlf.follower_id = ` + pr + `.user_id and mlf.followee_id = ` + o + ` and mlf.status = 'accepted'))`
 }
 
 // Received implements board.Repository.

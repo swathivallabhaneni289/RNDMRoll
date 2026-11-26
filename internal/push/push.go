@@ -129,9 +129,9 @@ type Repository interface {
 	// LikeTarget is the owner of entryID when likerID's like on it is there
 	// and the owner's bell shows it (NotificationsRepo.Likes): read when the
 	// push runs, so a like undone before then is not ok. Not ok, too, when
-	// either of them blocked the other, either account is disabled, being
-	// deleted or an admin's, the like is the owner's own, or an admin
-	// removed the post.
+	// either of them blocked the other, the liker no longer follows the
+	// owner, either account is disabled, being deleted or an admin's, the
+	// like is the owner's own, or an admin removed the post.
 	LikeTarget(ctx context.Context, entryID, likerID uuid.UUID) (owner uuid.UUID, ok bool, err error)
 }
 

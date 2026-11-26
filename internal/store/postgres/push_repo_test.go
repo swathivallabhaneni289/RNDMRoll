@@ -525,10 +525,13 @@ func TestPushRepo_ALateSaveFromAnOlderLiveSessionLeavesTheNewerOnesToken(t *test
 
 // The like push goes to the post's owner by the bell's rule for likes
 // (NotificationsRepo.Likes), read when the push runs: the like must still be
-// there, on a post an admin did not remove, by someone else with no block
-// either way, and neither account disabled, being deleted or an admin's. An
-// archived post keeps its likes, as in the bell. A deleted post, or an
-// account deleted for good, takes the like with it.
+// there, on a post an admin did not remove, by someone else who still
+// follows the owner (accepted), with no block either way, and neither
+// account disabled, being deleted or an admin's. An unfollow, or the owner
+// removing them as a follower, keeps the like but hides it, and a follow
+// accepted again brings it back. An archived post keeps its likes, as in the
+// bell. A deleted post, or an account deleted for good, takes the like with
+// it.
 func TestPushRepo_LikeTargetFollowsTheBellsRuleForLikes(t *testing.T) {
 	pool := requireTestPool(t)
 	ctx := context.Background()
@@ -558,9 +561,34 @@ func TestPushRepo_LikeTargetFollowsTheBellsRuleForLikes(t *testing.T) {
 		}
 	}
 
+	// Every account is private and every follow a request: the liker's,
+	// accepted, is what let them see the post and like it.
+	follow := func(status string) {
+		t.Helper()
+		exec("follow "+status, `insert into follows (follower_id, followee_id, status, via, requested_at, accepted_at)
+			values ($1, $2, $3::text, case when $3::text = 'accepted' then 'request' end, now(),
+				case when $3::text = 'accepted' then now() end)`,
+			liker.ID, owner.ID, status)
+	}
+	unfollow := func() {
+		t.Helper()
+		exec("unfollow", `delete from follows where follower_id = $1 and followee_id = $2`, liker.ID, owner.ID)
+	}
+	follow("accepted")
+
 	want("no like yet", false)
 	like(liker.ID)
 	want("a like", true)
+
+	// The liker unfollows, or the owner removes them (the same row goes),
+	// and only a follow accepted again shows the like: a request is not.
+	unfollow()
+	want("after an unfollow", false)
+	follow("pending")
+	want("while a new request waits", false)
+	unfollow()
+	follow("accepted")
+	want("following again", true)
 
 	// A block either way.
 	for _, pair := range [][2]uuid.UUID{{owner.ID, liker.ID}, {liker.ID, owner.ID}} {

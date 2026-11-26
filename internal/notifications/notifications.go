@@ -196,7 +196,7 @@ type Repository interface {
 	Accepted(ctx context.Context, viewer uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	// Likes on the viewer's posts, one per person and post, dated by when
 	// the like was made or last changed, without anyone with a block either
-	// way and nothing on a removed post.
+	// way or who no longer follows the viewer, and nothing on a removed post.
 	Likes(ctx context.Context, owner uuid.UUID, since time.Time, limit int) ([]Raw, error)
 	Bonuses(ctx context.Context, viewer uuid.UUID, since time.Time) ([]Bonus, error)
 	// DecisionsAndSeen reads the two things every list needs whatever the
