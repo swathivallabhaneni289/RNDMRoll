@@ -59,6 +59,7 @@ function inOrder(name: string, log: string[], steps: string[]): void {
 // ---- Loading the app's modules in node --------------------------------------------------------
 
 const STUBBED = [
+  '@react-native-async-storage/async-storage',
   'expo-secure-store',
   'expo-image',
   'react-native',
@@ -100,6 +101,7 @@ registerHooks({
 const ACCESS = 'rndmroll.access_token';
 const REFRESH = 'rndmroll.refresh_token';
 const PENDING = 'rndmroll.pending_logout';
+const INSTALL = 'rndmroll.install_id';
 /** What the keychain stand-in gives for WHEN_UNLOCKED_THIS_DEVICE_ONLY (the others are other values). */
 const THIS_DEVICE_ONLY = 'accounts-check:WHEN_UNLOCKED_THIS_DEVICE_ONLY';
 const STATUSES = ['loading', 'unauthenticated', 'authenticated', 'offline'];
@@ -210,7 +212,7 @@ globalThis.fetch = (url, init) =>
  * A fresh copy of the app's session modules over a keychain holding `keychain`. route answers each
  * request (a Response, a promise of one, or a throw for no connection).
  */
-async function newWorld(name: string, keychain: Record<string, string> = {}) {
+async function newWorld(name: string, keychain: Record<string, string> = {}, storage: Record<string, string> = {}) {
   const id = ++worldCount;
   const w = {
     id,
@@ -221,6 +223,10 @@ async function newWorld(name: string, keychain: Record<string, string> = {}) {
     alerts: [],
     keychain: new Map(Object.entries(keychain)),
     keychainLocked: false,
+    // AsyncStorage, which iOS deletes with the app (the keychain stays).
+    storage: new Map(Object.entries(storage)),
+    storageBroken: false,
+    keychainDeleteFails: false,
     unsentPushToken: null,
     route: () => offline(),
     component: null,
@@ -268,8 +274,24 @@ async function newWorld(name: string, keychain: Record<string, string> = {}) {
       },
       async deleteItemAsync(key) {
         locked();
+        if (w.keychainDeleteFails) throw new Error('the keychain would not delete');
         w.keychain.delete(key);
         w.log.push(`keychain delete ${key}`);
+      },
+    },
+    '@react-native-async-storage/async-storage': {
+      async getItem(key) {
+        if (w.storageBroken) throw new Error('storage cannot be read');
+        return w.storage.has(key) ? w.storage.get(key) : null;
+      },
+      async setItem(key, value) {
+        if (w.storageBroken) throw new Error('storage cannot be written');
+        w.storage.set(key, value);
+        w.log.push(`storage set ${key}`);
+      },
+      async removeItem(key) {
+        if (w.storageBroken) throw new Error('storage cannot be written');
+        w.storage.delete(key);
       },
     },
     'expo-image': {
@@ -801,6 +823,175 @@ for (const [label, stored, expected] of [
   check(`a garbled kept list (${label}) sends no push token DELETE`, !w.log.some((line) => line.startsWith('deleteLeftPushToken')));
 }
 
+// ---- A reinstall: a login an earlier install left in the keychain is never used -------------------
+// iOS keeps keychain items after the app is deleted and deletes AsyncStorage with it. The app keeps
+// an install id in both (lib/session/install.ts), and the launch compares them before the restore
+// reads the login.
+{
+  const { installStep } = await import('../lib/session/install.ts');
+  eq('no id anywhere, with a login (from before install ids): kept and stamped', installStep(null, null, true), 'stamp');
+  eq('no id anywhere, no login (a first start): stamped', installStep(null, null, false), 'stamp');
+  eq('the same id in both: kept', installStep('a', 'a', true), 'keep');
+  eq('the same id in both, no login: kept', installStep('a', 'a', false), 'keep');
+  eq('an id in AsyncStorage only (a stamp cut short): kept and stamped', installStep('a', null, true), 'stamp');
+  eq('an id in the keychain only, with a login (deleted and installed again): cleared', installStep(null, 'a', true), 'clear');
+  eq('another id in the keychain, with a login: cleared', installStep('b', 'a', true), 'clear');
+  eq('an id in the keychain only, no login: nothing to clear, stamped', installStep(null, 'a', false), 'stamp');
+  eq('another id in the keychain, no login: stamped', installStep('b', 'a', false), 'stamp');
+}
+const OLD_LOGIN = { [ACCESS]: 'a-old', [REFRESH]: 'r-old', [INSTALL]: 'install-old' };
+const idsMatch = (w) => w.keychain.get(INSTALL) !== undefined && w.keychain.get(INSTALL) === w.storage.get(INSTALL);
+{
+  const w = await newWorld('a reinstall', OLD_LOGIN);
+  w.route = (call) => (call.path === '/auth/logout' ? noContent() : offline());
+  w.mount();
+  await settle();
+  eq('a reinstall starts signed out', w.status(), 'unauthenticated');
+  eq('the old login is never refreshed', w.to('/auth/refresh').length, 0);
+  eq('nor read with /me', w.to('/me').length, 0);
+  eq('its tokens are gone', w.tokens(), '/');
+  inOrder('the old login goes before the new id is written, AsyncStorage first', w.log, [
+    `keychain delete ${ACCESS}`,
+    `keychain delete ${REFRESH}`,
+    `keychain delete ${INSTALL}`,
+    `storage set ${INSTALL}`,
+    `keychain set ${INSTALL}`,
+    'status unauthenticated',
+  ]);
+  check('a new id, the same in both', idsMatch(w) && w.keychain.get(INSTALL) !== 'install-old', `${w.keychain.get(INSTALL)} / ${w.storage.get(INSTALL)}`);
+  eq('the server is asked to end the old session', w.to('/auth/logout')[0]?.body?.refresh_token, 'r-old');
+  check('and once it answered nothing is kept', !w.keychain.has(PENDING));
+  check('no push token is touched', !w.log.some((line) => line.startsWith('unregisterPushToken') || line.startsWith('deleteLeftPushToken')));
+
+  // The next launch of this install: the ids match, and a sign in since stays.
+  await w.value.signIn({ access_token: 'b1', refresh_token: 's1', expires_in: 900, user: USER_TWO });
+  await settle();
+  const next = await newWorld('a reinstall, launched again', Object.fromEntries(w.keychain), Object.fromEntries(w.storage));
+  next.route = (call) =>
+    call.path === '/auth/refresh' ? json(200, { access_token: 'b2', refresh_token: 's2', expires_in: 900 }) : call.path === '/me' ? json(200, USER_TWO) : offline();
+  next.mount();
+  await settle();
+  eq('the sign in after a reinstall stays signed in on the next launch', next.status(), 'authenticated');
+  check('and that launch writes no id', !next.log.some((line) => line.endsWith(INSTALL)));
+}
+{
+  const w = await newWorld('a reinstall with no connection', OLD_LOGIN);
+  w.mount();
+  await settle();
+  eq('with no connection a reinstall still starts signed out, not on the offline page', w.status(), 'unauthenticated');
+  eq('its tokens are gone', w.tokens(), '/');
+  eq('the old session is kept to be ended later', w.keychain.get(PENDING), JSON.stringify([{ refresh_token: 'r-old', access_token: null, push_token: null }]));
+}
+{
+  const w = await newWorld('a reinstall over another install id', OLD_LOGIN, { [INSTALL]: 'install-new' });
+  w.route = (call) => (call.path === '/auth/logout' ? noContent() : offline());
+  w.mount();
+  await settle();
+  eq("an id in the keychain that is not this install's: signed out", w.status(), 'unauthenticated');
+  eq('the tokens are gone', w.tokens(), '/');
+  eq("the keychain gets this install's id", w.keychain.get(INSTALL), 'install-new');
+}
+{
+  // An update from a build before install ids: the login stays, and both ids are written.
+  const w = await newWorld('an update from before install ids', { [ACCESS]: 'a1', [REFRESH]: 'r1' });
+  w.route = signedIn();
+  w.mount();
+  await settle();
+  eq('an update keeps the person signed in', w.status(), 'authenticated');
+  check('both ids are written, the same', idsMatch(w));
+  inOrder('AsyncStorage first, then the keychain, before the refresh', w.log, [`storage set ${INSTALL}`, `keychain set ${INSTALL}`, 'fetch POST /auth/refresh']);
+  check('nothing is deleted', !w.log.some((line) => line.startsWith('keychain delete')));
+  eq('no log out is sent', w.to('/auth/logout').length, 0);
+
+  // Then the app is deleted and installed again: the keychain stays, AsyncStorage does not.
+  const again = await newWorld('an update, then a reinstall', Object.fromEntries(w.keychain));
+  again.route = (call) => (call.path === '/auth/logout' ? noContent() : offline());
+  again.mount();
+  await settle();
+  eq('after the update, a reinstall starts signed out', again.status(), 'unauthenticated');
+  eq('with no refresh tried', again.to('/auth/refresh').length, 0);
+  eq('and the session it found is ended', again.to('/auth/logout')[0]?.body?.refresh_token, 'r2');
+}
+{
+  const w = await newWorld('the same install launched again', { [ACCESS]: 'a1', [REFRESH]: 'r1', [INSTALL]: 'install-x' }, { [INSTALL]: 'install-x' });
+  w.route = signedIn();
+  w.mount();
+  await settle();
+  eq('the same install stays signed in', w.status(), 'authenticated');
+  check('and writes no id', !w.log.some((line) => line.endsWith(INSTALL)));
+}
+{
+  const w = await newWorld('a stamp cut short', { [ACCESS]: 'a1', [REFRESH]: 'r1' }, { [INSTALL]: 'install-x' });
+  w.route = signedIn();
+  w.mount();
+  await settle();
+  eq('an id in AsyncStorage only keeps the login', w.status(), 'authenticated');
+  eq('and the keychain gets that id', w.keychain.get(INSTALL), 'install-x');
+}
+{
+  const w = await newWorld('a first start', {}, {});
+  w.mount();
+  await settle();
+  eq('a first start: Welcome', w.status(), 'unauthenticated');
+  check('with the ids written', idsMatch(w));
+  eq('and no request', w.calls.length, 0);
+}
+{
+  // AsyncStorage that cannot be read is not an empty one: nothing is decided.
+  const w = await newWorld('AsyncStorage cannot be read', { [ACCESS]: 'a1', [REFRESH]: 'r1', [INSTALL]: 'install-x' }, { [INSTALL]: 'install-x' });
+  w.storageBroken = true;
+  w.route = signedIn();
+  w.mount();
+  await settle();
+  eq('an AsyncStorage that cannot be read logs nobody out', w.status(), 'authenticated');
+  check('and deletes nothing', !w.log.some((line) => line.startsWith('keychain delete')));
+  eq('nor sends a log out', w.to('/auth/logout').length, 0);
+}
+{
+  const w = await newWorld('a reinstall, the keychain locked at launch', OLD_LOGIN);
+  w.keychainLocked = true;
+  w.route = (call) => (call.path === '/auth/logout' ? noContent() : signedIn()(call));
+  w.mount();
+  await settle();
+  eq('locked at launch: the offline page, as before', w.status(), 'offline');
+  check('nothing is decided yet', w.keychain.get(INSTALL) === 'install-old' && !w.storage.has(INSTALL));
+  w.keychainLocked = false;
+  w.appState('background');
+  w.appState('active');
+  await settle();
+  eq('unlocked and back: signed out', w.status(), 'unauthenticated');
+  eq('the old login was never refreshed', w.to('/auth/refresh').length, 0);
+  eq('its tokens are gone', w.tokens(), '/');
+}
+{
+  const w = await newWorld('a reinstall the keychain will not clear', OLD_LOGIN);
+  w.keychainDeleteFails = true;
+  w.route = (call) => (call.path === '/auth/logout' ? noContent() : signedIn()(call));
+  w.mount();
+  await settle();
+  eq('an old login the keychain keeps is not used: signed out', w.status(), 'unauthenticated');
+  eq('and never refreshed', w.to('/auth/refresh').length, 0);
+  check("its id stays, so nothing says it is this install's", w.keychain.get(INSTALL) === 'install-old');
+  await w.value.signIn({ access_token: 'b1', refresh_token: 's1', expires_in: 900, user: USER_TWO });
+  await settle();
+  eq('a sign in then', w.status(), 'authenticated');
+  check("stamps its own tokens as this install's", idsMatch(w), `${w.keychain.get(INSTALL)} / ${w.storage.get(INSTALL)}`);
+  const next = await newWorld('a sign in over a stuck old login, launched again', Object.fromEntries(w.keychain), Object.fromEntries(w.storage));
+  next.route = (call) =>
+    call.path === '/auth/refresh' ? json(200, { access_token: 'b2', refresh_token: 's2', expires_in: 900 }) : call.path === '/me' ? json(200, USER_TWO) : offline();
+  next.mount();
+  await settle();
+  eq('so the next launch keeps that sign in', next.status(), 'authenticated');
+}
+{
+  const w = await signedInWorld('a log out keeps the install id', (call) => (call.path === '/auth/logout' ? noContent() : offline()));
+  const id = w.keychain.get(INSTALL);
+  await w.value.signOut();
+  await settle();
+  eq('logged out', w.status(), 'unauthenticated');
+  check('the install id stays in the keychain', id !== undefined && w.keychain.get(INSTALL) === id);
+}
+
 // ---- SES-01: tokens in the keychain of this phone only, by one module ------------------------
 {
   const all = [...worlds.values()].flatMap((w) => w.writes);
@@ -819,7 +1010,7 @@ for (const [label, stored, expected] of [
   };
   for (const dir of ['app', 'components', 'lib']) walk(dir);
   // The session's keychain items are named by the session store alone.
-  for (const key of [ACCESS, REFRESH, PENDING]) {
+  for (const key of [ACCESS, REFRESH, PENDING, INSTALL]) {
     eq(`only lib/session/store.ts names ${key}`, files.filter((rel) => source(rel).includes(key)).join(','), 'lib/session/store.ts');
   }
   // The keychain itself: the session store, and the 8 PM reminder's switch (plain flags, not
