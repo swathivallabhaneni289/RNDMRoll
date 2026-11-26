@@ -14,6 +14,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ApiError, inviteLink } from '@/lib/api/client';
 import { firstName, follow, searchPeople, unfollow, type Person, type SearchHit } from '@/lib/api/social';
 import { useForegroundReload } from '@/lib/api/useForegroundReload';
+import { invites } from '@/lib/people/invite';
 import { useOpenPerson } from '@/lib/people/openPerson';
 import { useSession } from '@/lib/session/store';
 import { color, minTouchTarget, radius, space, type } from '@/lib/theme/tokens';
@@ -122,7 +123,10 @@ export function SearchScreen({ welcome = false }: { welcome?: boolean }) {
     else router.replace('/(app)/board');
   }
 
+  // The end of a sign-up: an invite link kept from before it is ready now, and opens its page over
+  // the Spin page (lib/people/invite.ts).
   function goToSpin() {
+    invites.arm();
     router.replace('/(app)/today');
   }
 

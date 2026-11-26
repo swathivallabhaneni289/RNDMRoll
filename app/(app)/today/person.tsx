@@ -1,9 +1,9 @@
-import { useLocalSearchParams } from 'expo-router';
-import { PersonScreen } from '@/components/people/PersonScreen';
+import { PersonRoute } from '@/components/people/PersonRoute';
 
-/** Someone's profile page, opened by a tap on their photo or name in this tab. */
+/**
+ * Someone's profile page, opened by a tap on their photo or name in this tab, by a push, or by an
+ * invite link kept from before signing in (`username` in place of `id`, lib/people/invite.ts).
+ */
 export default function TodayPersonRoute() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  return <PersonScreen id={id ?? ''} />;
+  return <PersonRoute home="/(app)/today" />;
 }

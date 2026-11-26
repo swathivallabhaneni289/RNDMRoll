@@ -11,6 +11,7 @@ import { api, ApiError } from '@/lib/api/client';
 import type { AuthResult } from '@/lib/api/types';
 import { loginName } from '@/lib/auth/loginName';
 import { sayIfRestored } from '@/lib/auth/restored';
+import { invites } from '@/lib/people/invite';
 import { useSession } from '@/lib/session/store';
 
 /**
@@ -102,11 +103,15 @@ export default function LoginScreen() {
         { login: loginName(login), password },
         { auth: false }
       );
+      // An invite link kept from before is ready for the Spin page, where this log in lands.
+      // Before signIn: the page can open as the session lands.
+      invites.arm();
       // The root guard routes a signed-in account to the app.
       await signIn(result);
       // This log in cancelled a pending deletion: "Welcome back" (developer, 2026-10-25).
       sayIfRestored(result);
     } catch (err) {
+      invites.disarm();
       // One message for a wrong password, an unknown email and an unknown username
       // (invalid_credentials): the server refuses to tell them apart and so does this screen.
       if (err instanceof ApiError && err.code === 'validation_failed') {
