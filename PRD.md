@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 24, 2026 |
+| **Last updated** | November 26, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -156,7 +156,7 @@ On September 15, 2026, I asked for a competitor review: about 50 searches across
 4. **Your own real things.** Your photos, from the camera or the library. No fetched art.
 5. **Small, trusted circles.** Every account is private and every follow is a request.
 6. **Less typing.** Pickers, one-tap choices and a green "Looks good." when a field is right.
-7. **The server owns the pick and the clock.** The server picks the category, sets every date, window and time label, and follows each person's own time zone through daylight saving changes. The app animates and prints. It formats date headings from the server's dates, and only the 8 PM reminder uses the phone's clock.
+7. **The server owns the pick and the clock.** The server picks the category, sets every date and window, and follows each person's own time zone through daylight saving changes. The app animates and prints. It formats date headings from the server's dates and the opening time from the server's times, and only the 8 PM reminder uses the phone's clock.
 8. **Calm, never a casino.** Flat black and white, a restrained spin, no confetti, sounds or neon.
 9. **The core loop first.** Spin, post, see friends. Everything else waits.
 
@@ -280,7 +280,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The access token lasts 15 minutes.
   - The refresh token lasts 30 days from its last use. It is replaced on every refresh and stored only as a hash.
   - Presenting an old, already-replaced token ends that whole session.
-- **SES-01 on the phone.** Tokens are kept in the iPhone keychain, on that phone only.
+- **SES-01 on the phone.** Tokens are kept in the iPhone keychain, on that phone only. A fresh install starts logged out (issue 7 has the one exception): an install id sits beside the tokens and in the app's own storage, which iOS deletes with the app, so a login left from an earlier install is cleared and ended on the server.
 - **SES-02.** Settings asks "Are you sure you want to log out?"; the Edit page asks with a sheet. Log out also removes this phone's push token.
 - **SES-03.** Up to 10 unsent log outs are kept and retried at launch, on return to the app and after any request that works.
 - **SES-04.** The page reads "You're offline." and "Check your connection and try again. You are still logged in."
@@ -342,7 +342,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The week row shows seven days: posted, skipped, today and the rest.
   - The week row, its "today" and the date above the heading follow the spin's day, which runs from 8 PM to the next 8 PM. Until 8 PM on Monday they are still on Sunday, so a Sunday spin posted on Monday morning shows in the week it counts for.
 - **SPIN-08.** Available only on today's result before posting or skipping, once per day. The new category is always different. It asks "Use your bonus spin?" first.
-- **SPIN-09.** The countdown shows hours, minutes and seconds from the server's time on a steady clock, and never trusts the phone's clock.
+- **SPIN-09.** The countdown shows hours, minutes and seconds from the server's time on a steady clock, and never trusts the phone's clock. The line under it names the moment it counts to, so after a big time zone change it can read, for example, "Opens at 9:50 PM."
 - **SPIN-10.** The phone reports its zone on the first load after a launch or a sign-in, and again only when the zone changes. The answer to `POST /v1/time-zone` carries the Spin page's state, so no second request follows. If a report fails, the page still loads with the zone the server already has.
 - **SPIN-11.**
   - The phone asks for permission once, at the first signed-in start, and the switch is in Settings.
@@ -419,7 +419,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **SOC-01.** Following is one way. Accepting doesn't follow back; the app offers "Follow back".
 - **SOC-02.** Declines, cancels, unfollows and removals are silent. The other person just sees Follow again.
 - **SOC-03.** Matches the start of a username, a name or any word of a name, up to 20 results. Email is never searchable. Opened from the Search field on the Board.
-- **SOC-04.** The share sheet sends "Join me on RNDMRoll, one spin a day. Follow me here:" with a link. The link's web page has an "Open in RNDMRoll" button that opens the sender's profile in the app.
+- **SOC-04.** The share sheet sends "Join me on RNDMRoll, one spin a day. Follow me here:" with a link. The link's web page has an "Open in RNDMRoll" button that opens the sender's profile in the app. A link opened while signed out is kept on the phone for a day: after Log in the sender's profile opens once over the Spin page, and after sign-up it opens once Find your friends goes on to the Spin page. It is forgotten once used, on Log out, and when it is your own link.
 - **SOC-05.** Suggestions draw on people your follows follow, people who follow you, and the newest accounts, with people who follow you first.
 - **SOC-06.**
   - A block removes follows both ways and hides each person from the other in search, the Board, posts, comments, likes and notifications. The blocker still sees them in Blocked accounts and on their page, with Unblock, unless that account is disabled or being deleted.
@@ -447,6 +447,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 - **BRD-01 a card.** The first photo, the name, the category, the title, the stars and "Late" when the post was late. Muted people are left out.
 - **BRD-02 while locked.**
   - The page shows "Locked", how many people you follow posted, up to four first names, and one action: "Log your meal" (the day's category, in lower case), "Spin first", or the time the next spin opens.
+  - The number and the names come from the same posts: the ones that will show once you post. A post that was deleted, archived, removed or hidden under review, or that you reported, is in neither.
   - Nothing else of those posts reaches the phone.
 - **BRD-02 the day in play.** The most recent 8 PM that has passed. It lasts until the next 8 PM, so the Board calls it "Today" the whole time, also after midnight. A person who has never spun, or who made a first spin today (posted or not), is on today.
 - **BRD-03.** "You skipped today. Posts from people you follow open after your next post." with Go to Spin.
@@ -458,6 +459,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - Friends never see a count, only their own heart.
   - You can't like your own post. There the heart shows how many people liked it, with no number at none. A tap opens Likes: each person's photo, name and username, newest first, or "No likes yet." Tapping a person opens their page.
   - Turning comments off doesn't stop likes.
+  - A like shows and counts only while the person who gave it follows the poster. After an unfollow, or once the poster removes them as a follower, it is hidden but kept, and it comes back when a new follow request is accepted. A block ends the follows, so likes between the two stay hidden after an unblock until a new follow is accepted.
   - A like is stored as the old reaction "love", and any stored reaction counts as a like.
 
 ### 8.8 Comments
@@ -500,7 +502,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - "You hit your goal this week. One bonus spin added."
   - Moderation of your own posts and comments:
     - "Your post is hidden while we take a look." ("Your comment is hidden while we take a look." for a comment). This comes from the report that hides it (SAFE-05). Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
-    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens a page to ask for a second look (SAFE-05). Once one is asked, a tap does nothing, and the line has "Second look asked." under it until the admin answers. A tap also does nothing once the post or comment is deleted or its 30 days are over.
+    - A removal names the reason the admin picked, for example "We removed your post for hate speech." ("your comment" for a comment). Something else keeps "We removed your post. It broke our rules." Tapping it opens a page to ask for a second look (SAFE-05). Once one is asked, a tap does nothing, and the line has "Second look asked." under it until the admin answers. A tap also does nothing once the post or comment is deleted or its 30 days are over. For a comment, that includes the 30 days of its post and of the comment it answers.
     - "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment). This comes after Bring it back, or after a Dismiss that shows a hidden item again. Tapping it opens the post (for a comment, the post it's on, while you can still see that post).
     - "We looked again. Your post stays removed." ("Your comment stays removed." for a comment). This comes after Keep it removed (ADM-04). Tapping it does nothing.
 - **NOT-01 how it shows.**
@@ -582,7 +584,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - The tabs and the browser tab show how many cards are open, like "(3) Reports", and the Reports tab refreshes itself every minute.
   - The newest 500 open reports show; past that the page says so.
 - **ADM-02 the Disabled tab.** Each disabled account with its photo, username, name and when, with Enable right there.
-- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reason picked at Remove, a short ref and Bring it back. The person page's History shows the same ref with the removal and its second look. This tab doesn't refresh itself.
+- **ADM-02 the Removed tab.** Everything removed in the last 30 days: what it is, whose it is, the title or text, its photos, when it was removed, the days left, the reason picked at Remove, a short ref and Bring it back. The person page's History shows the same ref with the removal and its second look. This tab doesn't refresh itself. A removed comment leaves the tab, and its count, as soon as its removed post (or the removed comment it answers) passes its 30 days, even before the hourly job deletes it.
   - A line whose owner asked for a second look (SAFE-05) comes first. Under the post or comment it has a "Second look asked" tag, their words and their photos, each opening full size, and Keep it removed comes after Bring it back. It stays one line of the table, with no new columns or counts.
   - Once the request is answered, the line is a plain Removed line again. The History keeps the request.
 - **ADM-03 what a report shows.** The admin sees the reported thing in full before acting.
@@ -598,7 +600,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
   - An admin can open only people someone reported (them, a post or a comment), disabled accounts and people with a decision in the log. Any other person's page goes back to the list, and they can't be disabled. Each report names who made it, by username.
   - Their posts show only while a report about the account is open or it's disabled. A report about one post or comment shows only that one. Archived posts, and posts past the 30 days after a removal, never show.
   - The page never shows an email address or a birthday.
-- **ADM-04 dismissing.** Dismiss closes every report on the card, and only those: a report that came in after the page was drawn stays open.
+- **ADM-04 dismissing.** Dismiss closes every report on the card, and only those: a report that came in after the page was drawn stays open. That holds when the same person reports the same account again, too: the card sends each report's time, and a newer report stays open and shows when the page comes back.
   - If the post or comment was hidden (SAFE-05) and no longer is, it shows again for everyone except the people who reported it. Its owner gets "Sorry, we got that wrong. Your post is back." ("Your comment is back." for a comment).
   - Nothing is sent when it was never hidden, when newer reports keep it hidden, or when a comment's post or the comment it answers is still hidden or removed.
 - **ADM-04 removing.**
@@ -665,7 +667,7 @@ These rules decide what counts. The server owns all of them.
 | Day in play (Board) | The date of the most recent 8:00 PM that has passed, or today for a person who made a first spin today or has never spun |
 | Who sees a post | Nobody in the app once an admin removed it, the author included. Otherwise the author always. Anyone else only if they follow the author (accepted), there is no block either way, the post isn't archived, they haven't reported it, it isn't hidden under review, and they posted for that date themselves. On the admin page, an admin also sees a reported post in full, with every photo, and a removed post until it is deleted. |
 | Who sees a comment | Anyone who can see the post, except: a comment by someone they blocked or who blocked them, or whose account is disabled or being deleted; a comment they reported; a comment the post's author hid, seen only by its writer and the post's author; a comment hidden under review, seen only by its writer; and a removed comment, seen by nobody in the app. A reply shows only with the comment it answers. |
-| Who sees a like | Only the post's owner, as the number beside the heart and the Likes list. Everyone else sees only their own heart. A like by someone the owner blocked or who blocked them, or whose account is disabled or being deleted, never shows or counts. Liking needs the same right to see the post as commenting, and turning comments off doesn't stop it. |
+| Who sees a like | Only the post's owner, as the number beside the heart and the Likes list. Everyone else sees only their own heart. A like by someone the owner blocked or who blocked them, or whose account is disabled or being deleted, never shows or counts, and neither does one by someone who no longer follows the owner, until a new follow request is accepted. Liking needs the same right to see the post as commenting, and turning comments off doesn't stop it. |
 | Hidden under review | 3 or more open reports on a post or comment from people whose accounts aren't disabled or being deleted. Worked out live from the open reports, never stored. The log only notes the report that hid it, for the owner's bell. |
 | Removed | An admin's Remove: hidden from everyone at once, kept 30 days so it can be brought back, then deleted with its photos. One 30-day rule, on the database clock. |
 | Disabled account | Treated as a block by everyone in the app: hidden everywhere, and logged out. Admins still see the account on the admin page. |
@@ -693,7 +695,7 @@ These rules decide what counts. The server owns all of them.
 - The decision log keeps, for each Remove, Bring it back, Keep it removed, Dismiss that shows something again, Disable and Enable, and each report that hides something: whose post, comment or account it was, what was decided and when, the title or comment text at the time, and for a removal the report reasons and the reason picked at Remove. It names neither the reporters nor the admin. It is kept while the owner's account exists and is deleted with it.
 - A second look keeps the owner's words with the decision log while their account exists, and its photos until 30 days after the removal. Only admins see them, on the admin page.
 - The app asks for the camera, the photo library and notifications only, and never for location or contacts.
-- Request logs never record headers or bodies, and secret values in links are hidden. **Fix before launch:** search words are still logged. While email runs in log mode (today's setup), each email, with its address and any code, is printed to the server log.
+- Request logs never record headers or bodies, and secret values and typed words in links (search and the username checks) are hidden. While email runs in log mode (today's setup), each email, with its address and any code, is printed to the server log.
 - Photos are in a private bucket. The server gives a signed photo link only to someone allowed to see that photo, and each link stops working within an hour. A link already given out works until it runs out.
 - **Launch:** removal of photo metadata for every file type.
 - The Privacy Policy describes the real data practices, including today's limits.
@@ -701,7 +703,7 @@ These rules decide what counts. The server owns all of them.
 ### Reliability
 
 - Every API request has a 10-second limit on the phone; photo uploads to storage have no limit set. Spin, post, post edit and skip requests are safe to retry, and so is a comment with a photo.
-- Only a definite "no" from the server logs a person out. A lost connection never does.
+- Apart from a fresh install clearing an earlier install's login (SES-01), only a definite "no" from the server logs a person out. A lost connection never does.
 - Each person's spin work waits at most 5 seconds for its lock, then answers "try again".
 - Emails and pushes are sent in the background and never fail the request that caused them.
 - **Launch:** database backups (the Supabase free plan has none, and database backups never cover photo files), log retention and a cleanup job for unused photo files and old login records.
@@ -806,12 +808,12 @@ One unused table remains: email_verification_tokens.
 **What is kept, and for how long.**
 
 - A deleted account is hidden at once and deleted for good 30 days later by an hourly job on the server: its photo files first, then its row, which removes every other row tied to it. The job only touches that account's own photo folders, plus the photos other people added to comments on its posts.
-- A deleted post removes its photos and comments from the database, and the server tries once to remove the photo files of the post and of its comments. A file whose removal fails stays in storage, but the server makes no new links for it (section 16, issue 3). Its spin and posted day stay.
+- A deleted post removes its photos and comments from the database, and the server tries once to remove the photo files of the post and of its comments. A file whose removal fails stays in storage, but the server makes no new links for it (section 16, issue 2). Its spin and posted day stay.
 - A post or comment an admin removed is hidden at once and kept for 30 days, so it can be brought back. Then the same hourly job, after the account purge, deletes the photo files first, its own and those of the comments and replies under it, then its row, which takes those comments and replies with it. A failure keeps the row for the next run. Its spin and posted day stay.
 - A second look's photos are deleted by the same hourly job 30 days after the removal, whatever the answer, or earlier with the owner's account. Bringing the post or comment back, or deleting it, leaves them until then. A failure keeps them for the next run.
-- Saving a new profile photo deletes the old photo's file. If that fails, the file stays (section 16, issue 3).
+- Saving a new profile photo deletes the old photo's file. If that fails, the file stays (section 16, issue 2).
 - Reports outlive the reported content, with a copy of the title or comment text, until the reporter's or the owner's account is deleted. The decision log keeps its copy, and a second look its words, until the owner's account is deleted.
-- There is no automatic cleanup yet for unused photo files or old login records (see the launch checklist in section 14, and issue 3 in section 16).
+- There is no automatic cleanup yet for unused photo files or old login records (see the launch checklist in section 14, and issue 2 in section 16).
 
 ## 13. Success metrics
 
@@ -916,26 +918,22 @@ Phases 1, 2, 2.1, 3, 4 and 5 each had a written scope, a screen-by-screen design
 
 Some were found while writing this document; others were already in the planning notes. None blocks the demo, and all are on the launch list.
 
-1. **Invite links don't survive signing in.** A link opened while signed out is lost; after sign-up or log in, the inviter's profile doesn't open.
-2. **A photo link already given out keeps working until it runs out.** After a block, a removed follower, an archive, a report, a hide under review or an admin's Remove, a link a phone already has stops working within an hour, not at once.
-3. **Some photo files are never removed from storage.** This covers uploads never posted and any file whose one removal try failed. The server makes no new links for them.
-4. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
-5. **Search words appear in server logs.**
-6. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
-7. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
-8. **The locked Board's count can be off.** It can include people whose post was deleted, archived, removed, hidden under review or reported by you, while the first names come only from posts you can see.
-9. **A like outlives an unfollow.** After you unfollow someone, or they remove you as a follower, your like on their post stays and they still see it, but you can no longer open the post to undo it.
-10. **Some of your own comments can't be reached.** After an unfollow, being removed as a follower, a block, an archive, or your own report of the post or of the comment you replied to, your comment there stays, and the app has no list of your comments to delete it from.
-11. **Reinstalling the app can bring back an old login.** iOS keeps keychain items after an app is deleted, and the app doesn't clear them on a fresh install.
-12. **After a big time zone change, the countdown's line can say the wrong time.** When a move puts 8 PM less than 12 hours after the last spin, the wheel opens when the 12 hours end, such as 9:50 PM. The countdown counts to that moment and the wheel opens on time, but the line under it still reads "Opens at 8:00 PM."
-13. **A Dismiss from an old admin page can close a newer person report.** When the same person reports the same account again after the page was drawn, Dismiss on the old card closes the new report too. A post or comment can't be reported twice by the same person, so only reports of people are affected. The Reports tab redraws every minute; a person's page doesn't.
-14. **Any 3 people who can see a post can hide it until an admin looks.** The same goes for a comment. The admin is emailed at once, and Dismiss shows it again.
-15. **A reporter who leaves can show a hidden item again with no review.** A report stops counting once its reporter's account is disabled or being deleted, and goes when that account is deleted. If fewer than 3 open reports are left, the post or comment shows again, and its owner isn't told.
-16. **The words outlive a removal.** After the 30 days, a removed post's title or a comment's text stays in its reports until the reporter's or the owner's account is deleted, and in the decision log until the owner's account is deleted. The owner's words in a second look stay as long.
-17. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
-18. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
-19. **For up to an hour, the Removed tab can offer a comment it can't bring back.** Once a removed post passes its 30 days, a removed comment under it shows "0 days left" until the next hourly purge. Bring it back on that comment says "Bring back its post first.", though the post can no longer come back.
-20. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 17), or a comment under a hidden post (issue 18). The same way, a reporter's account that comes back can hide it again with no note.
+1. **A photo link already given out keeps working until it runs out.** After a block, a removed follower, an archive, a report, a hide under review or an admin's Remove, a link a phone already has stops working within an hour, not at once.
+2. **Some photo files are never removed from storage.** This covers uploads never posted and any file whose one removal try failed. The server makes no new links for them.
+3. **Some photos keep their metadata.** Library WebP files, and some profile photo formats, are uploaded with their original details, which can include location.
+4. **Sign-up shows whether an email is registered.** One address can try 10 sign-ups a minute, and 3 a minute for the same email.
+5. **An old access token works for up to 15 minutes** after logging out, changing the password or resetting it.
+6. **Some of your own comments can't be reached.** After an unfollow, being removed as a follower, a block, an archive, or your own report of the post or of the comment you replied to, your comment there stays, and the app has no list of your comments to delete it from.
+7. **Reinstalling over an old version can bring back an old login once.** Versions from before November 26, 2026 kept no install id, so the first install of a newer one over them keeps that login. From then on, a reinstall starts logged out.
+8. **Any 3 people who can see a post can hide it until an admin looks.** The same goes for a comment. The admin is emailed at once, and Dismiss shows it again.
+9. **A reporter who leaves can show a hidden item again with no review.** A report stops counting once its reporter's account is disabled or being deleted, and goes when that account is deleted. If fewer than 3 open reports are left, the post or comment shows again, and its owner isn't told.
+10. **The words outlive a removal.** After the 30 days, a removed post's title or a comment's text stays in its reports until the reporter's or the owner's account is deleted, and in the decision log until the owner's account is deleted. The owner's words in a second look stay as long.
+11. **Enable can show hidden posts again with no review.** Disable closes every open report about the person and their posts and comments. After Enable, anything of theirs that was hidden under review shows again, with no review and no bell item.
+12. **A comment can come back without a word to its writer.** If a comment is dismissed while its post is still hidden, it shows again once the post's own reports are dismissed. The post's owner is told, and the comment's writer isn't.
+13. **A hidden note can be left without a back note.** The owner is told when a report hides their post or comment, and again only when a Dismiss shows it again or Bring it back returns it. If it shows again another way, nothing is sent: a reporter's account is disabled or being deleted, Disable and Enable (issue 11), or a comment under a hidden post (issue 12). The same way, a reporter's account that comes back can hide it again with no note.
+14. **An invite link can still be lost.** One tapped while the app is starting up with a saved login may not open, and one kept while the app is closed after the account is made but before Find your friends ends doesn't. A kept link lasts a day.
+15. **Two error lines still say 8:00 PM.** When a spin is refused because the page was out of date, the message says the spin opens at 8:00 PM, even when a big time zone change moved it later.
+16. **After a reinstall, the app doesn't ask for notifications again.** The 8 PM reminder switch and the mark that it asked once are kept in the keychain, which outlives the app, while iOS resets the permission. Turning the switch on in Settings asks again.
 
 ### Open questions
 
@@ -1012,6 +1010,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 24 | A like on friends' posts: a heart beside the comment mark. Only the poster sees how many and who, with a line in the bell and no push | "if they dont comment atleast people can just like it and move on" | A number under your own post, the one exception to the no-counts rule; likes have no switch in Settings |
 | Nov 25 | Likes send a phone notification too, with a Likes switch in Settings | "it should send notifications" | One more kind of push, once per person and post a day; the Likes switch turns it off |
 | Nov 25 | Find your friends ends with Skip for now, as the photo page does, in place of Done; it turns into Continue once the person follows someone or sends the link. Both pages' Skip for now is an outlined button, like Log in on the first screen, not grey text, and Find your friends has a line above it saying where to find friends later | "instead of doing done, you should add skip for now again for this one also, because done doesn't make sense", then "instead of keeping it grey can we do something more better in detail" (picked from three looks) | None recorded |
+| Nov 26 | A like shows and counts only while the person who gave it follows the poster; it comes back when a new follow is accepted | "do the small fixes" (a like outlived an unfollow, and its maker could no longer undo it) | A like by someone who left is hidden, not deleted |
 
 ## 18. Out of scope and future ideas
 

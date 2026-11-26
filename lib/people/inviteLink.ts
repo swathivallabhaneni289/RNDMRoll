@@ -1,5 +1,5 @@
 /**
- * An invite link opened while signed out (PRD known issue 1): the inviter's profile opens once the
+ * An invite link opened while signed out (once PRD known issue 1, fixed 2026-11-26): the inviter's profile opens once the
  * person is in. No React and no app imports (the storage and the clock are handed in), so a plain
  * node script can check it (scripts/check-social.ts); lib/people/invite.ts is the app's copy.
  *

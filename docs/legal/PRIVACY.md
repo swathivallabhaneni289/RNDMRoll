@@ -2,7 +2,7 @@
 
 # Privacy Policy
 
-Effective November 24, 2026
+Effective November 26, 2026
 
 This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").
 
@@ -14,6 +14,7 @@ In short: we collect what the app needs to work, the app shows your posts only t
 - Your profile: a photo and a bio, if you add them.
 - Your posts: the category your spin landed on, a title, a star rating, photos, and an emoji and a short note if you add them, with the time you posted.
 - Comments and replies you write, and photos you add to them.
+- The posts you like, and when you liked them.
 - Your wheel: the categories you add, rename or remove.
 - Your spins: when you spun, what it landed on, and whether you posted or skipped that day.
 - Your connections: who you follow, who follows you, follow requests, and the people you block or mute.
@@ -29,7 +30,7 @@ In short: we collect what the app needs to work, the app shows your posts only t
 - Whether each post photo came from the camera or your library. It isn't shown to anyone else.
 - Your IP address, which reaches our server with every request.
 
-RNDMRoll doesn't ask for your location or your contacts. It asks for your camera or photo library only when you add a photo, and for notifications so it can remind you at 8 PM and tell you about comments and follow requests.
+RNDMRoll doesn't ask for your location or your contacts. It asks for your camera or photo library only when you add a photo, and for notifications so it can remind you at 8 PM, and at 10 AM when your spin isn't posted yet, and tell you about comments, likes, follow requests and accepted requests.
 
 ## Photos and the details inside them
 
@@ -52,10 +53,11 @@ We don't sell your information or share it for advertising.
 - People who follow you: in the app, only people whose follow request you accepted can see your posts, their photos, the comments on them and your followers and following lists. They see a day of your posts only after posting their own for that day. Before they post, they can see that you posted that day and your first name, but not your post.
 - Anyone signed in: anyone with an account can find you by name or username, and you may appear in their suggestions. They can see your name, username, profile photo and bio, and how many posts, spins, followers and following you have, and your week streak. They cannot see your posts.
 - When you comment: everyone who can see the post sees your comment, with your name, username and profile photo.
+- When you like a post: only the person who posted it sees who liked it and when, with each name, username and profile photo, and how many people did. Everyone else sees only their own like. Your like shows only while you follow the person who posted it: if you unfollow, or they remove you as a follower, it stops showing and counting, and it comes back if they accept you again.
 - Reports: a post or comment you report is hidden from you from then on. A post or comment of yours that several people report is hidden from everyone but you while we take a look. We tell you in your notifications, and you see a line on it saying so. The people you report are never told it was you.
 - Your posts show the time you posted, in your own time zone, and say Late when you posted late.
 - Archived posts and their photos are hidden from everyone else in the app. A photo link someone already had stops working within an hour.
-- If you block someone, they can't find you or see your profile, posts or comments, and you don't see their posts or comments. Photo links they already had stop working within an hour. You still see their name, username and profile photo in your Blocked accounts list and on their page, so you can unblock them.
+- If you block someone, they can't find you or see your profile, posts or comments, and you don't see their posts or comments. Likes between you stop showing and counting. Photo links they already had stop working within an hour. You still see their name, username and profile photo in your Blocked accounts list and on their page, so you can unblock them.
 - Admins, who review reports, can see each report and who made it, the reported post or comment, and the reported account's name, username, profile photo, bio and join date, and whether it is disabled or its owner asked to delete it. While a report about an account is open, or while it is disabled, they can also see its posts and their photos, but not the ones its owner archived. They can see a post or comment they removed, with its photos, for 30 days, and the record of decisions about an account, including how many of its posts and comments were removed before. They also see the words and photos sent with a second look. They can open only accounts that someone reported, that are disabled, or that have such a record.
 - We run RNDMRoll's server, so we can reach everything it stores, in our database and in our photo storage at Supabase. We look only when we need to run or fix RNDMRoll, keep people safe, or do something you asked, such as sending you a copy of your information.
 
@@ -75,9 +77,10 @@ A few companies help run RNDMRoll. We give them only what they need to provide t
 
 ## On your phone
 
-- Your login is kept in your iPhone's keychain, on that phone only. Logging out removes it; deleting the app may not, so log out first. If you're offline when you log out, the app keeps it until it can end that login on our server.
+- Your login is kept in your iPhone's keychain, on that phone only. Logging out removes it. Deleting the app may leave it in the keychain, but a new install of the app doesn't use it and ends that login on our server. If you're offline when you log out, the app keeps it until it can end that login on our server.
 - A few settings, such as whether the 8 PM reminder is on, are kept on your phone.
-- The 8 PM reminder is scheduled on your phone. RNDMRoll's server isn't involved.
+- If you open an invite link before you log in, the app keeps that person's username on your phone so their profile can open once you're in. It's cleared when it opens, when you log out, or the next time the app starts once it's a day old.
+- The 8 PM reminder and the 10 AM note are scheduled on your phone. RNDMRoll's server isn't involved.
 - Photos you view are saved on your phone so they load faster, and logging out clears them. Copies of photos you add can stay on your phone until you delete the app.
 
 ## Cookies
@@ -87,8 +90,8 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 ## How long we keep it
 
 - Your account and everything in it, for as long as your account exists. When you delete your account, it is hidden from everyone at once and deleted for good 30 days later, unless you log back in, or reset your password, before then.
-- When you delete a post, it is deleted with its photos and its comments, including photos in those comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.
-- When we remove a post or comment, it is hidden from everyone at once, you included, and kept for 30 days in case we got it wrong. Then it is deleted with its photos and with any comments or replies under it. Your spin for that day, and the fact that you posted, stay.
+- When you delete a post, it is deleted with its photos, its likes and its comments, including photos in those comments. Your spin for that day, and the fact that you posted, stay because they count toward your week.
+- When we remove a post or comment, it is hidden from everyone at once, you included, and kept for 30 days in case we got it wrong. Then it is deleted with its photos and with any likes, comments or replies under it. Your spin for that day, and the fact that you posted, stay.
 - Some photo files can stay in storage after what they belonged to is gone: photos you uploaded but never posted or sent, and, rarely, a photo whose removal failed. The server makes no new links for these files, so any link to one stops working within an hour. We delete all of your photo files when your account is deleted.
 - Archived posts stay, hidden from everyone else in the app, until you restore or delete them.
 - Reports are kept after the reported content is removed, with a copy of the post's title or the comment's words, so we can look back at them. They're deleted when the account that made the report, or the account it's about, is deleted.
@@ -96,15 +99,16 @@ The app doesn't use cookies. RNDMRoll's admin page, which only admins use, sets 
 - If you ask for a second look, your words are kept with the record of that decision, so we can look back at them, and deleted with your account. The photos you add are deleted 30 days after the removal, whatever we decide, or with your account if that is sooner.
 - A login ends 30 days after you last used the app. Records of past logins, with the details your phone sent, are kept while your account exists, to help protect it.
 - A sign-up or password reset code stops working after 30 minutes or 5 wrong tries. It's deleted once it's used, or replaced when you ask for a new one. If you don't finish signing up, what you typed is deleted within a few hours.
-- Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, including any search words, and are kept only as long as we need them to fix problems and keep RNDMRoll safe. Supabase also keeps its own logs of requests to our database and photo storage for a short time.
+- Limits on repeated tries keep your IP address, and the email or username you typed, only in the server's memory, for a short time. Server logs record each request with its IP address and the part of the app it asked for, and are kept only as long as we need them to fix problems and keep RNDMRoll safe. Supabase also keeps its own logs of requests to our database and photo storage for a short time.
+- A like is kept until you undo it, or until the post or your account is deleted. When the server sends a phone notification about your like, it remembers that, in its memory only, for about a day, so a like undone and made again doesn't send a second one. A restart forgets it.
 - A disabled account is kept, hidden from everyone else on RNDMRoll, in case the decision is reviewed, until its owner asks us to delete it.
 
 ## Your choices
 
 - Change your photo, name, username and bio on your profile, and your password in Settings. You can replace your profile photo but not remove it yourself; email us to remove it.
-- Delete your posts, and your comments on posts you can still see, or archive a post so no one else sees it in the app. A post or comment we removed is deleted for good 30 days later.
+- Delete your posts, or archive one so no one else sees it in the app. Delete your comments and undo your likes on posts you can still see. A post or comment we removed is deleted for good 30 days later.
 - Remove a follower, unfollow, mute or block anyone.
-- In Settings, under Notifications, turn comment and milestone notifications and the 8 PM reminder on or off. Follow request notifications can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.
+- In Settings, under Notifications, turn like, comment and milestone notifications and the 8 PM reminder on or off. Follow request and accepted request notifications, and messages about our decisions, can't be turned off there. To stop all phone notifications, turn them off for RNDMRoll in your iPhone's Settings.
 - Ask for a copy of your information, or ask us to correct it, by emailing swathi.vallabhaneni289@gmail.com from the address on your account. We'll answer within 30 days.
 - Ask for a second look at a post or comment we removed: tap the message about it in the app, tell us why it should come back and add up to 3 photos if they help. You can ask once for each removal, within 30 days of it. To ask about a disabled account, email us at swathi.vallabhaneni289@gmail.com.
 - Delete your account in Settings, under Delete account. It is hidden from everyone at once and deleted for good after 30 days, with everything in it, photos included. Logging back in, or resetting your password, before then keeps it. Copies in server logs are cleared on their normal schedule.

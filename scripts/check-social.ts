@@ -208,7 +208,7 @@ const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, 
   );
 }
 
-// ---- an invite link opened while signed out (PRD known issue 1, 2026-11-26) ---------------------
+// ---- an invite link opened while signed out (once PRD known issue 1, fixed 2026-11-26) ----
 {
   eq('the button link gives its username', inviteUsername('rndmroll://u/Maya_K'), 'maya_k');
   eq('with a slash at the end too', inviteUsername('rndmroll://u/maya/'), 'maya');

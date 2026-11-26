@@ -15,7 +15,7 @@ export const invites = createInviteStore(AsyncStorage);
 
 /**
  * The Spin page: a kept invite that is ready opens the inviter's page once, over it, so Back comes
- * back here (PRD known issue 1, 2026-11-26). Read on focus, so it opens as the person lands here
+ * back here (once PRD known issue 1, fixed 2026-11-26). Read on focus, so it opens as the person lands here
  * after Log in, or after Find your friends at the end of a sign-up.
  */
 export function useOpenInvite(): void {

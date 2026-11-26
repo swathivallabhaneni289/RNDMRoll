@@ -280,7 +280,7 @@ check(
 );
 check('the fading copy of the wheel draws no link', /\{frozen \? null : editLink\}/.test(today));
 
-// After a big time zone change the next spin can open later than 8:00 PM (PRD known issue 12): every
+// After a big time zone change the next spin can open later than 8:00 PM (once PRD known issue 12, fixed 2026-11-26): every
 // line that says when names the moment the countdown counts to (opensAtTime), never a fixed time.
 const countdown = source('components/today/CountdownBlock.tsx');
 const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
