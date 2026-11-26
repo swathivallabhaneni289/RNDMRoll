@@ -274,7 +274,7 @@ check(
   'the link is drawn under both settled countdowns (a failed refresh says so between them)',
   (
     today.match(
-      /<CountdownBlock anchor=\{anchor\} nextOpenAt=\{view\.next_open_at\} onZero=\{instantReached\} \/>\s*\{refreshLine\}\s*\{editLink\}/g
+      /<CountdownBlock anchor=\{anchor\} nextOpenAt=\{view\.next_open_at\} todayWindow=\{view\.window\} onZero=\{instantReached\} \/>\s*\{refreshLine\}\s*\{editLink\}/g
     ) ?? []
   ).length === 2
 );

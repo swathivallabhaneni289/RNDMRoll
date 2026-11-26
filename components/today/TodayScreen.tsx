@@ -22,6 +22,7 @@ import type { Today, TodayState } from '@/lib/api/types';
 import { BOARD_OPEN_LINE, MISSED_SPIN_LINE, missedLine, nextSpinLine } from '@/lib/entry/rules';
 import { useReduceMotion } from '@/lib/motion/useReduceMotion';
 import { color, minTouchTarget, space, type } from '@/lib/theme/tokens';
+import { opensAtTime } from '@/lib/wheel/countdown';
 import { dateLineLong } from '@/lib/wheel/format';
 import { LOADING_WHEEL } from '@/lib/wheel/geometry';
 import { useToday } from '@/lib/wheel/useToday';
@@ -331,6 +332,9 @@ export function TodayScreen() {
   const wheelSpinId = phase === 'entering' ? enteringBaseIdRef.current : turn.id;
   const wheelSize = Math.min(WHEEL_MAX, width - 2 * space.lg);
   const hubOpen = viewState === 'open' && !busy && comp === 'wheel';
+  // When the next spin opens, the moment the countdown counts to: 8:00 PM, or later that evening
+  // after a big time zone change. The hub's hint and Skipped's line name it as the countdown does.
+  const opensAt = view !== null ? opensAtTime(view.next_open_at, view.window) : null;
 
   // ---- pieces ------------------------------------------------------------------------------
 
@@ -417,7 +421,7 @@ export function TodayScreen() {
       // stays under the countdown until "Try again" or the next answer (UI-SPEC 4.4).
       return (
         <View style={{ alignSelf: 'stretch', alignItems: 'center' }}>
-          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} todayWindow={view.window} onZero={instantReached} />
           {failureKind !== null ? (
             <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>
               <StatusMessage
@@ -469,7 +473,7 @@ export function TodayScreen() {
           onHubPress={handleHubPress}
           showPointer
           onLanded={handleLanded}
-          hubHint={viewState === 'waiting' ? 'Opens at 8:00 PM.' : undefined}
+          hubHint={viewState === 'waiting' && opensAt !== null ? `Opens at ${opensAt}.` : undefined}
           decorative={view === null}
         />
       </View>
@@ -557,7 +561,7 @@ export function TodayScreen() {
         {/* Once the day is settled the page counts down to the next spin, whose wheel can be edited. */}
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
-          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} todayWindow={view.window} onZero={instantReached} />
           {refreshLine}
           {editLink}
         </View>
@@ -572,7 +576,7 @@ export function TodayScreen() {
         <SettledBlock today={view} />
         <View style={{ marginTop: space.xl, alignItems: 'center' }}>
           {restWheel}
-          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} onZero={instantReached} />
+          <CountdownBlock anchor={anchor} nextOpenAt={view.next_open_at} todayWindow={view.window} onZero={instantReached} />
           {refreshLine}
           {editLink}
         </View>
@@ -581,7 +585,7 @@ export function TodayScreen() {
     ) : null;
   const skippedLine =
     comp === 'result' && viewState === 'skipped' && view !== null
-      ? nextSpinLine(view.spin?.local_date ?? view.local_date, view.local_date, view.next_open_weekday)
+      ? nextSpinLine(view.spin?.local_date ?? view.local_date, view.local_date, view.next_open_weekday, opensAt)
       : null;
   // The day before closed with its spin neither posted nor skipped: said under 'Your spin is open.'
   // until the next spin is made (the server's `missed`). While the wheel turns the held Today keeps

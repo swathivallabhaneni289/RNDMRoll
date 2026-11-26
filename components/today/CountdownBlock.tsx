@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { CapsLabel } from '@/components/today/CapsLabel';
 import { color, space, type } from '@/lib/theme/tokens';
-import { msUntil, parseInstant, spokenMinutes, split } from '@/lib/wheel/countdown';
+import type { Today } from '@/lib/api/types';
+import { msUntil, opensAtTime, parseInstant, spokenMinutes, split } from '@/lib/wheel/countdown';
 import type { Anchor } from '@/lib/wheel/todayStore';
 
 /**
@@ -75,18 +76,23 @@ function Colon() {
  * line "Opens at 8:00 PM." under them (developer, 2026-10-16: say plainly what the timer is). The time left is counted from the server's `now` with a monotonic clock
  * (the anchor), never the phone's clock, so a wrong phone clock changes nothing. The tick lives
  * in this component and re-renders nothing else; the spoken line changes once a minute.
+ * The line names the moment the count ends (`opensAtTime`, from `nextOpenAt` and Today's
+ * `window`): after a big time zone change that can be later than 8:00 PM, "Opens at 9:50 PM."
  * `onZero` is called once when the count reaches zero (Today then asks the server again).
  */
 export function CountdownBlock({
   anchor,
   nextOpenAt,
+  todayWindow,
   onZero,
 }: {
   anchor: Anchor | null;
   nextOpenAt: string;
+  todayWindow: Today['window'];
   onZero?: () => void;
 }) {
   const [, setTick] = useState(0);
+  const opensAt = opensAtTime(nextOpenAt, todayWindow);
   const target = parseInstant(nextOpenAt);
   const remaining = anchor && target !== null ? msUntil(nextOpenAt, anchor, performance.now()) : null;
 
@@ -108,10 +114,10 @@ export function CountdownBlock({
   const parts = remaining === null ? null : split(remaining);
   const spoken =
     remaining === null
-      ? 'Your next spin opens at 8:00 PM.'
+      ? `Your next spin opens at ${opensAt}.`
       : remaining <= 0
         ? 'Your next spin is opening now.'
-        : `Your next spin opens in ${spokenMinutes(remaining)}, at 8:00 PM.`;
+        : `Your next spin opens in ${spokenMinutes(remaining)}, at ${opensAt}.`;
 
   return (
     <View accessible accessibilityLabel={spoken} style={{ alignItems: 'center' }}>
@@ -134,7 +140,7 @@ export function CountdownBlock({
             textAlign: 'center',
           }}
         >
-          Opens at 8:00 PM.
+          {`Opens at ${opensAt}.`}
         </Text>
       </View>
     </View>

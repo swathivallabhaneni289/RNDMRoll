@@ -26,7 +26,7 @@ export function split(msRemaining: number): CountdownParts {
 
 /**
  * Whole hours and minutes for the spoken line, "5 hours 4 minutes" (the screen reader reads
- * "Opens at 8:00 PM, in 5 hours 4 minutes", updated once a minute).
+ * "Your next spin opens in 5 hours 4 minutes, at 8:00 PM.", updated once a minute).
  */
 export function spokenMinutes(ms: number): string {
   const totalMinutes = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 60000));
@@ -93,6 +93,38 @@ export function msUntil(
   const at = parseInstant(instant);
   if (at === null) return null;
   return at - serverNowMs(anchor, perfNow);
+}
+
+/** When a window opens, 8:00 PM, in minutes after midnight. */
+const WINDOW_OPENS_MINUTE = 20 * 60;
+const MINUTES_IN_DAY = 24 * 60;
+
+/**
+ * The time of day the next spin opens, written as the server writes its times ("8:00 PM",
+ * "9:50 PM": 12-hour, no leading zero, part minutes dropped). It is 8:00 PM, except after a big
+ * time zone change: the wheel then opens when the 12 hours since the last spin end, which can be
+ * later that evening, and the line under the countdown names that moment, the one it counts to.
+ * Worked out from the server's instants alone, with no date object and no locale. The only opening
+ * the server gives that is not some date's 8:00 PM is the end of that gap tonight, inside the
+ * window of the person's date (Today's `window`, 8:00 PM to midnight in their zone), so it is
+ * 8:00 PM plus the time since the window opened. Any other opening, or an instant that does not
+ * parse, is 8:00 PM.
+ */
+export function opensAtTime(
+  nextOpenAt: string | null | undefined,
+  window: { opens_at: string; closes_at: string } | null | undefined
+): string {
+  const at = parseInstant(nextOpenAt);
+  const opens = parseInstant(window?.opens_at);
+  const closes = parseInstant(window?.closes_at);
+  let minutes = WINDOW_OPENS_MINUTE;
+  if (at !== null && opens !== null && closes !== null && at >= opens && at < closes) {
+    minutes += Math.floor((at - opens) / 60000);
+    // A clock turned back an hour at midnight gives that evening a fifth hour: the second 11 PM.
+    if (minutes >= MINUTES_IN_DAY) minutes -= 60;
+  }
+  const hour = Math.floor(minutes / 60);
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${two(minutes % 60)} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
 /**

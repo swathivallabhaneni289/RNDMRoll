@@ -4,7 +4,8 @@
  * on every device. Phase 3's entry page and Phase 4 use `dateLine`; Today uses `dateLineLong`.
  *
  * Nothing in lib/wheel formats a time or works out a weekday NAME for the screen apart from
- * these date lines: the stamp time (`spin.spun_local_time`) and the next opening's weekday
+ * these date lines and the opening time under the countdown (countdown.ts `opensAtTime`, from the
+ * server's instants): the stamp time (`spin.spun_local_time`) and the next opening's weekday
  * (`next_open_weekday`) are printed exactly as the server sent them.
  */
 
