@@ -26,7 +26,11 @@ type adminItem struct {
 	// comment as it is now, and its id is the one Remove names.
 	Report admin.Report
 	// IDs are the ids of every report in the group: what Dismiss closes.
+	// Ats are their times, in the same order, which a person's Dismiss
+	// sends too (AtValues): a person's report is named by its reporter, and
+	// a report made again since has a new time.
 	IDs []uuid.UUID
+	Ats []time.Time
 	// Reporters are their usernames, newest first, each once.
 	Reporters []string
 	// Reasons are each reason once, the most serious first (admin.ReasonRank).
@@ -95,6 +99,16 @@ func (it adminItem) RemoveReason() string {
 		}
 	}
 	return "other"
+}
+
+// AtValues are Ats as the Dismiss form sends them: in UTC to the
+// nanosecond, so each parses back to exactly the time the database gave.
+func (it adminItem) AtValues() []string {
+	out := make([]string, len(it.Ats))
+	for i, at := range it.Ats {
+		out[i] = at.UTC().Format(time.RFC3339Nano)
+	}
+	return out
 }
 
 // ReportedBy names who reported it: up to three usernames, then how many
@@ -206,6 +220,7 @@ func groupReports(owner admin.Person, reports []admin.Report) (open, closed []ad
 		}
 		it := &(*list)[i]
 		it.IDs = append(it.IDs, r.ID)
+		it.Ats = append(it.Ats, r.CreatedAt)
 		it.Hidden = it.Hidden || (r.ResolvedAt == nil && r.Hidden)
 		if r.Reporter != "" && !slices.Contains(it.Reporters, r.Reporter) {
 			it.Reporters = append(it.Reporters, r.Reporter)

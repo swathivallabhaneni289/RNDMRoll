@@ -465,8 +465,8 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 }
 
 // DismissItem implements admin.Repository. A dismissal of reports about a
-// person only closes them: people are never hidden. For a post or a comment,
-// in one transaction:
+// person only closes them (dismissPerson): people are never hidden. For a
+// post or a comment, in one transaction:
 //  1. the posts or comments the open ones among the ids are on are held for
 //     update, in id order. A report of one holds it for key share through
 //     its foreign key (and keepReport for no key update), so none lands until
@@ -482,11 +482,10 @@ func (d decision) log(ctx context.Context, tx pgx.Tx) error {
 // counts is whether it was hidden just before and is not just after. A
 // comment that stayed hidden under its post shows again, unlogged, when the
 // post's own reports are dismissed later: its writer is not told.
-func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUID, person uuid.UUID, at, loggedAt time.Time) (int, bool, error) {
+func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, at, loggedAt time.Time) (int, bool, error) {
 	if kind == admin.KindPerson {
-		tag, err := r.pool.Exec(ctx, `update user_reports set resolved_at = $3, resolution = 'dismissed'
-			where reporter_id = any($1::uuid[]) and reported_id = $2 and resolved_at is null`, ids, person, at)
-		return int(tag.RowsAffected()), false, err
+		closed, err := r.dismissPerson(ctx, ids, drawn, person, at)
+		return closed, false, err
 	}
 	m, ok := moderatedItems[kind]
 	if !ok {
@@ -575,6 +574,45 @@ func (r *AdminRepo) DismissItem(ctx context.Context, kind string, ids []uuid.UUI
 		return 0, false, err
 	}
 	return len(closed), len(shown) > 0, nil
+}
+
+// dismissPerson closes the open reports about person that the card drew:
+// one per reporter (ids), each only while it still has the time the card
+// drew it with (drawn, in the same order). A second report by the same
+// person replaces the first in place, with a new reason and time
+// (SocialRepo.Report), so the reporter alone would also close a report made
+// after the page was drawn, which nobody read (2026-11-26). The time is the
+// reporter's own clock, which the test tools can move back, so it is matched
+// exactly, never as "up to". The update waits for a report being made again
+// at the same moment and then reads its new time, so that one stays open.
+// The outer select reads the rows as they were before the update: a
+// reporter on the card with an open report at another time reported again
+// since, and when that left nothing to close it is admin.ErrNewerReport.
+func (r *AdminRepo) dismissPerson(ctx context.Context, ids []uuid.UUID, drawn []time.Time, person uuid.UUID, at time.Time) (int, error) {
+	if len(drawn) != len(ids) {
+		return 0, fmt.Errorf("postgres: %d report times for %d reporters", len(drawn), len(ids))
+	}
+	var closed int
+	var newer bool
+	err := r.pool.QueryRow(ctx, `
+		with shown as (select * from unnest($1::uuid[], $4::timestamptz[]) as s(reporter_id, created_at)),
+		closed as (
+			update user_reports ur set resolved_at = $3, resolution = 'dismissed'
+			from shown
+			where ur.reporter_id = shown.reporter_id and ur.created_at = shown.created_at
+			  and ur.reported_id = $2 and ur.resolved_at is null
+			returning 1)
+		select (select count(*) from closed)::int,
+		       exists (select 1 from user_reports nr join shown on nr.reporter_id = shown.reporter_id
+		               where nr.reported_id = $2 and nr.resolved_at is null and nr.created_at <> shown.created_at)`,
+		ids, person, at, drawn).Scan(&closed, &newer)
+	if err != nil {
+		return 0, err
+	}
+	if closed == 0 && newer {
+		return 0, admin.ErrNewerReport
+	}
+	return closed, nil
 }
 
 // collect reads a query's one column, closing its rows.

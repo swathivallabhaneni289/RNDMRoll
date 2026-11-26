@@ -69,16 +69,14 @@ func (w *adminModWorld) page(path string) string {
 // cardForm is the Remove or Dismiss form ("remove" or "dismiss") of the one
 // card on owner's page that holds mark, as the page draws it: Remove with
 // the report id it carries and the reason its Reason list has selected,
-// Dismiss with every id on the card.
+// Dismiss with every id on the card (and on a person's card every time).
 func (w *adminModWorld) cardForm(action, kind string, owner feedPerson, mark string) url.Values {
 	w.t.Helper()
 	page := w.page("/admin/people/" + owner.id)
 	card := adminReportOf(w.t, page, mark)
 	form := url.Values{"csrf": {csrfOf(w.t, page)}, "kind": {kind}, "person": {owner.id}}
 	if action == "dismiss" {
-		for _, m := range dismissIDs.FindAllStringSubmatch(card[strings.Index(card, `action="/admin/reports/dismiss"`):], -1) {
-			form.Add("id", m[1])
-		}
+		dismissForm(card, form)
 	} else {
 		form.Set("id", adminReportID(w.t, card))
 		form.Set("reason", adminRemoveReason(w.t, card))
@@ -1052,7 +1050,7 @@ func TestAdminModerationIntegration_ADismissThatADisableBeatLogsNothing(t *testi
 	}
 	dismissed := make(chan outcome, 1)
 	go func() {
-		closed, shown, err := postgres.NewAdminRepo(w.pool).DismissItem(ctx, "post", ids, uuid.MustParse(b.id), time.Now().UTC(), w.clk.NowFor(b.id))
+		closed, shown, err := postgres.NewAdminRepo(w.pool).DismissItem(ctx, "post", ids, nil, uuid.MustParse(b.id), time.Now().UTC(), w.clk.NowFor(b.id))
 		dismissed <- outcome{closed, shown, err}
 	}()
 	waitForARowLock(t, w.pool)

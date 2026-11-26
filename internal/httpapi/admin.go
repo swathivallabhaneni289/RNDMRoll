@@ -971,7 +971,8 @@ func formIDs(c *gin.Context) (kind string, id, person uuid.UUID, ok bool) {
 const adminDismissMost = admin.OpenReportsLimit
 
 // adminBodyBytes is the largest form the admin page takes: room for a
-// Dismiss that sends adminDismissMost report ids (about 40 bytes each).
+// Dismiss that sends adminDismissMost report ids (about 40 bytes each) and,
+// for a person, their times (about 35 bytes each).
 const adminBodyBytes = 64 << 10
 
 // dismiss closes the reports on one card: every id the form sends, each
@@ -979,31 +980,50 @@ const adminBodyBytes = 64 << 10
 // one transaction). A post or comment that was hidden while under review
 // and is not once they are closed shows again, and its owner is told: the
 // notice says so.
+//
+// A person's reports are named by their reporters, and a reporter who
+// reports them again replaces their report in place, so a person's card
+// also sends the time it drew each with ("at", in the ids' order), and only
+// those close. A newer one stays open, and the page it goes back to shows
+// it; when that left nothing to close, the notice says the page was out of
+// date.
 func (h *AdminHandler) dismiss(c *gin.Context) {
 	kind := c.PostForm("kind")
 	person, err := uuid.Parse(c.PostForm("person"))
-	raw := c.PostFormArray("id")
+	raw, rawAt := c.PostFormArray("id"), c.PostFormArray("at")
 	if err != nil || len(raw) == 0 || len(raw) > adminDismissMost ||
-		(kind != admin.KindPerson && kind != admin.KindPost && kind != admin.KindComment) {
+		(kind != admin.KindPerson && kind != admin.KindPost && kind != admin.KindComment) ||
+		(kind == admin.KindPerson && len(rawAt) != len(raw)) {
 		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}
 	ids := make([]uuid.UUID, 0, len(raw))
-	for _, s := range raw {
+	var drawn []time.Time
+	for i, s := range raw {
 		id, err := uuid.Parse(s)
 		if err != nil {
 			c.Redirect(http.StatusSeeOther, "/admin")
 			return
 		}
 		ids = append(ids, id)
+		if kind == admin.KindPerson {
+			at, err := time.Parse(time.RFC3339Nano, rawAt[i])
+			if err != nil {
+				c.Redirect(http.StatusSeeOther, "/admin")
+				return
+			}
+			drawn = append(drawn, at)
+		}
 	}
 	ctx := c.Request.Context()
 	loggedAt := time.Now()
 	if kind != admin.KindPerson {
 		loggedAt = h.ownerNow(ctx, person)
 	}
-	closed, shownAgain, err := h.repo.DismissItem(ctx, kind, ids, person, time.Now().UTC(), loggedAt)
+	closed, shownAgain, err := h.repo.DismissItem(ctx, kind, ids, drawn, person, time.Now().UTC(), loggedAt)
 	switch {
+	case errors.Is(err, admin.ErrNewerReport):
+		backTo(c, person, "stale")
 	case err != nil:
 		log.Printf("httpapi: admin dismiss %s: %v", kind, err)
 		backTo(c, person, "failed")

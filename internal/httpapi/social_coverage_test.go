@@ -207,7 +207,8 @@ func TestSocialCoverage_EveryAdminPageRunsNoScriptAndCarriesTheStrictHeaders(t *
 	r.repo.target, r.repo.owner = &target, owner.ID
 	r.repo.events = []admin.Event{{ID: removal, Item: admin.KindPost, Action: admin.LogRemoved, Snapshot: "Gone soon", Reasons: []string{"spam"}, At: now}}
 	r.repo.looks = []admin.SecondLook{look}
-	dismiss := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {report.ID.String()}, "person": {owner.ID.String()}}
+	dismiss := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPerson}, "id": {report.ID.String()},
+		"at": {report.CreatedAt.UTC().Format(time.RFC3339Nano)}, "person": {owner.ID.String()}}
 	remove := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {uuid.NewString()}, "person": {owner.ID.String()}, "from": {"list"}}
 	restore := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {removed.String()}, "person": {owner.ID.String()}, "from": {"removed"}}
 	keep := url.Values{"csrf": {r.h.sign("csrf", cookie)}, "kind": {admin.KindPost}, "id": {removed.String()}, "person": {owner.ID.String()},
