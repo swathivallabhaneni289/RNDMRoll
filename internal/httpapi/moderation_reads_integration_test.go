@@ -425,7 +425,7 @@ func TestModerationIntegration_APostUnderReviewIsHiddenFromAllButItsOwner(t *tes
 		if ids, posts := w.grid(v, o); has(ids, entry) != want || (posts == 1) != want {
 			t.Fatalf("%s: O's page as Vera: grid %v, Posts %v", label, ids, posts)
 		}
-		if names, n := w.locked(l); slices.Contains(names, "Olive") != want || n != 1 {
+		if names, n := w.locked(l); slices.Contains(names, "Olive") != want || (n == 1) != want {
 			t.Fatalf("%s: Lou's locked card: %v, %v posted", label, names, n)
 		}
 		if got := w.ownFlags(o, entry); !slices.Equal(got, []bool{!want, !want, !want, !want, !want}) {
@@ -582,9 +582,10 @@ func TestModerationIntegration_ACommentUnderReviewIsShownOnlyToItsWriter(t *test
 
 // A post an admin removed is gone for everyone, its owner included, as if
 // deleted: the post page, the owner's entry, archive, diary and Today, the
-// Board, the person page, the locked card's names, the bell and the push.
-// Its day still counts: the posted days, the week and its bonus, and the
-// Board's unlock stay as they were, and no new post is allowed that day.
+// Board, the person page, the locked card's names and count, the bell and
+// the push. Its day still counts: the posted days, the week and its bonus,
+// and the Board's unlock stay as they were, and no new post is allowed that
+// day.
 func TestModerationIntegration_ARemovedPostIsGoneForEveryoneAndItsDayStillCounts(t *testing.T) {
 	w := newModWorld(t)
 	o := w.person("mx_olive", "Olive Owner")
@@ -765,8 +766,8 @@ func TestModerationIntegration_ARemovedPostIsGoneForEveryoneAndItsDayStillCounts
 	if ids, posts := w.grid(v, o); len(ids) != 0 || posts != 1 {
 		t.Fatalf("O's page as Vera after: %v, Posts %v, want Wednesday's post counted alone", ids, posts)
 	}
-	if names, n := w.locked(l); len(names) != 0 || n != 1 {
-		t.Fatalf("Lou's locked card after: %v, %v posted, want no name and the day still counted", names, n)
+	if names, n := w.locked(l); len(names) != 0 || n != 0 {
+		t.Fatalf("Lou's locked card after: %v, %v posted, want no name and no count", names, n)
 	}
 	if got := w.bell(v); has(got, "reply:"+answer) {
 		t.Fatalf("Vera's bell after: %v", got)

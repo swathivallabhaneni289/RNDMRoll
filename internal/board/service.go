@@ -44,7 +44,9 @@ type Repository interface {
 	// viewer, are not counted, and neither are the replies under them.
 	CommentCounts(ctx context.Context, viewer uuid.UUID, entryIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	MyReactions(ctx context.Context, viewer uuid.UUID, entryIDs []uuid.UUID) (map[uuid.UUID]string, error)
-	// PostedCount is how many people the viewer follows posted date.
+	// PostedCount is how many people the viewer follows have a post on date
+	// that the viewer will see once they post: the posts NamesOnDay names,
+	// so the locked card's number and names always agree.
 	PostedCount(ctx context.Context, viewer uuid.UUID, date string) (int, error)
 	// NamesOnDay are the names of people the viewer follows with a visible
 	// entry on date, in posting order.
