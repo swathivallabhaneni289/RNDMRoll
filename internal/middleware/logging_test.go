@@ -82,6 +82,45 @@ func TestRequestLogger_RedactsSensitiveQueryParamValues(t *testing.T) {
 	}
 }
 
+// Every route that takes typed words in its link logs the line without
+// them: the people search, the exact lookup, and the public username
+// suggest and availability checks. The line still says a query was there,
+// and the paging cursor beside the words is kept.
+func TestRequestLogger_NeverLogsTypedWords(t *testing.T) {
+	for _, tc := range []struct {
+		path, query string
+		words       []string
+	}{
+		{"/v1/people/search", "q=maya%20kim&cursor=c1", []string{"maya", "kim"}},
+		{"/v1/people/lookup", "username=maya_k", []string{"maya_k"}},
+		{"/v1/usernames/suggest", "name=Maya+Kim", []string{"Maya", "Kim"}},
+		{"/v1/usernames/available", "username=maya.kim", []string{"maya.kim"}},
+	} {
+		var buf bytes.Buffer
+		router := gin.New()
+		router.Use(RequestLogger(newLoggingTestLogger(&buf)))
+		router.GET(tc.path, func(c *gin.Context) {
+			c.Status(http.StatusOK)
+		})
+
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tc.path+"?"+tc.query, nil))
+
+		logLine := buf.String()
+		if !strings.Contains(logLine, tc.path) || !strings.Contains(logLine, `"query":"`) {
+			t.Fatalf("%s: want the path and a query in the log line, got: %s", tc.path, logLine)
+		}
+		for _, word := range tc.words {
+			if strings.Contains(logLine, word) {
+				t.Fatalf("%s: the log line leaks the typed %q: %s", tc.path, word, logLine)
+			}
+		}
+		if strings.Contains(tc.query, "cursor=") && !strings.Contains(logLine, "cursor=c1") {
+			t.Fatalf("%s: want the cursor kept, got: %s", tc.path, logLine)
+		}
+	}
+}
+
 func TestRedactSensitiveQuery_KeepsNonSensitiveParamsAndRedactsSensitiveOnes(t *testing.T) {
 	got := redactSensitiveQuery("page=Swathi&token=abc123&code=xyz789&name=Ada&username=ada_l")
 	if strings.Contains(got, "abc123") || strings.Contains(got, "xyz789") {

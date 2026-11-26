@@ -30,6 +30,9 @@ var sensitiveQueryKeys = map[string]struct{}{
 	// someone who is not signed up yet must not reach the logs either.
 	"name":     {},
 	"username": {},
+	// What someone typed into the people search (GET /people/search?q=) is
+	// theirs too: who they looked for stays out of the logs.
+	"q": {},
 }
 
 // redactSensitiveQuery parses raw as a URL query string and returns it
