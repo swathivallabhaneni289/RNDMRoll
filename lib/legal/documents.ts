@@ -30,9 +30,9 @@ const EFFECTIVE = 'November 23, 2026';
  * 2026-10-29 and 2026-10-30). Both changed for private photos on 2026-11-13, for reports, hiding
  * and removals on 2026-11-17, and for second looks and password resets by 2026-11-23, the day they
  * went public. The Privacy Policy changed again for the sign-up code on 2026-11-24, and for likes
- * on 2026-11-26.
+ * and the small fixes on 2026-11-27, the day they went public.
  */
-const PRIVACY_EFFECTIVE = 'November 26, 2026';
+const PRIVACY_EFFECTIVE = 'November 27, 2026';
 
 function paragraph(text: string): LegalBlock {
   return { kind: 'paragraph', text };

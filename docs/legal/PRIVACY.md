@@ -2,7 +2,7 @@
 
 # Privacy Policy
 
-Effective November 26, 2026
+Effective November 27, 2026
 
 This policy explains what RNDMRoll collects, why, who can see it and the choices you have. RNDMRoll is run by its developer ("we" or "us").
 
