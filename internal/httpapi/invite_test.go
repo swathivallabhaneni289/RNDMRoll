@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -62,6 +63,32 @@ func TestInvitePage(t *testing.T) {
 	// not take its invite away.
 	if page := get("/i/assets"); !strings.Contains(page, "@assets invited you.") || !strings.Contains(page, `href="rndmroll://u/assets"`) {
 		t.Fatalf("@assets: %s", page)
+	}
+}
+
+// The route only ever shows a checked username, but the template must still
+// escape whatever it is given, in the title and in the heading.
+func TestInvitePageEscapesTheUsername(t *testing.T) {
+	var out bytes.Buffer
+	err := invitePage.Execute(&out, struct {
+		Username string
+		OpenURL  template.URL
+	}{Username: `<b>"&'`, OpenURL: "rndmroll://u/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := out.String()
+	escaped := "&lt;b&gt;&#34;&amp;&#39;"
+	for _, want := range []string{
+		"<title>Join @" + escaped + " on RNDMRoll</title>",
+		"<h1>@" + escaped + " invited you.</h1>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("page has no %q: %s", want, page)
+		}
+	}
+	if strings.Contains(page, "<b>") {
+		t.Fatalf("the username is not escaped: %s", page)
 	}
 }
 

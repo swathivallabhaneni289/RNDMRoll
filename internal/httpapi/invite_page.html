@@ -130,6 +130,11 @@
   .soon { margin: 12px 0 0; font-size: 14px; line-height: 20px; color: var(--muted); }
   .copy-bottom > .soon:first-child { margin-top: 24px; }
 
+  /* A short screen (a small phone with Safari's bars showing): the wheel shrinks to fit, so the
+     heading rises to BOOK's height (38.5%) and would run into it. BOOK steps aside. */
+  @media (max-height: 660px) {
+    .label.book { display: none; }
+  }
   /* A phone on its side: no room for the labels or the quarter kept for them. */
   @media (max-height: 520px) {
     .page { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); }
@@ -162,7 +167,7 @@
   </svg></div>
   <div class="label lit" style="left:74%;top:11%"><span>MOVIE</span><i></i></div>
   <div class="label" style="left:78%;top:30%"><span>MEAL</span><i></i></div>
-  <div class="label" style="left:6.5%;top:38.5%"><span>BOOK</span><i></i></div>
+  <div class="label book" style="left:6.5%;top:38.5%"><span>BOOK</span><i></i></div>
   <div class="label" style="left:7.5%;top:75.5%"><span>SONG</span><i></i></div>
   <div class="label" style="left:9%;top:83%"><span>PLACE</span><i></i></div>
   <div class="label" style="left:70%;top:75.5%"><span>CAMERA</span><i></i></div>
