@@ -12,11 +12,11 @@ import { color, space, type } from '@/lib/theme/tokens';
  * handles the profile page", whose grid runs edge to edge with 3:4 tiles).
  */
 /**
- * A small even margin at both sides, so a tile never touches the screen's edge and looks cut off
- * (developer, 2026-11-27, picked over the full page margins, which made the pictures look
- * "compressed"). The tiles stay nearly as big as edge to edge.
+ * Every photo shows whole: a photo that isn't 3 by 4 sits inside its tile with plain bands instead
+ * of being trimmed (developer, 2026-11-27: "its fine if it starts from the edge but dont cut the
+ * photo", after a small side margin looked off). Most phone photos are 3 by 4 and fill the tile.
  */
-const SIDE = space.sm;
+const PHOTO_FIT = 'contain' as const;
 const COLUMNS = 3;
 const GAP = 2;
 /** Tiles are 3 wide to 4 high, like Instagram's profile grid. */
@@ -45,7 +45,7 @@ export function PostGrid({
   onPhotoError,
 }: {
   posts: GridPost[];
-  /** The page's full width; the grid sits inside it with a small margin at each side. */
+  /** The width the grid fills (the full page width: it runs edge to edge). */
   width: number;
   onOpen: (id: string) => void;
   /** The line shown when there is nothing to show. */
@@ -55,7 +55,8 @@ export function PostGrid({
 }) {
   if (posts.length === 0) {
     return (
-      <View style={{ paddingHorizontal: space.lg }}>
+      // The grid sits right under the line above it; the empty line keeps the usual room instead.
+      <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg }}>
         <AppText role="label" tone="muted">
           {emptyText}
         </AppText>
@@ -63,11 +64,11 @@ export function PostGrid({
     );
   }
 
-  const tile = Math.floor((width - 2 * SIDE - GAP * (COLUMNS - 1)) / COLUMNS);
+  const tile = Math.floor((width - GAP * (COLUMNS - 1)) / COLUMNS);
   const tileHeight = Math.round(tile * TILE_RATIO);
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, paddingHorizontal: SIDE }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
       {posts.map((post) => (
         <Pressable
           key={post.id}
@@ -81,7 +82,7 @@ export function PostGrid({
             <Image
               source={photoSource(post.photo_url)}
               style={{ width: '100%', height: '100%' }}
-              contentFit="cover"
+              contentFit={PHOTO_FIT}
               onError={onPhotoError}
             />
           ) : (

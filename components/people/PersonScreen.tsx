@@ -434,7 +434,8 @@ export function PersonScreen({ id }: { id: string }) {
               </View>
             </View>
           ) : (
-            <View style={{ marginTop: space.lg }}>
+            // Right under the line, with no gap, as on your own Profile (developer, 2026-11-27).
+            <View>
               <PostGrid
                 posts={page.posts}
                 width={width}

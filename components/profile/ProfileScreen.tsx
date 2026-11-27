@@ -94,8 +94,8 @@ export function ProfileView({
   }, [saved]);
 
   return (
-    // No side padding on the page itself: the header keeps the usual margins and the grid keeps
-    // only a small one (PostGrid), so the pictures stay nearly as large as three a row allows.
+    // No side padding on the page itself: the header keeps the usual margins and the grid runs
+    // edge to edge, so the pictures are as large as three a row allows.
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: color.dominant }}>
       <ScrollView onScroll={handleScroll} scrollEventThrottle={200} contentContainerStyle={{ paddingBottom: space.xl }}>
         <View style={{ paddingHorizontal: space.lg }}>
@@ -167,7 +167,8 @@ export function ProfileView({
           )}
         </View>
         {loading ? null : (
-          <View style={{ marginTop: space.lg }}>
+          // Right under the line, with no gap (developer, 2026-11-27: "dont leave the gap on the top").
+          <View>
             <PostGrid posts={posts} width={width} onOpen={onOpenEntry} onPhotoError={onPhotoError} />
           </View>
         )}
