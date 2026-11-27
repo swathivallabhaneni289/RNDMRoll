@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: public-global
-status: building
+status: verifying
 stopped_at: Everything but the launch items built, with automated tests passing, and pushed; next a one-command demo start, the developer's practice run and README screenshots
 last_updated: "2026-11-27T15:30:00.000Z"
 last_activity: 2026-11-27
@@ -13,8 +13,8 @@ progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 42
-  completed_plans: 39
-  percent: 88
+  completed_plans: 42
+  percent: 95
 ---
 
 # Project State
