@@ -64,7 +64,8 @@ export function PostGrid({
     );
   }
 
-  const tile = Math.floor((width - GAP * (COLUMNS - 1)) / COLUMNS);
+  // Not rounded down, so three tiles and their two gaps fill the row exactly, edge to edge.
+  const tile = (width - GAP * (COLUMNS - 1)) / COLUMNS;
   const tileHeight = Math.round(tile * TILE_RATIO);
 
   return (
