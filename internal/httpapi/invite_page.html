@@ -2,25 +2,259 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#F6F5F2">
 <title>{{if .Username}}Join @{{.Username}} on RNDMRoll{{else}}RNDMRoll{{end}}</title>
+<link rel="preload" href="/i/assets/Domine_600SemiBold.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="preload" href="/i/assets/WorkSans_400Regular.ttf" as="font" type="font/ttf" crossorigin>
 <style>
-  :root { --ink: #141414; --muted: #6b6b6b; --page: #f6f4f0; }
+  /* The app's own fonts (@expo-google-fonts), only the weights this page uses. */
+  @font-face { font-family: "Domine"; font-weight: 600; font-style: normal; font-display: swap; src: url("/i/assets/Domine_600SemiBold.ttf") format("truetype"); }
+  @font-face { font-family: "Work Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("/i/assets/WorkSans_400Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Work Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url("/i/assets/WorkSans_600SemiBold.ttf") format("truetype"); }
+
+  /* lib/theme/tokens.ts */
+  :root {
+    --page: #F6F5F2;      /* dominant */
+    --secondary: #E8E7E3;
+    --ink: #111111;
+    --muted: #625F5B;
+    --serif: "Domine", Georgia, "Times New Roman", serif;
+    --sans: "Work Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --ease-out: cubic-bezier(0.33, 1, 0.68, 1);   /* Easing.out(Easing.cubic) */
+    --spin-ease: cubic-bezier(0.25, 0, 0, 1);     /* SpinningMark's SPIN_EASING */
+    --sine: cubic-bezier(0.37, 0, 0.63, 1);       /* Easing.inOut(Easing.sin) */
+    /* The width the background's sizes are fractions of: the screen's, but never wider than a tall phone's on a wide screen. */
+    --bw: min(100vw, 75vh);
+    color-scheme: light;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--page); color: var(--ink); font: 17px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 440px; margin: 0 auto; padding: 72px 16px 48px; }
-  h1 { font: 600 30px/1.2 Georgia, serif; margin: 0 0 12px; }
-  p { margin: 0 0 16px; }
-  .muted { color: var(--muted); }
-  a.button { display: block; text-align: center; background: var(--ink); color: var(--page); text-decoration: none; font-weight: 600; padding: 14px 16px; border-radius: 8px; margin: 28px 0 16px; }
+  html, body { margin: 0; background: var(--page); }
+  body { color: var(--ink); font: 400 16px/24px var(--sans); -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+  /* ---- The Welcome background (components/brand/WheelBackground.tsx) ---- */
+  .bg { position: fixed; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; pointer-events: none; z-index: 0; -webkit-user-select: none; user-select: none; }
+  .bg svg { display: block; overflow: visible; }
+  .ghost, .orbit { position: absolute; }
+  .ghost > div, .ghost svg { width: 100%; height: 100%; }
+  .ghost * { vector-effect: non-scaling-stroke; }
+  /* Two oversized ghost wheels off opposite corners, turning opposite ways (45 s and 60 s). */
+  .g1 { left: calc(4% - 0.33 * var(--bw)); top: calc(18.5% - 0.33 * var(--bw)); width: calc(0.66 * var(--bw)); height: calc(0.66 * var(--bw)); transform: rotate(12deg); animation: turn-g1 45s linear infinite; }
+  .g2 { left: calc(102% - 0.31 * var(--bw)); top: calc(97.5% - 0.31 * var(--bw)); width: calc(0.62 * var(--bw)); height: calc(0.62 * var(--bw)); transform: rotate(-28deg); animation: turn-g2 60s linear infinite; }
+  @keyframes turn-g1 { from { transform: rotate(12deg); } to { transform: rotate(372deg); } }
+  @keyframes turn-g2 { from { transform: rotate(-28deg); } to { transform: rotate(-388deg); } }
+  /* While the main wheel spins they spin up 300 degrees more, then settle back to their drift. */
+  .g1 > div { animation: kick-cw 2800ms var(--spin-ease) both; }
+  .g2 > div { animation: kick-ccw 2800ms var(--spin-ease) both; }
+  @keyframes kick-cw { from { transform: rotate(0deg); } to { transform: rotate(300deg); } }
+  @keyframes kick-ccw { from { transform: rotate(0deg); } to { transform: rotate(-300deg); } }
+  /* A dashed arc: a big circle centred off the right edge, turning so the dashes orbit (80 s). */
+  .orbit { left: calc(109% - 0.3 * var(--bw)); top: calc(60% - 0.3 * var(--bw)); width: calc(0.6 * var(--bw)); height: calc(0.6 * var(--bw)); animation: orbit 80s linear infinite; }
+  .orbit svg { width: 100%; height: 100%; }
+  @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+  /* The specks float up a little and breathe, as one layer (7 s each way). */
+  .specks { position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0.7; animation: breathe 7s var(--sine) infinite alternate; }
+  .specks svg { width: 100%; height: 100%; }
+  .specks circle { fill: var(--ink); }
+  @keyframes breathe { from { opacity: 0.7; transform: translateY(0); } to { opacity: 1; transform: translateY(-14px); } }
+  /* The categories at the edges; the one the wheel lands on lights up. */
+  .label { position: absolute; display: flex; align-items: center; font: 400 10px/12px var(--sans); letter-spacing: 3px; color: var(--ink); white-space: nowrap; }
+  .label span { opacity: 0.38; }
+  .label i { display: block; width: 56px; height: 1px; margin-left: 8px; background: var(--ink); opacity: 0.22; transform: scaleX(0.5); transform-origin: left center; }
+  .label.lit span { opacity: 1; animation: lit-word 500ms var(--ease-out) 3050ms both; }
+  .label.lit i { opacity: 0.82; transform: none; animation: lit-rule 500ms var(--ease-out) 3050ms both; }
+  @keyframes lit-word { from { opacity: 0.38; } }
+  @keyframes lit-rule { from { opacity: 0.22; transform: scaleX(0.5); } }
+
+  /* ---- The page ---- */
+  .page {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; min-height: 100svh;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) calc(env(safe-area-inset-right, 0px) + 24px) 0 calc(env(safe-area-inset-left, 0px) + 24px);
+    /* The bottom quarter is left to the background, so its labels never sit under the words or the button. */
+    padding-bottom: max(27vh, calc(env(safe-area-inset-bottom, 0px) + 24px));
+    padding-bottom: max(27svh, calc(env(safe-area-inset-bottom, 0px) + 24px));
+  }
+  /* The Spin page's header: the shutter logo beside the name (components/today/TodayScreen.tsx). */
+  .brand { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; animation: rise 500ms var(--ease-out) 60ms both; }
+  .brand svg { display: block; flex: none; }
+  .brand span { font: 600 22px/28px var(--serif); }
+  .main {
+    flex: 1 1 0; min-height: 0; width: 100%; max-width: 400px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    /* The heading's size, and the most room the words and the button can take (a two-line heading).
+       The words always get that room, so the wheel sits in the same place on every invite. */
+    --fs: clamp(24px, 7vw, 30px);
+    --copy: calc(148px + 2.4 * var(--fs));
+  }
+
+  /* The Welcome wheel (components/brand/SpinningMark.tsx): a square box, the disc at 8% across and 16% down, sized 84%.
+     As wide as on Welcome (260 on a 402-wide phone), but never so big the words would not fit above the labels. */
+  .wheel {
+    --s: min(64.68vw, 320px, max(150px, calc(73vh - 60px - var(--copy))));
+    position: relative; flex: none; width: var(--s); height: var(--s);
+    animation: reveal 600ms var(--ease-out) 120ms both;
+  }
+  @supports (height: 1svh) {
+    .wheel { --s: min(64.68vw, 320px, max(150px, calc(73svh - 60px - var(--copy)))); }
+  }
+  @supports (container-type: size) {
+    .main { container-type: size; }
+    .wheel { --s: min(64.68vw, 320px, max(150px, calc(100cqh - 8px - var(--copy)))); }
+  }
+  .wheel svg { display: block; position: absolute; width: 100%; height: 100%; }
+  .disc { position: absolute; left: 8%; top: 16%; width: 84%; height: 84%; animation: spin 2600ms var(--spin-ease) 350ms both; }
+  .disc svg { position: static; }
+  .on-light { color: var(--ink); }
+  .on-dark { color: var(--page); }
+  /* One and a bit turns, so it stops exactly in the logo pose. */
+  @keyframes spin { from { transform: rotate(-504deg); } to { transform: rotate(0deg); } }
+  @keyframes reveal { from { opacity: 0; transform: scale(0.97); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+
+  .copy { flex: none; width: 100%; min-height: var(--copy); display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .copy-top { width: 100%; animation: rise 500ms var(--ease-out) 260ms both; }
+  .copy-bottom { width: 100%; animation: rise 500ms var(--ease-out) 360ms both; }
+  h1 { margin: 16px 0 0; font: 600 var(--fs)/1.2 var(--serif); text-wrap: balance; overflow-wrap: anywhere; }
+  .tagline { margin: 8px 0 0; font-size: 14px; line-height: 20px; color: var(--muted); }
+  .button {
+    display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; margin-top: 28px; padding: 10px 16px;
+    background: var(--ink); color: var(--page); border-radius: 8px; text-decoration: none;
+    font: 600 16px/24px var(--sans); box-shadow: 0 4px 20px rgba(17, 17, 17, 0.18);
+    transition: transform 90ms var(--ease-out); -webkit-tap-highlight-color: transparent;
+  }
+  .button:active { transform: scale(0.97); }
+  .button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .soon { margin: 12px 0 0; font-size: 14px; line-height: 20px; color: var(--muted); }
+  .copy-bottom > .soon:first-child { margin-top: 24px; }
+
+  /* A phone on its side: no room for the labels or the quarter kept for them. */
+  @media (max-height: 520px) {
+    .page { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); }
+    .main { flex: none; container-type: normal; padding: 16px 0; }
+    .wheel, .main .wheel { --s: 180px; }
+    .copy { min-height: 0; }
+    .label { display: none; }
+  }
+  /* Reduce Motion: everything stands still, as it looks once the wheel has landed. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>{{if .Username}}@{{.Username}} invited you to RNDMRoll{{else}}You're invited to RNDMRoll{{end}}</h1>
-  <p>One spin a day picks a movie, a meal, a song, a place or a book. Do it, post a photo, and see what your friends spun.</p>
-  {{if .Username}}<a class="button" href="{{.OpenURL}}">Open in RNDMRoll</a>{{end}}
-  <p class="muted">Don't have the app yet? RNDMRoll is coming to the App Store. Once you have it, open this link again{{if .Username}} and follow @{{.Username}}{{end}}.</p>
-</main>
+<div class="bg" aria-hidden="true">
+  <div class="ghost g1"><div><svg viewBox="-1 -1 2 2"><path fill="rgba(17,17,17,0.07)" d="M0 0L-0.0285 -0.8155A0.816 0.816 0 0 1 0.5929 -0.5607ZM0 0L0.8146 0.0470A0.816 0.816 0 0 1 0.5565 0.5968ZM0 0L0.0028 0.8160A0.816 0.816 0 0 1 -0.5080 0.6386ZM0 0L-0.8070 0.1206A0.816 0.816 0 0 1 -0.6242 -0.5256Z"/><circle r="1" fill="none" stroke="rgba(17,17,17,0.17)" stroke-width="1.4"/><circle r="0.93" fill="none" stroke="rgba(17,17,17,0.11)" stroke-width="1"/><path fill="none" stroke="rgba(17,17,17,0.15)" stroke-width="1" d="M0.0000 -0.9300L0.0000 -0.8700M0.0972 -0.9249L0.0941 -0.8951M0.1934 -0.9097L0.1871 -0.8803M0.2874 -0.8845L0.2781 -0.8560M0.3783 -0.8496L0.3661 -0.8222M0.4650 -0.8054L0.4350 -0.7534M0.5466 -0.7524L0.5290 -0.7281M0.6223 -0.6911L0.6022 -0.6688M0.6911 -0.6223L0.6688 -0.6022M0.7524 -0.5466L0.7281 -0.5290M0.8054 -0.4650L0.7534 -0.4350M0.8496 -0.3783L0.8222 -0.3661M0.8845 -0.2874L0.8560 -0.2781M0.9097 -0.1934L0.8803 -0.1871M0.9249 -0.0972L0.8951 -0.0941M0.9300 -0.0000L0.8700 -0.0000M0.9249 0.0972L0.8951 0.0941M0.9097 0.1934L0.8803 0.1871M0.8845 0.2874L0.8560 0.2781M0.8496 0.3783L0.8222 0.3661M0.8054 0.4650L0.7534 0.4350M0.7524 0.5466L0.7281 0.5290M0.6911 0.6223L0.6688 0.6022M0.6223 0.6911L0.6022 0.6688M0.5466 0.7524L0.5290 0.7281M0.4650 0.8054L0.4350 0.7534M0.3783 0.8496L0.3661 0.8222M0.2874 0.8845L0.2781 0.8560M0.1934 0.9097L0.1871 0.8803M0.0972 0.9249L0.0941 0.8951M0.0000 0.9300L0.0000 0.8700M-0.0972 0.9249L-0.0941 0.8951M-0.1934 0.9097L-0.1871 0.8803M-0.2874 0.8845L-0.2781 0.8560M-0.3783 0.8496L-0.3661 0.8222M-0.4650 0.8054L-0.4350 0.7534M-0.5466 0.7524L-0.5290 0.7281M-0.6223 0.6911L-0.6022 0.6688M-0.6911 0.6223L-0.6688 0.6022M-0.7524 0.5466L-0.7281 0.5290M-0.8054 0.4650L-0.7534 0.4350M-0.8496 0.3783L-0.8222 0.3661M-0.8845 0.2874L-0.8560 0.2781M-0.9097 0.1934L-0.8803 0.1871M-0.9249 0.0972L-0.8951 0.0941M-0.9300 0.0000L-0.8700 0.0000M-0.9249 -0.0972L-0.8951 -0.0941M-0.9097 -0.1934L-0.8803 -0.1871M-0.8845 -0.2874L-0.8560 -0.2781M-0.8496 -0.3783L-0.8222 -0.3661M-0.8054 -0.4650L-0.7534 -0.4350M-0.7524 -0.5466L-0.7281 -0.5290M-0.6911 -0.6223L-0.6688 -0.6022M-0.6223 -0.6911L-0.6022 -0.6688M-0.5466 -0.7524L-0.5290 -0.7281M-0.4650 -0.8054L-0.4350 -0.7534M-0.3783 -0.8496L-0.3661 -0.8222M-0.2874 -0.8845L-0.2781 -0.8560M-0.1934 -0.9097L-0.1871 -0.8803M-0.0972 -0.9249L-0.0941 -0.8951"/><circle r="0.14" fill="rgba(17,17,17,0.05)" stroke="rgba(17,17,17,0.18)" stroke-width="1.2"/><circle r="0.063" fill="none" stroke="rgba(17,17,17,0.18)" stroke-width="1"/></svg></div></div>
+  <div class="ghost g2"><div><svg viewBox="-1 -1 2 2"><path fill="rgba(17,17,17,0.07)" d="M0 0L-0.0285 -0.8155A0.816 0.816 0 0 1 0.5929 -0.5607ZM0 0L0.8146 0.0470A0.816 0.816 0 0 1 0.5565 0.5968ZM0 0L0.0028 0.8160A0.816 0.816 0 0 1 -0.5080 0.6386ZM0 0L-0.8070 0.1206A0.816 0.816 0 0 1 -0.6242 -0.5256Z"/><circle r="1" fill="none" stroke="rgba(17,17,17,0.17)" stroke-width="1.4"/><circle r="0.93" fill="none" stroke="rgba(17,17,17,0.11)" stroke-width="1"/><path fill="none" stroke="rgba(17,17,17,0.15)" stroke-width="1" d="M0.0000 -0.9300L0.0000 -0.8700M0.0972 -0.9249L0.0941 -0.8951M0.1934 -0.9097L0.1871 -0.8803M0.2874 -0.8845L0.2781 -0.8560M0.3783 -0.8496L0.3661 -0.8222M0.4650 -0.8054L0.4350 -0.7534M0.5466 -0.7524L0.5290 -0.7281M0.6223 -0.6911L0.6022 -0.6688M0.6911 -0.6223L0.6688 -0.6022M0.7524 -0.5466L0.7281 -0.5290M0.8054 -0.4650L0.7534 -0.4350M0.8496 -0.3783L0.8222 -0.3661M0.8845 -0.2874L0.8560 -0.2781M0.9097 -0.1934L0.8803 -0.1871M0.9249 -0.0972L0.8951 -0.0941M0.9300 -0.0000L0.8700 -0.0000M0.9249 0.0972L0.8951 0.0941M0.9097 0.1934L0.8803 0.1871M0.8845 0.2874L0.8560 0.2781M0.8496 0.3783L0.8222 0.3661M0.8054 0.4650L0.7534 0.4350M0.7524 0.5466L0.7281 0.5290M0.6911 0.6223L0.6688 0.6022M0.6223 0.6911L0.6022 0.6688M0.5466 0.7524L0.5290 0.7281M0.4650 0.8054L0.4350 0.7534M0.3783 0.8496L0.3661 0.8222M0.2874 0.8845L0.2781 0.8560M0.1934 0.9097L0.1871 0.8803M0.0972 0.9249L0.0941 0.8951M0.0000 0.9300L0.0000 0.8700M-0.0972 0.9249L-0.0941 0.8951M-0.1934 0.9097L-0.1871 0.8803M-0.2874 0.8845L-0.2781 0.8560M-0.3783 0.8496L-0.3661 0.8222M-0.4650 0.8054L-0.4350 0.7534M-0.5466 0.7524L-0.5290 0.7281M-0.6223 0.6911L-0.6022 0.6688M-0.6911 0.6223L-0.6688 0.6022M-0.7524 0.5466L-0.7281 0.5290M-0.8054 0.4650L-0.7534 0.4350M-0.8496 0.3783L-0.8222 0.3661M-0.8845 0.2874L-0.8560 0.2781M-0.9097 0.1934L-0.8803 0.1871M-0.9249 0.0972L-0.8951 0.0941M-0.9300 0.0000L-0.8700 0.0000M-0.9249 -0.0972L-0.8951 -0.0941M-0.9097 -0.1934L-0.8803 -0.1871M-0.8845 -0.2874L-0.8560 -0.2781M-0.8496 -0.3783L-0.8222 -0.3661M-0.8054 -0.4650L-0.7534 -0.4350M-0.7524 -0.5466L-0.7281 -0.5290M-0.6911 -0.6223L-0.6688 -0.6022M-0.6223 -0.6911L-0.6022 -0.6688M-0.5466 -0.7524L-0.5290 -0.7281M-0.4650 -0.8054L-0.4350 -0.7534M-0.3783 -0.8496L-0.3661 -0.8222M-0.2874 -0.8845L-0.2781 -0.8560M-0.1934 -0.9097L-0.1871 -0.8803M-0.0972 -0.9249L-0.0941 -0.8951"/><circle r="0.14" fill="rgba(17,17,17,0.05)" stroke="rgba(17,17,17,0.18)" stroke-width="1.2"/><circle r="0.063" fill="none" stroke="rgba(17,17,17,0.18)" stroke-width="1"/></svg></div></div>
+  <div class="orbit"><svg><circle cx="50%" cy="50%" r="50%" fill="none" stroke="rgba(17,17,17,0.18)" stroke-width="1" stroke-dasharray="5 9"/></svg></div>
+  <div class="specks"><svg>
+    <circle cx="1.17%" cy="6.20%" r="1.97" fill-opacity="0.302"/><circle cx="25.78%" cy="15.59%" r="1.72" fill-opacity="0.255"/><circle cx="19.71%" cy="36.80%" r="1.15" fill-opacity="0.259"/><circle cx="29.63%" cy="97.79%" r="1.10" fill-opacity="0.348"/>
+    <circle cx="19.08%" cy="14.37%" r="0.99" fill-opacity="0.196"/><circle cx="7.45%" cy="91.29%" r="1.46" fill-opacity="0.282"/><circle cx="68.01%" cy="96.60%" r="1.55" fill-opacity="0.360"/><circle cx="82.76%" cy="4.00%" r="1.01" fill-opacity="0.213"/>
+    <circle cx="42.53%" cy="2.02%" r="0.91" fill-opacity="0.320"/><circle cx="46.87%" cy="94.62%" r="1.64" fill-opacity="0.299"/><circle cx="13.88%" cy="13.33%" r="1.90" fill-opacity="0.204"/><circle cx="19.04%" cy="63.22%" r="1.20" fill-opacity="0.131"/>
+    <circle cx="68.43%" cy="92.14%" r="1.46" fill-opacity="0.335"/><circle cx="65.52%" cy="91.99%" r="0.94" fill-opacity="0.258"/><circle cx="64.92%" cy="89.11%" r="1.95" fill-opacity="0.338"/><circle cx="59.42%" cy="96.39%" r="1.96" fill-opacity="0.263"/>
+    <circle cx="81.85%" cy="0.57%" r="1.42" fill-opacity="0.205"/><circle cx="75.54%" cy="97.69%" r="1.47" fill-opacity="0.334"/><circle cx="0.93%" cy="2.41%" r="1.93" fill-opacity="0.337"/><circle cx="63.06%" cy="1.44%" r="1.54" fill-opacity="0.275"/>
+    <circle cx="71.68%" cy="99.49%" r="1.13" fill-opacity="0.376"/><circle cx="13.91%" cy="99.42%" r="1.41" fill-opacity="0.267"/><circle cx="16.09%" cy="39.62%" r="1.05" fill-opacity="0.332"/><circle cx="86.16%" cy="73.59%" r="1.59" fill-opacity="0.377"/>
+    <circle cx="95.54%" cy="48.92%" r="1.08" fill-opacity="0.272"/><circle cx="18.99%" cy="55.49%" r="1.37" fill-opacity="0.257"/><circle cx="18.02%" cy="25.06%" r="1.33" fill-opacity="0.244"/><circle cx="17.08%" cy="0.32%" r="1.01" fill-opacity="0.126"/>
+    <circle cx="10.72%" cy="87.63%" r="1.98" fill-opacity="0.136"/><circle cx="17.45%" cy="40.50%" r="1.40" fill-opacity="0.310"/><circle cx="80.01%" cy="53.00%" r="1.76" fill-opacity="0.227"/><circle cx="8.00%" cy="25.22%" r="1.79" fill-opacity="0.335"/>
+    <circle cx="35.69%" cy="92.03%" r="1.10" fill-opacity="0.214"/><circle cx="40.40%" cy="97.46%" r="1.46" fill-opacity="0.233"/><circle cx="29.33%" cy="88.42%" r="1.49" fill-opacity="0.376"/><circle cx="84.10%" cy="49.56%" r="1.32" fill-opacity="0.301"/>
+  </svg></div>
+  <div class="label lit" style="left:74%;top:11%"><span>MOVIE</span><i></i></div>
+  <div class="label" style="left:78%;top:30%"><span>MEAL</span><i></i></div>
+  <div class="label" style="left:6.5%;top:38.5%"><span>BOOK</span><i></i></div>
+  <div class="label" style="left:7.5%;top:75.5%"><span>SONG</span><i></i></div>
+  <div class="label" style="left:9%;top:83%"><span>PLACE</span><i></i></div>
+  <div class="label" style="left:70%;top:75.5%"><span>CAMERA</span><i></i></div>
+</div>
+
+<div class="page">
+  <div class="brand">
+    <svg viewBox="116 28 768 1024" width="20.21" height="26.95" aria-hidden="true" focusable="false">
+      <defs>
+        <mask id="shutter" x="116" y="28" width="768" height="1024" maskUnits="userSpaceOnUse">
+          <rect x="116" y="28" width="768" height="1024" fill="black"/>
+          <circle cx="500" cy="540" r="380" fill="white"/>
+          <polygon points="500,379.99 638.57,459.99 638.57,620.01 500,700.01 361.43,620.01 361.43,459.99" fill="black"/>
+          <g stroke="black" stroke-width="26">
+            <line x1="621.24" y1="465" x2="900.79" y2="626.4"/>
+            <line x1="625.57" y1="607.5" x2="625.57" y2="930.3"/>
+            <line x1="504.33" y1="682.5" x2="224.78" y2="843.9"/>
+            <line x1="378.76" y1="615" x2="99.21" y2="453.6"/>
+            <line x1="374.43" y1="472.5" x2="374.43" y2="149.7"/>
+            <line x1="495.67" y1="397.5" x2="775.22" y2="236.1"/>
+          </g>
+          <polygon points="442,46 558,46 500,162" fill="black" stroke="black" stroke-width="74" stroke-linejoin="round"/>
+          <polygon points="442,46 558,46 500,162" fill="white" stroke="white" stroke-width="28" stroke-linejoin="round"/>
+        </mask>
+      </defs>
+      <rect x="116" y="28" width="768" height="1024" fill="#111111" mask="url(#shutter)"/>
+    </svg>
+    <span>RNDMRoll</span>
+  </div>
+
+  <main class="main">
+    <div class="wheel" aria-hidden="true">
+      <div class="disc">
+        <svg viewBox="-1.05 -1.05 2.1 2.1">
+          <circle r="1" fill="#111111"/>
+          <g fill="#E8E7E3">
+            <path d="M 0 0 L -0.0344 -0.9849 A 0.9855 0.9855 0 0 1 0.7160 -0.6771 Z"/>
+            <path d="M 0 0 L 0.9839 0.0567 A 0.9855 0.9855 0 0 1 0.6721 0.7207 Z"/>
+            <path d="M 0 0 L 0.0034 0.9855 A 0.9855 0.9855 0 0 1 -0.6135 0.7713 Z"/>
+            <path d="M 0 0 L -0.9747 0.1457 A 0.9855 0.9855 0 0 1 -0.7538 -0.6348 Z"/>
+            <circle r="0.14"/>
+          </g>
+          <circle r="0.05" fill="#111111"/>
+          <!-- The category drawings (components/brand/CategoryRow.tsx), one per section in WHEEL_SECTORS order at SECTOR_CENTERS. -->
+          <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <g class="on-light" transform="rotate(22.3) translate(-0.13125 -0.756) scale(0.0065625)">
+              <rect x="5" y="9" width="30" height="21" rx="3"/><path d="M17 14.5 L17 24.5 L26 19.5 Z"/><path d="M14 34 H26"/>
+            </g>
+            <g class="on-dark" transform="rotate(70) translate(-0.13125 -0.756) scale(0.0065625)">
+              <path d="M20 11 C15.5 8 9.5 8 5 9.5 V30 C9.5 28.5 15.5 28.5 20 31.5 C24.5 28.5 30.5 28.5 35 30 V9.5 C30.5 8 24.5 8 20 11 Z"/><path d="M20 11 V31.5"/>
+            </g>
+            <g class="on-light" transform="rotate(115.2) translate(-0.13125 -0.756) scale(0.0065625)">
+              <circle cx="12.5" cy="29" r="3.6" fill="currentColor"/><circle cx="28.5" cy="26" r="3.6" fill="currentColor"/><path d="M16.1 29 V11.5 L32.1 8 V26"/><path d="M16.1 16.5 L32.1 13"/>
+            </g>
+            <g class="on-dark" transform="rotate(158.4) translate(-0.13125 -0.756) scale(0.0065625)">
+              <circle cx="21" cy="20" r="8.5"/><circle cx="21" cy="20" r="5"/><path d="M4.5 9 V15.5 M7.5 9 V15.5 M10.5 9 V15.5 M4.5 15.5 Q7.5 19 10.5 15.5 M7.5 18.5 V32"/><path d="M35.5 9 C32 12 31.5 17 33 21.5 H35.5 V9 Z M35.5 21.5 V32"/>
+            </g>
+            <g class="on-light" transform="rotate(199.2) translate(-0.13125 -0.756) scale(0.0065625)">
+              <path d="M5 28 H35"/><path d="M11 28 A9 9 0 0 1 29 28"/><path d="M20 15.5 V10.5 M28.5 19.5 L31.5 16.5 M11.5 19.5 L8.5 16.5 M31.5 24 L35 23 M8.5 24 L5 23"/><path d="M10 33 H17 M23 33 H30"/>
+            </g>
+            <g class="on-dark" transform="rotate(240) translate(-0.13125 -0.756) scale(0.0065625)">
+              <rect x="4" y="12" width="32" height="20" rx="3"/><path d="M13.5 12 L16 8 H24 L26.5 12"/><circle cx="20" cy="22" r="5.5"/><circle cx="30.5" cy="16.5" r="0.9" fill="currentColor"/>
+            </g>
+            <g class="on-light" transform="rotate(285.8) translate(-0.13125 -0.756) scale(0.0065625)">
+              <circle cx="12.5" cy="29" r="3.6" fill="currentColor"/><circle cx="28.5" cy="26" r="3.6" fill="currentColor"/><path d="M16.1 29 V11.5 L32.1 8 V26"/><path d="M16.1 16.5 L32.1 13"/>
+            </g>
+            <g class="on-dark" transform="rotate(334) translate(-0.13125 -0.756) scale(0.0065625)">
+              <path d="M5 28 H35"/><path d="M11 28 A9 9 0 0 1 29 28"/><path d="M20 15.5 V10.5 M28.5 19.5 L31.5 16.5 M11.5 19.5 L8.5 16.5 M31.5 24 L35 23 M8.5 24 L5 23"/><path d="M10 33 H17 M23 33 H30"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <!-- The pointer stays still; the gap round its tip is painted in the page colour, as in the app. -->
+      <svg viewBox="-1.25 -1.45 2.5 2.5">
+        <polygon points="-0.0460,-1.0919 0.0460,-1.0919 0,-0.9988" fill="#F6F5F2" stroke="#F6F5F2" stroke-width="0.06095" stroke-linejoin="round"/>
+        <polygon points="-0.0460,-1.0919 0.0460,-1.0919 0,-0.9988" fill="#111111" stroke="#111111" stroke-width="0.023" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div class="copy">
+      <div class="copy-top">
+        <h1>{{if .Username}}@{{.Username}} invited you.{{else}}You're invited.{{end}}</h1>
+        <p class="tagline">one spin. one real moment.</p>
+      </div>
+      <div class="copy-bottom">
+        {{- if .Username}}
+        <a class="button" href="{{.OpenURL}}">Open in RNDMRoll</a>
+        {{- end}}
+        <p class="soon">Coming soon to the App Store.</p>
+      </div>
+    </div>
+  </main>
+</div>
 </body>
 </html>
