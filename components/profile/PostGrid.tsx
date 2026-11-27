@@ -7,6 +7,11 @@ import { photoSource } from '@/lib/api/photoSource';
 import { color, space, type } from '@/lib/theme/tokens';
 
 /** Three tiles a row, close together (developer, 2026-10-17: bigger pictures, the thin gap is fine). */
+/**
+ * The grid keeps the page's side margins, lined up with the header above it (developer, 2026-11-27:
+ * edge to edge, a single post looked cut off at the screen's left edge).
+ */
+const SIDE = space.lg;
 const COLUMNS = 3;
 const GAP = 2;
 /** Tiles are 3 wide to 4 high, like Instagram's profile grid. */
@@ -35,7 +40,7 @@ export function PostGrid({
   onPhotoError,
 }: {
   posts: GridPost[];
-  /** The width the grid fills (the full page width: it runs edge to edge). */
+  /** The page's full width; the grid sits inside it with the page's side margins. */
   width: number;
   onOpen: (id: string) => void;
   /** The line shown when there is nothing to show. */
@@ -53,11 +58,11 @@ export function PostGrid({
     );
   }
 
-  const tile = Math.floor((width - GAP * (COLUMNS - 1)) / COLUMNS);
+  const tile = Math.floor((width - 2 * SIDE - GAP * (COLUMNS - 1)) / COLUMNS);
   const tileHeight = Math.round(tile * TILE_RATIO);
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, paddingHorizontal: SIDE }}>
       {posts.map((post) => (
         <Pressable
           key={post.id}

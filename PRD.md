@@ -5,7 +5,7 @@
 | **Product** | RNDMRoll, an iPhone app for small groups of friends |
 | **Version** | 1.0, built and not yet released |
 | **Status** | Version 1 runs end to end on the iPhone Simulator against a server on my computer, with the database and photos on Supabase in Singapore. A public release waits on the launch checklist in [section 14](#14-release-plan). |
-| **Last updated** | November 26, 2026 |
+| **Last updated** | November 27, 2026 |
 | **Related** | [README](./README.md) (the case study), [RESEARCH.md](./RESEARCH.md) (competitor research), [`.planning/`](./.planning) (phase specs and plans), [Terms of Use](./docs/legal/TERMS.md), [Privacy Policy](./docs/legal/PRIVACY.md) |
 | **How it was built** | I built RNDMRoll by directing Claude Code. The product decisions, designs and testing are mine; Claude wrote the code to my prompts. The README's "How I built it with Claude" section has the detail. |
 
@@ -1011,6 +1011,7 @@ These are the product decisions I made along the way, with the reason and the co
 | Nov 25 | Likes send a phone notification too, with a Likes switch in Settings | "it should send notifications" | One more kind of push, once per person and post a day; the Likes switch turns it off |
 | Nov 25 | Find your friends ends with Skip for now, as the photo page does, in place of Done; it turns into Continue once the person follows someone or sends the link. Both pages' Skip for now is an outlined button, like Log in on the first screen, not grey text, and Find your friends has a line above it saying where to find friends later | "instead of doing done, you should add skip for now again for this one also, because done doesn't make sense", then "instead of keeping it grey can we do something more better in detail" (picked from three looks) | None recorded |
 | Nov 26 | A like shows and counts only while the person who gave it follows the poster; it comes back when a new follow is accepted | "do the small fixes" (a like outlived an unfollow, and its maker could no longer undo it) | A like by someone who left is hidden, not deleted |
+| Nov 27 | The posts grid on Profile and on a person's page keeps the page's side margins, lined up with the header, instead of running edge to edge | "you see how the picture got cut off in the grid" (picked from two, on Maya's page) | Tiles a little smaller |
 
 ## 18. Out of scope and future ideas
 
