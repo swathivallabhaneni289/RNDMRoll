@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 06
 current_phase_name: public-global
 status: building
-stopped_at: Phase 6 built and summed up on paper; the developer's practice run is next
-last_updated: "2026-11-13T17:52:15.000Z"
-last_activity: 2026-11-13
-last_activity_desc: Phase 6 summary written, the old Phase 6 papers marked superseded, PRD.md named the current record
+stopped_at: Everything but the launch items built, with automated tests passing, and pushed; next a one-command demo start, the developer's practice run and README screenshots
+last_updated: "2026-11-27T15:30:00.000Z"
+last_activity: 2026-11-27
+last_activity_desc: The small fixes, the invite page and the posts grid pushed; the demo runs on the developer's Mac, so no hosting is planned
 progress:
   total_phases: 8
   completed_phases: 7
@@ -18,6 +18,8 @@ progress:
 ---
 
 # Project State
+
+> **CURRENT STATUS (2026-11-27).** PRD.md is the current record. Everything except the launch items is built, its automated tests pass, and it is pushed. Since 2026-11-13: moderation with the admin table and the Removed tab, second looks in the app, the password changed emails, likes on posts with their notification, a 6-digit email code at sign-up, the small fixes from the PRD's known issues, the redesigned invite page and the posts grid. Supabase is at migration 23. The demo runs on the developer's Mac (the server on the Mac, the data and photos on Supabase), so no hosting is planned, and email stays off for now (the codes print to the server log). Left: a one-command demo start and a short demo script; hand checks on the simulator (the countdown line after a zone change, a reinstall starting logged out, an invite link tapped while the app starts, Reply and the emoji row, the reminder switch, and the PRD launch checklist's device walkthroughs); the developer's practice run (then ROADMAP.md ticks Phase 6); README screenshots and a screen recording; and a final clean-up.
 
 > **CURRENT STATUS (2026-11-13).** PRD.md is the current record; the notes below are history. Phases 1 to 5 are closed, and Phase 6 is built (`phases/06-public-global/06-BUILT-SUMMARY.md`); ROADMAP.md ticks it after the developer's practice run. The database (19 migrations) and the photos (a private bucket) are on Supabase in Singapore, the server runs on the developer's Mac, and real email and phone pushes are built but off.
 
@@ -32,13 +34,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** A working daily habit loop — roll, log, diary, gated friend feed — used reliably every day by the developer and a small friend group.
-**Current focus:** Phase 06: final checks and demo readiness
+**Current focus:** Phase 06: the practice run and demo readiness
 
 ## Current Position
 
 Phase: 06 (people pages, reports, admin, reminders): built; 01 to 05 closed
-Status: Final checks before a demo
-Last activity: 2026-11-13: Phase 6 summed up in 06-BUILT-SUMMARY.md; PRD.md is the current record
+Status: Built and tested; getting the demo ready
+Last activity: 2026-11-27: the small fixes, the invite page and the posts grid pushed
 
 Progress: [█████████░] 95%
 

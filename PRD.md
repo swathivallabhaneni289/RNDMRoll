@@ -56,8 +56,8 @@ RNDMRoll is a daily ritual for a small group of friends. At 8 PM in your own tim
 | Audience | Friend groups; anyone 13 and over can join |
 | Platform | iPhone app (Expo and React Native, TypeScript); Go API; PostgreSQL and private photo storage on Supabase (Singapore) |
 | Scope | Accounts, the daily spin, posts, profiles, following, the Board, comments, likes, notifications, reporting, an admin page, Terms and Privacy |
-| Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to October 25, 2026 |
-| Quality | More than 750 Go test functions (more than 210 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
+| Built in | Six phases plus two short inserted ones (2.1 and 2.2), September 15 to November 27, 2026 |
+| Quality | More than 870 Go test functions (more than 270 of them against a real PostgreSQL database), 12 app check scripts, strict TypeScript |
 | Not yet | Released. Real email, push credentials, a domain, database backups and a legal review are on the launch checklist. |
 
 ## 2. Problem and opportunity
@@ -520,7 +520,7 @@ The bottom bar has three tabs: **Spin**, **Board** and **Profile**. The Spin pag
 | SAFE-01 | Report a person, a post or a comment | P0 | Built |
 | SAFE-02 | Block, mute, hide a comment and remove a follower (8.6, 8.8) | P0 | Built |
 | SAFE-03 | Minimum age of 13 (ACC-03) | P0 | Built |
-| SAFE-04 | Admins are alerted about new reports | P1 | Launch |
+| SAFE-04 | Admins are alerted about new reports | P1 | Built as ADM-06, sent for real once email is on |
 | SAFE-05 | Content hidden automatically after several reports, and an appeal flow | P2 | Hiding at 3 reports Built (November 17, 2026); second looks in the app Built (November 19, 2026) |
 
 **Acceptance criteria and rules**
@@ -737,7 +737,7 @@ These rules decide what counts. The server owns all of them.
 
 ### Quality
 
-- More than 750 Go test functions; more than 210 of them run against a real PostgreSQL database.
+- More than 870 Go test functions; more than 270 of them run against a real PostgreSQL database.
 - The Go tests run about 85% of the server's code (statement coverage).
 - 12 check scripts: eleven for app logic and one for the legal text.
 - Strict TypeScript.
@@ -788,7 +788,7 @@ These rules decide what counts. The server owns all of them.
 **Architecture.**
 
 - **App:** an Expo and React Native app (TypeScript, Expo Router, Reanimated).
-- **API:** a Go server (Gin, pgx) with 21 SQL migrations. It runs on my computer until it is hosted, and reaches PostgreSQL on Supabase in Singapore through the session pooler over TLS. Supabase's Data API is off, and only the server holds the database password.
+- **API:** a Go server (Gin, pgx) with 23 SQL migrations. It runs on my computer until it is hosted, and reaches PostgreSQL on Supabase in Singapore through the session pooler over TLS. Supabase's Data API is off, and only the server holds the database password.
 - **Photos:** kept in a private Supabase Storage bucket in Singapore. The phone uploads through 5-minute signed links and loads photos through signed links that stop working within an hour, made only for people allowed to see them.
 - **Services:** email through Resend, and phone notifications through Expo's push service and Apple. Both are built but off until the accounts exist; today emails print to the server log.
 - **Web pages:** the admin page and the invite page are plain server-rendered pages on the API.
@@ -849,7 +849,7 @@ The app isn't released, so there is no usage data. The targets below are my star
 | 3 | The daily post | Oct 9 to Oct 16 | Closed |
 | 4 | Profile and the post history | Oct 10 to Oct 16 | Closed |
 | 5 | Following and the Board | Oct 10 to Oct 18 | Closed |
-| 6 | People pages, reporting and the admin page; also Forgot password, phone notifications, the 8 PM reminder, Terms and Privacy | Oct 10 to Oct 25 | Built; Terms and Privacy drafted Oct 25; my final walkthrough is still to do |
+| 6 | People pages, reporting and the admin page; also Forgot password, phone notifications, the 8 PM reminder, Terms and Privacy | Oct 10 to Nov 27 | Built; Terms and Privacy drafted Oct 25; my final walkthrough is still to do |
 
 Dates run from the written scope to the close. Phase 6 was built from Oct 17.
 
