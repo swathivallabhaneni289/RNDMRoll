@@ -94,8 +94,8 @@ export function ProfileView({
   }, [saved]);
 
   return (
-    // No side padding on the page itself: the header and the grid each keep the usual margins
-    // (the grid lines up with the header, developer 2026-11-27).
+    // No side padding on the page itself: the header keeps the usual margins and the grid runs
+    // edge to edge, so the pictures are as large as three a row allows.
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: color.dominant }}>
       <ScrollView onScroll={handleScroll} scrollEventThrottle={200} contentContainerStyle={{ paddingBottom: space.xl }}>
         <View style={{ paddingHorizontal: space.lg }}>
