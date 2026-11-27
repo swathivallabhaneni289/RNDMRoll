@@ -11,6 +11,12 @@ import { color, space, type } from '@/lib/theme/tokens';
  * gap is fine; 2026-11-27, after trying the page's side margins: "it should look like how instagram
  * handles the profile page", whose grid runs edge to edge with 3:4 tiles).
  */
+/**
+ * A small even margin at both sides, so a tile never touches the screen's edge and looks cut off
+ * (developer, 2026-11-27, picked over the full page margins, which made the pictures look
+ * "compressed"). The tiles stay nearly as big as edge to edge.
+ */
+const SIDE = space.sm;
 const COLUMNS = 3;
 const GAP = 2;
 /** Tiles are 3 wide to 4 high, like Instagram's profile grid. */
@@ -39,7 +45,7 @@ export function PostGrid({
   onPhotoError,
 }: {
   posts: GridPost[];
-  /** The width the grid fills (the full page width: it runs edge to edge). */
+  /** The page's full width; the grid sits inside it with a small margin at each side. */
   width: number;
   onOpen: (id: string) => void;
   /** The line shown when there is nothing to show. */
@@ -57,11 +63,11 @@ export function PostGrid({
     );
   }
 
-  const tile = Math.floor((width - GAP * (COLUMNS - 1)) / COLUMNS);
+  const tile = Math.floor((width - 2 * SIDE - GAP * (COLUMNS - 1)) / COLUMNS);
   const tileHeight = Math.round(tile * TILE_RATIO);
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, paddingHorizontal: SIDE }}>
       {posts.map((post) => (
         <Pressable
           key={post.id}
